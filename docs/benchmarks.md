@@ -258,12 +258,13 @@ relative margin of error). This includes recursive aggregate traversal,
 TypeChecker binding resolution, and concrete-generation lookup, but excludes
 Quint generation. The high variance makes this observational only.
 
-Analyzing the two-task prioritized scheduler dogfood fixture, including one
-inherited-priority `scheduler.yield` continuation, measured 240.16 ms mean over
-five cold samples (7.69% relative margin of error). This includes TypeChecker
-identity resolution, static option extraction, and callback-body discovery, but
-excludes Quint execution. This replaces the earlier pre-yield 130.62 ms sample;
-the small cold sample is observational and not yet a regression threshold.
+Analyzing the two-task prioritized scheduler dogfood fixture, including a
+timeout/external abort composition and one inherited-priority/cancellation
+`scheduler.yield` continuation, measured 303.87 ms mean over five cold samples
+(11.17% relative margin of error). This includes TypeChecker identity
+resolution, static option extraction, signal-edge linking, and callback-body
+discovery, but excludes Quint execution. The small cold sample is observational
+and not yet a regression threshold.
 
 Auditing the telemetry packet fixture across its statement-scoped typed-array
 escape hatch, Console builtin, temporal summary, and owner/expiration policy

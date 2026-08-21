@@ -395,6 +395,48 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("cancels scheduler tasks and inherited yield continuations from their signal", () => {
+    const model = analyzeAsyncPatterns("scheduler-signal.ts", `
+      function schedule(external: AbortSignal) {
+        const signal = AbortSignal.any([external, AbortSignal.timeout(0)])
+        return scheduler.postTask(async () => {
+          await scheduler.yield()
+        }, { signal, priority: "background" })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "abort-timeout", delay: 0 },
+      { kind: "scheduler-post-task", abortComposition: 0, priority: "background" },
+      { kind: "scheduler-yield", abortComposition: 0, priority: "background", enqueuedBy: 1 },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_signal", model);
+    expect(quint).toContain("action cancel_scheduler_task_1_from_composition_0");
+    expect(quint).toContain("action cancel_scheduler_task_2_from_composition_0");
+    expect(quint).toMatch(/action run_scheduler_task_1[\s\S]*not\(abort_0_aborted\)/);
+    expect(quint).toMatch(/action run_scheduler_yield_2[\s\S]*not\(abort_0_aborted\)/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    expect(run(generateWebEventLoopQuint("scheduler_signal_broken", model, {
+      allowRunAbortedSchedulerTask: true,
+    }), "eventLoopSafe").status).not.toBe(0);
+  }, 20_000);
+
+  it("cancels a scheduler task directly from a named timeout signal", () => {
+    const model = analyzeAsyncPatterns("scheduler-timeout.ts", `
+      function schedule() {
+        const timeout = AbortSignal.timeout(5)
+        return scheduler.postTask(() => {}, { signal: timeout })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "abort-timeout", delay: 5 },
+      { kind: "scheduler-post-task", abortTimer: 0 },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_timeout", model);
+    expect(quint).toContain("action cancel_scheduler_task_1_from_timer_0");
+    expect(quint).toMatch(/action run_scheduler_task_1[\s\S]*not\(callback_0_fires > 0\)/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}

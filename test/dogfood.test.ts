@@ -268,14 +268,16 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source)).toEqual([]);
     const model = analyzeAsyncPatterns(fileName, source);
     expect(model.timers).toMatchObject([
-      { kind: "scheduler-post-task", priority: "user-visible" },
-      { kind: "scheduler-yield", priority: "user-visible", enqueuedBy: 0, callback: "<continuation>" },
-      { kind: "scheduler-post-task", priority: "background", callback: "() => \"prefetch\"" },
+      { kind: "abort-timeout", delay: 1_000 },
+      { kind: "scheduler-post-task", priority: "user-visible", abortComposition: 0 },
+      { kind: "scheduler-yield", priority: "user-visible", abortComposition: 0, enqueuedBy: 1, callback: "<continuation>" },
+      { kind: "scheduler-post-task", priority: "background", abortComposition: 0, callback: "() => \"prefetch\"" },
     ]);
     const quint = generateWebEventLoopQuint("scheduler_priority", model);
-    expect(quint).toMatch(/action run_scheduler_task_0[\s\S]*callback_1_pending' = true/);
-    expect(quint).toContain("action run_scheduler_yield_1");
-    expect(quint).toMatch(/action run_scheduler_task_2[\s\S]*callback_0_pending and callback_0_due <= clock/);
+    expect(quint).toMatch(/action run_scheduler_task_1[\s\S]*callback_2_pending' = true/);
+    expect(quint).toContain("action run_scheduler_yield_2");
+    expect(quint).toContain("action cancel_scheduler_task_2_from_composition_0");
+    expect(quint).toMatch(/action run_scheduler_task_3[\s\S]*callback_1_pending and callback_1_due <= clock/);
     const wrongBoundary = source.replace("effect Timer", "effect Console");
     expect(analyzeEffects(fileName, wrongBoundary)).toEqual(expect.arrayContaining([
       expect.objectContaining({ functionName: "scheduleDashboardWork", kind: "missing", effect: "Timer" }),

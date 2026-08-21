@@ -79,10 +79,13 @@ and [MDN `postTask`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/
 `scheduler.yield()` lowers to a scheduler continuation. At top level it uses
 `user-visible`; inside a statically resolved `postTask` callback it inherits the
 parent's static priority and becomes runnable only after that callback runs.
-The current model does not inherit abort cancellation, resolve dynamically
-selected callbacks, or connect the yielded promise to every following statement
-in an async function. It therefore is not yet a complete async control-flow
-proof. See [MDN `yield`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield).
+When the parent uses a statically resolved timeout or `AbortSignal.any`, the
+task and its inline yield continuations also share that cancellation source.
+Aborting removes pending jobs and execution guards reject an aborted source; a
+negative control that runs such a job violates `scheduler_abort_broken`.
+Direct external-signal state, dynamically selected callbacks, and complete
+control flow for every statement after `await scheduler.yield()` remain
+unmodeled. See [MDN `yield`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield).
 
 ```sh
 just spec-web-event-loop examples/async-patterns.ts
