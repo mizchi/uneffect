@@ -108,8 +108,72 @@ describe("spec IR and generated verifier programs", () => {
     const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=ownersAreNodes", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
     rmSync(directory, { recursive: true, force: true });
     expect(result.status, result.stdout + result.stderr).toBe(0);
-    await expect(findTemporalCounterexampleWithZ3(temporal, "ownersAreNodes")).resolves.toEqual({ status: "unknown", depth: 0 });
-    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({ code: "unsupported-backend-domain", backend: "z3" }));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "ownersAreNodes")).resolves.toEqual({ status: "safe-within-bound", depth: 8 });
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toEqual([]);
+  });
+
+  it("semantically lints scalar-element Set predicates and extracts complete finite traces with Z3", async () => {
+    const temporal = parseSpec("set-lint.ts", `/* uneffect:
+      state owners: Set<int>
+      init owners = Set()
+      action impossible: owners' = owners.union(Set(1))
+      action_when impossible: owners.contains(1) && !owners.contains(1)
+      temporal excludedMiddle: owners.forall(owner => owners.contains(owner) || !owners.contains(owner))
+      temporal impossibleOwners: owners.contains(1) && !owners.contains(1)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "solver-tautology", name: "excludedMiddle", backend: "z3" }),
+      expect.objectContaining({ code: "solver-contradiction", name: "impossibleOwners", backend: "z3" }),
+      expect.objectContaining({ code: "unreachable-action", name: "impossible", backend: "z3" }),
+    ]));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "deadlocked-initial-state", backend: "z3" }),
+      expect.objectContaining({ code: "bounded-unreachable-action", name: "impossible", backend: "z3", depth: 2 }),
+    ]));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "excludedMiddle")).resolves.toEqual({ status: "safe-within-bound", depth: 8 });
+    const broken = parseSpec("set-counterexample.ts", `/* uneffect:
+      state nodes: Set<int>
+      state owners: Set<int>
+      init nodes = Set(1)
+      init owners = Set()
+      action acquireUnknown: owners' = owners.union(Set(2))
+      temporal ownersAreNodes: owners.forall(owner => nodes.contains(owner))
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "ownersAreNodes", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { initialState: { nodes: [1], owners: [] }, steps: [{ action: "acquireUnknown", after: { nodes: [1], owners: [2] } }] },
+    });
+    const booleans = parseSpec("bool-set.ts", `/* uneffect:
+      state flags: Set<bool>
+      init flags = Set()
+      action enable: flags' = flags.union(Set(true))
+      temporal enabledOrNot: flags.contains(true) || !flags.contains(true)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(booleans)).resolves.toContainEqual(expect.objectContaining({ code: "solver-tautology", name: "enabledOrNot" }));
+    await expect(findTemporalCounterexampleWithZ3(booleans, "enabledOrNot", { maxSteps: 2 })).resolves.toEqual({ status: "safe-within-bound", depth: 2 });
+  });
+
+  it("keeps Set counterexample extraction honest outside the literal finite universe", async () => {
+    const dynamic = parseSpec("dynamic-set.ts", `/* uneffect:
+      state owner: int
+      state owners: Set<int>
+      init owner = 1
+      init owners = Set()
+      action acquire: owners' = owners.union(Set(owner))
+      temporal empty: !owners.contains(owner)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(dynamic, "empty", { maxSteps: 2 })).resolves.toEqual({ status: "unknown", depth: 0 });
+
+    const signed = parseSpec("signed-set.ts", `/* uneffect:
+      state values: Set<int>
+      init values = Set()
+      action insert: values' = values.union(Set(-1))
+      temporal nonnegative: !values.contains(-1)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(signed, "nonnegative", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { initialState: { values: [] }, steps: [{ action: "insert", after: { values: [-1] } }] },
+    });
   });
 
   it("parses and verifies finite Map state with immutable updates", () => {

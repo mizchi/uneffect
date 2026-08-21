@@ -82,11 +82,18 @@ The first collection-valued slice accepts `state nodes: Set<int>` (and
 `left.union(right)`, `set.contains(value)`, `set.size()`, and
 `set.forall(value => predicate)`. The same expression AST lowers to Quint and
 to optional JavaScript assertions (`Set`, `has`, and `Array.from(...).every`).
-Sets must be homogeneous and quantified predicates must be boolean. Collection
-state is currently a Quint/runtime feature: scalar-only Z3 lint and bounded
-counterexample extraction return an explicit unsupported/`unknown` result, and
-TLC scalar trace replay rejects it. Collection trace normalization and Z3
-collection reasoning remain unimplemented.
+Sets must be homogeneous and quantified predicates must be boolean. Z3 encodes
+scalar-element Sets as total boolean arrays, with union, membership, and
+`forall` lowered without weakening the predicate. Semantic lint and bounded
+reachability use the full array semantics. Counterexample traces enumerate the
+scalar literals present in the model as a finite observation universe; current
+init/update expressions can only construct and union those literals, so that
+observation is complete for this fragment, including signed integer literals.
+If a Set constructor receives a state-derived value such as `Set(owner)`, the
+array semantics remain available to semantic lint and bounded reachability,
+but counterexample extraction reports `unknown`: it does not hide members that
+fall outside the literal observation universe. Map, record, and
+nested-collection Z3 models remain explicit unsupported/`unknown` results.
 
 Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
 TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
@@ -102,8 +109,8 @@ remain ordinary `lease.owner` expressions. Quint lowering uses record literals,
 field access, and `.with("owner", value)`; runtime assertions use JavaScript
 object literals and spread. Record fields and Map values may themselves contain
 supported collection or record types. Record shapes are exact, optional fields
-and dynamic property access are rejected, and Z3/TLC still report these domains
-as unsupported rather than claiming a proof.
+and dynamic property access are rejected. Z3 still reports record and Map
+domains as unsupported rather than claiming a proof.
 
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches
@@ -112,12 +119,12 @@ shortest trace at or below the configured bound, including concrete states and
 action names suitable for TypeScript refinement replay. `safe-within-bound`
 remains a bounded result; `unknown` is never promoted to safety.
 
-Standalone TLC output is normalized for the scalar temporal fragment by
-parsing its state sequence and matching each transition against the neutral
-action guards and updates. Ambiguous or unmatched transitions are hard errors.
-This is intentionally narrower than general TLA+ value parsing; sets, maps,
-records, and sequences remain pending together with collection-valued temporal
-state.
+Standalone TLC output is normalized for scalar values and the supported
+single- or multiline finite Set, scalar-key Map/function, and closed-record
+fragment. Each transition is matched against neutral action guards and updates;
+ambiguous or unmatched transitions are hard errors. General TLA+ sequences,
+variants, strings, and values outside declared Uneffect state types remain
+pending.
 
 Actions may have TypeScript-like guards with
 `action_when actionName: predicate`. This is sufficient for discrete logical

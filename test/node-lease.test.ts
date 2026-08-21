@@ -56,6 +56,23 @@ function collectionLeaseModel(skewGrace: number): string {
   */`;
 }
 
+function setLeaseModel(skewGrace: number): string {
+  return `/* uneffect:
+    clock realNow: 1
+    state nodes: Set<int>
+    state activeWriters: Set<int>
+    state owner: int
+    init nodes = Set(1, 2)
+    init activeWriters = Set(1)
+    init owner = 1
+    action takeover: owner' = 2
+    action_when takeover: owner === 1 && realNow + 1 >= 10 + ${skewGrace}
+    action publish: activeWriters' = activeWriters.union(Set(2))
+    action_when publish: owner === 2 && !activeWriters.contains(2)
+    temporal singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2))
+  */`;
+}
+
 function runCollectionLease(skewGrace: number) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-set-"));
   const path = join(directory, "lease-set.qnt");
@@ -135,6 +152,19 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("extracts the Set-valued Node Lease violation with Z3 finite observation", async () => {
+    const broken = await findTemporalCounterexampleWithZ3(parseSpec("node-lease-set-z3.ts", setLeaseModel(0)).temporal, "singleWriter", { maxSteps: 12 });
+    expect(broken.status).toBe("counterexample");
+    if (broken.status === "counterexample") {
+      expect(broken.trace.steps.map((step) => step.action)).toEqual([
+        ...Array.from({ length: 9 }, () => "tick_realNow"), "takeover", "publish",
+      ]);
+      expect(broken.trace.steps.at(-1)?.after).toMatchObject({ activeWriters: [1, 2], nodes: [1, 2] });
+    }
+    await expect(findTemporalCounterexampleWithZ3(parseSpec("node-lease-set-z3-safe.ts", setLeaseModel(1)).temporal, "singleWriter", { maxSteps: 12 }))
+      .resolves.toEqual({ status: "safe-within-bound", depth: 12 });
+  });
+
   it("fences delayed writes across renewal, CAS failure, crash, GC, and takeover lifecycle", () => {
     const broken = runLeaseLifecycle(false);
     expect(broken.status).not.toBe(0);
