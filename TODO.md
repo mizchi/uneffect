@@ -196,6 +196,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.
   - [x] Provision the Z3 CLI and Java 21, and serialize Quint evaluator warm-up before parallel Vitest workers.
+  - [x] Bound CI solver integration concurrency and timeout separately from the faster local profile.
 
 ## P7 — Explicit resource management
 
