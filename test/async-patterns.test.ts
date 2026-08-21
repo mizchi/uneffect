@@ -575,6 +575,26 @@ describe("builtin async temporal patterns", () => {
     expect(invalid.stdout + invalid.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
 
+  it("preserves concrete Promise.any rejection reasons in input order", () => {
+    const model = analyzeAsyncPatterns("aggregate-reasons.ts", `
+      async function load() {
+        try { await Promise.any([Promise.reject("first"), Promise.reject(new TypeError("second")), Promise.resolve(1)]) } catch {}
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      aggregateErrorOrder: [0, 1, 2],
+      aggregateErrorReasons: [
+        { kind: "literal", value: "first" },
+        { kind: "error", errorType: "TypeError", message: "second" },
+        null,
+      ],
+    });
+    const quint = generateAsyncPatternsQuint("aggregate_reasons", model);
+    expect(quint).toContain('val join_0_aggregate_error_reason_0 = "literal:string:first"');
+    expect(quint).toContain('val join_0_aggregate_error_reason_1 = "error:TypeError:second"');
+    expect(quint).toContain('val join_0_aggregate_error_reason_2 = "unknown"');
+  });
+
   it("treats sparse holes as fulfilled undefined values and assimilates thenables", () => {
     const model = analyzeAsyncPatterns("iterable-elements.ts", `
       declare const remote: PromiseLike<number>

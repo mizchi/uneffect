@@ -34,10 +34,14 @@ export interface PromiseCombinatorPattern {
   iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
   aggregateErrorOrder?: number[];
+  aggregateErrorReasons?: Array<PromiseRejectionReason | null>;
   awaited: boolean;
   catchesRejection: boolean;
   span: { start: number; end: number };
 }
+export type PromiseRejectionReason =
+  | { kind: "literal"; value: string | number | boolean }
+  | { kind: "error"; errorType: string; message?: string };
 
 export interface TimerCancellation {
   owner: string;
@@ -95,6 +99,28 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const resolvedSymbol = (node: ts.Node): ts.Symbol | undefined => {
     const symbol = checker.getSymbolAtLocation(node);
     return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+  };
+  const literalReason = (expression: ts.Expression): string | number | boolean | undefined => {
+    if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
+    if (ts.isNumericLiteral(expression)) return Number(expression.text);
+    if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(expression.operand)) return -Number(expression.operand.text);
+    return undefined;
+  };
+  const rejectionReason = (expression: ts.Expression | ts.OmittedExpression): PromiseRejectionReason | null => {
+    if (ts.isOmittedExpression(expression) || !ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "reject") return null;
+    const symbol = resolvedSymbol(expression.expression.name);
+    const standard = symbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+      && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor");
+    if (!standard || !expression.arguments[0]) return null;
+    const argument = expression.arguments[0], literal = literalReason(argument);
+    if (literal !== undefined) return { kind: "literal", value: literal };
+    if (ts.isNewExpression(argument) && ts.isIdentifier(argument.expression)) {
+      const message = argument.arguments?.[0] && literalReason(argument.arguments[0]);
+      return { kind: "error", errorType: argument.expression.text, ...(typeof message === "string" ? { message } : {}) };
+    }
+    return null;
   };
   const expandStaticArray = (expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined => {
     while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
@@ -479,7 +505,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           }
           combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable,
             iteratorKind: array ? "array" : local ? "local" : "dynamic", iteratorEffects: array ? [] : ["InvokeUserCode"],
-            iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
+            iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
+            aggregateErrorReasons: operation.combinator === "any" && array ? array.map(rejectionReason) : undefined,
+            awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }
       ts.forEachChild(node, visit);
@@ -535,6 +563,11 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     if (join.aggregateErrorOrder) {
       lines.push(`  val join_${index}_aggregate_error_count = ${join.aggregateErrorOrder.length}`);
       join.aggregateErrorOrder.forEach((slot, rank) => lines.push(`  val join_${index}_aggregate_error_slot_${rank} = ${slot}`));
+      join.aggregateErrorReasons?.forEach((reason, rank) => {
+        const encoded = reason?.kind === "literal" ? `literal:${typeof reason.value}:${String(reason.value)}`
+          : reason?.kind === "error" ? `error:${reason.errorType}:${reason.message ?? ""}` : "unknown";
+        lines.push(`  val join_${index}_aggregate_error_reason_${rank} = ${JSON.stringify(encoded)}`);
+      });
     }
   });
   lines.push("", "  action init = all {", "    clock' = 0,");

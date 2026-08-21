@@ -102,8 +102,10 @@ composition model.
 `allSettled` preserves branch indexes and settlement status in the IR state,
 but values and rejection reasons are currently abstracted away. `any` retains
 the input-index order used by `AggregateError.errors`, independently of branch
-rejection order, and emits count/rank constants to Quint. The rejection reason
-values occupying those slots remain abstract.
+rejection order, and emits count/rank constants to Quint. Literal
+`Promise.reject(value)` reasons and direct `Promise.reject(new ErrorType(message))`
+reasons are retained as typed IR values and stable string constants in the
+artifact. Other rejection reasons remain explicitly unknown.
 
 Each literal element is classified as a plain value, a thenable, or unknown.
 Plain values (including holes) can only fulfill. Thenables enter an explicit
