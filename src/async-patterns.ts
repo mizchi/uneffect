@@ -48,11 +48,20 @@ export interface AbortCompositionPattern {
   span: { start: number; end: number };
 }
 
+export interface TimerHandleEscape {
+  owner: string;
+  kind: "argument" | "property" | "return";
+  handle: string;
+  timer: number;
+  span: { start: number; end: number };
+}
+
 export interface AsyncPatternModel {
   timers: TimerPattern[];
   combinators: PromiseCombinatorPattern[];
   cancellations: TimerCancellation[];
   abortCompositions: AbortCompositionPattern[];
+  timerEscapes: TimerHandleEscape[];
 }
 
 function functionName(node: ts.FunctionLikeDeclaration): string {
@@ -64,7 +73,7 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
 export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile): AsyncPatternModel {
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
-  const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [];
+  const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [], timerEscapes: TimerHandleEscape[] = [];
   const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
     if (ts.isOmittedExpression(element)) return "value";
     const type = checker.getTypeAtLocation(element);
@@ -159,6 +168,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       while (handleAliases.has(current) && !seen.has(current)) { seen.add(current); current = handleAliases.get(current)!; }
       return current;
     };
+    const recordEscape = (identifier: ts.Identifier, kind: TimerHandleEscape["kind"], node: ts.Node): void => {
+      const timer = handleTargets.get(identifier.text);
+      if (timer === undefined) return;
+      timerEscapes.push({ owner: ownerName, kind, handle: resolveHandle(identifier.text), timer, span: { start: node.getStart(source), end: node.getEnd() } });
+    };
     const collectNestedMicrotasks = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callback = resolveCallback(callbackExpression);
       if (!callback || !callback.body || visited.has(callback)) return;
@@ -193,8 +207,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         handleAliases.delete(node.left.text);
         handleTargets.delete(node.left.text);
       }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left)) && ts.isIdentifier(node.right)) recordEscape(node.right, "property", node);
+      if (ts.isReturnStatement(node) && node.expression && ts.isIdentifier(node.expression)) recordEscape(node.expression, "return", node);
       if (ts.isCallExpression(node)) {
         const operation = adapter.resolveCall(node)?.operation;
+        if (operation?.kind !== "timer-clear") for (const argument of node.arguments) if (ts.isIdentifier(argument)) recordEscape(argument, "argument", node);
         if (operation?.kind === "timer") {
           const callbackNode = node.arguments[operation.callbackArgument];
           const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
@@ -298,7 +316,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle);
     if (timer >= 0) cancellation.timer = timer;
   }
-  return { timers, combinators, cancellations, abortCompositions };
+  return { timers, combinators, cancellations, abortCompositions, timerEscapes };
 }
 
 export function analyzeAsyncPatterns(fileName: string, text: string): AsyncPatternModel {
@@ -520,6 +538,9 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     enqueueChildren(index, updates);
     action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
   });
+  for (const timer of new Set((model.timerEscapes ?? []).map((escape) => escape.timer))) {
+    action(`external_cancel_timer_${timer}`, [`callback_${timer}_pending`], new Map([[`callback_${timer}_pending`, "false"]]));
+  }
   abortCompositions.forEach((composition, compositionIndex) => {
     composition.sources.forEach((_, sourceIndex) => {
       const timer = composition.sourceTimers[sourceIndex];

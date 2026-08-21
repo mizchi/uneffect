@@ -285,7 +285,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Preserve versioned timer identity through direct handle reassignment and aliases captured before reassignment.
   - [x] Model `AbortSignal.timeout` as a static active-time deadline, one-shot timer-source task tagged with abstract `TimeoutError` semantics, and `Timer` capability.
   - [x] Model static `AbortSignal.any` source order, already-aborted inputs, timeout/external sources, and first-reason-wins in Web Quint.
-  - [ ] Track handle escape, Node/browser handle differences, dynamic/interprocedural abort compositions, and `scheduler.postTask`.
+  - [x] Track direct timer-handle escape through opaque arguments, property storage, and return as optional external cancellation.
+  - [ ] Track aggregate/closure handle escape, Node/browser handle differences, dynamic/interprocedural abort compositions, and `scheduler.postTask`.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

@@ -245,6 +245,12 @@ extracts the active-time deadline, and links the named timeout source into the
 first-abort composition. The benchmark excludes Quint execution and remains a
 cold TypeScript Program observation, not an editor-latency regression threshold.
 
+Tracking 64 local timer handles passed to an opaque registration boundary
+measured 232.63 ms mean over five cold samples (17.38% relative margin of
+error). The pass assigns each escape to a concrete timer generation and keeps
+the external-cancellation transition optional. The variance is too high for a
+regression threshold; this is a scaling observation for the 64-handle fixture.
+
 Auditing the telemetry packet fixture across its statement-scoped typed-array
 escape hatch, Console builtin, temporal summary, and owner/expiration policy
 measured 110.80 ms mean over five cold samples (12.81% relative margin of error).

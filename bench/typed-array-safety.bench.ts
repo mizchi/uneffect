@@ -343,6 +343,11 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("timer-aliases.ts", `function job() {}; function schedule() { const handle0 = setTimeout(job, 0); ${aliases}; clearTimeout(handle64) }`);
   }, { time: 500, iterations: 5 });
 
+  bench("track 64 escaped timer handles", () => {
+    const schedules = Array.from({ length: 64 }, (_, index) => `const handle${index} = setTimeout(() => {}, ${index}); register(handle${index})`).join(";");
+    analyzeAsyncPatterns("timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules} }`);
+  }, { time: 500, iterations: 5 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {
