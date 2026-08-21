@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements } from "../src/frontend-adapter.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
 import { analyzeEffectsInProgram } from "../src/effects.js";
+import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 
 describe("TypeChecker symbol adapter", () => {
   it("applies tmpdir refinement through aliased and namespace symbol identity only", () => {
@@ -106,5 +107,31 @@ describe("TypeChecker symbol adapter", () => {
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
     expect(analyzeEffectsInProgram(program, program.getSourceFile(fileName)!)).toEqual([]);
+  });
+
+  it("recognizes integer casts by lib.d.ts symbol identity", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-math-symbols-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      type U8 = number
+      type BoundedUint8Array<N extends number> = Uint8Array
+      function builtin(output: BoundedUint8Array<1>, value: U8) { output[0] = Math.floor(value) }
+      const floorAlias = Math.floor
+      const { trunc: truncate } = Math
+      function aliases(output: BoundedUint8Array<2>, value: U8) {
+        output[0] = floorAlias(value)
+        output[1] = truncate(value)
+      }
+      function shadowed(output: BoundedUint8Array<1>, value: U8) {
+        const Math = { floor: (_value: number) => 1.5 }
+        output[0] = Math.floor(value)
+      }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+    expect(result.obligations).toContainEqual(expect.objectContaining({ functionName: "builtin", kind: "u8-write", result: "verified" }));
+    expect(result.obligations.filter((item) => item.functionName === "aliases" && item.kind === "u8-write").every((item) => item.result === "verified")).toBe(true);
+    expect(result.obligations.filter((item) => item.functionName === "aliases" && item.kind === "u8-write")).toHaveLength(2);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "shadowed", kind: "u8-write" }));
   });
 });

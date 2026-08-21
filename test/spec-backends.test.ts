@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { lintSpec } from "../src/spec-lint.js";
 
 const source = `
   /*
@@ -151,5 +152,20 @@ describe("spec IR and generated verifier programs", () => {
       * clock now: 1
       * init now = 10
       */`)).toThrow(/clock `now` has an implicit zero init/);
+  });
+
+  it("reports syntactically valid but meaningless temporal declarations", () => {
+    const result = lintSpec("meaningless.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action idle: epoch' = epoch
+      temporal tautology: epoch === epoch
+      temporal contradiction: epoch !== epoch
+    */`);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "tautological-invariant", name: "tautology" }),
+      expect.objectContaining({ code: "contradictory-invariant", name: "contradiction" }),
+      expect.objectContaining({ code: "no-op-action", name: "idle" }),
+    ]));
   });
 });

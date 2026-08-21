@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { PromiseCombinator } from "./builtin-contracts.js";
+import type { PromiseChainModel } from "./promise-chains.js";
 
 export interface TimerPattern {
   owner: string;
@@ -8,7 +9,8 @@ export interface TimerPattern {
   delay?: number;
   recursive: boolean;
   repeats: boolean;
-  queue: "timer" | "microtask";
+  queue: "timer" | "microtask" | "animation-frame";
+  enqueuedBy?: number;
   handle?: string;
   span: { start: number; end: number };
 }
@@ -49,6 +51,24 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const visitFunction = (owner: ts.FunctionLikeDeclaration): void => {
     if (!owner.body) return;
     const ownerName = functionName(owner);
+    const collectNestedMicrotasks = (callback: ts.Expression | undefined, parent: number): void => {
+      if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) return;
+      const scan = (node: ts.Node): void => {
+        if (node !== callback && ts.isFunctionLike(node)) return;
+        if (ts.isCallExpression(node)) {
+          const operation = adapter.resolveCall(node)?.operation;
+          if (operation?.kind === "timer" && operation.queue === "microtask") {
+            const child = timers.length;
+            const callbackNode = node.arguments[operation.callbackArgument];
+            timers.push({ owner: ownerName, callback: callbackNode?.getText(source) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: "microtask", enqueuedBy: parent, span: { start: node.getStart(source), end: node.getEnd() } });
+            collectNestedMicrotasks(callbackNode, child);
+            return;
+          }
+        }
+        ts.forEachChild(node, scan);
+      };
+      scan(callback.body);
+    };
     const visit = (node: ts.Node): void => {
       if (node !== owner.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -58,6 +78,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
           const callback = callbackNode?.getText(source) ?? "<unknown>";
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
+          const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
             callback,
@@ -68,6 +89,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             handle: declaration,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          collectNestedMicrotasks(callbackNode, timerIndex);
         } else if (operation?.kind === "timer-clear") {
           const handle = node.arguments[operation.handleArgument]?.getText(source) ?? "<unknown>";
           let current: ts.Node = node;
@@ -99,7 +121,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     visit(owner.body);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
+    if (ts.isFunctionLike(node) && "body" in node && node.body) {
+      const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
+      const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
+      const scheduledCallback = Boolean(parentCall && operation?.kind === "timer" && parentCall.arguments[operation.callbackArgument] === node);
+      if (!scheduledCallback) visitFunction(node as ts.FunctionLikeDeclaration);
+    }
     ts.forEachChild(node, visit);
   };
   visit(source);
@@ -194,5 +221,101 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     return [`((join_${i}_result != 1) or (${fulfilled}))`, `((join_${i}_result != 2) or (${rejected}))`];
   })];
   lines.push("", `  val asyncSafe = ${safeTerms.join(" and ") || "true"}`, "}", "");
+  return lines.join("\n");
+}
+
+/** Browser event-loop profile: one task, a draining microtask checkpoint, then an optional rendering opportunity. */
+export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean } = {}, promiseModel?: PromiseChainModel): string {
+  for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
+  const microtasks = model.timers.flatMap((timer, index) => timer.queue === "microtask" ? [index] : []);
+  const frames = model.timers.flatMap((timer, index) => timer.queue === "animation-frame" ? [index] : []);
+  const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
+  const initiallyQueuedReactions = new Set<string>();
+  promiseModel?.chains.forEach((chain, chainIndex) => {
+    const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
+    if (chain.links.length && executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending) initiallyQueuedReactions.add(`${chainIndex}:0`);
+  });
+  const initialJobs = [
+    ...microtasks.flatMap((index) => model.timers[index]!.enqueuedBy === undefined ? [{ key: `callback:${index}`, span: model.timers[index]!.span.start }] : []),
+    ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) => initiallyQueuedReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
+  ].sort((left, right) => left.span - right.span);
+  const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
+  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var phase: int", "  var wrong_phase: bool", "  var fifo_broken: bool", "  var next_microtask_ticket: int"];
+  model.timers.forEach((_, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
+  microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
+  promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
+  lines.push("", "  action init = all {", "    clock' = 0,", "    phase' = 1,", "    wrong_phase' = false,", "    fifo_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
+  model.timers.forEach((timer, index) => {
+    const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
+    lines.push(`    callback_${index}_pending' = ${!definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    if (timer.queue === "microtask") lines.push(`    callback_${index}_ticket' = ${initialTicket.get(`callback:${index}`) ?? -1},`);
+  });
+  promiseModel?.chains.forEach((chain, chainIndex) => {
+    chain.links.forEach((_, stage) => {
+      const queued = initiallyQueuedReactions.has(`${chainIndex}:${stage}`);
+      lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${queued},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`, `    promise_reaction_${chainIndex}_${stage}_ticket' = ${initialTicket.get(`reaction:${chainIndex}:${stage}`) ?? -1},`);
+    });
+  });
+  lines.push("  }");
+  const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
+  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...promiseVariables];
+  const actions: string[] = [];
+  const action = (name: string, guards: string[], updates: Map<string, string>): void => {
+    actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
+    variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
+    lines.push("  }");
+  };
+  const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [] : [`phase == ${expected}`];
+  const jobs = [...microtasks.map((index) => ({ pending: `callback_${index}_pending`, ticket: `callback_${index}_ticket` })), ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.map((_, stage) => ({ pending: `promise_reaction_${chainIndex}_${stage}_pending`, ticket: `promise_reaction_${chainIndex}_${stage}_ticket` }))) ?? [])];
+  const fifoViolation = (ticket: string): string => jobs.map((job) => `(${job.pending} and ${job.ticket} < ${ticket})`).join(" or ") || "false";
+  const fifoGuards = (ticket: string): string[] => options.allowOutOfOrderMicrotasks ? [] : [`not(${fifoViolation(ticket)})`];
+  const enqueueChildren = (parent: number, updates: Map<string, string>): void => {
+    const children = microtasks.filter((index) => model.timers[index]!.enqueuedBy === parent);
+    children.forEach((child, offset) => {
+      updates.set(`callback_${child}_pending`, "true");
+      updates.set(`callback_${child}_ticket`, offset === 0 ? "next_microtask_ticket" : `next_microtask_ticket + ${offset}`);
+    });
+    if (children.length) updates.set("next_microtask_ticket", children.length === 1 ? "next_microtask_ticket + 1" : `next_microtask_ticket + ${children.length}`);
+  };
+  microtasks.forEach((index) => {
+    const ticket = `callback_${index}_ticket`;
+    const updates = new Map<string, string>([
+      [`callback_${index}_pending`, "false"], [ticket, "-1"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 1"], ["fifo_broken", fifoViolation(ticket)],
+    ]);
+    enqueueChildren(index, updates);
+    action(`drain_microtask_${index}`, [...phaseGuard(1), `callback_${index}_pending`, ...fifoGuards(ticket)], updates);
+  });
+  const promisePending: string[] = [];
+  promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
+    const pending = `promise_reaction_${chainIndex}_${stage}_pending`, done = `promise_reaction_${chainIndex}_${stage}_done`, ticket = `promise_reaction_${chainIndex}_${stage}_ticket`;
+    promisePending.push(pending);
+    const updates = new Map<string, string>([[pending, "false"], [done, "true"], [ticket, "-1"], ["wrong_phase", "phase != 1"], ["fifo_broken", fifoViolation(ticket)]]);
+    if (stage + 1 < chain.links.length) {
+      updates.set(`promise_reaction_${chainIndex}_${stage + 1}_pending`, "true");
+      updates.set(`promise_reaction_${chainIndex}_${stage + 1}_ticket`, "next_microtask_ticket");
+      updates.set("next_microtask_ticket", "next_microtask_ticket + 1");
+    }
+    action(`drain_promise_reaction_${chainIndex}_${stage}`, [...phaseGuard(1), pending, ...fifoGuards(ticket)], updates);
+  }));
+  action("finish_microtask_checkpoint", [...phaseGuard(1), ...microtasks.map((index) => `not(callback_${index}_pending)`), ...promisePending.map((name) => `not(${name})`)], new Map([["phase", "2"], ["wrong_phase", "phase != 1"]]));
+  frames.forEach((index, order) => {
+    const updates = new Map<string, string>([["phase", "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 2"]]);
+    enqueueChildren(index, updates);
+    action(`run_animation_frame_${index}`, [...phaseGuard(2), `callback_${index}_pending`, ...frames.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`)], updates);
+  });
+  action("paint", [...phaseGuard(2), ...frames.map((index) => `not(callback_${index}_pending)`)], new Map([["phase", "0"], ["wrong_phase", "phase != 2"]]));
+  action("skip_rendering_opportunity", phaseGuard(2), new Map([["phase", "0"], ["wrong_phase", "phase != 2"]]));
+  action("advance_clock", phaseGuard(0), new Map([["clock", "clock + 1"], ["wrong_phase", "phase != 0"]]));
+  action("idle_turn", phaseGuard(0), new Map([["phase", "1"], ["wrong_phase", "phase != 0"]]));
+  timers.forEach((index, order) => {
+    const timer = model.timers[index]!;
+    const earlierDue = timers.slice(0, order).map((earlier) => `not(callback_${earlier}_pending) or callback_${earlier}_due > clock`);
+    const updates = new Map<string, string>([
+      ["phase", "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"],
+    ]);
+    enqueueChildren(index, updates);
+    action(`run_timer_task_${index}`, [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
+  });
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)", "}", "");
   return lines.join("\n");
 }

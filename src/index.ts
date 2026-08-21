@@ -20,9 +20,58 @@ export type Nat = v.InferOutput<typeof NatSchema>;
 export const FloatSchema = v.pipe(v.number(), v.finite(), v.brand("Float"));
 export type Float = v.InferOutput<typeof FloatSchema>;
 
+export const U8Schema = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(255), v.brand("U8"));
+export type U8 = v.InferOutput<typeof U8Schema>;
+export const U32Schema = v.pipe(v.number(), v.safeInteger(), v.minValue(0), v.maxValue(0xffff_ffff), v.brand("U32"));
+export type U32 = v.InferOutput<typeof U32Schema>;
+declare const i32Brand: unique symbol;
+export type I32 = number & { readonly [i32Brand]: "I32" };
+declare const f32Brand: unique symbol;
+export type F32 = number & { readonly [f32Brand]: "F32" };
+export const U8_BITS = 8 as const;
+export const U8_MAX = 0xff as const;
+export const U32_BITS = 32 as const;
+export const U32_MAX = 0xffff_ffff as const;
+export const I32_MIN = -0x8000_0000 as const;
+export const I32_MAX = 0x7fff_ffff as const;
+export const F32_BITS = 32 as const;
+
+declare const boundedUint8ArrayBrand: unique symbol;
+export type BoundedUint8Array<MaxLength extends number> = Uint8Array & { readonly [boundedUint8ArrayBrand]: MaxLength };
+declare const boundedUint32ArrayBrand: unique symbol;
+export type BoundedUint32Array<MaxLength extends number> = Uint32Array & { readonly [boundedUint32ArrayBrand]: MaxLength };
+export function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength) {
+  return v.pipe(
+    v.instance(Uint8Array),
+    v.maxLength(maximum, `Uint8Array length must be at most ${maximum}`),
+  );
+}
+export const parseBoundedUint8Array = <MaxLength extends number>(input: unknown, maximum: MaxLength): BoundedUint8Array<MaxLength> =>
+  v.parse(boundedUint8ArraySchema(maximum), input) as BoundedUint8Array<MaxLength>;
+export function boundedUint32ArraySchema<MaxLength extends number>(maximum: MaxLength) {
+  return v.pipe(v.instance(Uint32Array), v.maxLength(maximum, `Uint32Array length must be at most ${maximum}`));
+}
+export const parseBoundedUint32Array = <MaxLength extends number>(input: unknown, maximum: MaxLength): BoundedUint32Array<MaxLength> =>
+  v.parse(boundedUint32ArraySchema(maximum), input) as BoundedUint32Array<MaxLength>;
+
 export const parseInt = (input: unknown): Int => v.parse(IntSchema, input);
 export const parseNat = (input: unknown): Nat => v.parse(NatSchema, input);
 export const parseFloat = (input: unknown): Float => v.parse(FloatSchema, input);
+export const parseU8 = (input: unknown): U8 => v.parse(U8Schema, input);
+export const parseU32 = (input: unknown): U32 => v.parse(U32Schema, input);
+/** Explicit ECMAScript machine-number coercions. Validation helpers remain separate. */
+export const u8 = (value: number): U8 => (value & 0xff) as U8;
+export const u32 = (value: number): U32 => (value >>> 0) as U32;
+export const i32 = (value: number): I32 => (value | 0) as I32;
+export const f32 = (value: number): F32 => Math.fround(value) as F32;
+export type U8Table<Values extends readonly number[]> = { readonly [Index in keyof Values]: U8 };
+export type U32Table<Values extends readonly number[]> = { readonly [Index in keyof Values]: U32 };
+export const u8Table = <const Values extends readonly number[]>(values: Values): U8Table<Values> =>
+  values.map((value) => parseU8(value)) as unknown as U8Table<Values>;
+export const u32Table = <const Values extends readonly number[]>(values: Values): U32Table<Values> =>
+  values.map((value) => parseU32(value)) as unknown as U32Table<Values>;
+/** Backward-compatible descriptive alias for SHA-256-style modular normalization. */
+export const toU32 = u32;
 
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "./effects.js";
 export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus } from "./effects.js";
@@ -34,9 +83,17 @@ export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenc
 export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
+export { checkUneffectProperty, generateUneffectPropertyTests } from "./property-tests.js";
+export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyTestBoundary } from "./property-tests.js";
+export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
+export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
+export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
+export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult } from "./typed-array-safety.js";
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationVariable } from "./invariant-ir.js";
 export { parseSpec } from "./spec-ir.js";
+export { lintSpec, lintTemporalSpec } from "./spec-lint.js";
+export type { SpecLintDiagnostic } from "./spec-lint.js";
 export type {
   CapabilitySpec,
   InvariantSpec,
@@ -87,7 +144,9 @@ export { builtinContractDigest, createEvidenceArtifact, trustedSummary, validate
 export type { EvidenceArtifact, EvidenceArtifactSummary, OwnershipEvidenceArtifact } from "./evidence.js";
 export { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "./optimizer.js";
 export type { OptimizationDecision, OptimizationEvent, OptimizationObligation, OwnershipAssertionRewrite, OwnershipGuardElisionObligation, PropertyMangleObligation, StableReadReuseObligation, StableReadRewrite } from "./optimizer.js";
-export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint } from "./async-patterns.js";
+export { optimizeUneffectProject } from "./project-optimizer.js";
+export type { OptimizeUneffectProjectOptions, OptimizeUneffectProjectResult, ProjectOptimizationTransformation, StaleProjectEvidence } from "./project-optimizer.js";
+export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 export type { AsyncPatternModel, PromiseCombinatorPattern, TimerCancellation, TimerPattern } from "./async-patterns.js";
 export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
 export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern } from "./promise-chains.js";
@@ -95,5 +154,11 @@ export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailure
 export type { AsyncControlEdge, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceBinding, ResourceDisposal, ResourceError, ResourceExit } from "./async-safety.js";
 export { resolveDisposalProtocol } from "./disposal-symbols.js";
 export type { ResolvedDisposalProtocol } from "./disposal-symbols.js";
+export { compareUneffectFrontends } from "./frontend-parity.js";
+export type { CompareUneffectFrontendsOptions, CompareUneffectFrontendsResult, FrontendSchemaDrift, NormalizedFrontendIr } from "./frontend-parity.js";
 export { buildProgramCallGraph, instantiateCallbackEffects } from "./call-graph.js";
 export type { CallableKind, CallGraphEdge, CallGraphNode, EffectParameter, InstantiatedCallbackEffects, InvocationTiming, ProgramCallGraph } from "./call-graph.js";
+export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProject } from "./custom-validators.js";
+export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
+export { verifyUneffectProject } from "./project-verification.js";
+export type { ProjectVerificationObligation, VerifyUneffectProjectOptions, VerifyUneffectProjectResult } from "./project-verification.js";

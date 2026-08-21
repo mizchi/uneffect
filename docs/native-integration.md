@@ -14,6 +14,15 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 
 Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the boundary a Corsa Context Mapper supplies; Rust does not rediscover source spellings.
 
+`compareUneffectFrontends` exercises that boundary end to end. The TypeScript
+reference side emits schema-v1 mapper records, the Rust
+`uneffect-corsa-normalize` binary consumes them, and both sides are compared as
+the same `{ function, declaredEffects }` neutral projection. UTF-16 versus UTF-8 spans
+and frontend-specific evidence provenance are intentionally outside this
+semantic projection. The mapper records are currently produced by the
+TypeScript reference adapter, not by a linked typescript-go/Corsa build; symbol,
+call-edge, ordered-event, and real Context Mapper parity remain later slices.
+
 ## TypeScript reference frontend
 
 `buildProgramCallGraph` is the executable reference adapter. It resolves multi-file aliases and re-exports through `ts.Symbol`, maps methods, variable arrows, function expressions, overload selections, and callbacks to stable source IDs, and records callback timing. `analyzeProgramEffects` propagates effects across these edges. The CLI uses this program-wide path.

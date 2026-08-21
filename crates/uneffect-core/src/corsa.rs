@@ -98,6 +98,36 @@ pub struct NativeFrontendProgram {
     pub calls: Vec<CorsaCall>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedFrontendProgram {
+    pub schema_version: u32,
+    pub functions: Vec<NormalizedFunction>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedFunction {
+    pub name: String,
+    pub effects: Vec<String>,
+}
+
+impl NativeFrontendProgram {
+    pub fn normalized(&self) -> NormalizedFrontendProgram {
+        NormalizedFrontendProgram {
+            schema_version: CORSA_FRONTEND_SCHEMA_VERSION,
+            functions: self
+                .symbols
+                .values()
+                .map(|symbol| NormalizedFunction {
+                    name: symbol.name.clone(),
+                    effects: symbol.effects.iter().map(Effect::canonical).collect(),
+                })
+                .collect(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CorsaFrontendError(String);
 impl std::fmt::Display for CorsaFrontendError {

@@ -25,6 +25,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "bench": "vitest bench --run",
     "check": "tsc -p tsconfig.json --noEmit && vitest run",
     "prepack": "pnpm build"
   },

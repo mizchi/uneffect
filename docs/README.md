@@ -15,6 +15,11 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Async safety](./async-safety.md): floating Promise diagnostics and `using`/`await using` disposal models.
 - [Specification backends](./specification-backends.md): capability, invariant, and temporal categories; shared IR; Z3 and Quint generation.
 - [Evidence and optimization](./evidence-and-optimization.md): evidence states, reproducible artifacts, and proof-gated rewrite schemas.
+- [Typed array bounds](./typed-arrays.md): bounded allocation, u8 writes, and optional runtime refinements.
+- [Benchmarks](./benchmarks.md): repeatable Vitest Bench baselines for performance-sensitive analysis paths.
+- [Node Lease and proof-assistant gaps](./node-lease-and-proof-assistants.md): bounded clock-skew modeling and an honest Dafny/Rocq capability comparison.
+- [End-to-end acceptance roadmap](./acceptance-roadmap.md): enabled executable product goals and their remaining semantic limits.
+- [Custom validators](./custom-validators.md): proof-backed domain validators, call-cardinality specialization, and Generator composition.
 - [Native integration](./native-integration.md): Corsa interchange, program call graphs, published contracts, and CI tiers.
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.
 

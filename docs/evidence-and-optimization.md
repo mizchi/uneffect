@@ -63,6 +63,14 @@ treated as empty, so cache damage can never authorize assertion elision.
 
 These prototypes establish the proof boundary, not a production compressor. A future Corsa/Oxc implementation may regenerate the rewrite layer while preserving the obligation contracts and artifact inputs.
 
+`optimizeUneffectProject` is the first project-level authorization API. It
+discovers repeated stable reads and persists `uneffect-project-optimization/v1`.
+The initial analysis only writes evidence; a later build may report a
+transformation as `applied: true` when source hashes, TypeScript revision,
+builtin-contract digest, and closed-world mode still match. Malformed or stale
+artifacts never authorize a transformation. The current result is an
+authorization plan for a downstream compressor, not rewritten JavaScript.
+
 ## Dogfood gate
 
 `just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode, then runs a regression test requiring zero diagnostics and zero `unknown` summaries. This exercise found and fixed two frontend issues: mutations of freshly allocated locals were incorrectly escaping into caller summaries, and known synchronous TypeScript/Array callback APIs were being classified with unknown invocation timing. Annotated boundaries remain enforced in inference-only mode.

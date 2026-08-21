@@ -1,4 +1,4 @@
-set shell := ["zsh", "-cu"]
+set shell := ["bash", "-cu"]
 
 install:
     pnpm install
@@ -6,6 +6,9 @@ install:
 test:
     pnpm test
     cargo test --workspace
+
+bench:
+    pnpm bench
 
 check:
     pnpm check
@@ -32,28 +35,31 @@ package-check:
     cargo package --workspace --allow-dirty --no-verify
 
 spec-ir file:
-    pnpm tsx src/spec-cli.ts ir {{file}}
+    pnpm tsx src/spec-cli.ts ir {{ file }}
 
 spec-z3 file function="":
-    pnpm tsx src/spec-cli.ts z3 {{file}} {{function}}
+    pnpm tsx src/spec-cli.ts z3 {{ file }} {{ function }}
 
 spec-quint file:
-    pnpm tsx src/spec-cli.ts quint {{file}}
+    pnpm tsx src/spec-cli.ts quint {{ file }}
 
 spec-compose file function:
-    pnpm tsx src/spec-cli.ts compose {{file}} {{function}}
+    pnpm tsx src/spec-cli.ts compose {{ file }} {{ function }}
 
 spec-async-quint file:
-    pnpm tsx src/spec-cli.ts async-quint {{file}}
+    pnpm tsx src/spec-cli.ts async-quint {{ file }}
 
 spec-promise-quint file:
-    pnpm tsx src/spec-cli.ts promise-quint {{file}}
+    pnpm tsx src/spec-cli.ts promise-quint {{ file }}
 
 spec-resource-quint file:
-    pnpm tsx src/resource-cli.ts {{file}}
+    pnpm tsx src/resource-cli.ts {{ file }}
 
 spec-unified-async file function:
-    pnpm tsx src/unified-async-cli.ts {{file}} {{function}}
+    pnpm tsx src/unified-async-cli.ts {{ file }} {{ function }}
+
+spec-web-event-loop file:
+    pnpm tsx src/spec-cli.ts web-loop-quint {{ file }}
 
 build:
     pnpm build
@@ -68,13 +74,13 @@ instrument-demo:
     pnpm tsx src/instrument-cli.ts examples/gradual.ts
 
 instrument-ownership file:
-    pnpm tsx src/instrument-cli.ts --ownership {{file}}
+    pnpm tsx src/instrument-cli.ts --ownership {{ file }}
 
 verified-ownership file:
-    pnpm tsx src/instrument-cli.ts --verify-ownership --ownership-evidence .uneffect/ownership-evidence.json {{file}}
+    pnpm tsx src/instrument-cli.ts --verify-ownership --ownership-evidence .uneffect/ownership-evidence.json {{ file }}
 
 evidence file:
-    pnpm tsx src/evidence-cli.ts {{file}}
+    pnpm tsx src/evidence-cli.ts {{ file }}
 
 dogfood:
     pnpm tsx src/cli.ts --infer src/*.ts

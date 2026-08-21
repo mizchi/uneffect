@@ -158,9 +158,11 @@ export function parseEffectExpression(input: string): Effect {
   if (parameterized) {
     const name = parameterized[1]!, inputs = splitTopLevel(parameterized[2]!, ",");
     const schema = effectSchema(name);
+    const arguments_ = inputs.map((value, index) => set(value, schema?.arguments[index]));
+    if (name === "Fetch" && arguments_[0]?.kind === "finite") arguments_[0].atoms = arguments_[0].atoms.map((item) => item.kind === "token" && item.value.startsWith("Fetch.") ? { ...item, value: item.value.slice("Fetch.".length) } : item);
     return {
       kind: "capability", name,
-      arguments: inputs.map((value, index) => set(value, schema?.arguments[index])),
+      arguments: arguments_,
     };
   }
   if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(text)) throw new Error(`invalid effect: ${text}`);

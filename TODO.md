@@ -2,6 +2,11 @@
 
 This file is the implementation ledger. Work proceeds top to bottom within each priority unless a prerequisite or verifier result forces a redesign. An item is complete only when its code, regression tests, and relevant English documentation are all updated.
 
+The product-level completion gates are the skipped executable scenarios in
+`test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select
+the first relevant scenario, remove `.skip`, observe Red, and implement toward
+that end-to-end result. See `docs/acceptance-roadmap.md`.
+
 ## P0 — Specification foundations
 
 - [x] Accept only the `uneffect:` block-comment marker.
@@ -66,6 +71,17 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
   - [x] Route all effect inference builtins through the symbol adapter and remove the legacy source-text recognizer.
 - [x] Add the first structured scoped-effect parser and lattice implementation to the Rust hot path.
 
+## P1.5 — Custom validator specialization
+
+- [x] Implement the custom-validator acceptance tests before adding narrower cardinality features.
+  - [x] Register a validator by stable name, version, and symbol-identity sink matcher.
+  - [x] Add the `0 | 1 | many | unknown` call-cardinality lattice with intraprocedural branch, sequence, loop, concurrent-argument, recursion, and unknown-callback handling.
+  - [x] Compose cardinality through resolved local callees.
+  - [ ] Compose cardinality through aliases, re-exports, methods, and cross-module callees.
+  - [ ] Attach proof-grade specializations only after validator success.
+  - [x] Compose Generator and AsyncGenerator effects through `yield`, `yield*`, and iterator consumption count for resolved local functions.
+  - [x] Validate an explicit application entrypoint so per-invocation bounds are not confused with process-wide uniqueness.
+
 ## P2 — DOM semantic overlay
 
 - [x] Add DOM operation kinds: `Read`, `LayoutRead`, `ValueWrite`, `TreeWrite`, `Create`, `Listen`, `Dispatch`, and `Parse`.
@@ -77,6 +93,16 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 
 ## P3 — Invariants and Z3
 
+- [x] Lint syntactically constant temporal invariants and actions consisting only of self-assignments.
+- [ ] Detect solver-level tautologies, inconsistent initial states, unreachable actions, vacuous invariants, duplicate/subsumed properties, and invariants preserved only because no progress is possible.
+- [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
+  - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
+  - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
+  - [ ] Generate bounded-array and union values and structure-aware shrinkers.
+  - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
+- [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
+  - [x] Persist and prioritize replay of versioned scalar property-test counterexamples.
+  - [ ] Replay model-checker counterexamples through TypeScript refinement adapters.
 - [x] Merge the direct Z3 checker and SMT-LIB generator onto one invariant IR.
 - [x] Lower simple assignments and branches to SSA proof obligations.
 - [x] Lower loop initialization, preservation, and exit obligations through the shared IR.
@@ -84,9 +110,16 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 - [x] Generate stable obligation identifiers and source mappings.
 - [x] Treat Z3 `unknown` and unsupported syntax as non-proofs.
 - [x] Save counterexample models in a machine-readable verification artifact.
+- [x] Expose project-level Z3 obligations and optional explicit Valibot assertion emit through one build API.
 
 ## P4 — Temporal logic and ownership
 
+- [x] Encode a bounded two-node Node Lease clock-skew model and lock both the vulnerable counterexample and skew-grace candidate with Quint tests.
+- [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening.
+- [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
+- [ ] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
+- [ ] Model delayed renewal completion, self-fencing, GC, CAS failure, crashes, and in-flight fenced writes in the Node Lease acceptance model.
+- [ ] Build the product model between callback temporal summaries and Web event-loop queue transitions; project verification currently checks the generated Web queue model independently.
 - [x] Define the initial restricted TypeScript-style temporal expression grammar independently of Quint syntax.
   - [x] Parse expressions into a neutral AST and generate Quint or runtime JavaScript assertions from it.
   - [x] Add symbol/type checking against state declarations and supported function parameters.
@@ -107,8 +140,39 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 - [x] Instantiate contracts for `structuredClone`, `Worker.postMessage`, `MessagePort.postMessage`, and related platform APIs.
 - [x] Distinguish `SharedArrayBuffer` sharing from transfer.
 
+## P4.5 — Typed array refinements
+
+- [x] Add `U8`, `BoundedUint8Array<MaxLength>`, and optional Valibot runtime refinements.
+- [x] Prove direct Uint8Array constructor bounds and indexed u8 writes from helper-type domains and `requires` clauses.
+- [x] Reject implicit coercion and retain compound/update writes as non-proofs.
+- [ ] Model DataView writes, byte offsets, resizable ArrayBuffer bounds, aliases, and SharedArrayBuffer concurrency.
+- [x] Add `U32`, bounded Uint32Array runtime refinements, and ECMAScript-aware ranges for SHA-256-style shifts, masks, and explicit `>>> 0` normalization.
+- [x] Generate independent bounded-index and dynamic shift-count obligations instead of trusting JavaScript out-of-range or modulo-32 behavior.
+- [ ] Compose the verified SHA-256 building blocks interprocedurally and cover non-canonical control-flow bounds.
+- [x] Derive canonical ascending-loop bounds for SHA-256 schedule reads/writes and recognize `toU32(sum)` as an explicit modular-addition boundary.
+- [x] Provide explicit `u8`, `u32`, `i32`, and `f32` runtime coercion helpers with branded return domains, distinct from rejecting parsers.
+- [x] Check TypedArray `.set()` copy bounds and reject implicit cross-element-domain narrowing.
+- [x] Derive the conventional SHA-256 `(input.length + 9 + 63) & ~63` padding allocation bound from a bounded input.
+- [x] Export scalar machine-domain constants and fold user `const` arithmetic into expressions and `typeof` bounded-array parameters.
+- [x] Validate readonly constant tables such as SHA-256 `K[64]`, including element domains and table-index bounds.
+- [x] Add Vitest benchmarks for scalar constant folding, SHA-256-sized tables, and repeated verified table reads.
+- [x] Resolve constant tables through relative named imports, aliases, star exports, and named barrel re-exports.
+- [x] Resolve constant tables through namespace imports.
+- [x] Compose a generated table from verified same-domain table spreads and literal elements.
+- [x] Track integer-valued ranges through `Math.floor`, `Math.ceil`, `Math.round`, and `Math.trunc`, including inferred `const` locals.
+- [x] Reject fractional literals for machine-integer writes instead of checking bounds alone.
+- [x] Resolve direct numeric builtins through TypeChecker/lib.d.ts symbol identity and reject structurally compatible shadowed objects.
+- [x] Propagate numeric builtin identity through direct local aliases and object-binding destructuring.
+- [ ] Propagate numeric builtin identity through reassignment-free multi-hop aliases, imports, parameters, and object properties.
+- [x] Add a reason-carrying function-level `trust typed-array` escape hatch whose obligations remain `trusted`, never `verified`.
+- [ ] Add narrower obligation/statement-level trust and a unified trust-policy/audit report across verification domains.
+- [ ] Support package exports and additional non-literal generated table initializers.
+- [x] Benchmark project-level import/re-export resolution against the single-file baseline before optimizing it.
+
 ## P5 — Evidence and optimization
 
+- [ ] Add a cross-domain assumption ledger for every `trusted` result, with reason, scope, source span, expiration/owner metadata, and CI policy.
+- [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms.
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Include compiler revision, tsconfig hash, source hash, builtin-contract digest, and Uneffect version in artifacts.
 - [x] Make unknown evidence stop transformations without blocking gradual lint adoption.
@@ -119,9 +183,12 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 - [x] Add an end-to-end ownership instrumentation path: unresolved direct calls emit runtime assertions, matching Z3 evidence removes only generated checks and their unused helper.
 - [x] Add one-shot `--ownership` and `--verify-ownership` CLI modes with safe runtime fallback for unresolved or unavailable Z3 proofs.
 - [x] Persist ownership artifacts, reuse matching proofs across builds, and report stale evidence separately from first-time unknowns.
+- [x] Add a project-level stable-read authorization cache bound to source hashes, TypeScript revision, builtin contracts, and closed-world mode.
 
 ## P6 — Native integration and productization
 
+- [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
+- [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Context Mapper output.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
@@ -165,21 +232,31 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
   - [x] Parse compound boolean ownership guards through the shared logic IR and discharge finite propositional implications.
   - [x] Retain verified and unresolved ownership obligations with evidence in Async IR and emit SMT-LIB/Quint verifier programs.
   - [x] Import Z3 and Quint executions with backend version, program/obligation hashes, output, and exit status; only successful proofs become verified evidence.
-  - [ ] Add CI provisioning for the Java runtime required by Quint's TLC/Apalache verification backend.
+  - [x] Add CI provisioning for the Java runtime required by Quint's TLC/Apalache verification backend.
 - [ ] Refine thenable assimilation.
   - [ ] Model throwing `then` getters, proxy/getter `InvokeUserCode`, hostile multiple settlement, and self-resolution rejection.
   - [ ] Link an adopted Promise to another analyzed Promise chain instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [ ] Model iterator acquisition/step failure, custom iterables, thenable elements, sparse arrays, and ordered `AggregateError.errors`.
 - [ ] Extend timer/event-loop ownership.
-  - [ ] Track timer-handle aliases and escape, `setInterval`, Node/browser handle differences, `AbortSignal.timeout`, and `scheduler.postTask`.
-  - [ ] Unify `queueMicrotask`, Promise reactions, and modeled microtask checkpoints.
+  - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
+  - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.
+  - [ ] Track timer-handle aliases and escape, Node/browser handle differences, `AbortSignal.timeout`, and `scheduler.postTask`.
+  - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
+  - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
+  - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
+  - [ ] Resolve named callback bodies and propagate their dynamically scheduled jobs through the call graph.
 - [ ] Bring Promise/resource IR to Rust/Corsa parity.
   - [ ] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [ ] Add cross-frontend parity fixtures and reject schema drift.
 - [ ] Dogfood against representative external TypeScript programs.
+  - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
   - [ ] Record false-positive rate, unknown-summary rate, builtin drift, annotation density, verifier time, and frontend time.
+    - [x] Record controlled-corpus false positives, unknown summaries, annotation density, enforced boundaries, and frontend time.
+    - [ ] Run the same report over independently maintained external projects and include actual verifier time.
   - [ ] Compare equivalent native Promise, Uneffect, and Effect TS implementations.
+    - [x] Compare observable recovered output and an explicit common authority manifest.
+    - [ ] Model Effect TS Promise callback ownership and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.
 
 ## Current validation commands
 

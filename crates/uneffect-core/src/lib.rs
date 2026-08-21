@@ -58,6 +58,17 @@ pub enum Effect {
     Capability(Capability),
 }
 
+impl Effect {
+    pub fn canonical(&self) -> String {
+        match self {
+            Self::Named(name) => name.clone(),
+            Self::Mutate(region) => format!("Mutate<typeof {}>", region.as_str()),
+            Self::Throw(error) => format!("Throw<{error}>"),
+            Self::Capability(capability) => capability.canonical(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Capability {
     name: String,
@@ -82,6 +93,24 @@ impl Capability {
                 .zip(&actual.arguments)
                 .all(|(allowed, actual)| allowed.permits(actual))
     }
+
+    fn canonical(&self) -> String {
+        if self.arguments.is_empty()
+            || self
+                .arguments
+                .iter()
+                .all(|argument| matches!(argument, CapabilitySet::All))
+        {
+            return self.name.clone();
+        }
+        let arguments = self
+            .arguments
+            .iter()
+            .map(CapabilitySet::canonical)
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{}<{arguments}>", self.name)
+    }
 }
 
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
@@ -92,6 +121,18 @@ pub enum CapabilitySet {
 }
 
 impl CapabilitySet {
+    fn canonical(&self) -> String {
+        match self {
+            Self::All => "All".into(),
+            Self::Unknown(reason) => format!("Unknown<{reason}>"),
+            Self::Finite(atoms) => atoms
+                .iter()
+                .map(CapabilityAtom::canonical)
+                .collect::<Vec<_>>()
+                .join(" | "),
+        }
+    }
+
     fn permits(&self, actual: &CapabilitySet) -> bool {
         match (self, actual) {
             (Self::All, _) => true,
@@ -100,6 +141,32 @@ impl CapabilitySet {
                 .iter()
                 .all(|atom| allowed.iter().any(|candidate| candidate.covers(atom))),
             _ => false,
+        }
+    }
+}
+
+impl CapabilityAtom {
+    fn canonical(&self) -> String {
+        match self {
+            Self::Token(value) | Self::Sys(value) => value.clone(),
+            Self::Region(value) => format!("typeof {}", value.as_str()),
+            Self::Literal(value) => {
+                serde_json::to_string(value).expect("string serialization cannot fail")
+            }
+            Self::Url(value) => {
+                serde_json::to_string(&value.0).expect("string serialization cannot fail")
+            }
+            Self::Path(value) => {
+                serde_json::to_string(&value.canonical()).expect("string serialization cannot fail")
+            }
+            Self::Host(value) => serde_json::to_string(&value.as_deno_scope())
+                .expect("string serialization cannot fail"),
+            Self::Env(value) => serde_json::to_string(&format!(
+                "{}{}",
+                value.prefix,
+                if value.wildcard { "*" } else { "" }
+            ))
+            .expect("string serialization cannot fail"),
         }
     }
 }
@@ -352,6 +419,25 @@ pub struct PathPattern {
 }
 
 impl PathPattern {
+    fn canonical(&self) -> String {
+        let anchor = match self.anchor {
+            PathAnchor::WorkspaceRoot => "$WORKSPACE_ROOT",
+            PathAnchor::PackageRoot => "$PACKAGE_ROOT",
+            PathAnchor::SourceDir => "$SOURCE_DIR",
+            PathAnchor::Cwd => "$CWD",
+            PathAnchor::Temp => "$TEMP",
+            PathAnchor::Absolute => "",
+        };
+        let prefix = if self.anchor == PathAnchor::Absolute {
+            "/".to_owned()
+        } else {
+            anchor.to_owned()
+        };
+        let body = self.segments.join("/");
+        format!("{prefix}{}{}", if body.is_empty() { "" } else { "/" }, body)
+            + if self.recursive { "/**" } else { "" }
+    }
+
     pub fn new(value: &str) -> Result<Self, ParseEffectError> {
         let (anchor, remainder) = if let Some(value) = strip_path_anchor(value, "$WORKSPACE_ROOT") {
             (PathAnchor::WorkspaceRoot, value)

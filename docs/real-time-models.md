@@ -4,6 +4,55 @@ Uneffect can model real-time protocols first as **discrete logical-time state
 machines**. It does not infer a physical WCET or turn JavaScript timers into a
 hard real-time guarantee.
 
+## Web event-loop profile
+
+The Web profile is separate from Node.js. It models a callback turn as these
+phases:
+
+```text
+timer task -> drain microtasks to empty -> rendering opportunity
+                                      -> animation-frame callbacks -> paint
+                                      -> rendering skipped
+```
+
+This follows the HTML/MDN boundary: timeout and interval callbacks are tasks;
+after a task the microtask queue drains to empty, including microtasks queued by
+microtasks; rendering may then occur. `requestAnimationFrame` is a one-shot
+callback before a repaint, not a deadline or a guaranteed periodic callback.
+The model consequently permits a rendering opportunity to be skipped and does
+not infer a refresh rate. Sources: [MDN microtask guide](https://developer.mozilla.org/en-US/docs/Web/API/HTML_DOM_API/Microtask_guide),
+[MDN requestAnimationFrame](https://developer.mozilla.org/en-US/docs/Web/API/Window/requestAnimationFrame),
+[MDN setTimeout](https://developer.mozilla.org/en-US/docs/Web/API/Window/setTimeout),
+and the [HTML event-loop standard](https://html.spec.whatwg.org/multipage/webappapis.html#event-loops).
+
+`setTimeout(0)` therefore remains a later task. Static timers from the same
+timer task source are selected by due time and registration order. An interval
+reschedules itself after firing; an animation-frame callback does not. Browser
+throttling, background-tab suspension, and the 4 ms nested-timer clamp affect
+eligibility and physical time, so they are deliberately not encoded as exact
+latency guarantees in this finite safety model.
+
+```sh
+just spec-web-event-loop examples/async-patterns.ts
+```
+
+The generated `eventLoopSafe` invariant rejects a callback that executes in
+the wrong phase. Direct `cancelAnimationFrame` handles prevent the corresponding
+callback from becoming pending. Promise reactions from a synchronously and
+definitely settled local executor are placed in the same checkpoint as
+`queueMicrotask`; running one reaction queues the next link before the
+checkpoint may finish. External or possibly-pending Promise settlement is not
+guessed. Every queued job receives a monotonically increasing ticket, and only
+the pending job with the smallest ticket may run. A chained reaction receives
+its ticket when the preceding reaction runs, so it cannot overtake an already
+queued `queueMicrotask` callback. A negative lowering that removes this guard
+sets `fifo_broken`, and Quint finds the ordering violation. Extracting new
+`queueMicrotask` calls from inline timer, microtask, or animation-frame
+callbacks creates dormant jobs that receive tickets only when their parent
+callback runs. An animation-frame callback returns to a microtask checkpoint
+before the remaining frame callbacks and paint continue. Resolving the bodies
+of named callback references through the call graph remains follow-up work.
+
 ```ts
 /*
  * uneffect:

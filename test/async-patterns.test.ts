@@ -3,7 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const source = `
   function poll() { setTimeout(poll, 5) }
@@ -81,6 +82,77 @@ describe("builtin async temporal patterns", () => {
     expect(macroFirst.status).not.toBe(0);
     expect(macroFirst.stdout + macroFirst.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
+
+  it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
+    const model = analyzeAsyncPatterns("web-loop.ts", `
+      function job() {}
+      function schedule() {
+        setTimeout(job, 0)
+        setInterval(job, 10)
+        queueMicrotask(job)
+        const frame = requestAnimationFrame(job)
+        cancelAnimationFrame(frame)
+      }
+    `);
+    expect(model.timers.map(({ queue, repeats }) => ({ queue, repeats }))).toEqual([
+      { queue: "timer", repeats: false },
+      { queue: "timer", repeats: true },
+      { queue: "microtask", repeats: false },
+      { queue: "animation-frame", repeats: false },
+    ]);
+    expect(model.cancellations).toContainEqual(expect.objectContaining({ handle: "frame", timer: 3, definite: true }));
+    const quint = generateWebEventLoopQuint("web_loop", model);
+    expect(quint).toContain("action drain_microtask_2");
+    expect(quint).toContain("action run_animation_frame_3");
+    expect(quint).toContain("action paint");
+    expect(quint).toContain("callback_3_pending' = false");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    expect(run(generateWebEventLoopQuint("web_loop_broken", model, { allowWrongPhase: true }), "eventLoopSafe").status).not.toBe(0);
+  }, 20_000);
+
+  it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
+    const source = `
+      function job() {}
+      function schedule() {
+        const pending = new Promise<number>((resolve) => resolve(1))
+        pending.then(value => value + 1).finally(job)
+        queueMicrotask(job)
+        setTimeout(job, 0)
+      }
+    `;
+    const patterns = analyzeAsyncPatterns("promise-microtasks.ts", source), chains = analyzePromiseChains("promise-microtasks.ts", source);
+    const quint = generateWebEventLoopQuint("promise_microtasks", patterns, {}, chains);
+    expect(quint).toContain("action drain_promise_reaction_0_0");
+    expect(quint).toContain("action drain_promise_reaction_0_1");
+    expect(quint).toMatch(/action finish_microtask_checkpoint[\s\S]*not\(promise_reaction_0_0_pending\)[\s\S]*not\(promise_reaction_0_1_pending\)/);
+    expect(quint).toContain("promise_reaction_0_1_ticket' = next_microtask_ticket");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    const outOfOrder = generateWebEventLoopQuint("promise_microtasks_broken", patterns, { allowOutOfOrderMicrotasks: true }, chains);
+    expect(run(outOfOrder, "eventLoopSafe").status).not.toBe(0);
+  }, 10_000);
+
+  it("dynamically enqueues queueMicrotask calls found in inline callbacks", () => {
+    const model = analyzeAsyncPatterns("nested-microtasks.ts", `
+      function job() {}
+      function schedule() {
+        queueMicrotask(() => { queueMicrotask(job) })
+        setTimeout(job, 0)
+        requestAnimationFrame(() => { queueMicrotask(job) })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "microtask" },
+      { queue: "microtask", enqueuedBy: 0 },
+      { queue: "timer" },
+      { queue: "animation-frame" },
+      { queue: "microtask", enqueuedBy: 3 },
+    ]);
+    const quint = generateWebEventLoopQuint("nested_microtasks", model);
+    expect(quint).toContain("callback_1_pending' = false");
+    expect(quint).toMatch(/action drain_microtask_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_ticket' = next_microtask_ticket/);
+    expect(quint).toMatch(/action run_animation_frame_3[\s\S]*phase' = 1[\s\S]*callback_4_pending' = true/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 10_000);
 
   it("retains await/catch context and rejects unsound dynamic Promise.all inputs", () => {
     const model = analyzeAsyncPatterns("awaited.ts", `
