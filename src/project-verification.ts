@@ -7,6 +7,8 @@ import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "./async-pattern
 import { verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzePromiseChains } from "./promise-chains.js";
+import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
+import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -21,9 +23,16 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic>;
   emittedFiles: Record<string, string>;
+  typedArrays: TypedArrayProgramSafetyResult;
+  ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
   temporal?: ProjectTemporalVerification;
+}
+
+export interface ProjectOwnershipDiagnostic extends OwnershipDiagnostic {
+  fileName: string;
+  kind: "ownership";
 }
 
 export interface ProjectTemporalProperty {
@@ -49,6 +58,25 @@ function javascriptPath(fileName: string): string {
   return fileName.replace(/\.(?:mts|cts|tsx|ts)$/, ".js");
 }
 
+function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
+  const compilerOptions: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024,
+    module: ts.ModuleKind.NodeNext,
+    moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+    noEmit: true,
+    skipLibCheck: true,
+  };
+  const host = ts.createCompilerHost(compilerOptions);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
+  host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
+  host.getSourceFile = (fileName, languageVersion, onError, fresh) => Object.hasOwn(files, fileName)
+    ? ts.createSourceFile(fileName, files[fileName]!, languageVersion, true, ts.ScriptKind.TS)
+    : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+  return ts.createProgram(Object.keys(files), compilerOptions, host);
+}
+
 function verifyQuintInvariant(program: string, invariant: string): ProjectTemporalProperty {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-project-quint-"));
   const path = join(directory, "model.qnt");
@@ -68,10 +96,39 @@ function verifyQuintInvariant(program: string, invariant: string): ProjectTempor
 
 export async function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
+  const typedArrays = await verifyTypedArraySafetyInProgram(options.files);
+  const program = inMemoryProgram(options.files);
+  const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
+  for (const fileName of Object.keys(options.files)) {
+    const sourceFile = program.getSourceFile(fileName);
+    if (!sourceFile) continue;
+    ownershipDiagnostics.push(...analyzeOwnership(program, sourceFile).map((diagnostic) => ({ ...diagnostic, fileName, kind: "ownership" as const })));
+  }
+  for (const ownership of ownershipDiagnostics) {
+    if (ownership.operation !== "read" || !["detached", "transferred", "locked"].includes(ownership.state)) continue;
+    const result = typedArrays.files[ownership.fileName];
+    const source = options.files[ownership.fileName];
+    if (!result || source === undefined) continue;
+    for (const obligation of result.obligations) {
+      if (obligation.kind !== "dataview-backing-bounds" || obligation.span.end < ownership.span.end) continue;
+      if (!source.slice(obligation.span.start, obligation.span.end).includes(ownership.resource)) continue;
+      obligation.result = "counterexample";
+      if (!result.diagnostics.some((item) => item.kind === obligation.kind && item.span.start === obligation.span.start)) result.diagnostics.push({
+        fileName: ownership.fileName,
+        functionName: obligation.functionName,
+        kind: obligation.kind,
+        span: obligation.span,
+        message: `fixed-buffer evidence for ${ownership.resource} was invalidated after it became ${ownership.state}`,
+      });
+    }
+  }
+  typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
+  typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
+  diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
     const verification = await verifyContractObligations(fileName, source);
     obligations.push(...verification.artifacts.map((artifact) => ({ ...artifact, backend: "z3" as const, result: artifact.status })));
@@ -96,5 +153,5 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporal = options.temporalRuntime === "web"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
-  return { obligations, diagnostics, emittedFiles, ...(temporal ? { temporal } : {}) };
+  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, ...(temporal ? { temporal } : {}) };
 }

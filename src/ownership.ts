@@ -43,9 +43,16 @@ function transferList(call: ts.CallExpression, index: number): readonly ts.Expre
 
 export function collectOwnershipEvents(program: ts.Program, source: ts.SourceFile): OwnershipEvent[] {
   const adapter = new TypeScriptFrontendAdapter(program);
+  const checker = program.getTypeChecker();
   const events: OwnershipEvent[] = [];
   const transferSpans: Array<{ start: number; end: number }> = [];
   const visit = (node: ts.Node): void => {
+    if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "DataView" && node.arguments?.[0]) {
+      const symbol = checker.getSymbolAtLocation(node.expression);
+      const builtin = symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
+      const buffer = node.arguments[0]!;
+      if (builtin && ts.isIdentifier(buffer)) events.push({ operation: "read", resource: buffer.text, span: { start: buffer.getStart(source), end: buffer.getEnd() } });
+    }
     if (ts.isCallExpression(node)) {
       const operation = adapter.resolveCall(node)?.operation;
       if (operation?.kind === "clone") {

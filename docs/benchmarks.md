@@ -205,3 +205,11 @@ plus a newer fixture, not a claim that adding obligations intrinsically speeds
 the parser.
 Non-interval arithmetic still falls back to Z3 and is reported by the public
 `statistics.solverQueries` counter.
+
+Project verification of the Worker transfer/DataView negative control measured
+128.94 ms mean over five samples (4.10% relative margin of error). This includes
+an in-memory TypeScript Program with standard libraries, builtin symbol
+resolution, ownership event collection, typed-array verification, and
+cross-domain invalidation. Program construction dominates; a compiler or Corsa
+integration should supply and reuse its existing semantic context rather than
+rebuilding one per file.

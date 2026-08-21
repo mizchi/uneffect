@@ -114,4 +114,20 @@ describe("Uneffect dogfood", () => {
       message: expect.stringContaining("11 + 2 <= 12"),
     }));
   });
+
+  it("invalidates fixed-buffer constructor evidence after Worker-style transfer", async () => {
+    const fileName = "examples/dogfood/worker-codec-transfer.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = await verifyUneffectProject({ files: { [fileName]: source } });
+    expect(result.ownership.diagnostics).toContainEqual(expect.objectContaining({
+      fileName, resource: "buffer", state: "detached", operation: "read",
+    }));
+    expect(result.typedArrays.files[fileName]?.obligations).toContainEqual(expect.objectContaining({
+      functionName: "transferThenDecode", kind: "dataview-backing-bounds", result: "counterexample",
+    }));
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fileName, kind: "ownership" }),
+      expect.objectContaining({ fileName, kind: "dataview-backing-bounds" }),
+    ]));
+  });
 });

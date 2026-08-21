@@ -176,7 +176,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Dogfood DataView obligations against a DNS header codec and retain an off-by-one negative control.
 - [x] Derive safe integer intervals from simple `requires` bounds and expose solver-query statistics; reduce DNS codec verification from six queries to zero.
 - [x] Distinguish resizable capacity (`BoundedArrayBuffer`) from exact non-resizable length (`FixedArrayBuffer`) and verify explicit/implicit DataView constructor regions.
-- [ ] Compose fixed-buffer constructor evidence with transfer/detachment ownership; model mutable/interprocedural aliases, resize transitions, and SharedArrayBuffer concurrency.
+- [x] Compose fixed-buffer DataView constructor evidence with definite transfer/detachment ownership in project verification.
+- [ ] Extend that composition through mutable/interprocedural aliases, resize transitions, conditional control flow, and SharedArrayBuffer concurrency.
 - [x] Add `U32`, bounded Uint32Array runtime refinements, and ECMAScript-aware ranges for SHA-256-style shifts, masks, and explicit `>>> 0` normalization.
 - [x] Generate independent bounded-index and dynamic shift-count obligations instead of trusting JavaScript out-of-range or modulo-32 behavior.
 - [ ] Compose the verified SHA-256 building blocks interprocedurally and cover non-canonical control-flow bounds.

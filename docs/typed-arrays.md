@@ -58,12 +58,13 @@ accepted.
 The DNS header codec in `examples/dogfood/binary-codec.ts` is a practical
 positive and negative control: its fixed buffer-to-view constructor and all
 twelve 16-bit fields are verified, while a one-byte displacement of the final
-field is rejected. A later transfer can detach even a previously refined fixed
-buffer, so constructor evidence must eventually compose with ownership
-evidence; that cross-domain composition is not implemented yet. Mutable or
-interprocedural aliases, resize transitions, and SharedArrayBuffer concurrency
-are also not yet modeled. Recognition currently depends on the visible
-helper-type spelling rather than TypeChecker symbol identity.
+field is rejected. Project verification also composes definite ownership order:
+`examples/dogfood/worker-codec-transfer.ts` transfers the fixed buffer through
+`Worker.postMessage`, and its later DataView construction downgrades the
+backing obligation to a counterexample. This currently covers direct resources
+and builtin DataView identity. Mutable or interprocedural aliases, conditional
+transfer, resize transitions, and SharedArrayBuffer concurrency are not yet
+modeled.
 
 TypedArray `.set(source, offset)` produces `bulk-copy-bounds`, requiring
 `offset >= 0` and `offset + source.length <= target.length`. Bounded source and

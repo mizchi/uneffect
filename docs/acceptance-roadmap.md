@@ -98,11 +98,14 @@ verifies `eventLoopSafe`. The current guarantee is queue phase/FIFO safety only:
 the callback's numeric `pipe` semantics and an application-specific temporal
 invariant are not yet composed into that model.
 
-The first project verification slice exposes Z3 contract artifacts and
-explicit `assert parameter: Schema` Valibot instrumentation in one result.
-These are separate clauses in the same source file: it does not yet claim that
-an arbitrary Hoare `requires` or `ensures` expression has been converted into
-a runtime check.
+Project verification exposes Z3 contract artifacts, typed-array results,
+definite ownership diagnostics, and explicit `assert parameter: Schema`
+Valibot instrumentation in one result. It invalidates a fixed-buffer DataView
+constructor proof when a builtin Worker/clone transfer definitely detached the
+same direct resource first. This is ordered cross-domain evidence, not general
+path-sensitive alias analysis. The runtime assertions remain separate clauses:
+an arbitrary Hoare `requires` or `ensures` expression is not automatically
+converted into a runtime check.
 
 The first temporal project-verification slice extracts Web scheduling from
 Uneffect TypeScript, generates a Quint `web-event-loop` model, and runs its
