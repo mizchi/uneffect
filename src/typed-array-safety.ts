@@ -10,6 +10,8 @@ export interface TypedArrayObligation {
   result: "verified" | "trusted" | "counterexample" | "unknown";
   goal: string;
   trustReason?: string;
+  trustOwner?: string;
+  trustExpiresOn?: string;
   span: { start: number; end: number };
 }
 export interface TypedArrayDiagnostic {
@@ -108,6 +110,35 @@ function typedArrayElement(type: string): "u8" | "u32" | undefined {
 interface NumericRange { minimum: number; maximum: number; integer: boolean }
 interface ConstantTable { length: number; domain: "u8" | "u32"; valid: boolean }
 interface TypedArraySemantics { integerCasts: ReadonlyMap<number, "floor" | "ceil" | "round" | "trunc"> }
+
+interface TypedArrayTrust {
+  reason: string;
+  owner?: string;
+  expiresOn?: string;
+}
+
+function typedArrayTrust(text: string, kind?: TypedArrayObligation["kind"]): TypedArrayTrust | undefined {
+  const value = extractAnnotations(text, "trust").find((item) => {
+    const match = /^typed-array(?::([a-z0-9-]+))?\s+(.+)$/i.exec(item);
+    return match && (!match[1] || match[1] === kind);
+  });
+  const match = value && /^typed-array(?::[a-z0-9-]+)?\s+(.+)$/i.exec(value);
+  if (!match) return undefined;
+  const owner = extractAnnotations(text, "trust_owner")[0]?.trim();
+  const expiresOn = extractAnnotations(text, "trust_expires")[0]?.trim();
+  return {
+    reason: match[1]!.trim(),
+    ...(owner ? { owner } : {}),
+    ...(expiresOn ? { expiresOn } : {}),
+  };
+}
+
+function enclosingStatement(node: ts.Node, owner: ts.FunctionDeclaration): ts.Statement | undefined {
+  for (let current: ts.Node | undefined = node; current && current !== owner; current = current.parent) {
+    if (ts.isStatement(current)) return current;
+  }
+  return undefined;
+}
 
 function contractParameterRanges(parameters: readonly ts.ParameterDeclaration[], source: ts.SourceFile, assumptions: readonly string[]): Map<string, NumericRange> {
   const ranges = new Map<string, NumericRange>();
@@ -342,8 +373,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const functionName = node.name.text, leading = source.text.slice(node.getFullStart(), node.getStart(source));
-    const trustReason = extractAnnotations(leading, "trust")
-      .find((value) => value.startsWith("typed-array "))?.slice("typed-array ".length).trim();
+    const functionTrust = typedArrayTrust(leading);
     const tableLengths = new Map([...tables].map(([name, table]) => [`${name}.length`, String(table.length)]));
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
       .map((assumption) => [...tableLengths].reduce((text, [name, length]) => text.replaceAll(name, length), assumption));
@@ -505,8 +535,20 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
       if (!candidate.knownResult && !invalidInteger && !staticallyInside) solverQueries++;
       const proofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal));
-      const result = proofResult !== "verified" && trustReason ? "trusted" : proofResult, span = { start: candidate.node.getStart(source), end: candidate.node.getEnd() };
-      obligations.push({ functionName, kind: candidate.kind, result, goal: candidate.goal, span, ...(result === "trusted" ? { trustReason } : {}) });
+      const statement = enclosingStatement(candidate.node, node);
+      const statementLeading = statement ? source.text.slice(statement.getFullStart(), statement.getStart(source)) : "";
+      const trust = typedArrayTrust(statementLeading, candidate.kind) ?? functionTrust;
+      const result = proofResult !== "verified" && trust ? "trusted" : proofResult;
+      const spanNode = result === "trusted" && statement ? statement : candidate.node;
+      const span = { start: spanNode.getStart(source), end: spanNode.getEnd() };
+      obligations.push({
+        functionName, kind: candidate.kind, result, goal: candidate.goal, span,
+        ...(result === "trusted" ? {
+          trustReason: trust!.reason,
+          ...(trust!.owner ? { trustOwner: trust!.owner } : {}),
+          ...(trust!.expiresOn ? { trustExpiresOn: trust!.expiresOn } : {}),
+        } : {}),
+      });
       if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : `${candidate.kind} constraint could not be proved` });
     }
   }

@@ -121,4 +121,31 @@ describe("evidence and optimizer obligations", () => {
       expect.objectContaining({ rule: "expired", domain: "temporal-summary" }),
     ]));
   });
+
+  it("attributes statement-scoped trust metadata to its exact ledger span", async () => {
+    const fileName = "src/local-trust.ts";
+    const source = `
+      type BoundedUint8Array<N extends number> = Uint8Array
+      function encode(output: BoundedUint8Array<2>, value: number) {
+        /* uneffect: trust typed-array:u8-write reviewed packet tag */
+        /* uneffect: trust_owner wire-team */
+        /* uneffect: trust_expires 2027-04-01 */
+        output[0] = value
+        output[1] = value
+      }
+    `;
+    const result = await verifyUneffectProject({
+      files: { [fileName]: source },
+      assumptionPolicy: { requireOwner: true, requireExpiration: true, asOf: "2026-08-21" },
+    });
+    expect(result.assumptions.entries).toEqual([
+      expect.objectContaining({ domain: "typed-array", reason: "reviewed packet tag", owner: "wire-team", expiresOn: "2027-04-01" }),
+    ]);
+    const [assumption] = result.assumptions.entries;
+    expect(source.slice(assumption!.scope.span.start, assumption!.scope.span.end)).toContain("output[0] = value");
+    expect(result.assumptions.violations).toEqual([]);
+    const [diagnostic] = result.typedArrays.diagnostics;
+    expect(diagnostic).toEqual(expect.objectContaining({ kind: "u8-write", functionName: "encode" }));
+    expect(source.slice(diagnostic!.span.start, diagnostic!.span.end)).toContain("output[1] = value");
+  });
 });

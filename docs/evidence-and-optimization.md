@@ -28,10 +28,10 @@ expiration is deliberately unbounded and must be explicitly allowed by policy.
 User assumptions attach review metadata without changing JSDoc semantics:
 
 ```ts
-/* uneffect: trust typed-array validated by the packet conformance suite */
-/* uneffect: trust_owner telemetry-platform */
-/* uneffect: trust_expires 2027-06-30 */
 function encodePacket(output: BoundedUint8Array<1>, value: number) {
+  /* uneffect: trust typed-array:u8-write validated by the packet conformance suite */
+  /* uneffect: trust_owner telemetry-platform */
+  /* uneffect: trust_expires 2027-06-30 */
   output[0] = value
 }
 ```
@@ -121,7 +121,8 @@ authorization plan for a downstream compressor, not rewritten JavaScript.
 `just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode, then runs a regression test requiring zero diagnostics and zero `unknown` summaries. This exercise found and fixed two frontend issues: mutations of freshly allocated locals were incorrectly escaping into caller summaries, and known synchronous TypeScript/Array callback APIs were being classified with unknown invocation timing. Annotated boundaries remain enforced in inference-only mode.
 
 The telemetry packet dogfood fixture additionally applies the assumption policy
-to a typed-array wire-format escape hatch, a Console builtin, and a temporal
-summary. Removing either user assumption owner produces a CI diagnostic. This
-shows useful review enforcement at a realistic serialization boundary, while
-the underlying byte-domain safety is intentionally not claimed as verified.
+to a statement-scoped typed-array wire-format escape hatch, a Console builtin,
+and a temporal summary. Removing either user assumption owner produces a CI
+diagnostic. Unrelated statements remain checked. This shows useful review
+enforcement at a realistic serialization boundary, while the underlying
+byte-domain safety is intentionally not claimed as verified.

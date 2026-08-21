@@ -240,9 +240,10 @@ the DOM builtin by declaration identity and extracts its active-time deadline;
 the benchmark excludes Quint execution and the high variance precludes using it
 as a regression threshold.
 
-Auditing the telemetry packet fixture across its trusted typed-array escape
-hatch, Console builtin, temporal summary, and owner/expiration policy measured
-115.17 ms mean over five cold samples (28.99% relative margin of error). This
+Auditing the telemetry packet fixture across its statement-scoped typed-array
+escape hatch, Console builtin, temporal summary, and owner/expiration policy
+measured 110.80 ms mean over five cold samples (12.81% relative margin of error).
+This
 includes construction of a fresh TypeScript Program and all project verification
 passes, not just ledger collection. The small, noisy sample is an integration
 cost observation; compiler/Corsa integration should reuse the host Program.

@@ -156,10 +156,13 @@ function count(n: number) {
 
 The current Z3 prototype supports `Int`, `Nat`, a real-arithmetic abstraction of finite `Float`, comparisons, Boolean operators, simple assignments, branches, returns, and simple loops with invariants. It proves partial correctness, not termination. Unsupported statements, unmodeled calls, and solver `unknown` results are non-proofs. The direct verifier and emitted SMT-LIB share stable, source-mapped proof obligations.
 
-`trust` is an explicit escape-hatch directive. The first implemented scope is
-`trust typed-array <reason>` on a function. It records `trusted` evidence and
-suppresses that domain's ordinary diagnostic without claiming verification.
-Other domains and narrower attachment scopes are not implemented yet.
+`trust` is an explicit escape-hatch directive. `trust typed-array <reason>` may
+be attached to a function or directly before a statement. The narrower
+`trust typed-array:<obligation-kind> <reason>` form exempts only the selected
+obligation on that statement. Used assumptions record `trusted` evidence and
+remain visible in the cross-domain ledger; they never become `verified`.
+Statement-level `trust_owner` and `trust_expires` metadata travel with the exact
+source span. Other proof domains do not yet expose a general-purpose `sorry`.
 
 ## Adoption levels
 

@@ -410,4 +410,32 @@ describe("bounded Uint8Array safety", () => {
     }));
     expect(result.obligations).not.toContainEqual(expect.objectContaining({ functionName: "decode", kind: "u8-write", result: "verified" }));
   });
+
+  it("limits statement and obligation trust to the annotated typed-array operation", async () => {
+    const result = await verifyTypedArraySafety("narrow-trust.ts", `
+      type BoundedUint8Array<N extends number> = Uint8Array
+      function decode(output: BoundedUint8Array<2>, first: number, second: number) {
+        /* uneffect: trust typed-array externally checked first byte */
+        /* uneffect: trust_owner packet-team */
+        /* uneffect: trust_expires 2027-06-30 */
+        output[0] = first
+        output[1] = second
+      }
+      function writeView(view: BoundedDataView<1>, value: number) {
+        /* uneffect: trust typed-array:u8-write external value validation */
+        view.setUint8(2, value)
+      }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "decode", kind: "u8-write", goal: expect.stringContaining("first"), result: "trusted", trustOwner: "packet-team", trustExpiresOn: "2027-06-30" }),
+      expect.objectContaining({ functionName: "decode", kind: "u8-write", goal: expect.stringContaining("second"), result: "counterexample" }),
+      expect.objectContaining({ functionName: "writeView", kind: "u8-write", result: "trusted", trustReason: "external value validation" }),
+      expect.objectContaining({ functionName: "writeView", kind: "dataview-bounds", result: "counterexample" }),
+    ]));
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "decode", kind: "u8-write", message: expect.stringContaining("second") }),
+      expect.objectContaining({ functionName: "writeView", kind: "dataview-bounds" }),
+    ]));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "writeView", kind: "u8-write" }));
+  });
 });

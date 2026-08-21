@@ -126,7 +126,9 @@ export function collectAssumptionLedger(
       entries.push(entry({
         domain: "typed-array",
         reason: obligation.trustReason ?? "explicit typed-array trust escape hatch",
-        ...(declaration ? metadata(source, declaration) : {}),
+        ...(obligation.trustOwner ? { owner: obligation.trustOwner } : {}),
+        ...(obligation.trustExpiresOn ? { expiresOn: obligation.trustExpiresOn } : {}),
+        ...(!obligation.trustOwner && !obligation.trustExpiresOn && declaration ? metadata(source, declaration) : {}),
         scope: { fileName, functionName: obligation.functionName, span: obligation.span },
       }));
     }
