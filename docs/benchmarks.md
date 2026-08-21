@@ -273,3 +273,9 @@ This
 includes construction of a fresh TypeScript Program and all project verification
 passes, not just ledger collection. The small, noisy sample is an integration
 cost observation; compiler/Corsa integration should reuse the host Program.
+
+Verifying the `telemetry-once.ts` Web/callback product measured 2,027.17 ms for
+one cold sample. This includes project analysis, Quint startup, and separate
+checks of `eventLoopSafe` and the application `sendsAtMostOnce` property. A
+single sample is only a coarse integration-cost observation; batching multiple
+properties into one verifier process remains an important performance task.

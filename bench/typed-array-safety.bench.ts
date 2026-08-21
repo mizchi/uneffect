@@ -332,6 +332,11 @@ describe("typed-array static verification", () => {
     ` } });
   }, { time: 500, iterations: 1 });
 
+  bench("verify a Web callback temporal product with Quint", async () => {
+    const entry = "examples/dogfood/telemetry-once.ts";
+    await verifyUneffectProject({ temporalRuntime: "web", files: { [entry]: readFileSync(entry, "utf8") } });
+  }, { time: 500, iterations: 1 });
+
   bench("resolve 64 named timer callback bodies", () => {
     const callbacks = Array.from({ length: 64 }, (_, index) => `function callback${index}() { queueMicrotask(() => {}) }`).join("\n");
     const schedules = Array.from({ length: 64 }, (_, index) => `setTimeout(callback${index}, ${index})`).join(";");

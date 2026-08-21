@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { generateComposedQuint, parseTemporalComposition } from "../src/temporal-compose.js";
 
 const source = `
@@ -33,7 +34,7 @@ function runQuint(program: string, invariant = "completedInOrder"): ReturnType<t
   const directory = mkdtempSync(join(tmpdir(), "uneffect-compose-"));
   const path = join(directory, "compose.qnt");
   writeFileSync(path, program);
-  return spawnSync("pnpm", ["exec", "quint", "run", path, `--invariant=${invariant}`, "--max-steps=6", "--max-samples=100", "--seed=0x1234", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+  return spawnSync("pnpm", ["exec", "quint", "run", path, `--invariant=${invariant}`, "--max-steps=20", "--max-samples=500", "--seed=0x1234", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
 }
 
 describe("temporal function-summary composition", () => {
@@ -140,5 +141,33 @@ describe("temporal function-summary composition", () => {
     const cancelled = runQuint(program, "neverCancels");
     expect(cancelled.status).not.toBe(0);
     expect(String(cancelled.stdout) + String(cancelled.stderr)).toMatch(/Invariant.*violated|violation found/i);
+  }, 20_000);
+
+  it("composes callback summaries into Web queue transitions", () => {
+    const webSource = `
+      /* uneffect: state committed: int */
+      /* uneffect: init committed = 0 */
+      /* uneffect: temporal atMostOne: committed <= 1 */
+      /*
+       * uneffect:
+       * temporal_requires committed === 0
+       * temporal_ensures committed' = committed + 1
+       * temporal_modifies committed
+       */
+      function commit() {}
+      function main() { setInterval(commit, 0) }
+    `;
+    const composition = parseTemporalComposition("web-product.ts", webSource, "main");
+    const patterns = analyzeAsyncPatterns("web-product.ts", webSource);
+    const product = generateWebEventLoopQuint("web_product", patterns, {}, undefined, composition);
+    expect(product).toContain("committed == 0");
+    expect(product).toContain("committed' = committed + 1");
+    expect(product).toContain("val atMostOne = committed <= 1");
+    expect(runQuint(product, "atMostOne").status).toBe(0);
+
+    const broken = generateWebEventLoopQuint("web_product_broken", patterns, { allowCallbackPreconditionViolation: true }, undefined, composition);
+    const result = runQuint(broken, "eventLoopSafe");
+    expect(result.status).not.toBe(0);
+    expect(String(result.stdout) + String(result.stderr)).toMatch(/Invariant.*violated|violation found/i);
   }, 20_000);
 });

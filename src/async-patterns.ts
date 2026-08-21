@@ -2,6 +2,8 @@ import ts from "typescript";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
+import type { TemporalComposition } from "./temporal-compose.js";
+import { generateQuintExpression } from "./temporal-expressions.js";
 
 export interface TimerPattern {
   owner: string;
@@ -599,7 +601,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 }
 
 /** Browser event-loop profile: one task, a draining microtask checkpoint, then an optional rendering opportunity. */
-export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean; allowAbortReasonOverwrite?: boolean; allowEarlyAbortComposition?: boolean; allowWrongSchedulerPriority?: boolean; allowRunAbortedSchedulerTask?: boolean } = {}, promiseModel?: PromiseChainModel): string {
+export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean; allowAbortReasonOverwrite?: boolean; allowEarlyAbortComposition?: boolean; allowWrongSchedulerPriority?: boolean; allowRunAbortedSchedulerTask?: boolean; allowCallbackPreconditionViolation?: boolean } = {}, promiseModel?: PromiseChainModel, temporalComposition?: TemporalComposition): string {
   for (const timer of model.timers) {
     if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
@@ -610,6 +612,11 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
   const schedulerTasks = model.timers.flatMap((timer, index) => timer.queue === "scheduler-task" ? [index] : []);
   const abortCompositions = model.abortCompositions ?? [];
+  const temporalStates = temporalComposition?.states ?? [];
+  const temporalInit = new Map(temporalComposition?.init.map((item) => [item.target, generateQuintExpression(item.expressionAst)]) ?? []);
+  const temporalStateNames = new Set(temporalStates.map((state) => state.name));
+  const clock = temporalStateNames.has("clock") ? "web_clock" : "clock";
+  const phase = temporalStateNames.has("phase") ? "web_phase" : "phase";
   const initiallyQueuedReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
@@ -620,12 +627,18 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) => initiallyQueuedReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
   ].sort((left, right) => left.span - right.span);
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
-  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var phase: int", "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var next_microtask_ticket: int"];
+  const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, `  var ${phase}: int`, "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var callback_precondition_broken: bool", "  var next_microtask_ticket: int"];
+  temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${state.type}`));
   model.timers.forEach((_, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
   abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
-  lines.push("", "  action init = all {", "    clock' = 0,", "    phase' = 1,", "    wrong_phase' = false,", "    fifo_broken' = false,", "    scheduler_priority_broken' = false,", "    scheduler_abort_broken' = false,", "    abort_source_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
+  lines.push("", "  action init = all {", `    ${clock}' = 0,`, `    ${phase}' = 1,`, "    wrong_phase' = false,", "    fifo_broken' = false,", "    scheduler_priority_broken' = false,", "    scheduler_abort_broken' = false,", "    abort_source_broken' = false,", "    callback_precondition_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
+  temporalStates.forEach((state) => {
+    const value = temporalInit.get(state.name);
+    if (value === undefined) throw new Error(`missing temporal init for ${state.name}`);
+    lines.push(`    ${safe(state.name)}' = ${value},`);
+  });
   model.timers.forEach((timer, index) => {
     const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
     lines.push(`    callback_${index}_pending' = ${!timer.initiallyCancelled && !definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
@@ -643,17 +656,25 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
+  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
-  const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [] : [`phase == ${expected}`];
+  const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [] : [`${phase} == ${expected}`];
   const jobs = [...microtasks.map((index) => ({ pending: `callback_${index}_pending`, ticket: `callback_${index}_ticket` })), ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.map((_, stage) => ({ pending: `promise_reaction_${chainIndex}_${stage}_pending`, ticket: `promise_reaction_${chainIndex}_${stage}_ticket` }))) ?? [])];
   const fifoViolation = (ticket: string): string => jobs.map((job) => `(${job.pending} and ${job.ticket} < ${ticket})`).join(" or ") || "false";
   const fifoGuards = (ticket: string): string[] => options.allowOutOfOrderMicrotasks ? [] : [`not(${fifoViolation(ticket)})`];
+  const applyCallbackSummary = (index: number, guards: string[], updates: Map<string, string>): void => {
+    const summary = temporalComposition?.summaries.get(model.timers[index]!.callback);
+    if (!summary) return;
+    const requirements = summary.requires.map(generateQuintExpression);
+    if (!options.allowCallbackPreconditionViolation) guards.push(...requirements);
+    else if (requirements.length) updates.set("callback_precondition_broken", `callback_precondition_broken or not(${requirements.map((item) => `(${item})`).join(" and ")})`);
+    summary.ensures.forEach((item) => updates.set(safe(item.target), generateQuintExpression(item.expressionAst)));
+  };
   const enqueueChildren = (parent: number, updates: Map<string, string>): void => {
     const children = microtasks.filter((index) => model.timers[index]!.enqueuedBy === parent);
     children.forEach((child, offset) => {
@@ -663,22 +684,24 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     if (children.length) updates.set("next_microtask_ticket", children.length === 1 ? "next_microtask_ticket + 1" : `next_microtask_ticket + ${children.length}`);
     schedulerTasks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
-      updates.set(`callback_${child}_due`, `clock + ${model.timers[child]!.delay}`);
+      updates.set(`callback_${child}_due`, `${clock} + ${model.timers[child]!.delay}`);
     });
   };
   microtasks.forEach((index) => {
     const ticket = `callback_${index}_ticket`;
     const updates = new Map<string, string>([
-      [`callback_${index}_pending`, "false"], [ticket, "-1"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 1"], ["fifo_broken", fifoViolation(ticket)],
+      [`callback_${index}_pending`, "false"], [ticket, "-1"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 1`], ["fifo_broken", fifoViolation(ticket)],
     ]);
     enqueueChildren(index, updates);
-    action(`drain_microtask_${index}`, [...phaseGuard(1), `callback_${index}_pending`, ...fifoGuards(ticket)], updates);
+    const guards = [...phaseGuard(1), `callback_${index}_pending`, ...fifoGuards(ticket)];
+    applyCallbackSummary(index, guards, updates);
+    action(`drain_microtask_${index}`, guards, updates);
   });
   const promisePending: string[] = [];
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     const pending = `promise_reaction_${chainIndex}_${stage}_pending`, done = `promise_reaction_${chainIndex}_${stage}_done`, ticket = `promise_reaction_${chainIndex}_${stage}_ticket`;
     promisePending.push(pending);
-    const updates = new Map<string, string>([[pending, "false"], [done, "true"], [ticket, "-1"], ["wrong_phase", "phase != 1"], ["fifo_broken", fifoViolation(ticket)]]);
+    const updates = new Map<string, string>([[pending, "false"], [done, "true"], [ticket, "-1"], ["wrong_phase", `${phase} != 1`], ["fifo_broken", fifoViolation(ticket)]]);
     if (stage + 1 < chain.links.length) {
       updates.set(`promise_reaction_${chainIndex}_${stage + 1}_pending`, "true");
       updates.set(`promise_reaction_${chainIndex}_${stage + 1}_ticket`, "next_microtask_ticket");
@@ -686,16 +709,18 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     }
     action(`drain_promise_reaction_${chainIndex}_${stage}`, [...phaseGuard(1), pending, ...fifoGuards(ticket)], updates);
   }));
-  action("finish_microtask_checkpoint", [...phaseGuard(1), ...microtasks.map((index) => `not(callback_${index}_pending)`), ...promisePending.map((name) => `not(${name})`)], new Map([["phase", "2"], ["wrong_phase", "phase != 1"]]));
+  action("finish_microtask_checkpoint", [...phaseGuard(1), ...microtasks.map((index) => `not(callback_${index}_pending)`), ...promisePending.map((name) => `not(${name})`)], new Map([[phase, "2"], ["wrong_phase", `${phase} != 1`]]));
   frames.forEach((index, order) => {
-    const updates = new Map<string, string>([["phase", "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 2"]]);
+    const updates = new Map<string, string>([[phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 2`]]);
     enqueueChildren(index, updates);
-    action(`run_animation_frame_${index}`, [...phaseGuard(2), `callback_${index}_pending`, ...frames.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`)], updates);
+    const guards = [...phaseGuard(2), `callback_${index}_pending`, ...frames.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`)];
+    applyCallbackSummary(index, guards, updates);
+    action(`run_animation_frame_${index}`, guards, updates);
   });
-  action("paint", [...phaseGuard(2), ...frames.map((index) => `not(callback_${index}_pending)`)], new Map([["phase", "0"], ["wrong_phase", "phase != 2"]]));
-  action("skip_rendering_opportunity", phaseGuard(2), new Map([["phase", "0"], ["wrong_phase", "phase != 2"]]));
-  action("advance_clock", phaseGuard(0), new Map([["clock", "clock + 1"], ["wrong_phase", "phase != 0"]]));
-  action("idle_turn", phaseGuard(0), new Map([["phase", "1"], ["wrong_phase", "phase != 0"]]));
+  action("paint", [...phaseGuard(2), ...frames.map((index) => `not(callback_${index}_pending)`)], new Map([[phase, "0"], ["wrong_phase", `${phase} != 2`]]));
+  action("skip_rendering_opportunity", phaseGuard(2), new Map([[phase, "0"], ["wrong_phase", `${phase} != 2`]]));
+  action("advance_clock", phaseGuard(0), new Map([[clock, `${clock} + 1`], ["wrong_phase", `${phase} != 0`]]));
+  action("idle_turn", phaseGuard(0), new Map([[phase, "1"], ["wrong_phase", `${phase} != 0`]]));
   const priorityRank = (timer: TimerPattern): number => timer.priority === "user-blocking" ? 2 : timer.priority === "background" ? 0 : 1;
   schedulerTasks.forEach((index) => {
     const timer = model.timers[index]!;
@@ -708,10 +733,12 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const violation = outranking.join(" or ") || "false";
     const abortViolation = [timer.abortComposition === undefined ? undefined : `abort_${timer.abortComposition}_aborted`, timer.abortTimer === undefined ? undefined : `callback_${timer.abortTimer}_fires > 0`].filter((term): term is string => Boolean(term)).join(" or ") || "false";
     const updates = new Map<string, string>([
-      ["phase", "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
+      [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
     ]);
     enqueueChildren(index, updates);
-    action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])], updates);
+    const guards = [...phaseGuard(0), `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
+    applyCallbackSummary(index, guards, updates);
+    action(timerAction("run", timer, index), guards, updates);
     if (options.allowRunAbortedSchedulerTask && abortViolation !== "false") action(`run_aborted_scheduler_task_${index}`, [`callback_${index}_pending`, `(${abortViolation})`], new Map([
       [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["scheduler_abort_broken", "true"],
     ]));
@@ -722,10 +749,12 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const timer = model.timers[index]!;
     const earlierDue = timers.slice(0, order).map((earlier) => `not(callback_${earlier}_pending) or callback_${earlier}_due > clock`);
     const updates = new Map<string, string>([
-      ["phase", "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"],
+      [phase, "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `${clock} + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`],
     ]);
     enqueueChildren(index, updates);
-    action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
+    const guards = [...phaseGuard(0), `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...earlierDue];
+    applyCallbackSummary(index, guards, updates);
+    action(timerAction("run", timer, index), guards, updates);
   });
   for (const timer of new Set((model.timerEscapes ?? []).map((escape) => escape.timer))) {
     action(`external_cancel_timer_${timer}`, [`callback_${timer}_pending`], new Map([[`callback_${timer}_pending`, "false"]]));
@@ -749,6 +778,14 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   const oneShotSignals = model.timers.flatMap((timer, index) => timer.kind === "abort-timeout" ? [`callback_${index}_fires <= 1`] : []);
   const abortReasons = abortCompositions.map((composition, index) => `(not(abort_${index}_reason_overwritten) and ((not(abort_${index}_aborted) and abort_${index}_reason_source == 0) or (abort_${index}_aborted and abort_${index}_reason_source >= 1 and abort_${index}_reason_source <= ${composition.sources.length})))`);
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken) and not(scheduler_abort_broken) and not(abort_source_broken)${[...oneShotSignals, ...abortReasons].map((term) => ` and ${term}`).join("")}`, "}", "");
+  const callbackPreconditions = model.timers.flatMap((timer, index) => {
+    const summary = temporalComposition?.summaries.get(timer.callback);
+    if (!summary?.requires.length) return [];
+    const requirement = summary.requires.map((item) => `(${generateQuintExpression(item)})`).join(" and ");
+    return [`(not(callback_${index}_pending) or ${clock} < callback_${index}_due or (${requirement}))`];
+  });
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
+  temporalComposition?.properties.forEach((property) => lines.push("", `  val ${safe(property.name)} = ${generateQuintExpression(property.expressionAst)}`));
+  lines.push("", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken) and not(scheduler_abort_broken) and not(abort_source_broken) and not(callback_precondition_broken)${[...oneShotSignals, ...abortReasons, ...callbackPreconditions].map((term) => ` and ${term}`).join("")}`, "}", "");
   return lines.join("\n");
 }

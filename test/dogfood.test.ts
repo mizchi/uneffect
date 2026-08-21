@@ -97,6 +97,20 @@ describe("Uneffect dogfood", () => {
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_microtask_1");
   }, 30_000);
 
+  it("prevents a telemetry callback with an at-most-once contract from being queued twice", async () => {
+    const entry = "examples/dogfood/telemetry-once.ts";
+    const source = readFileSync(entry, "utf8");
+    const verified = await verifyUneffectProject({ files: { [entry]: source }, temporalRuntime: "web" });
+    expect(verified.temporal?.properties).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "eventLoopSafe", result: "verified" }),
+      expect.objectContaining({ name: "sendsAtMostOnce", result: "verified" }),
+    ]));
+
+    const duplicated = source.replace("queueMicrotask(sendTelemetry);", "queueMicrotask(sendTelemetry); queueMicrotask(sendTelemetry);");
+    const broken = await verifyUneffectProject({ files: { [entry]: duplicated }, temporalRuntime: "web" });
+    expect(broken.temporal?.properties).toContainEqual(expect.objectContaining({ name: "eventLoopSafe", result: "counterexample" }));
+  }, 30_000);
+
   it("proves a DNS binary codec and catches an off-by-one field offset", async () => {
     const entry = "examples/dogfood/binary-codec.ts";
     const source = readFileSync(entry, "utf8");

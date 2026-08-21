@@ -94,9 +94,10 @@ produces a counterexample. This adds no production runtime code.
 The temporal external adapter schedules a timer whose inline callback computes
 through Effect `pipe` and dynamically queues a microtask. Uneffect extracts the
 timer task and nested microtask, generates the Web event-loop Quint model, and
-verifies `eventLoopSafe`. The current guarantee is queue phase/FIFO safety only:
-the callback's numeric `pipe` semantics and an application-specific temporal
-invariant are not yet composed into that model.
+verifies `eventLoopSafe`. Named callbacks with `temporal_requires` and
+`temporal_ensures` are now composed into the same queue transition. Project
+verification also checks declared state safety properties in that product.
+Inline callbacks and indirect callback aliases do not yet carry summaries.
 
 Project verification exposes Z3 contract artifacts, typed-array results,
 definite ownership diagnostics, and explicit `assert parameter: Schema`
@@ -107,8 +108,11 @@ path-sensitive alias analysis. The runtime assertions remain separate clauses:
 an arbitrary Hoare `requires` or `ensures` expression is not automatically
 converted into a runtime check.
 
-The first temporal project-verification slice extracts Web scheduling from
-Uneffect TypeScript, generates a Quint `web-event-loop` model, and runs its
-`eventLoopSafe` property. Applying callback `temporal_ensures` updates inside
-those queue transitions requires a product model and remains an explicit TODO;
-the event-loop proof alone is not evidence for callback state contracts.
+The temporal project-verification slice extracts Web scheduling from Uneffect
+TypeScript and applies named callback summaries atomically in the corresponding
+timer, microtask, animation-frame, or scheduler transition. A due callback with
+an unsatisfied precondition violates `eventLoopSafe`; it is not treated as safe
+merely because its transition is disabled. `telemetry-once.ts` dogfoods this by
+proving one queued send and finding a counterexample after the send is queued
+twice. The current product remains bounded and callback-name based: it does not
+prove callback bodies, alias identity, liveness properties, or environment I/O.

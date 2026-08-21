@@ -253,19 +253,36 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const result = await verifyProject({ files: files({
       "src/scheduler.ts": `
-        /* uneffect: temporal_requires phase == 0 */
-        /* uneffect: temporal_ensures phase == 1 */
+        /* uneffect: state phase: int */
+        /* uneffect: init phase = 0 */
+        /* uneffect: temporal committedOnce: phase <= 1 */
+        /* uneffect: temporal_requires phase === 0 */
+        /* uneffect: temporal_ensures phase' = phase + 1 */
         /* uneffect: temporal_modifies phase */
-        function start() { queueMicrotask(step); requestAnimationFrame(paint) }
-        function step() { phase = 1 }
-        function paint() { console.log(phase) }
+        function commit() {}
+        function main() { queueMicrotask(commit) }
       `,
     }), temporalRuntime: "web" }) as { temporal: { sourceLanguage: string; backend: string; models: Array<{ kind: string; quint: string }>; properties: Array<{ name: string; result: string }> } };
     expect(result.temporal.sourceLanguage).toBe("uneffect-ts");
     expect(result.temporal.backend).toBe("quint");
     expect(result.temporal.models).toContainEqual(expect.objectContaining({ kind: "web-event-loop", quint: expect.stringContaining("eventLoopSafe") }));
+    expect(result.temporal.models[0]?.quint).toContain("phase' = phase + 1");
     expect(result.temporal.properties).toContainEqual(expect.objectContaining({ name: "eventLoopSafe", result: "verified" }));
-  });
+    expect(result.temporal.properties).toContainEqual(expect.objectContaining({ name: "committedOnce", result: "verified" }));
+
+    const broken = await verifyProject({ files: files({
+      "src/scheduler.ts": `
+        /* uneffect: state phase: int */
+        /* uneffect: init phase = 0 */
+        /* uneffect: temporal_requires phase === 0 */
+        /* uneffect: temporal_ensures phase' = phase + 1 */
+        /* uneffect: temporal_modifies phase */
+        function commit() {}
+        function main() { queueMicrotask(commit); queueMicrotask(commit) }
+      `,
+    }), temporalRuntime: "web" }) as { temporal: { properties: Array<{ name: string; result: string }> } };
+    expect(broken.temporal.properties).toContainEqual(expect.objectContaining({ name: "eventLoopSafe", result: "counterexample" }));
+  }, 30_000);
 
   it("models using cleanup, Transferable ownership, and async exits in one ordered neutral IR", async () => {
     const analyzeProject = futureApi("analyzeUneffectProject");

@@ -145,7 +145,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Replay a Quint-produced Node Lease trace through a typed runtime adapter and reproduce `singleWriter` at the same step.
   - [x] Generate bindings from source annotations and connect them directly to backend-produced counterexamples.
 - [ ] Model delayed renewal completion, self-fencing, GC, CAS failure, crashes, and in-flight fenced writes in the Node Lease acceptance model.
-- [ ] Build the product model between callback temporal summaries and Web event-loop queue transitions; project verification currently checks the generated Web queue model independently.
+- [x] Build the product model between callback temporal summaries and Web event-loop queue transitions, verify application properties in project verification, and reject due callbacks whose preconditions no longer hold.
 - [x] Define the initial restricted TypeScript-style temporal expression grammar independently of Quint syntax.
   - [x] Parse expressions into a neutral AST and generate Quint or runtime JavaScript assertions from it.
   - [x] Add symbol/type checking against state declarations and supported function parameters.

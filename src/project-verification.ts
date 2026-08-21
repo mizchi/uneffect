@@ -10,11 +10,14 @@ import { analyzePromiseChains } from "./promise-chains.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
+import { extractAnnotations } from "./annotations.js";
+import { parseTemporalComposition } from "./temporal-compose.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
   runtimeAssertions?: "off" | "fallback";
   temporalRuntime?: "web";
+  temporalRoot?: string;
   assumptionPolicy?: AssumptionPolicy;
 }
 
@@ -145,14 +148,19 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
       compilerOptions: { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.ESNext },
     }).outputText;
     if (options.temporalRuntime === "web") {
+      const temporalComposition = extractAnnotations(source, "state").length > 0
+        ? parseTemporalComposition(fileName, source, options.temporalRoot ?? "main")
+        : undefined;
       const quint = generateWebEventLoopQuint(
         fileName.replace(/[^A-Za-z0-9_]/g, "_"),
         analyzeAsyncPatterns(fileName, source),
         {},
         analyzePromiseChains(fileName, source),
+        temporalComposition,
       );
       temporalModels.push({ fileName, kind: "web-event-loop", quint });
       temporalProperties.push(verifyQuintInvariant(quint, "eventLoopSafe"));
+      for (const property of temporalComposition?.properties ?? []) temporalProperties.push(verifyQuintInvariant(quint, property.name));
     }
   }
   const temporal = options.temporalRuntime === "web"
