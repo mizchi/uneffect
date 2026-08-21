@@ -125,12 +125,12 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Enumerate bounded U8/U32 array lengths and literal-index elements with Z3, then reuse size-ordered satisfying tuples as constraint-preserving joint shrink candidates.
       - [x] Enumerate required scalar fields of closed TypeScript record literals with Z3 and shrink them field-by-field or through satisfying tuples.
       - [x] Lower bounded-array dynamic scalar indices to finite SMT selection with explicit in-bounds generation constraints.
-      - [ ] Extend solver-backed generation to nested records, Maps/Sets, and optional fields.
+      - [x] Extend solver-backed generation to nested records, Maps/Sets, and optional fields.
         - [x] Recursively generate, constrain, reconstruct, and shrink closed nested records.
         - [x] Generate scalar optional record fields with explicit SMT presence bits and omission-first shrinking.
         - [x] Generate finite `BoundedSet<T, N>` values with native-Set materialization, membership/size SMT constraints, and structural/element shrinking.
         - [x] Generate finite `BoundedMap<K, V, N>` values with JSON-safe key/value columns, native-Map materialization, lookup/membership/size SMT constraints, and shrinking.
-        - [ ] Generate optional object-valued fields with presence-aware nested leaves.
+        - [x] Generate optional object-valued fields with one shared parent presence bit across nested leaves.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

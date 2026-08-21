@@ -304,7 +304,8 @@ function typeDomain(type: ts.TypeNode | undefined): PropertyTestDomain | undefin
       const field = typeDomain(member.type);
       if (!field || typeof field === "object" && field.kind === "union") return undefined;
       if (member.questionToken) {
-        if (typeof field !== "string") return undefined;
+        if (typeof field === "object" && field.kind === "record" && field.optional?.length) return undefined;
+        if (typeof field === "object" && field.kind !== "record") return undefined;
         optional.push(member.name.text);
       }
       fields[member.name.text] = field;
@@ -565,11 +566,17 @@ interface Z3RecordLayout { name: string; fields: Readonly<Record<string, Propert
 interface Z3SetLayout { name: string; maximum: number; element: PropertyBoundaryKind; universe: number[] }
 interface Z3MapLayout { name: string; maximum: number; key: PropertyBoundaryKind; value: PropertyBoundaryKind; universe: number[] }
 
-function recordLeaves(fields: Readonly<Record<string, PropertyTestDomain>>, prefix = "", optional: readonly string[] = []): Array<{ path: string; domain: PropertyBoundaryKind; optional: boolean }> {
+function recordLeaves(
+  fields: Readonly<Record<string, PropertyTestDomain>>,
+  prefix = "",
+  optional: readonly string[] = [],
+  parentPresence?: string,
+): Array<{ path: string; domain: PropertyBoundaryKind; presence?: string }> {
   return Object.entries(fields).flatMap(([name, domain]) => {
     const path = prefix ? `${prefix}__${name}` : name;
-    if (typeof domain === "string") return [{ path, domain, optional: optional.includes(name) }];
-    return domain.kind === "record" ? recordLeaves(domain.fields, path, domain.optional) : [];
+    const presence = parentPresence ?? (optional.includes(name) ? path : undefined);
+    if (typeof domain === "string") return [{ path, domain, ...(presence ? { presence } : {}) }];
+    return domain.kind === "record" ? recordLeaves(domain.fields, path, domain.optional, presence) : [];
   });
 }
 
@@ -648,8 +655,8 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
     const undefinedAccess = (candidate: ts.Expression, other: ts.Expression): string | undefined => {
       if (!ts.isIdentifier(other) || other.text !== "undefined") return undefined;
       const access = propertyPath(candidate), layout = access && records.get(access.root), path = access?.path.join("__");
-      return layout && path && recordLeaves(layout.fields, "", layout.optional).some((leaf) => leaf.path === path && leaf.optional)
-        ? `${layout.name}__${path}__present` : undefined;
+      const leaf = layout && path ? recordLeaves(layout.fields, "", layout.optional).find((candidate) => candidate.presence === path) : undefined;
+      return leaf?.presence ? `${layout!.name}__${leaf.presence}__present` : undefined;
     };
     const presence = undefinedAccess(node.left, node.right) ?? undefinedAccess(node.right, node.left);
     if (presence && [ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken].includes(node.operatorToken.kind)) return `(not ${presence})`;
@@ -758,9 +765,12 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         if (domain.kind === "bounded-map") return maps.get(name)!.universe.flatMap((_, at) => [
           `(declare-const ${name}__member__${at} Bool)`, `(declare-const ${name}__value__${at} Int)`,
         ]);
-        return domain.kind === "record" ? recordLeaves(domain.fields, "", domain.optional).flatMap(({ path, optional }) => [
-          `(declare-const ${name}__${path} Int)`, ...(optional ? [`(declare-const ${name}__${path}__present Bool)`] : []),
-        ]) : [];
+        if (domain.kind !== "record") return [];
+        const leaves = recordLeaves(domain.fields, "", domain.optional);
+        return [
+          ...leaves.map(({ path }) => `(declare-const ${name}__${path} Int)`),
+          ...[...new Set(leaves.flatMap(({ presence }) => presence ? [presence] : []))].map((presence) => `(declare-const ${name}__${presence}__present Bool)`),
+        ];
       });
       const assertions = [
         ...requirementExpressions.map((requirement) => structuredPropertyToSmt(requirement, layouts, records, sets, maps)),
@@ -791,9 +801,9 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
                 .map((constraint) => `(=> ${name}__member__${at} ${constraint})`)),
             ];
           }
-          return domain.kind === "record" ? recordLeaves(domain.fields, "", domain.optional).flatMap(({ path, domain: fieldDomain, optional }) => {
+          return domain.kind === "record" ? recordLeaves(domain.fields, "", domain.optional).flatMap(({ path, domain: fieldDomain, presence }) => {
             const constraints = scalarDomainConstraint(`${name}__${path}`, fieldDomain);
-            return optional ? constraints.map((constraint) => `(=> ${name}__${path}__present ${constraint})`) : constraints;
+            return presence ? constraints.map((constraint) => `(=> ${name}__${presence}__present ${constraint})`) : constraints;
           }) : [];
         }),
       ];
@@ -828,7 +838,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
           }
           if (domain.kind !== "record") return undefined;
           const leaves = recordLeaves(domain.fields, "", domain.optional);
-          const entries = leaves.filter(({ path, optional }) => !optional || model.eval(context.Bool.const(`${name}__${path}__present`), true).toString() === "true")
+          const entries = leaves.filter(({ presence }) => !presence || model.eval(context.Bool.const(`${name}__${presence}__present`), true).toString() === "true")
             .map(({ path }) => [path, z3Integer(model.eval(context.Int.const(`${name}__${path}`), true).toString())] as const);
           return entries.some(([, value]) => value === undefined) ? undefined : nestedRecordValue(entries as Array<readonly [string, number]>);
         });
@@ -855,10 +865,10 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
             });
           }
           const recordDomain = domains[index] as Extract<PropertyTestDomain, { kind: "record" }>;
-          return recordLeaves(recordDomain.fields, "", recordDomain.optional).flatMap(({ path, optional }) => {
+          return recordLeaves(recordDomain.fields, "", recordDomain.optional).flatMap(({ path, presence }) => {
             const entry = path.split("__").reduce<PropertyValue | undefined>((current, part) => current !== null && typeof current === "object" && !Array.isArray(current) ? current[part] : undefined, value);
             const present = entry !== undefined;
-            return [...(optional ? [`(= ${name}__${path}__present ${present})`] : []), ...(present ? [`(= ${name}__${path} ${entry})`] : [])];
+            return [...(presence ? [`(= ${name}__${presence}__present ${present})`] : []), ...(present ? [`(= ${name}__${path} ${entry})`] : [])];
           });
         });
         blocks.push(`(not (and ${equalities.join(" ")}))`);

@@ -275,6 +275,29 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("uses one shared presence bit for an optional object-valued field", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "optional-object.ts": `
+      type U8 = number
+      /* uneffect: requires config.range === undefined || config.range.min + config.range.max === 300 */
+      /* uneffect: ensures result >= 0 */
+      export function width(config: { range?: { min: U8; max: U8 } }): number {
+        return config.range === undefined ? 0 : config.range.max - config.range.min
+      }
+    ` }, solverCases: 8 });
+    expect(result.boundaries[0]?.generators).toEqual([{ kind: "record", fields: {
+      range: { kind: "record", fields: { min: "U8", max: "U8" } },
+    }, optional: ["range"] }]);
+    const values = (result.boundaries[0]?.generatorTuples ?? []).map(([value]) => value);
+    expect(values).toContainEqual({});
+    expect(values.some((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && value.range !== null && typeof value.range === "object" && !Array.isArray(value.range)
+      && Number(value.range.min) + Number(value.range.max) === 300)).toBe(true);
+    expect(values.every((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && (!Object.hasOwn(value, "range") || value.range !== null && typeof value.range === "object"
+        && !Array.isArray(value.range) && Object.hasOwn(value.range, "min") && Object.hasOwn(value.range, "max")))).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("derives bounded Set domains and materializes them as native Sets", async () => {
     const source = `
       type U8 = number

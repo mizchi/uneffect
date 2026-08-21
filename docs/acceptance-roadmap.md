@@ -69,8 +69,11 @@ SMT membership bits, then materialized as a native `Set` in generated tests.
 `BoundedMap<K, V, N>` uses the same finite key universe plus guarded scalar
 value variables. Counterexamples persist as parallel JSON-safe `keys` and
 `values` columns, while generated tests materialize native `Map` instances;
-`get(k)` also asserts key presence. Optional object-valued fields remain
-unsupported. The generator injects
+`get(k)` also asserts key presence. Optional object-valued fields share one
+parent presence bit across every nested scalar leaf, preventing impossible
+partially-present objects. Optional objects containing independently optional
+children are still rejected rather than assigned ambiguous presence semantics.
+The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the
