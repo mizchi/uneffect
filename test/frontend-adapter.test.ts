@@ -87,6 +87,10 @@ describe("TypeChecker symbol adapter", () => {
       class Box { get value() { return 1 } }
       /* uneffect: effect InvokeUserCode */ function getter(box: Box) { return box.value }
       /* uneffect: effect InvokeUserCode */ function proxy() { const value = new Proxy({}, {}); return value.x }
+      /* uneffect: effect InvokeUserCode */ function assimilate(flag: boolean) {
+        const foreign = { get then() { if (flag) throw new Error("getter"); return (resolve: (value: number) => void) => resolve(1) } }
+        return new Promise<number>((resolve) => resolve(foreign))
+      }
       /* uneffect: effect InvokeUserCode */ function key(value: object, key: object) { return (value as any)[key as any] }
       /* uneffect: effect InvokeUserCode */ function coerce(value: object) { return value + "" }
     `);

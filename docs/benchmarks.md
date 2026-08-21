@@ -232,6 +232,12 @@ scan, and connects outer resolvers to the inner operation or thenable. As with
 the ownership benchmark, Program construction dominates and the small sample is
 an observation rather than a regression threshold.
 
+The conservative dynamic-thenable corpus (one conditional getter, one direct
+Proxy, and one external `PromiseLike`, each adopted by a local Promise) measured
+118.43 ms mean over five cold samples with Vitest 4.1.11 (3.31% relative margin
+of error). This includes symbol resolution, `InvokeUserCode` classification,
+and linking all three adoption states; it adds no production runtime work.
+
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
 one immediate cached value, one sparse `undefined` slot, and one thenable that

@@ -28,8 +28,10 @@ export interface PromiseChainPattern { owner: string; source: string; executor?:
 export interface PromiseThenablePattern {
   owner: string;
   binding: string;
-  thenAccess: "throws" | "callable";
+  thenAccess: "throws" | "callable" | "dynamic";
   invokesUserCode: true;
+  capabilityEffects: ["InvokeUserCode"];
+  provenance: "local" | "proxy" | "external";
   possibleSettlements: Exclude<PromiseExecutorSettlement, "assimilating">[];
   firstCallWins: true;
   mayRemainPending: boolean;
@@ -153,11 +155,15 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
   const thenableBySymbol = new Map<ts.Symbol, number>();
   const pendingAdoptions: { executor: number; symbols: ts.Symbol[] }[] = [];
   const collectThenables = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
-      const property = node.initializer.properties.find((item) => item.name?.getText(source) === "then");
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const literal = ts.isObjectLiteralExpression(node.initializer) ? node.initializer : undefined;
+      const proxy = ts.isNewExpression(node.initializer) && ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "Proxy" && librarySymbol(checker, node.initializer.expression);
+      const property = literal?.properties.find((item) => item.name?.getText(source) === "then");
       let pattern: Omit<PromiseThenablePattern, "owner" | "binding" | "span"> | undefined;
       if (property && ts.isGetAccessorDeclaration(property) && property.body?.statements.length === 1 && ts.isThrowStatement(property.body.statements[0]!)) {
-        pattern = { thenAccess: "throws", invokesUserCode: true, possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+        pattern = { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+      } else if (property && ts.isGetAccessorDeclaration(property)) {
+        pattern = { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
       } else {
         const callback = property && ts.isMethodDeclaration(property) ? property
           : property && ts.isPropertyAssignment(property) && (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) ? property.initializer
@@ -166,10 +172,14 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           const analyzed = analyzeExecutor(callback, checker, source);
           pattern = {
             thenAccess: "callable", invokesUserCode: true,
+            capabilityEffects: ["InvokeUserCode"], provenance: "local",
             possibleSettlements: analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
             firstCallWins: true, mayRemainPending: analyzed.mayRemainPending,
           };
         }
+      }
+      if (!pattern && proxy && checker.getPropertyOfType(checker.getTypeAtLocation(node.initializer), "then")) {
+        pattern = { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
       }
       const symbol = pattern && targetSymbol(checker, node.name);
       if (pattern && symbol) {
@@ -259,7 +269,19 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     if (adopted.length === 1) executors[pending.executor]!.adoptedExecutor = adopted[0];
     if (adopted.includes(pending.executor)) executors[pending.executor]!.selfResolution = true;
     const adoptedThenables = [...new Set(pending.symbols.flatMap((symbol) => {
-      const thenable = thenableBySymbol.get(symbol);
+      if (executorBySymbol.has(symbol)) return [];
+      let thenable = thenableBySymbol.get(symbol);
+      if (thenable === undefined) {
+        const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
+        const type = declaration && checker.getTypeOfSymbolAtLocation(symbol, declaration);
+        if (declaration && type && checker.getPropertyOfType(type, "then")) {
+          thenable = thenables.length;
+          thenableBySymbol.set(symbol, thenable);
+          thenables.push({ owner: "<external>", binding: symbol.getName(), thenAccess: "dynamic", invokesUserCode: true,
+            capabilityEffects: ["InvokeUserCode"], provenance: "external", possibleSettlements: ["fulfilled", "rejected"],
+            firstCallWins: true, mayRemainPending: true, span: { start: declaration.getStart(declaration.getSourceFile()), end: declaration.getEnd() } });
+        }
+      }
       return thenable === undefined ? [] : [thenable];
     }))];
     if (adoptedThenables.length === 1) executors[pending.executor]!.adoptedThenable = adoptedThenables[0];

@@ -306,7 +306,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add CI provisioning for the Java runtime required by Quint's TLC/Apalache verification backend.
 - [ ] Refine thenable assimilation.
   - [x] Model self-resolution rejection, direct local throwing `then` getters, and direct local hostile thenables with first-call-wins settlement.
-  - [ ] Model dynamic/conditional getters, Proxy traps, imported thenables, and their `InvokeUserCode` capability effects.
+  - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
+  - [ ] Resolve returned or dynamically selected thenables, imported call results, nested thenable resolution, and concrete Proxy trap behavior.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.

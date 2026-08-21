@@ -89,10 +89,14 @@ violations.
 
 The model currently abstracts values and rejection reasons. Unknown or
 ambiguous adoption targets still admit either terminal state. Direct local
-throwing getters and callable hostile thenables are modeled, but conditional or
-returned getters, Proxy traps, imported thenables, nested thenable resolution,
-and the capability effects of executing getter/method user code remain
-conservative gaps. Links currently require a direct local constructor binding
+throwing getters and callable hostile thenables are modeled. Conditional local
+getters, direct `Proxy` values with a `then` member, and direct external or
+imported `PromiseLike` symbol identities use a conservative dynamic state that
+permits fulfillment, rejection, or remaining pending. Each such pattern carries
+an explicit `InvokeUserCode` capability effect, and effect inference assigns it
+to the enclosing Promise executor. Returned or dynamically selected thenables,
+imported call results, concrete Proxy trap behavior, and nested thenable
+resolution remain conservative gaps. Links currently require a direct local constructor binding
 and at least one analyzed reaction chain for the adopted executor; aliases,
 parameters, object properties, and named handler summaries remain conservative.
 The model also does not cover handler capability effects or handled/unhandled

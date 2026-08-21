@@ -5,6 +5,7 @@ import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./fronten
 import type { FsBuiltinOperation } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
+import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -202,7 +203,13 @@ function permits(declared: Effect[], actual: Effect): boolean {
 
 export interface EffectAnalysisOptions { mode?: "gradual" | "strict"; requireAnnotations?: boolean }
 
-function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker): EffectAnalysisResult {
+function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.FunctionLikeDeclaration): boolean {
+  if (!model || !node.body) return false;
+  const start = node.body.getStart(node.getSourceFile()), end = node.body.getEnd();
+  return model.executors.some((executor) => executor.adoptedThenable !== undefined && executor.span.start >= start && executor.span.end <= end);
+}
+
+function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker, promiseModel?: PromiseChainModel): EffectAnalysisResult {
   const fileName = source.fileName;
   const functions = new Map<string, FunctionInfo>();
   source.forEachChild((node) => {
@@ -217,6 +224,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     });
   });
   for (const info of functions.values()) {
+    if (mayAssimilateUserCode(promiseModel, info.node)) addEffect(info.direct, capability("InvokeUserCode"));
     const visit = (node: ts.Node, dischargesThrow: boolean): void => {
       if (node !== info.node && ts.isFunctionLike(node)) return;
       if (ts.isTryStatement(node)) {
@@ -299,15 +307,15 @@ export function analyzeEffects(fileName: string, text: string, options: EffectAn
     : original(name, languageVersion, onError, shouldCreateNewSourceFile);
   const program = ts.createProgram([fileName], compilerOptions, host);
   const source = program.getSourceFile(fileName)!;
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker()).diagnostics;
+  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
 }
 
 export function analyzeEffectsInProgram(program: ts.Program, source: ts.SourceFile, options: EffectAnalysisOptions = {}): EffectDiagnostic[] {
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker()).diagnostics;
+  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
 }
 
 export function analyzeEffectSummariesInProgram(program: ts.Program, source: ts.SourceFile, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker());
+  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source));
 }
 
 function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclaration> {
@@ -326,6 +334,7 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
 /** Program-wide path used by the CLI/native frontend: all edges come from TypeChecker identities. */
 export function analyzeProgramEffects(program: ts.Program, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
   const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program), checker = program.getTypeChecker();
+  const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>();
   for (const graphNode of graph.nodes) {
@@ -333,6 +342,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const locals = localBindings(node);
     localsById.set(graphNode.id, locals);
     const source = node.getSourceFile(), effects: Effect[] = [];
+    let promiseModel = promiseModels.get(source);
+    if (!promiseModel) { promiseModel = analyzePromiseChainsInProgram(program, source); promiseModels.set(source, promiseModel); }
+    if (mayAssimilateUserCode(promiseModel, node)) addEffect(effects, capability("InvokeUserCode"));
     direct.set(graphNode.id, effects);
     const nameNode = (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node)) && node.name ? node.name
       : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) ? node.parent.name : undefined;

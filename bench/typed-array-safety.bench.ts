@@ -36,6 +36,7 @@ const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
   "const delivery = sendTelemetryBatch();",
 );
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
+const dynamicThenableSource = `declare const flag: boolean; declare const external: PromiseLike<number>; function run() { const conditional = { get then() { if (flag) throw new Error(); return (resolve: (value: number) => void) => resolve(1) } }; const proxied = new Proxy({ then(resolve: (value: number) => void) { resolve(1) } }, {}); const a = new Promise<number>(resolve => resolve(conditional)); const b = new Promise<number>(resolve => resolve(proxied)); const c = new Promise<number>(resolve => resolve(external)); a.catch(() => 0); b.catch(() => 0); return c.catch(() => 0) }`;
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
 const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
 const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetry-packet.ts", import.meta.url), "utf8");
@@ -134,6 +135,10 @@ describe("typed-array static verification", () => {
 
   bench("link Promise adapter assimilation by symbol", () => {
     analyzePromiseChains("promise-adapter.ts", promiseAdapterSource);
+  }, { time: 500, iterations: 5 });
+
+  bench("classify dynamic and external thenable assimilation", () => {
+    analyzePromiseChains("dynamic-thenables.ts", dynamicThenableSource);
   }, { time: 500, iterations: 5 });
 
   bench("classify mixed Promise combinator elements", () => {

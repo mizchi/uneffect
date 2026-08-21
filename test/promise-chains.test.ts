@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
+import ts from "typescript";
+import { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "../src/promise-chains.js";
 
 const source = `
   function cleanup() {}
@@ -66,8 +67,8 @@ describe("Promise state and reaction chains", () => {
     expect(model.executors[0]).toMatchObject({ possibleSettlements: ["assimilating"], mayRemainPending: false });
     const quint = generatePromiseChainsQuint("assimilation", model);
     expect(quint).toContain("settle_0_assimilating");
-    expect(quint).toContain("assimilate_0_fulfilled");
-    expect(quint).toContain("assimilate_0_rejected");
+    expect(quint).toContain("assimilate_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_0_rejected");
   });
 
   it("links executor assimilation to an analyzed Promise instead of inventing either outcome", () => {
@@ -124,6 +125,49 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("assimilate_2_thenable_1_rejected");
     expect(run(quint).status).toBe(0);
   }, 20_000);
+
+  it("models conditional getters, proxies, and external PromiseLike values as user-code assimilation", () => {
+    const model = analyzePromiseChains("dynamic-thenables.ts", `
+      declare const flag: boolean
+      declare const external: PromiseLike<number>
+      function dynamic() {
+        const conditional = { get then() { if (flag) throw new Error("getter"); return (resolve: (value: number) => void) => resolve(1) } }
+        const proxied = new Proxy({ then(resolve: (value: number) => void) { resolve(1) } }, {})
+        const first = new Promise<number>((resolve) => resolve(conditional))
+        const second = new Promise<number>((resolve) => resolve(proxied))
+        const third = new Promise<number>((resolve) => resolve(external))
+        first.catch(() => 0)
+        second.catch(() => 0)
+        return third.catch(() => 0)
+      }
+    `);
+    expect(model.thenables).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: "conditional", thenAccess: "dynamic", capabilityEffects: ["InvokeUserCode"], possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true }),
+      expect.objectContaining({ binding: "proxied", thenAccess: "dynamic", capabilityEffects: ["InvokeUserCode"] }),
+      expect.objectContaining({ binding: "external", thenAccess: "dynamic", provenance: "external", capabilityEffects: ["InvokeUserCode"] }),
+    ]));
+    expect(model.executors.filter((item) => item.owner === "dynamic").map((item) => item.adoptedThenable)).toEqual([0, 1, 2]);
+    const quint = generatePromiseChainsQuint("dynamic_thenables", model);
+    expect(quint).toContain("thenable_0_fulfilled");
+    expect(quint).toContain("thenable_0_rejected");
+    expect(quint).toContain("thenable_1_fulfilled");
+    expect(quint).toContain("thenable_1_rejected");
+    expect(quint).toContain("thenable_2_fulfilled");
+    expect(quint).toContain("thenable_2_rejected");
+  });
+
+  it("retains imported PromiseLike symbol identity as external user code", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-thenable-"));
+    try {
+      const external = join(directory, "external.ts"), main = join(directory, "main.ts");
+      writeFileSync(external, `export declare const operation: PromiseLike<number>`);
+      writeFileSync(main, `import { operation } from "./external.js"; export function run() { const result = new Promise<number>(resolve => resolve(operation)); return result.catch(() => 0) }`);
+      const program = ts.createProgram([external, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const model = analyzePromiseChainsInProgram(program, program.getSourceFile(main)!);
+      expect(model.thenables).toContainEqual(expect.objectContaining({ binding: "operation", provenance: "external", thenAccess: "dynamic" }));
+      expect(model.executors[0]).toMatchObject({ adoptedThenable: 0 });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
