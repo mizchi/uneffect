@@ -4,7 +4,7 @@ import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArr
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { generateUneffectPropertyTests } from "../src/property-tests.js";
+import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
@@ -217,6 +217,15 @@ describe("typed-array static verification", () => {
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/dependent.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
+
+  bench("derive nonlinear property tuples with Z3", async () => {
+    await generateUneffectPropertyTestsWithZ3({ files: { "src/circle.ts": `
+      import type { Int } from "@mizchi/uneffect"
+      /* uneffect: requires x >= 0 && y >= 0 && x * x + y * y === 625 */
+      /* uneffect: ensures result >= 0 */
+      export function radius(x: Int, y: Int): Int { return x + y }
+    ` }, solverCases: 8 });
+  }, { time: 500, iterations: 1 });
 
   bench("verify an affine contract through external Effect pipe", async () => {
     await verifyUneffectProject({ files: { "src/effect-adapter.ts": `

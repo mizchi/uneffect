@@ -93,6 +93,13 @@ equalities measured 1.2181 ms mean (0.35% relative margin of error), about
 0.076 ms per contract. This includes parsing, boundary hints, relation-graph
 propagation, and generated source; it does not execute the generated properties.
 
+Enumerating up to eight integer models for the nonlinear refinement
+`x*x + y*y === 625` measured 253.45 ms mean over two samples (2.41% relative
+margin of error). This includes Z3 initialization, repeated blocking queries,
+model decoding, and generated source. `solverCases` is both a resource bound
+and a coverage limit; model enumeration does not claim exhaustive coverage of
+an infinite domain.
+
 An application adapter importing `pipe` from the pinned external Effect
 package and proving one affine `requires`/`ensures` contract with Z3 measured
 52.7048 ms mean over ten samples (5.76% relative margin of error). This includes

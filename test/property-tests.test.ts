@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
-import { checkUneffectProperty, generateUneffectPropertyTests } from "../src/property-tests.js";
+import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -139,6 +139,33 @@ describe("property-test generation", () => {
       export function chain(x: Int, y: Int, z: Int): Int { return z }
     ` } });
     expect(result.boundaries[0]?.generatorTuples).toEqual([[10, 11, 13], [11, 12, 14]]);
+  });
+
+  it("derives valid correlated tuples for a nonlinear refinement with Z3", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "circle.ts": `
+      type Int = number
+      /* uneffect: requires x >= 0 && y >= 0 && x * x + y * y === 25 */
+      /* uneffect: ensures result >= 0 */
+      export function radius(x: Int, y: Int): Int { return x + y }
+    ` }, solverCases: 8 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThanOrEqual(2);
+    expect(tuples.every(([x, y]) => Number(x) >= 0 && Number(y) >= 0 && Number(x) ** 2 + Number(y) ** 2 === 25)).toBe(true);
+    expect(result.generatedFiles["circle.uneffect.test.ts"]).toContain(`const refinementTuples = ${JSON.stringify(tuples)}`);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
+  it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
+      type Int = number
+      /* uneffect: requires x > 0 && x < 0 */
+      /* uneffect: ensures result === x */
+      export function impossible(x: Int): Int { return x }
+    ` } });
+    expect(result.boundaries[0]?.generatorTuples).toEqual([]);
+    expect(result.solverDiagnostics).toContainEqual(expect.objectContaining({
+      functionName: "impossible", status: "unsat", message: expect.stringContaining("no scalar model"),
+    }));
   });
 
   it("uses refinement candidates before broad scalar edges", async () => {

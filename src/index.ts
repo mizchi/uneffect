@@ -83,8 +83,8 @@ export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenc
 export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
-export { checkUneffectProperty, generateUneffectPropertyTests } from "./property-tests.js";
-export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
+export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "./property-tests.js";
+export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, GenerateUneffectPropertyTestsWithZ3Options, GenerateUneffectPropertyTestsWithZ3Result, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertySolverDiagnostic, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
 export { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "./model-replay.js";
 export type { ModelCounterexample, ModelCounterexampleStep, ModelRefinementAdapter, ModelReplayResult, ModelScalar, ModelState, ModelValue, ReplayMismatch, ReplayViolation } from "./model-replay.js";
 export { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule } from "./refinement-bindings.js";

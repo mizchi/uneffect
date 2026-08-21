@@ -1,8 +1,9 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { dirname, extname, posix } from "node:path";
 import ts from "typescript";
+import { init as initZ3 } from "z3-solver";
 import { extractAnnotations } from "./annotations.js";
-import { parseLogicExpression } from "./invariant-ir.js";
+import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 import type { LogicExpression } from "./invariant-ir.js";
 
 export type PropertyBoundaryKind = "Int" | "Nat" | "U8" | "U32" | "I32";
@@ -30,7 +31,12 @@ export interface GenerateUneffectPropertyTestsOptions {
   cases?: number;
   seed?: number;
   arrayLengthCap?: number;
+  refinementTuples?: Record<string, readonly (readonly PropertyLiteral[])[]>;
 }
+
+export interface GenerateUneffectPropertyTestsWithZ3Options extends GenerateUneffectPropertyTestsOptions { solverCases?: number }
+export interface PropertySolverDiagnostic { fileName: string; functionName: string; status: "unsat" | "unknown"; message: string }
+export interface GenerateUneffectPropertyTestsWithZ3Result extends GenerateUneffectPropertyTestsResult { solverDiagnostics: PropertySolverDiagnostic[] }
 
 export interface GenerateUneffectPropertyTestsResult {
   generatedFiles: Record<string, string>;
@@ -221,6 +227,8 @@ function generatedName(fileName: string): string {
   return `${fileName.slice(0, -extension.length)}.uneffect.test.ts`;
 }
 
+function boundaryKey(fileName: string, functionName: string): string { return `${fileName}:${functionName}`; }
+
 function importPath(sourceName: string, generatedFile: string): string {
   const relative = posix.relative(dirname(generatedFile), sourceName.replace(/\.[cm]?tsx?$/, ".js"));
   return relative.startsWith(".") ? relative : `./${relative}`;
@@ -376,7 +384,10 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
       }
       const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
       const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
-      const generatorTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
+      const derivedTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
+      const suppliedTuples = options.refinementTuples?.[boundaryKey(fileName, node.name.text)] ?? [];
+      const generatorTuples = [...derivedTuples, ...suppliedTuples.map((tuple) => [...tuple])]
+        .filter((tuple, index, all) => all.findIndex((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple)) === index);
       const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, requires, ensures };
       boundaries.push(boundary); fileBoundaries.push(boundary);
     }
@@ -386,4 +397,77 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
     }
   }
   return { generatedFiles, boundaries: boundaries.map(({ parameters: _, ...boundary }) => boundary), diagnostics };
+}
+
+function z3Integer(value: string): number | undefined {
+  const normalized = /^\(-\s+(\d+)\)$/.exec(value)?.[1];
+  const parsed = Number(normalized === undefined ? value : `-${normalized}`);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function scalarDomainConstraint(name: string, domain: PropertyBoundaryKind): string[] {
+  if (domain === "Nat") return [`(>= ${name} 0)`];
+  if (domain === "U8") return [`(>= ${name} 0)`, `(<= ${name} 255)`];
+  if (domain === "U32") return [`(>= ${name} 0)`, `(<= ${name} 4294967295)`];
+  if (domain === "I32") return [`(>= ${name} -2147483648)`, `(<= ${name} 2147483647)`];
+  return [];
+}
+
+/** Enumerates numeric models for restricted nonlinear `requires` clauses, then emits ordinary standalone tests. */
+export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneffectPropertyTestsWithZ3Options): Promise<GenerateUneffectPropertyTestsWithZ3Result> {
+  const solverCases = options.solverCases ?? 16;
+  if (!Number.isSafeInteger(solverCases) || solverCases < 1) throw new Error(`solverCases must be a positive safe integer, got ${solverCases}`);
+  const initial = generateUneffectPropertyTests(options);
+  const accepted = new Set(initial.boundaries.map((boundary) => boundaryKey(boundary.fileName, boundary.functionName)));
+  const injected: Record<string, PropertyLiteral[][]> = {};
+  const solverDiagnostics: PropertySolverDiagnostic[] = [];
+  const { Context } = await initZ3();
+  const context: any = new Context(`uneffect_property_models_${Date.now()}_${Math.random()}`);
+  for (const [fileName, text] of Object.entries(options.files)) {
+    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    for (const node of source.statements) {
+      if (!ts.isFunctionDeclaration(node) || !node.name || !accepted.has(boundaryKey(fileName, node.name.text))) continue;
+      const comments = text.slice(node.getFullStart(), node.getStart(source));
+      const requires = extractAnnotations(comments, "requires");
+      if (requires.length === 0) continue;
+      const names = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : "");
+      const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
+      if (names.some((name) => !name) || domains.some((domain) => typeof domain !== "string")) continue;
+      const declarations = names.map((name) => `(declare-const ${name} Int)`);
+      const assertions = [
+        ...requires.map((requirement) => logicToSmt(parseLogicExpression(requirement))),
+        ...names.flatMap((name, index) => scalarDomainConstraint(name, domains[index] as PropertyBoundaryKind)),
+      ];
+      const blocks: string[] = [];
+      const tuples: PropertyLiteral[][] = [];
+      let terminal: "unsat" | "unknown" | undefined;
+      for (let count = 0; count < solverCases; count++) {
+        const solver = new context.Solver();
+        solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`), ...blocks.map((value) => `(assert ${value})`)].join("\n"));
+        const status = String(await solver.check());
+        if (status !== "sat") { terminal = status === "unsat" ? "unsat" : "unknown"; break; }
+        const model = solver.model();
+        const tuple = names.map((name) => z3Integer(model.eval(context.Int.const(name), true).toString()));
+        if (tuple.some((value) => value === undefined)) { terminal = "unknown"; break; }
+        const values = tuple as number[];
+        tuples.push(values);
+        blocks.push(`(or ${names.map((name, index) => `(not (= ${name} ${values[index]}))`).join(" ")})`);
+      }
+      tuples.sort((left, right) => {
+        for (let index = 0; index < left.length; index++) {
+          const order = Number(left[index]) - Number(right[index]);
+          if (order !== 0) return order;
+        }
+        return 0;
+      });
+      const key = boundaryKey(fileName, node.name.text);
+      injected[key] = [...(options.refinementTuples?.[key] ?? []).map((tuple) => [...tuple]), ...tuples];
+      if (terminal === "unknown" || terminal === "unsat" && tuples.length === 0) solverDiagnostics.push({
+        fileName, functionName: node.name.text, status: terminal,
+        message: terminal === "unsat" ? "requires has no scalar model" : "Z3 could not enumerate a scalar model",
+      });
+    }
+  }
+  const generated = generateUneffectPropertyTests({ ...options, refinementTuples: { ...options.refinementTuples, ...injected } });
+  return { ...generated, solverDiagnostics };
 }

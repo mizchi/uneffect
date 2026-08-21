@@ -52,8 +52,11 @@ single-variable affine comparisons are normalized syntactically. For affine
 equalities between scalar parameters, such as
 `y === x + 1 && z === y + 2`, the generator propagates boundary hints through
 the relation graph and runs valid correlated tuples before Cartesian samples.
-Nonlinear arithmetic refinements and solver-derived values remain
-unimplemented.
+The opt-in asynchronous Z3 generator also enumerates a caller-bounded number of
+integer models for nonlinear scalar refinements, injects those tuples before
+Cartesian samples, and reports an unsatisfiable precondition rather than
+pretending that it generated coverage. Structured/collection solver inputs and
+constraint-preserving shrinking remain unimplemented.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 
