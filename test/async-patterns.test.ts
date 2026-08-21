@@ -164,6 +164,24 @@ describe("builtin async temporal patterns", () => {
     for (const timer of [0, 1, 2, 3]) expect(quint).toContain(`action external_cancel_timer_${timer}`);
   });
 
+  it("resolves local aggregate and closure bindings when timer handles escape", () => {
+    const model = analyzeAsyncPatterns("bound-timer-escape.ts", `
+      declare function register(value: unknown): void
+      function schedule() {
+        const aggregateHandle = setTimeout(() => {}, 10)
+        const closureHandle = setTimeout(() => {}, 20)
+        const bundle = { nested: [aggregateHandle] }
+        const cancel = () => clearTimeout(closureHandle)
+        register(bundle)
+        return cancel
+      }
+    `);
+    expect(model.timerEscapes).toEqual([
+      expect.objectContaining({ kind: "argument", handle: "aggregateHandle", timer: 0 }),
+      expect.objectContaining({ kind: "closure", handle: "closureHandle", timer: 1 }),
+    ]);
+  });
+
   it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
     const model = analyzeAsyncPatterns("web-loop.ts", `
       function job() {}

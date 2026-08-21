@@ -175,19 +175,29 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (timer === undefined) return;
       timerEscapes.push({ owner: ownerName, kind, handle: resolveHandle(identifier.text), timer, span: { start: node.getStart(source), end: node.getEnd() } });
     };
-    const recordEscapesInValue = (expression: ts.Expression, kind: TimerHandleEscape["kind"], node: ts.Node): void => {
+    const recordEscapesInValue = (expression: ts.Expression, kind: TimerHandleEscape["kind"], node: ts.Node, visited = new Set<ts.Declaration>()): void => {
       while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
       if (ts.isIdentifier(expression)) {
-        recordEscape(expression, kind, node);
+        if (handleTargets.has(expression.text)) recordEscape(expression, kind, node);
+        else {
+          const declaration = resolvedSymbol(expression)?.valueDeclaration;
+          if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+            && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+            && !visited.has(declaration)) {
+            visited.add(declaration);
+            recordEscapesInValue(declaration.initializer, kind, node, visited);
+            visited.delete(declaration);
+          }
+        }
       } else if (ts.isArrayLiteralExpression(expression)) {
         for (const element of expression.elements) if (!ts.isOmittedExpression(element)) {
-          recordEscapesInValue(ts.isSpreadElement(element) ? element.expression : element, kind, node);
+          recordEscapesInValue(ts.isSpreadElement(element) ? element.expression : element, kind, node, visited);
         }
       } else if (ts.isObjectLiteralExpression(expression)) {
         for (const property of expression.properties) {
-          if (ts.isPropertyAssignment(property)) recordEscapesInValue(property.initializer, kind, node);
-          else if (ts.isShorthandPropertyAssignment(property)) recordEscape(property.name, kind, node);
-          else if (ts.isSpreadAssignment(property)) recordEscapesInValue(property.expression, kind, node);
+          if (ts.isPropertyAssignment(property)) recordEscapesInValue(property.initializer, kind, node, visited);
+          else if (ts.isShorthandPropertyAssignment(property)) recordEscapesInValue(property.name, kind, node, visited);
+          else if (ts.isSpreadAssignment(property)) recordEscapesInValue(property.expression, kind, node, visited);
         }
       } else if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
         const seen = new Set<number>();

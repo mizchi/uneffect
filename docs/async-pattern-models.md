@@ -42,8 +42,9 @@ post-cancellation firing and timer-before-microtask firing; Quint finds both.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
-returned-inline-closure escape. It does not yet resolve computed containers or
-imported closure factories. Nested minimum-delay clamping, integer overflow,
+returned-inline-closure escape, including through immutable local bindings. It
+does not yet resolve computed properties or imported closure factories. Nested
+minimum-delay clamping, integer overflow,
 browser background throttling, Node event-loop phases, `process.nextTick`, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite

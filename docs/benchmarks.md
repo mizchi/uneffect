@@ -251,11 +251,11 @@ error). The pass assigns each escape to a concrete timer generation and keeps
 the external-cancellation transition optional. The variance is too high for a
 regression threshold; this is a scaling observation for the 64-handle fixture.
 
-Tracking 64 timer handles nested in one object/array registration boundary
-measured 283.10 ms mean over five cold samples (13.36% relative margin of
-error). This includes recursive aggregate traversal and concrete-generation
-lookup, but excludes Quint generation. It is likewise observational rather than
-a regression threshold.
+Tracking 64 timer handles nested in an object/array behind an immutable local
+registration binding measured 271.08 ms mean over five cold samples (29.18%
+relative margin of error). This includes recursive aggregate traversal,
+TypeChecker binding resolution, and concrete-generation lookup, but excludes
+Quint generation. The high variance makes this observational only.
 
 Analyzing the two-task prioritized scheduler dogfood fixture, including one
 inherited-priority `scheduler.yield` continuation, measured 240.16 ms mean over

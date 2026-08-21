@@ -351,7 +351,7 @@ describe("typed-array static verification", () => {
   bench("track 64 aggregate timer handle escapes", () => {
     const schedules = Array.from({ length: 64 }, (_, index) => `const handle${index} = setTimeout(() => {}, ${index})`).join(";");
     const handles = Array.from({ length: 64 }, (_, index) => `handle${index}`).join(",");
-    analyzeAsyncPatterns("aggregate-timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules}; register({ handles: [${handles}] }) }`);
+    analyzeAsyncPatterns("aggregate-timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules}; const bundle = { handles: [${handles}] }; register(bundle) }`);
   }, { time: 500, iterations: 5 });
 
   bench("analyze prioritized scheduler dogfood", () => {
