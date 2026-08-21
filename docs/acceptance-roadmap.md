@@ -75,6 +75,15 @@ and unused FsRead declarations. This is a meaningful capability constraint over
 an application adapter, but it still does not exercise a Z3 or Quint obligation;
 external verifier timing remains open.
 
+The Effect adapter also contains `increment`, whose restricted Hoare contract
+is lowered through `effect/Function.pipe` and discharged by Z3. The lowering is
+intentionally narrow: `pipe` must be a named import (aliases are retained) from
+the exact `effect/Function` module, and every stage must be an inline unary
+expression callback. A local function merely named `pipe`, block callbacks,
+and arbitrary external calls remain unsupported non-proofs. The positive
+adapter verifies `result > value`; replacing `current + 1` with `current - 1`
+produces a counterexample. This adds no production runtime code.
+
 The first project verification slice exposes Z3 contract artifacts and
 explicit `assert parameter: Schema` Valibot instrumentation in one result.
 These are separate clauses in the same source file: it does not yet claim that

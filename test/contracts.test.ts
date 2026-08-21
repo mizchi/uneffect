@@ -70,4 +70,20 @@ describe("Hoare contract checker", () => {
     `);
     expect(failure).toMatchObject({ clause: "unsupported", message: expect.stringContaining("verified function summary") });
   });
+
+  it("lowers only imported Effect pipe with inline unary expression callbacks", async () => {
+    expect(await verifyContracts("effect-pipe.ts", `
+      import { pipe as flow } from "effect/Function"
+      /* uneffect: requires x >= 0 */
+      /* uneffect: ensures result === x + 2 */
+      function addTwo(x: number) { return flow(x, value => value + 1, value => value + 1) }
+    `)).toEqual([]);
+
+    const [spoofed] = await verifyContracts("spoofed-pipe.ts", `
+      function pipe(value: number, stage: (value: number) => number) { return stage(value) }
+      /* uneffect: ensures result === x + 1 */
+      function addOne(x: number) { return pipe(x, value => value + 1) }
+    `);
+    expect(spoofed).toMatchObject({ clause: "unsupported", message: expect.stringContaining("unsupported invariant expression") });
+  });
 });

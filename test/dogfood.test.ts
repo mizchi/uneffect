@@ -3,6 +3,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeProgramEffects } from "../src/effects.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
+import { verifyUneffectProject } from "../src/project-verification.js";
 
 describe("Uneffect dogfood", () => {
   it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {
@@ -65,5 +66,17 @@ describe("Uneffect dogfood", () => {
       : original(name, languageVersion, onError, fresh);
     const broken = analyzeProgramEffects(ts.createProgram([entry], compilerOptions, host), { requireAnnotations: true });
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({ kind: "missing", functionName: "main", effect: "Console" }));
+  }, 20_000);
+
+  it("verifies a Hoare contract through the external Effect pipe adapter", async () => {
+    const entry = "examples/dogfood/effect-adapter.ts";
+    const source = readFileSync(entry, "utf8");
+    const verified = await verifyUneffectProject({ files: { [entry]: source } });
+    expect(verified.diagnostics).toEqual([]);
+    expect(verified.obligations).toContainEqual(expect.objectContaining({ status: "verified", evidence: "verified" }));
+
+    const broken = await verifyUneffectProject({ files: { [entry]: source.replace("current + 1", "current - 1") } });
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({ functionName: "increment", clause: "ensures" }));
+    expect(broken.obligations).toContainEqual(expect.objectContaining({ status: "counterexample", evidence: "unknown" }));
   }, 20_000);
 });

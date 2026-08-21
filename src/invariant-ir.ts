@@ -37,15 +37,15 @@ function parseTsExpression(text: string): ts.Expression {
   return expression;
 }
 
-function logic(node: ts.Expression): LogicExpression {
-  if (ts.isParenthesizedExpression(node)) return logic(node.expression);
+function logic(node: ts.Expression, pipeBindings: ReadonlySet<string> = new Set()): LogicExpression {
+  if (ts.isParenthesizedExpression(node)) return logic(node.expression, pipeBindings);
   if (ts.isIdentifier(node)) return { kind: "variable", name: node.text };
   if (ts.isNumericLiteral(node)) return node.text.includes(".") ? { kind: "real", value: node.text } : { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
   if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
   if (ts.isPrefixUnaryExpression(node)) {
-    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand) };
-    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand) };
+    if (node.operator === ts.SyntaxKind.ExclamationToken) return { kind: "unary", operator: "not", operand: logic(node.operand, pipeBindings) };
+    if (node.operator === ts.SyntaxKind.MinusToken) return { kind: "unary", operator: "negate", operand: logic(node.operand, pipeBindings) };
   }
   if (ts.isBinaryExpression(node)) {
     const operators = new Map<ts.SyntaxKind, string>([
@@ -57,7 +57,18 @@ function logic(node: ts.Expression): LogicExpression {
       [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
     ]);
     const operator = operators.get(node.operatorToken.kind);
-    if (operator) return { kind: "binary", operator, left: logic(node.left), right: logic(node.right) };
+    if (operator) return { kind: "binary", operator, left: logic(node.left, pipeBindings), right: logic(node.right, pipeBindings) };
+  }
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && pipeBindings.has(node.expression.text) && node.arguments.length >= 2) {
+    let value = logic(node.arguments[0]!, pipeBindings);
+    for (const stage of node.arguments.slice(1)) {
+      if ((!ts.isArrowFunction(stage) && !ts.isFunctionExpression(stage)) || stage.parameters.length !== 1
+        || !ts.isIdentifier(stage.parameters[0]!.name) || ts.isBlock(stage.body)) {
+        throw new Error("verified effect/Function pipe requires inline unary expression callbacks");
+      }
+      value = substitute(logic(stage.body, pipeBindings), new Map([[stage.parameters[0]!.name.text, value]]));
+    }
+    return value;
   }
   throw new Error(`unsupported invariant expression: ${node.getText()}`);
 }
@@ -125,6 +136,14 @@ function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObliga
 
 export function lowerInvariantProgram(fileName: string, text: string): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "effect/Function" || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)) return [];
+    return statement.importClause.namedBindings.elements
+      .filter((element) => (element.propertyName ?? element.name).text === "pipe")
+      .map((element) => element.name.text);
+  }));
   const obligations: InvariantObligation[] = [];
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
@@ -153,14 +172,14 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
         if (ts.isVariableStatement(statement)) {
           for (const path of paths) for (const declaration of statement.declarationList.declarations) {
             if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error("only initialized identifier variables are supported");
-            path.env.set(declaration.name.text, substitute(logic(declaration.initializer), path.env));
+            path.env.set(declaration.name.text, substitute(logic(declaration.initializer, pipeBindings), path.env));
           }
         } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
-          for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right), path.env));
+          for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right, pipeBindings), path.env));
         } else if (ts.isIfStatement(statement)) {
           const forked: PathState[] = [];
           for (const path of paths) {
-            const condition = substitute(logic(statement.expression), path.env);
+            const condition = substitute(logic(statement.expression, pipeBindings), path.env);
             const thenStatements = ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement];
             forked.push(...execute(thenStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
             const elseStatements = statement.elseStatement ? (ts.isBlock(statement.elseStatement) ? statement.elseStatement.statements : [statement.elseStatement]) : [];
@@ -180,7 +199,7 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
               if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
               loopEnv.set(name, variable(fresh));
             }
-            const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression), loopEnv);
+            const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings), loopEnv);
             const bodyStatements = ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement];
             const bodyPaths = execute(bodyStatements, [{ env: new Map(loopEnv), assumptions: [inv, condition] }]);
             for (const bodyPath of bodyPaths) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource);
@@ -190,7 +209,7 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
         } else if (ts.isReturnStatement(statement) && statement.expression) {
           for (const path of paths) {
             const resultEnv = new Map(path.env);
-            resultEnv.set("result", substitute(logic(statement.expression), path.env));
+            resultEnv.set("result", substitute(logic(statement.expression, pipeBindings), path.env));
             for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source);
           }
           paths = [];

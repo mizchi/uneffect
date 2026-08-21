@@ -94,6 +94,14 @@ The corresponding 16-function, two-parameter affine-equality fixture measured
 This includes parsing, boundary hints, tuple derivation, and generated source;
 it does not execute the generated properties.
 
+An application adapter importing `pipe` from the pinned external Effect
+package and proving one affine `requires`/`ensures` contract with Z3 measured
+52.7048 ms mean over ten samples (5.76% relative margin of error). This includes
+source lowering, solver initialization, the proof query, and JavaScript emit;
+it excludes loading the external TypeScript implementation because the
+contract lowerer validates the exact import declaration and inline callback
+syntax rather than constructing a TypeChecker Program.
+
 These cases remain on the purely static path and do not invoke Z3. Solver
 benchmarks must be reported separately because initialization and individual
 proof queries have a different cost profile.

@@ -8,6 +8,7 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
+import { verifyUneffectProject } from "../src/project-verification.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -216,6 +217,15 @@ describe("typed-array static verification", () => {
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/dependent.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
+
+  bench("verify an affine contract through external Effect pipe", async () => {
+    await verifyUneffectProject({ files: { "src/effect-adapter.ts": `
+      import { pipe } from "effect/Function"
+      /* uneffect: requires value >= 0 */
+      /* uneffect: ensures result > value */
+      export function increment(value: number): number { return pipe(value, current => current + 1) }
+    ` } });
+  }, { time: 500, iterations: 1 });
 
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });

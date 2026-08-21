@@ -281,7 +281,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Record controlled-corpus false positives, unknown summaries, annotation density, enforced boundaries, and frontend time.
     - [x] Record external Effect graph source/function counts, unknown summaries, diagnostics, builtin declaration drift, and frontend time.
     - [x] Add a reviewed external Effect `pipe` adapter boundary with a positive Console authority check and missing/unused-effect negative control.
-    - [ ] Include actual verifier time for an external invariant or temporal adapter; capability checking alone does not invoke Z3/Quint.
+    - [x] Verify an affine Hoare contract through an external Effect `pipe` adapter with Z3 and record verifier time.
+    - [ ] Add temporal verification timing for an independently maintained external adapter.
   - [ ] Compare equivalent native Promise, Uneffect, and Effect TS implementations.
     - [x] Compare observable recovered output and an explicit common authority manifest.
     - [ ] Model Effect TS Promise callback ownership and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.
