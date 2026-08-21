@@ -96,6 +96,21 @@ describe("bounded Uint8Array safety", () => {
     ]));
   });
 
+  it("derives integer intervals from strict and reversed requires bounds", async () => {
+    const result = await verifyTypedArraySafety("data-view-interval.ts", `
+      import type { BoundedDataView, Int } from "@mizchi/uneffect"
+      /* uneffect: requires -32768 <= value && value < 32768 */
+      function write(view: BoundedDataView<2>, value: Int) {
+        view.setInt16(0, value, false)
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.statistics.solverQueries).toBe(0);
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      functionName: "write", kind: "dataview-value", result: "verified",
+    }));
+  });
+
   it("checks SHA-256 style shifts, masks, rotations, and u32 normalization", async () => {
     const result = await verifyTypedArraySafety("sha256-words.ts", `
       import type { BoundedUint8Array, BoundedUint32Array, U32 } from "@mizchi/uneffect"

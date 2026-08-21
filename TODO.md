@@ -174,6 +174,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Model direct bounded DataView `setUint8`/`setUint32` byte offsets and value domains, with optional Valibot refinement.
 - [x] Model all standard bounded DataView accessor widths, integer setter domains, and reassignment-free local alias chains.
 - [x] Dogfood DataView obligations against a DNS header codec and retain an off-by-one negative control.
+- [x] Derive safe integer intervals from simple `requires` bounds and expose solver-query statistics; reduce DNS codec verification from six queries to zero.
 - [ ] Model DataView constructors, mutable/interprocedural aliases, exact backing-buffer offsets, resizable ArrayBuffer bounds, and SharedArrayBuffer concurrency.
 - [x] Add `U32`, bounded Uint32Array runtime refinements, and ECMAScript-aware ranges for SHA-256-style shifts, masks, and explicit `>>> 0` normalization.
 - [x] Generate independent bounded-index and dynamic shift-count obligations instead of trusting JavaScript out-of-range or modulo-32 behavior.

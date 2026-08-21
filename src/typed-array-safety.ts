@@ -19,7 +19,8 @@ export interface TypedArrayDiagnostic {
   message: string;
   span: { start: number; end: number };
 }
-export interface TypedArraySafetyResult { obligations: TypedArrayObligation[]; diagnostics: TypedArrayDiagnostic[] }
+export interface TypedArraySafetyStatistics { solverQueries: number }
+export interface TypedArraySafetyResult { obligations: TypedArrayObligation[]; diagnostics: TypedArrayDiagnostic[]; statistics: TypedArraySafetyStatistics }
 export interface TypedArrayProgramSafetyResult extends TypedArraySafetyResult { files: Record<string, TypedArraySafetyResult> }
 
 let z3Initialization: ReturnType<typeof init> | undefined;
@@ -98,6 +99,38 @@ function typedArrayElement(type: string): "u8" | "u32" | undefined {
 interface NumericRange { minimum: number; maximum: number; integer: boolean }
 interface ConstantTable { length: number; domain: "u8" | "u32"; valid: boolean }
 interface TypedArraySemantics { integerCasts: ReadonlyMap<number, "floor" | "ceil" | "round" | "trunc"> }
+
+function contractParameterRanges(parameters: readonly ts.ParameterDeclaration[], source: ts.SourceFile, assumptions: readonly string[]): Map<string, NumericRange> {
+  const ranges = new Map<string, NumericRange>();
+  for (const parameter of parameters) if (ts.isIdentifier(parameter.name)) {
+    const type = parameter.type?.getText(source);
+    if (type === "Int") ranges.set(parameter.name.text, { minimum: Number.MIN_SAFE_INTEGER, maximum: Number.MAX_SAFE_INTEGER, integer: true });
+    if (type === "Nat") ranges.set(parameter.name.text, { minimum: 0, maximum: Number.POSITIVE_INFINITY, integer: true });
+    if (type === "U8") ranges.set(parameter.name.text, { minimum: 0, maximum: 0xff, integer: true });
+    if (type === "U32") ranges.set(parameter.name.text, { minimum: 0, maximum: 0xffff_ffff, integer: true });
+  }
+  const parameterNames = new Set(parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []));
+  const update = (name: string, operator: string, value: number): void => {
+    if (!parameterNames.has(name)) return;
+    const current = ranges.get(name);
+    if (!current?.integer) return;
+    if (operator === "<=") current.maximum = Math.min(current.maximum, value);
+    if (operator === "<") current.maximum = Math.min(current.maximum, value - 1);
+    if (operator === ">=") current.minimum = Math.max(current.minimum, value);
+    if (operator === ">") current.minimum = Math.max(current.minimum, value + 1);
+  };
+  const number = "-?(?:0[xX][0-9a-fA-F]+|[0-9]+)";
+  for (const assumption of assumptions) {
+    for (const match of assumption.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*(<=|<|>=|>)\\s*(${number})\\b`, "g"))) {
+      update(match[1]!, match[2]!, Number(match[3]));
+    }
+    for (const match of assumption.matchAll(new RegExp(`(^|[^\\w$])(${number})\\s*(<=|<|>=|>)\\s*([A-Za-z_$][\\w$]*)\\b`, "g"))) {
+      const reversed = new Map([["<=", ">="], ["<", ">"], [">=", "<="], [">", "<"]]).get(match[3]!);
+      update(match[4]!, reversed!, Number(match[2]));
+    }
+  }
+  return ranges;
+}
 
 function tableReferenceName(expression: ts.Expression): string | undefined {
   if (ts.isIdentifier(expression)) return expression.text;
@@ -282,6 +315,7 @@ function enclosingLoopAssumptions(current: ts.Node, owner: ts.FunctionDeclaratio
 
 async function verifyTypedArraySafetyWithTables(fileName: string, text: string, importedTables: ReadonlyMap<string, ConstantTable>, semantics?: TypedArraySemantics): Promise<TypedArraySafetyResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), obligations: TypedArrayObligation[] = [], diagnostics: TypedArrayDiagnostic[] = [];
+  let solverQueries = 0;
   const constants = collectConstants(source);
   const tables = collectConstantTables(source, constants, importedTables);
   for (const statement of source.statements) if (ts.isVariableStatement(statement) && (statement.declarationList.flags & ts.NodeFlags.Const)) for (const declaration of statement.declarationList.declarations) {
@@ -305,7 +339,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
       .map((assumption) => [...tableLengths].reduce((text, [name, length]) => text.replaceAll(name, length), assumption));
     const bounded = boundedMaximum(node.type, source, constants), parameterTypes = new Map(node.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [[parameter.name.text, parameter.type?.getText(source) ?? ""] as const] : []));
-    const localRanges = new Map<string, NumericRange>();
+    const localRanges = contractParameterRanges(node.parameters, source, assumptions);
     let localChanged = true;
     while (localChanged) {
       localChanged = false;
@@ -424,13 +458,14 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const range = candidate.value ? expressionRange(candidate.value, parameterTypes, constants, tables, localRanges, semantics) : undefined;
       const invalidInteger = candidate.requiresInteger && range?.integer === false;
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
+      if (!invalidInteger && !staticallyInside) solverQueries++;
       const proofResult = invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal);
       const result = proofResult !== "verified" && trustReason ? "trusted" : proofResult, span = { start: candidate.node.getStart(source), end: candidate.node.getEnd() };
       obligations.push({ functionName, kind: candidate.kind, result, goal: candidate.goal, span, ...(result === "trusted" ? { trustReason } : {}) });
       if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : `${candidate.kind} constraint could not be proved` });
     }
   }
-  return { obligations, diagnostics };
+  return { obligations, diagnostics, statistics: { solverQueries } };
 }
 
 export async function verifyTypedArraySafety(fileName: string, text: string): Promise<TypedArraySafetyResult> {
@@ -545,5 +580,10 @@ export async function verifyTypedArraySafetyInProgram(files: Record<string, stri
     }
     results[fileName] = await verifyTypedArraySafetyWithTables(fileName, files[fileName]!, imports);
   }
-  return { files: results, obligations: Object.values(results).flatMap((result) => result.obligations), diagnostics: Object.values(results).flatMap((result) => result.diagnostics) };
+  return {
+    files: results,
+    obligations: Object.values(results).flatMap((result) => result.obligations),
+    diagnostics: Object.values(results).flatMap((result) => result.diagnostics),
+    statistics: { solverQueries: Object.values(results).reduce((total, result) => total + result.statistics.solverQueries, 0) },
+  };
 }

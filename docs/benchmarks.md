@@ -193,10 +193,10 @@ mean over 1,104 samples (0.23% relative margin of error). This exercises the
 source-level range checker and proof-obligation construction; it does not
 construct a TypeChecker Program or model backing-buffer aliasing.
 
-Checking the practical twelve-field DNS header DataView codec, including six
-getter bounds, six setter bounds, and six `Nat <= 65535` setter-domain proofs,
-measured 23.5590 ms mean over 22 samples (1.63% relative margin of error). The
-large difference from literal writes comes from separate Z3 queries for the
-contract-refined setter values. Sharing a solver context or deriving simple
-intervals from `requires` clauses is a concrete optimization target; this
-measurement is not presented as an editor-latency budget.
+The initial practical twelve-field DNS header DataView benchmark measured
+23.5590 ms because it issued six separate Z3 queries for `Nat <= 65535` setter
+domains. After deriving safe integer intervals from simple `requires` bounds,
+the same verification issues zero solver queries and measured 0.4004 ms mean
+over 1,249 samples (2.12% relative margin of error), about 59 times faster.
+Non-interval arithmetic still falls back to Z3 and is reported by the public
+`statistics.solverQueries` counter.

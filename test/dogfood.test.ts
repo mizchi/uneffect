@@ -99,6 +99,7 @@ describe("Uneffect dogfood", () => {
     const source = readFileSync(entry, "utf8");
     const verified = await verifyTypedArraySafety(entry, source);
     expect(verified.diagnostics).toEqual([]);
+    expect(verified.statistics.solverQueries).toBe(0);
     expect(verified.obligations.filter((item) => item.kind === "dataview-bounds")).toHaveLength(12);
     expect(verified.obligations.filter((item) => item.kind === "dataview-value")).toHaveLength(6);
 

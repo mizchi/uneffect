@@ -99,7 +99,7 @@ export type { RefinementBinding, RefinementBindingManifest, RefinementBindingRol
 export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
 export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
-export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult } from "./typed-array-safety.js";
+export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult, TypedArraySafetyStatistics } from "./typed-array-safety.js";
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationVariable } from "./invariant-ir.js";
 export { parseSpec } from "./spec-ir.js";

@@ -38,6 +38,12 @@ and `requires` clauses. It intentionally rejects JavaScript's implicit numeric
 coercion as a proof. Float and BigInt setters currently receive byte-bound
 obligations but no value-domain obligation.
 
+Simple literal `<`, `<=`, `>`, and `>=` bounds on `Int`, `Nat`, `U8`, and `U32`
+parameters are intersected into integer intervals before proof. Both operand
+orders and strict bounds are supported. Obligations outside this deliberately
+small fragment fall back to Z3; callers can observe that cost through
+`result.statistics.solverQueries`.
+
 The DNS header codec in `examples/dogfood/binary-codec.ts` is a practical
 positive and negative control: all twelve 16-bit fields are verified, while a
 one-byte displacement of the final field is rejected. Constructors, mutable
