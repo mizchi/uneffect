@@ -332,10 +332,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Bring Promise/resource IR to Rust/Corsa parity.
   - [ ] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [ ] Add cross-frontend parity fixtures and reject schema drift.
-- [ ] Dogfood against representative external TypeScript programs.
+- [x] Dogfood against representative external TypeScript programs.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
   - [x] Run inference-only frontend compatibility over the pinned external `effect` Function module graph; this does not enforce external boundaries.
-  - [ ] Record false-positive rate, unknown-summary rate, builtin drift, annotation density, verifier time, and frontend time.
+  - [x] Record false-positive rate, unknown-summary rate, builtin drift, annotation density, verifier time, and frontend time in one machine-readable adoption report.
     - [x] Record controlled-corpus false positives, unknown summaries, annotation density, enforced boundaries, and frontend time.
     - [x] Record external Effect graph source/function counts, unknown summaries, diagnostics, builtin declaration drift, and frontend time.
     - [x] Add a reviewed external Effect `pipe` adapter boundary with a positive Console authority check and missing/unused-effect negative control.

@@ -2,6 +2,9 @@ import { performance } from "node:perf_hooks";
 import { Effect } from "effect";
 import ts from "typescript";
 import { analyzeUneffectProject } from "./custom-validators.js";
+import { analyzeProgramEffects } from "./effects.js";
+import { auditBuiltinDeclarationDrift, type DeclarationDriftDiagnostic } from "./frontend-adapter.js";
+import { verifyUneffectProject } from "./project-verification.js";
 
 export type AdoptionFixtureName = "node-cli" | "browser-app" | "worker-app";
 
@@ -45,7 +48,20 @@ export interface AdoptionReport {
   analyzedFunctions: number;
   annotatedFunctions: number;
   enforcedBoundaries: number;
+  builtinDrift: DeclarationDriftDiagnostic[];
+  external: ExternalAdoptionReport;
   diagnostics: Array<{ fixture: AdoptionFixtureName; code: string; functionName: string; effect?: string; message: string; expected: boolean }>;
+}
+
+export interface ExternalAdoptionReport {
+  packageName: "effect";
+  entry: string;
+  sourceFiles: number;
+  analyzedFunctions: number;
+  unknownSummaries: number;
+  diagnostics: Array<{ code: string; functionName: string; message: string }>;
+  builtinDrift: DeclarationDriftDiagnostic[];
+  frontendMilliseconds: number;
 }
 
 function diagnosticKey(value: { code: string; functionName: string }): string { return `${value.code}:${value.functionName}`; }
@@ -53,13 +69,16 @@ function diagnosticMessage(value: { code: string; functionName: string; message?
 
 /** Measures a checked-in representative corpus. Rates are corpus metrics, not estimates for arbitrary applications. */
 export async function measureUneffectAdoption(options: { fixtures: readonly AdoptionFixtureName[] }): Promise<AdoptionReport> {
-  let frontendMilliseconds = 0, analyzedFunctions = 0, annotatedFunctions = 0, unknown = 0, falsePositives = 0, totalDiagnostics = 0;
+  let frontendMilliseconds = 0, verifierMilliseconds = 0, analyzedFunctions = 0, annotatedFunctions = 0, unknown = 0, falsePositives = 0, totalDiagnostics = 0;
   const diagnostics: AdoptionReport["diagnostics"] = [];
   for (const name of options.fixtures) {
     const fixture = fixtures[name];
     if (!fixture) throw new Error(`unknown adoption fixture: ${name}`);
     const started = performance.now(), result = analyzeUneffectProject({ files: fixture.files, mode: "strict" });
     frontendMilliseconds += performance.now() - started;
+    const verifierStarted = performance.now();
+    await verifyUneffectProject({ files: fixture.files });
+    verifierMilliseconds += performance.now() - verifierStarted;
     analyzedFunctions += result.coverage.functions; annotatedFunctions += result.coverage.annotatedFunctions;
     unknown += result.summaries.filter((summary) => summary.evidence === "unknown").length;
     for (const diagnostic of result.diagnostics) {
@@ -68,12 +87,28 @@ export async function measureUneffectAdoption(options: { fixtures: readonly Adop
       totalDiagnostics++; if (!expected) falsePositives++;
     }
   }
+  const entry = "node_modules/effect/src/Function.ts";
+  const externalStarted = performance.now();
+  const program = ts.createProgram([entry], {
+    target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true, skipLibCheck: true,
+  });
+  const externalSources = program.getSourceFiles().filter((source) => source.fileName.includes("/effect/src/"));
+  const externalAnalysis = analyzeProgramEffects(program, { requireAnnotations: false });
+  const builtinDrift = auditBuiltinDeclarationDrift(program);
+  const external: ExternalAdoptionReport = {
+    packageName: "effect", entry, sourceFiles: externalSources.length,
+    analyzedFunctions: externalAnalysis.summaries.length,
+    unknownSummaries: externalAnalysis.summaries.filter((summary) => summary.evidence === "unknown").length,
+    diagnostics: externalAnalysis.diagnostics.map((diagnostic) => ({ code: diagnostic.kind, functionName: diagnostic.functionName, message: diagnostic.message })),
+    builtinDrift, frontendMilliseconds: performance.now() - externalStarted,
+  };
   return {
     falsePositiveRate: totalDiagnostics === 0 ? 0 : falsePositives / Math.max(1, analyzedFunctions),
     unknownSummaryRate: analyzedFunctions === 0 ? 0 : unknown / analyzedFunctions,
     annotationDensity: analyzedFunctions === 0 ? 0 : annotatedFunctions / analyzedFunctions,
-    verifierMilliseconds: 0, frontendMilliseconds, analyzedFunctions, annotatedFunctions,
-    enforcedBoundaries: annotatedFunctions, diagnostics,
+    verifierMilliseconds, frontendMilliseconds, analyzedFunctions, annotatedFunctions,
+    enforcedBoundaries: annotatedFunctions, builtinDrift, external, diagnostics,
   };
 }
 

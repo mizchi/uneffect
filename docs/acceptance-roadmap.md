@@ -71,24 +71,28 @@ execution as constraint-preserving joint candidates.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 
-The adoption KPI is measured over a checked-in controlled corpus. Its reported
+The adoption KPI is measured over a checked-in controlled corpus. The public
+machine-readable report includes false-positive and unknown-summary rates,
+annotation density, enforced boundaries, measured frontend and full project
+verifier time, diagnostics, and builtin declaration drift. Its reported
 false-positive rate is not an estimate for arbitrary external TypeScript
 applications. As a phase-zero external compatibility check, the pinned
 `effect@3.22.1` `Function.ts` import graph loads three implementation source
 files and produces at least 40 inferred summaries with no unknown summaries,
-diagnostics, or builtin declaration drift. A same-machine exploratory run took
-103.16 ms. This is deliberately not reported as proof that Effect is pure or
-correct: inference-only mode has no reviewed external annotation boundary and
-runs no verifier. External adapter boundaries with meaningful constraints and
-verifier timing remain required.
+diagnostics, or builtin declaration drift. The same report records its source
+and function counts and external frontend time. This is deliberately not
+reported as proof that Effect is pure or correct: inference-only mode has no
+reviewed external annotation boundary. Reviewed application adapters below
+provide the constraint-bearing verifier coverage.
 
 A separate checked-in adapter imports `pipe` from the same external package
 and declares `/* uneffect: effect Console */` on its application boundary. The
 boundary verifies with the exact inferred Console authority. A negative control
 replaces it with `FsRead<"$CWD/**">` and must report both the missing Console
 and unused FsRead declarations. This is a meaningful capability constraint over
-an application adapter, but it still does not exercise a Z3 or Quint obligation;
-external verifier timing remains open.
+an application adapter; the following Z3 and Quint adapters add formal backend
+coverage, while the consolidated report measures the full controlled project
+verification pipeline.
 
 The Effect adapter also contains `increment`, whose restricted Hoare contract
 is lowered through `effect/Function.pipe` and discharged by Z3. The lowering is
