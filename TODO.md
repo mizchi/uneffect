@@ -347,6 +347,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Resolve local/imported named function and variable callback bodies by TypeChecker identity and propagate dynamically scheduled microtasks.
   - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
     - [x] Resolve direct property-access and literal computed-property methods; polymorphic receiver dispatch remains dynamic.
+    - [x] Resolve direct local callback factories with exactly one explicit function-valued return.
 - [x] Bring Promise/resource IR to Rust/Corsa parity.
   - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [x] Add cross-frontend parity fixtures and reject schema drift.

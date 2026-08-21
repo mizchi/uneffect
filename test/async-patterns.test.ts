@@ -728,4 +728,17 @@ describe("builtin async temporal patterns", () => {
       { queue: "microtask", enqueuedBy: 0 },
     ]);
   });
+
+  it("resolves a callback returned by a direct local factory", () => {
+    const model = analyzeAsyncPatterns("callback-factory.ts", `
+      function makeCallback() {
+        return () => queueMicrotask(() => undefined)
+      }
+      function start() { setTimeout(makeCallback(), 0) }
+    `);
+    expect(model.timers).toMatchObject([
+      { callback: "makeCallback()", queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
 });

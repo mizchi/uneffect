@@ -132,8 +132,11 @@ remain explicit `unknown` slots.
 Event-loop callback composition resolves named functions, direct methods, and
 literal computed methods such as `worker["run"]` by TypeChecker symbol identity.
 Microtasks scheduled in those method bodies are enqueued only after their
-parent task runs. Polymorphic receivers, values returned from calls, and
-dynamically selected property keys remain unresolved callback boundaries.
+parent task runs. Polymorphic receivers and dynamically selected property keys
+remain unresolved callback boundaries.
+Direct local callback factories are also followed when exactly one explicit
+return resolves to a function expression, arrow, or known callback symbol.
+Factories with multiple possible returns and imported factories remain dynamic.
 
 Conditional APIs can expose the guard explicitly:
 

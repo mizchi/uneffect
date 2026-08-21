@@ -195,9 +195,23 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
-  const resolveCallback = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined => {
+  const resolveCallback = (callback: ts.Expression | undefined, seen = new Set<ts.Symbol>()): ts.FunctionLikeDeclaration | undefined => {
     if (!callback) return undefined;
     if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) return callback;
+    if (ts.isCallExpression(callback)) {
+      const factory = resolvedSymbol(callback.expression);
+      if (!factory || seen.has(factory)) return undefined;
+      seen.add(factory);
+      const returned = factory.declarations?.flatMap((declaration) => {
+        if (!ts.isFunctionLike(declaration) || !("body" in declaration) || !declaration.body) return [];
+        const body = declaration.body as ts.ConciseBody;
+        if (!ts.isBlock(body)) return [body];
+        return body.statements.flatMap((statement) =>
+          ts.isReturnStatement(statement) && statement.expression ? [statement.expression] : []);
+      }) ?? [];
+      if (returned.length !== 1) return undefined;
+      return resolveCallback(returned[0], seen);
+    }
     const location = ts.isPropertyAccessExpression(callback) ? callback.name
       : ts.isElementAccessExpression(callback) && callback.argumentExpression ? callback.argumentExpression
         : callback;
