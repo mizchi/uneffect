@@ -35,6 +35,34 @@ function leaseModel(skewGrace: number): string {
   `;
 }
 
+function collectionLeaseModel(skewGrace: number): string {
+  return `/* uneffect:
+    clock realNow: 1
+    state nodes: Set<int>
+    state activeWriters: Set<int>
+    state owner: int
+    init nodes = Set(1, 2)
+    init activeWriters = Set(1)
+    init owner = 1
+    action takeover: owner' = 2
+    action_when takeover: owner === 1 && realNow + 1 >= 10 + ${skewGrace}
+    action publish: activeWriters' = activeWriters.union(Set(2))
+    action_when publish: owner === 2 && !activeWriters.contains(2)
+    temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
+    temporal singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2))
+  */`;
+}
+
+function runCollectionLease(skewGrace: number) {
+  const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-set-"));
+  const path = join(directory, "lease-set.qnt");
+  const model = generateQuint("node_lease_set", parseSpec("node-lease-set.ts", collectionLeaseModel(skewGrace)).temporal);
+  writeFileSync(path, model);
+  const execution = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=singleWriter", "--max-steps=15", "--max-samples=1000", "--seed=0x7365746c65617365"], { encoding: "utf8", timeout: 30_000 });
+  rmSync(directory, { recursive: true, force: true });
+  return { model, execution };
+}
+
 function checkLeaseModel(skewGrace: number) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-"));
   const path = join(directory, "lease.qnt");
@@ -50,6 +78,16 @@ function checkLeaseModel(skewGrace: number) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("uses finite Set state to model node-indexed writer membership without per-node booleans", () => {
+    const broken = runCollectionLease(0);
+    expect(broken.model).toContain("var activeWriters: Set[int]");
+    expect(broken.model).toContain("activeWriters.forall(node => nodes.contains(node))");
+    expect(broken.execution.status).not.toBe(0);
+    expect(broken.execution.stdout + broken.execution.stderr).toMatch(/violation|counterexample/i);
+
+    const safe = runCollectionLease(1);
+    expect(safe.execution.status, safe.execution.stdout + safe.execution.stderr).toBe(0);
+  });
   it("extracts and replays the same lease violation with bounded Z3", async () => {
     const broken = await findTemporalCounterexampleWithZ3(parseSpec("node-lease.ts", leaseModel(0)).temporal, "singleWriter", { maxSteps: 12 });
     expect(broken.status).toBe("counterexample");

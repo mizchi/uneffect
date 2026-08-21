@@ -38,4 +38,22 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("phase && ready"), symbols)).toThrow(/requires boolean operands/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("missing === 0"), symbols)).toThrow(/unknown temporal symbol `missing`/);
   });
+
+  it("lowers finite Set construction, membership, union, and quantification", () => {
+    const expression = parseTemporalExpression("nodes.forall(node => owners.union(Set(2)).contains(node)) && owners.size() <= 2");
+    const setOfInt = { kind: "set", element: "int" } as const;
+    const symbols = new Map<string, "int" | "bool" | typeof setOfInt>([["nodes", setOfInt], ["owners", setOfInt]]);
+    expect(typeCheckTemporalExpression(expression, symbols)).toBe("bool");
+    expect(generateQuintExpression(expression)).toBe("nodes.forall(node => owners.union(Set(2)).contains(node)) and owners.size() <= 2");
+    expect(generateRuntimeAssertionExpression(expression)).toBe("Array.from(nodes).every(node => new Set([...owners, ...new Set([2])]).has(node)) && owners.size <= 2");
+    const check = new Function("nodes", "owners", `return ${generateRuntimeAssertionExpression(expression)}`);
+    expect(check(new Set([1, 2]), new Set([1]))).toBe(true);
+    expect(check(new Set([1, 3]), new Set([1]))).toBe(false);
+  });
+
+  it("rejects heterogeneous Sets and invalid finite quantifier predicates", () => {
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("Set(1, true)"), new Map())).toThrow(/same element type/);
+    const sets = new Map([["nodes", { kind: "set", element: "int" } as const]]);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("nodes.forall(node => node + 1)"), sets)).toThrow(/boolean predicate/);
+  });
 });

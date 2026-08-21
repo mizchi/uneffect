@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { parseSpec, type TemporalAssignment, type TemporalProperty, type TemporalState } from "./spec-ir.js";
-import { generateQuintExpression, parseTemporalExpression, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
+import { formatTemporalValueType, generateQuintExpression, parseTemporalExpression, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import type { EvidenceStatus } from "./effects.js";
 
 export interface TemporalFunctionSummary {
@@ -90,7 +90,7 @@ export function parseTemporalComposition(fileName: string, text: string, root: s
       for (const postcondition of ensures) {
         const targetType = stateTypes.get(postcondition.target);
         if (!targetType) throw new Error(`${node.name.text}: unknown temporal state \`${postcondition.target}\``);
-        if (targetType !== typeCheckTemporalExpression(postcondition.expressionAst, symbols)) throw new Error(`${node.name.text}: temporal_ensures type mismatch for \`${postcondition.target}\``);
+        if (!temporalTypesCompatible(targetType, typeCheckTemporalExpression(postcondition.expressionAst, symbols))) throw new Error(`${node.name.text}: temporal_ensures type mismatch for \`${postcondition.target}\``);
       }
       const assigned = new Set(ensures.map((item) => item.target));
       if (modifies.some((name) => !assigned.has(name)) || ensures.some((item) => !modifies.includes(item.target))) throw new Error(`${node.name.text}: temporal_ensures targets must exactly match temporal_modifies`);
@@ -148,7 +148,7 @@ export function generateComposedQuint(moduleName: string, composition: TemporalC
   const enforceRequires = options.enforceRequires ?? true;
   const init = new Map(composition.init.map((item) => [item.target, generateQuintExpression(item.expressionAst)]));
   const lines = [`module ${safeName(moduleName)} {`, "  var pc: int", "  var suspended: bool", "  var cancelled: bool"];
-  for (const state of composition.states) lines.push(`  var ${safeName(state.name)}: ${state.type}`);
+  for (const state of composition.states) lines.push(`  var ${safeName(state.name)}: ${formatTemporalValueType(state.type)}`);
   lines.push("", "  action init = all {", `    pc' = ${composition.entry},`, "    suspended' = false,", "    cancelled' = false,");
   for (const state of composition.states) { const value = init.get(state.name); if (value === undefined) throw new Error(`missing init for ${state.name}`); lines.push(`    ${state.name}' = ${value},`); }
   lines.push("  }");

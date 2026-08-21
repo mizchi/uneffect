@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 
 const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
@@ -34,6 +34,33 @@ const source = `
 `;
 
 describe("spec IR and generated verifier programs", () => {
+  it("parses and verifies finite Set state without flattening node identities", async () => {
+    const temporal = parseSpec("sets.ts", `/* uneffect:
+      state nodes: Set<int>
+      state owners: Set<int>
+      init nodes = Set(1, 2)
+      init owners = Set()
+      action acquireOne: owners' = owners.union(Set(1))
+      temporal ownersAreNodes: owners.forall(node => nodes.contains(node))
+    */`).temporal;
+    expect(temporal.states).toEqual([
+      { name: "nodes", type: { kind: "set", element: "int" } },
+      { name: "owners", type: { kind: "set", element: "int" } },
+    ]);
+    const quint = generateQuint("finite_sets", temporal);
+    expect(quint).toContain("var owners: Set[int]");
+    expect(quint).toContain("owners' = owners.union(Set(1))");
+    expect(quint).toContain("owners.forall(node => nodes.contains(node))");
+    expect(lintTemporalSpec(temporal)).toEqual([]);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-finite-sets-"));
+    const path = join(directory, "sets.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=ownersAreNodes", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    await expect(findTemporalCounterexampleWithZ3(temporal, "ownersAreNodes")).resolves.toEqual({ status: "unknown", depth: 0 });
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({ code: "unsupported-backend-domain", backend: "z3" }));
+  });
   it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
     const temporal = parseSpec("counter.ts", `/* uneffect:
       state value: int

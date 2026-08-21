@@ -140,6 +140,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 - [x] Encode a bounded two-node Node Lease clock-skew model and lock both the vulnerable counterexample and skew-grace candidate with Quint tests.
 - [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening.
+  - [x] Add `Set<int>`/`Set<bool>`, `Set(...)`, immutable `union`, `contains`, `size`, and finite `forall` to the neutral expression AST, Quint lowering, and runtime assertion lowering.
+  - [x] Keep collection models explicit `unknown`/unsupported in scalar-only Z3 and TLC replay paths instead of coercing them to booleans.
+  - [x] Replace per-node writer-presence fields with a finite Set in a Node Lease positive/negative Quint model.
+  - [ ] Add Map and record state, nested collection types, collection-valued TLC replay, and a solver representation or finite expansion for Z3.
 - [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
 - [x] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
   - [x] Replay a Quint-produced Node Lease trace through a typed runtime adapter and reproduce `singleWriter` at the same step.

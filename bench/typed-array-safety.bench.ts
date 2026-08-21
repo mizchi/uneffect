@@ -249,6 +249,19 @@ describe("typed-array static verification", () => {
     await findTemporalCounterexampleWithZ3(temporal, "singleWriter", { maxSteps: 12 });
   }, { time: 500, iterations: 1 });
 
+  bench("lower a node-indexed Set lease model to Quint", () => {
+    const temporal = parseSpec("lease-set.ts", `/* uneffect:
+      clock realNow: 1
+      state nodes: Set<int>
+      state activeWriters: Set<int>
+      init nodes = Set(1, 2)
+      init activeWriters = Set(1)
+      action publish: activeWriters' = activeWriters.union(Set(2))
+      temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
+    */`).temporal;
+    generateQuint("lease_set", temporal);
+  }, { time: 500, iterations: 20 });
+
   bench("generate 16 scalar contract property tests", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       /* uneffect: requires denominator > 0 */

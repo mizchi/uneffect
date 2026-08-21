@@ -1,5 +1,5 @@
 import type { InvariantSpec, TemporalSpec } from "./spec-ir.js";
-import { generateQuintExpression } from "./temporal-expressions.js";
+import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
 import { generateObligationSmt, obligationFromSpec } from "./invariant-ir.js";
 
 export function generateSmtLib(spec: InvariantSpec): string {
@@ -19,7 +19,7 @@ export function generateQuint(moduleName: string, spec: TemporalSpec): string {
   for (const state of spec.states) if (!init.has(state.name)) throw new Error(`missing init for ${state.name}`);
 
   const lines = [`module ${safeName(moduleName)} {`];
-  for (const state of spec.states) lines.push(`  var ${safeName(state.name)}: ${state.type}`);
+  for (const state of spec.states) lines.push(`  var ${safeName(state.name)}: ${formatTemporalValueType(state.type)}`);
   lines.push("", "  action init = all {");
   for (const state of spec.states) lines.push(`    ${state.name}' = ${init.get(state.name)},`);
   lines.push("  }");

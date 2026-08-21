@@ -3,7 +3,7 @@ import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
-import { generateQuintExpression } from "./temporal-expressions.js";
+import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
 
 export interface TimerPattern {
   owner: string;
@@ -628,7 +628,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   ].sort((left, right) => left.span - right.span);
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
   const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, `  var ${phase}: int`, "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var callback_precondition_broken: bool", "  var next_microtask_ticket: int"];
-  temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${state.type}`));
+  temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
   model.timers.forEach((_, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
   abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));

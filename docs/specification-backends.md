@@ -77,6 +77,17 @@ It covers async invalidation, lifecycle protocols, retries, cancellation, Worker
 
 The prototype generates a Quint module containing variables, an `init` action, named actions with explicit or generated stuttering assignments, a nondeterministic `step`, and named safety predicates. Quint simulation supplies fast counterexamples. Exhaustive verification remains a separate Apalache/TLC CI tier.
 
+The first collection-valued slice accepts `state nodes: Set<int>` (and
+`Set<bool>`), with TypeScript-shaped expressions `Set(1, 2)`,
+`left.union(right)`, `set.contains(value)`, `set.size()`, and
+`set.forall(value => predicate)`. The same expression AST lowers to Quint and
+to optional JavaScript assertions (`Set`, `has`, and `Array.from(...).every`).
+Sets must be homogeneous and quantified predicates must be boolean. Collection
+state is currently a Quint/runtime feature: scalar-only Z3 lint and bounded
+counterexample extraction return an explicit unsupported/`unknown` result, and
+TLC scalar trace replay rejects it. Map, records, nested collections, and
+collection trace normalization remain unimplemented.
+
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches
 depths in ascending order. A satisfiable negated property therefore yields the

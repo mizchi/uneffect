@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -27,6 +27,7 @@ function temporalToSmt(expression: TemporalExpression, resolveName: (name: strin
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
   if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand, resolveName)})` : `(- ${temporalToSmt(expression.operand, resolveName)})`;
+  if (expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by the Z3 lint backend");
   if (expression.operator === "neq") return `(not (= ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)}))`;
   return `(${smtBinary[expression.operator]} ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)})`;
 }
@@ -84,6 +85,7 @@ export async function findTemporalCounterexampleWithZ3(
   if (!property) throw new Error(`unknown temporal property: ${propertyName}`);
   const maxSteps = options.maxSteps ?? 8;
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
+  if (spec.states.some((state) => typeof state.type !== "string")) return { status: "unknown", depth: 0 };
   const at = (name: string, step: number) => `${name}__${step}`;
   const actionAt = (step: number) => `uneffect_action__${step}`;
   const stateDeclarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${state.type === "int" ? "Int" : "Bool"})`)).flat();
@@ -117,6 +119,7 @@ export async function findTemporalCounterexampleWithZ3(
     if (status !== "sat") continue;
     const model = solver.model();
     const states: ModelState[] = Array.from({ length: depth + 1 }, (_, step) => Object.fromEntries(spec.states.map((state) => {
+      if (typeof state.type !== "string") throw new Error("collection temporal states are not supported by bounded Z3 reachability");
       const expression = state.type === "int" ? context.Int.const(at(state.name, step)) : context.Bool.const(at(state.name, step));
       return [state.name, parseZ3TemporalValue(model.eval(expression, true).toString(), state.type)];
     })));
@@ -139,6 +142,10 @@ export async function findTemporalCounterexampleWithZ3(
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
 export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
+  if (spec.states.some((state) => typeof state.type !== "string")) return [{
+    code: "unsupported-backend-domain", name: "<model>", backend: "z3",
+    message: "bounded Z3 reachability does not support collection-valued temporal state; use Quint",
+  }];
   const maxSteps = options.maxSteps ?? 8;
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
   const at = (name: string, step: number) => `${name}__${step}`;
@@ -235,6 +242,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
 
 /** Semantic lint over all typed states. It does not claim reachable-state or progress analysis. */
 export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLintDiagnostic[]> {
+  if (spec.states.some((state) => typeof state.type !== "string")) return [{
+    code: "unsupported-backend-domain", name: "<model>", backend: "z3",
+    message: "Z3 semantic lint does not support collection-valued temporal state; use Quint",
+  }];
   const diagnostics: SpecLintDiagnostic[] = [];
   const initConstraints = spec.init.map((item) => `(= ${item.target} ${temporalToSmt(item.expressionAst)})`);
   if (await check(spec, initConstraints) === "unsat") diagnostics.push({
@@ -297,10 +308,16 @@ function constantBoolean(expression: TemporalExpression): boolean | undefined {
   return undefined;
 }
 
-function referencedNames(expression: TemporalExpression, names = new Set<string>()): Set<string> {
-  if (expression.kind === "name") names.add(expression.name);
-  else if (expression.kind === "unary") referencedNames(expression.operand, names);
-  else if (expression.kind === "binary") { referencedNames(expression.left, names); referencedNames(expression.right, names); }
+function referencedNames(expression: TemporalExpression, names = new Set<string>(), bound = new Set<string>()): Set<string> {
+  if (expression.kind === "name" && !bound.has(expression.name)) names.add(expression.name);
+  else if (expression.kind === "unary") referencedNames(expression.operand, names, bound);
+  else if (expression.kind === "binary") { referencedNames(expression.left, names, bound); referencedNames(expression.right, names, bound); }
+  else if (expression.kind === "lambda") referencedNames(expression.body, names, new Set([...bound, expression.parameter]));
+  else if (expression.kind === "call") expression.arguments.forEach((argument) => referencedNames(argument, names, bound));
+  else if (expression.kind === "method") {
+    referencedNames(expression.receiver, names, bound);
+    expression.arguments.forEach((argument) => referencedNames(argument, names, bound));
+  }
   return names;
 }
 

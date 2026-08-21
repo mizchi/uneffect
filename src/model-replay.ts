@@ -128,6 +128,7 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
     if (expression.operator === "not") return !operand;
     return -Number(operand);
   }
+  if (expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by scalar trace replay");
   const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
   switch (expression.operator) {
     case "eq": return left === right;
@@ -184,6 +185,7 @@ function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, 
 
 /** Parses TLC's scalar console trace and recovers action names from the neutral temporal IR. */
 export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHash: string): ModelCounterexample {
+  if (spec.states.some((state) => typeof state.type !== "string")) throw new Error("collection-valued TLC trace replay is not implemented");
   if (!/(?:Invariant.+violated|Temporal properties were violated)/i.test(text)) throw new Error("TLC output does not report a property violation");
   const headers = [...text.matchAll(/^State\s+(\d+):\s*<[^\n]*>\s*$/gm)];
   if (headers.length === 0) throw new Error("TLC counterexample has no states");
@@ -194,7 +196,7 @@ export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHa
     return Object.fromEntries(spec.states.map((state) => {
       const raw = assignments.get(state.name);
       if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}; parsed assignments: ${[...assignments.keys()].join(", ") || "<none>"}; block: ${JSON.stringify(block.trim())}`);
-      return [state.name, parseTlcScalar(raw, state.type, state.name)];
+      return [state.name, parseTlcScalar(raw, state.type as "int" | "bool", state.name)];
     }));
   });
   const steps = states.slice(1).map((after, index): ModelCounterexampleStep => ({
