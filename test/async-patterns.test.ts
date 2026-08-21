@@ -702,4 +702,30 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toContain("action fail_iterator_0");
     expect(quint).toContain("action fail_iterator_1");
   });
+
+  it("resolves a direct method callback and its dynamically enqueued microtasks", () => {
+    const model = analyzeAsyncPatterns("method-callback.ts", `
+      const worker = {
+        run() { queueMicrotask(() => console.log("microtask")) }
+      }
+      function start() { setTimeout(worker.run, 0) }
+    `);
+    expect(model.timers).toMatchObject([
+      { callback: "worker.run", queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
+  it("resolves a literal computed method callback", () => {
+    const model = analyzeAsyncPatterns("computed-method-callback.ts", `
+      const worker = {
+        run() { queueMicrotask(() => undefined) }
+      }
+      function start() { setTimeout(worker["run"], 0) }
+    `);
+    expect(model.timers).toMatchObject([
+      { callback: 'worker["run"]', queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
 });

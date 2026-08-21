@@ -198,11 +198,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const resolveCallback = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined => {
     if (!callback) return undefined;
     if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) return callback;
-    if (!ts.isIdentifier(callback)) return undefined;
-    const original = checker.getSymbolAtLocation(callback);
+    const location = ts.isPropertyAccessExpression(callback) ? callback.name
+      : ts.isElementAccessExpression(callback) && callback.argumentExpression ? callback.argumentExpression
+        : callback;
+    if (!ts.isIdentifier(callback) && !ts.isPropertyAccessExpression(callback) && !ts.isElementAccessExpression(callback)) return undefined;
+    const original = checker.getSymbolAtLocation(location);
     const symbol = original && (original.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(original) : original;
     for (const declaration of symbol?.declarations ?? []) {
       if (ts.isFunctionDeclaration(declaration) && declaration.body) return declaration;
+      if (ts.isMethodDeclaration(declaration) && declaration.body) return declaration;
       if (ts.isVariableDeclaration(declaration) && declaration.initializer
         && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) return declaration.initializer;
     }

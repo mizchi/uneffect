@@ -129,6 +129,12 @@ forwarding, and arbitrary trap code can invoke user code or return any value.
 aliases are followed by symbol identity; mutable, imported, or computed reasons
 remain explicit `unknown` slots.
 
+Event-loop callback composition resolves named functions, direct methods, and
+literal computed methods such as `worker["run"]` by TypeChecker symbol identity.
+Microtasks scheduled in those method bodies are enqueued only after their
+parent task runs. Polymorphic receivers, values returned from calls, and
+dynamically selected property keys remain unresolved callback boundaries.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts
