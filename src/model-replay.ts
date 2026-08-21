@@ -193,7 +193,7 @@ export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHa
     const assignments = new Map([...block.matchAll(/^\/\\\s+([A-Za-z_$][\w$]*)\s*=\s*([^\n\r]+)$/gm)].map((match) => [match[1]!, match[2]!]));
     return Object.fromEntries(spec.states.map((state) => {
       const raw = assignments.get(state.name);
-      if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}`);
+      if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}; parsed assignments: ${[...assignments.keys()].join(", ") || "<none>"}; block: ${JSON.stringify(block.trim())}`);
       return [state.name, parseTlcScalar(raw, state.type, state.name)];
     }));
   });
