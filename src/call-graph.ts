@@ -41,7 +41,10 @@ function kindOf(node: ts.FunctionLikeDeclaration): CallableKind {
 function stableId(node: ts.FunctionLikeDeclaration): string { return `${node.getSourceFile().fileName}:${node.getStart()}`; }
 function isFunctionParameter(checker: ts.TypeChecker, parameter: ts.ParameterDeclaration): boolean { return checker.getTypeAtLocation(parameter).getCallSignatures().length > 0; }
 
-function builtinTiming(call: ts.CallExpression): InvocationTiming {
+function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker): InvocationTiming {
+  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+  const symbol = resolvedSymbol(checker, lookup);
+  if (symbol?.name === "catchAll" && symbol.declarations?.some((declaration) => declaration.getSourceFile().fileName.includes("/node_modules/effect/"))) return "deferred";
   const text = call.expression.getText();
   if (["setTimeout", "setInterval", "queueMicrotask"].includes(text)) return "deferred";
   if (text === "Array.from" || text === "JSON.stringify") return "inline";
@@ -94,7 +97,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
               ? previous ?? "unknown"
               : targetDeclaration
                 ? byId.get(stableId(targetDeclaration))?.effectParameters.find((item) => item.index === index)?.timing ?? "unknown"
-                : builtinTiming(node);
+                : builtinTiming(node, checker);
             const joined: InvocationTiming = previous === "unknown" || timing === "unknown" ? "unknown" : previous === "deferred" || timing === "deferred" ? "deferred" : "inline";
             timings.set(parameterIndex, joined);
             edges.push({ caller, kind: "callback-argument", unresolvedName: argument.getText(), timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
@@ -103,7 +106,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
             : ts.isIdentifier(argument) ? symbolNodes.get(resolvedSymbol(checker, argument)!) : undefined;
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
-            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node);
+            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node, checker);
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
           }
         });

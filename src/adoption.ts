@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { Effect } from "effect";
+import ts from "typescript";
 import { analyzeUneffectProject } from "./custom-validators.js";
 
 export type AdoptionFixtureName = "node-cli" | "browser-app" | "worker-app";
@@ -82,7 +83,76 @@ export interface EffectImplementationComparison {
   sameDeclaredAuthority: boolean;
   results: Record<"native" | "uneffect" | "effect-ts", string>;
   authority: { required: string[]; uneffectDiagnostics: string[]; effectTsEnvironment: string[] };
+  effectTsRecovery: EffectRecoveryAnalysis;
   limitations: string[];
+}
+
+export interface EffectFailureOwnership {
+  source: { start: number; end: number };
+  owner?: "catchAll";
+  ownerSpan?: { start: number; end: number };
+  status: "recovered" | "unhandled";
+}
+
+export interface EffectRecoveryAnalysis {
+  tryPromiseCallbacks: number;
+  catchAllCallbacks: number;
+  unhandledFailures: number;
+  failures: EffectFailureOwnership[];
+}
+
+/** Resolves Effect.tryPromise/catchAll by package symbol identity and assigns failure ownership within pipe chains. */
+export function analyzeEffectRecovery(fileName: string, text: string): EffectRecoveryAnalysis {
+  const options: ts.CompilerOptions = {
+    target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
+    lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true, skipLibCheck: true,
+  };
+  const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, languageVersion, onError, fresh) => name === fileName
+    ? ts.createSourceFile(fileName, text, languageVersion, true, ts.ScriptKind.TS)
+    : original(name, languageVersion, onError, fresh);
+  const program = ts.createProgram([fileName], options, host), checker = program.getTypeChecker(), source = program.getSourceFile(fileName)!;
+  const symbolAt = (node: ts.Node): ts.Symbol | undefined => {
+    const symbol = checker.getSymbolAtLocation(node);
+    return symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
+  };
+  const effectOperation = (call: ts.CallExpression): "tryPromise" | "catchAll" | "pipe" | undefined => {
+    const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+    const symbol = symbolAt(lookup);
+    const name = symbol?.name;
+    if (name !== "tryPromise" && name !== "catchAll" && name !== "pipe") return undefined;
+    const fromEffect = symbol?.declarations?.some((declaration) => declaration.getSourceFile().fileName.includes("/node_modules/effect/")) ?? false;
+    return fromEffect ? name : undefined;
+  };
+  const tries: ts.CallExpression[] = [], catches: ts.CallExpression[] = [], pipelines: ts.Expression[][] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const operation = effectOperation(node);
+      if (operation === "tryPromise") tries.push(node);
+      if (operation === "catchAll") catches.push(node);
+      if (operation === "pipe") pipelines.push([...node.arguments]);
+      if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "pipe") pipelines.push([node.expression.expression, ...node.arguments]);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  const contains = (container: ts.Node, target: ts.Node): boolean => container.pos <= target.pos && target.end <= container.end;
+  const failures = tries.map((attempt): EffectFailureOwnership => {
+    for (const stages of pipelines) {
+      const sourceIndex = stages.findIndex((stage) => contains(stage, attempt));
+      if (sourceIndex < 0) continue;
+      const owner = stages.slice(sourceIndex + 1).flatMap((stage) => catches.filter((candidate) => contains(stage, candidate)))[0];
+      if (owner) return {
+        source: { start: attempt.getStart(source), end: attempt.getEnd() }, owner: "catchAll",
+        ownerSpan: { start: owner.getStart(source), end: owner.getEnd() }, status: "recovered",
+      };
+    }
+    return { source: { start: attempt.getStart(source), end: attempt.getEnd() }, status: "unhandled" };
+  });
+  return {
+    tryPromiseCallbacks: tries.length, catchAllCallbacks: catches.length,
+    unhandledFailures: failures.filter((failure) => failure.status === "unhandled").length, failures,
+  };
 }
 
 /** Executable comparison fixture; Effect TS authority is an explicit environment manifest, not inferred from its type. */
@@ -96,7 +166,18 @@ export async function compareEffectImplementations(options: { fixture: "fetch-an
   `;
   const analyzed = analyzeUneffectProject({ files: { "src/load.ts": uneffectSource }, mode: "strict" });
   const uneffect = native;
-  const effectTs = (): Promise<string> => Effect.runPromise(Effect.succeed("recovered"));
+  const effectSource = `
+    import { Effect, pipe } from "effect"
+    declare const fetcher: () => Promise<string>
+    export const load = pipe(
+      Effect.tryPromise({ try: fetcher, catch: error => error }),
+      Effect.catchAll(() => Effect.succeed("recovered")),
+    )
+  `;
+  const effectTsRecovery = analyzeEffectRecovery("effect-comparison.ts", effectSource);
+  const effectTs = (): Promise<string> => Effect.runPromise(Effect.tryPromise({ try: fetcher, catch: (error) => error }).pipe(
+    Effect.catchAll(() => Effect.succeed("recovered")),
+  ));
   const [nativeResult, uneffectResult, effectResult] = await Promise.all([native(), uneffect(), effectTs()]);
   const required = ["Fetch<GET, \"https://api.example.com/data\">", "Net<\"api.example.com:443\">"];
   const effectTsEnvironment = [...required];
@@ -106,6 +187,7 @@ export async function compareEffectImplementations(options: { fixture: "fetch-an
     sameDeclaredAuthority: analyzed.diagnostics.length === 0 && required.every((item) => effectTsEnvironment.includes(item)),
     results: { native: nativeResult, uneffect: uneffectResult, "effect-ts": effectResult },
     authority: { required, uneffectDiagnostics: analyzed.diagnostics.map(diagnosticMessage), effectTsEnvironment },
-    limitations: ["Effect TS executes the normalized recovered outcome; Uneffect does not yet model Effect.catchAll callback timing or infer its authority environment."],
+    effectTsRecovery,
+    limitations: ["Effect TS service authority remains an explicit comparison manifest rather than an inference from its environment type."],
   };
 }

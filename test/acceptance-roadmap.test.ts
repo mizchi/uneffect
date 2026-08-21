@@ -351,10 +351,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
 
   it("compares native Promise, Uneffect annotations, and Effect TS against the same observable contract", async () => {
     const compareImplementations = futureApi("compareEffectImplementations");
-    const result = await compareImplementations({ fixture: "fetch-and-recover" }) as { implementations: string[]; sameResult: boolean; sameDeclaredAuthority: boolean };
+    const result = await compareImplementations({ fixture: "fetch-and-recover" }) as { implementations: string[]; sameResult: boolean; sameDeclaredAuthority: boolean; effectTsRecovery: { unhandledFailures: number }; limitations: string[] };
     expect(result.implementations).toEqual(["native", "uneffect", "effect-ts"]);
     expect(result.sameResult).toBe(true);
     expect(result.sameDeclaredAuthority).toBe(true);
+    expect(result.effectTsRecovery.unhandledFailures).toBe(0);
+    expect(result.limitations).not.toContain(expect.stringContaining("catchAll"));
   });
 
   it("dogfoods representative projects and reports adoption and verifier KPIs", async () => {

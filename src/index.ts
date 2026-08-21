@@ -110,8 +110,8 @@ export { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounter
 export type { ModelCounterexample, ModelCounterexampleStep, ModelRefinementAdapter, ModelReplayResult, ModelScalar, ModelState, ModelValue, ReplayMismatch, ReplayViolation } from "./model-replay.js";
 export { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule } from "./refinement-bindings.js";
 export type { RefinementBinding, RefinementBindingManifest, RefinementBindingRole } from "./refinement-bindings.js";
-export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
-export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
+export { analyzeEffectRecovery, compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
+export type { AdoptionFixtureName, AdoptionReport, EffectFailureOwnership, EffectImplementationComparison, EffectRecoveryAnalysis } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
 export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult, TypedArraySafetyStatistics } from "./typed-array-safety.js";
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";

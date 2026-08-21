@@ -341,9 +341,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add a reviewed external Effect `pipe` adapter boundary with a positive Console authority check and missing/unused-effect negative control.
     - [x] Verify an affine Hoare contract through an external Effect `pipe` adapter with Z3 and record verifier time.
     - [x] Verify Web task/microtask queue safety for an external Effect `pipe` timer adapter with Quint and record verifier time.
-  - [ ] Compare equivalent native Promise, Uneffect, and Effect TS implementations.
+  - [x] Compare equivalent native Promise, Uneffect, and Effect TS implementations.
     - [x] Compare observable recovered output and an explicit common authority manifest.
-    - [ ] Model Effect TS Promise callback ownership and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.
+    - [x] Model Effect TS `tryPromise` failure ownership by package symbol identity and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.
 
 ## Current validation commands
 

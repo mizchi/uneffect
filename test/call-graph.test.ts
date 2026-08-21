@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -69,6 +69,22 @@ describe("multi-file call graph and effect polymorphism", () => {
     const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
+
+  it("classifies Effect.catchAll handlers as deferred by package symbol identity", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-effect-callback-"));
+    const source = join(directory, "effect.ts");
+    writeFileSync(source, `
+      import { Effect } from "effect"
+      export function recovered() { return Effect.catchAll(() => Effect.succeed("ok")) }
+      const LocalEffect = { catchAll: (callback: () => unknown) => callback }
+      export function unknown() { return LocalEffect.catchAll(() => "ok") }
+    `);
+    const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const graph = buildProgramCallGraph(program);
+    rmSync(directory, { recursive: true, force: true });
+    expect(graph.edges).toContainEqual(expect.objectContaining({ kind: "callback-argument", timing: "deferred" }));
+    expect(graph.edges).toContainEqual(expect.objectContaining({ kind: "callback-argument", timing: "unknown" }));
   });
 
   it("does not degrade an inline callback when recursive calls forward it", () => {

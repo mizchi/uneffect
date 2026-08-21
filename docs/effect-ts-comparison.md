@@ -55,9 +55,13 @@ For representative programs:
 
 This comparison should remain adversarial: it is evidence for the boundary of Uneffect, not an argument that either system subsumes the other.
 
-The executable `fetch-and-recover` acceptance fixture currently establishes
-the same final value and compares an explicit authority manifest. Its Effect TS
-branch executes the normalized recovered value. It does **not** yet prove that
-`Effect.tryPromise`/`Effect.catchAll` callback ownership or service authority is
-equivalent; Uneffect deliberately reports that callback timing as unknown in
-self-analysis today.
+The executable `fetch-and-recover` acceptance fixture establishes the same
+final value and compares an explicit authority manifest. Its Effect TS branch
+now executes an actual `Effect.tryPromise(...).pipe(Effect.catchAll(...))`
+recovery path. The comparison analyzer resolves `tryPromise`, `catchAll`, and
+the functional `pipe` form through declarations in the installed `effect`
+package, associates a later `catchAll` stage with the failure it owns, and
+retains an unhandled negative control. This is callback failure ownership, not
+full Effect scheduling or interruption semantics. Service authority is still
+an explicit comparison manifest rather than an inference from Effect's
+environment type.
