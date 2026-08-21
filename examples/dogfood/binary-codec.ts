@@ -1,4 +1,4 @@
-import type { BoundedDataView, Nat } from "@mizchi/uneffect";
+import type { BoundedDataView, FixedArrayBuffer, Nat } from "@mizchi/uneffect";
 
 export interface DnsHeader {
   id: number;
@@ -7,6 +7,10 @@ export interface DnsHeader {
   answerCount: number;
   authorityCount: number;
   additionalCount: number;
+}
+
+export function createDnsHeaderView(buffer: FixedArrayBuffer<12>): BoundedDataView<12> {
+  return new DataView(buffer);
 }
 
 export function decodeDnsHeader(view: BoundedDataView<12>): DnsHeader {

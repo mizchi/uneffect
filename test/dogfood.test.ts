@@ -100,6 +100,10 @@ describe("Uneffect dogfood", () => {
     const verified = await verifyTypedArraySafety(entry, source);
     expect(verified.diagnostics).toEqual([]);
     expect(verified.statistics.solverQueries).toBe(0);
+    expect(verified.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "createDnsHeaderView", kind: "dataview-backing-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "createDnsHeaderView", kind: "max-length", result: "verified" }),
+    ]));
     expect(verified.obligations.filter((item) => item.kind === "dataview-bounds")).toHaveLength(12);
     expect(verified.obligations.filter((item) => item.kind === "dataview-value")).toHaveLength(6);
 

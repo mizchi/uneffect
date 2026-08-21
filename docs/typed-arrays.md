@@ -23,7 +23,8 @@ Allocation produces `0 <= size <= MaxLength`; element assignment produces
 an unrestricted `number` does not. This intentionally rejects reliance on
 Uint8Array's modulo/truncation behavior.
 
-`parseU8`, `parseBoundedUint8Array`, and `parseBoundedDataView` provide optional
+`parseU8`, `parseBoundedUint8Array`, `parseBoundedDataView`,
+`parseBoundedArrayBuffer`, and `parseFixedArrayBuffer` provide optional
 runtime refinement at untyped boundaries. DataView instance validation uses
 Valibot and its `byteLength` limit is checked synchronously without introducing
 an opaque user-callback boundary. Code which already has trusted branded values
@@ -44,13 +45,25 @@ orders and strict bounds are supported. Obligations outside this deliberately
 small fragment fall back to Z3; callers can observe that cost through
 `result.statistics.solverQueries`.
 
+`BoundedArrayBuffer<MaxBytes>` means that `maxByteLength <= MaxBytes`; it is
+appropriate for limiting resizable-buffer capacity but does not claim that the
+bytes are currently available. `FixedArrayBuffer<Bytes>` means non-resizable
+and exactly `Bytes` long. Only the latter proves a DataView constructor's
+backing range. For `new DataView(buffer, offset, length)`, Uneffect separately
+checks the requested region against the fixed buffer and `length` against the
+returned `BoundedDataView` limit. Omitted lengths use `Bytes - offset`.
+Unbounded or capacity-only buffers are reported instead of being silently
+accepted.
+
 The DNS header codec in `examples/dogfood/binary-codec.ts` is a practical
-positive and negative control: all twelve 16-bit fields are verified, while a
-one-byte displacement of the final field is rejected. Constructors, mutable
-or interprocedural aliases, exact backing-buffer byte offsets, resizable
-buffers, and SharedArrayBuffer concurrency are not yet modeled. Recognition
-currently depends on the visible helper-type spelling rather than TypeChecker
-symbol identity.
+positive and negative control: its fixed buffer-to-view constructor and all
+twelve 16-bit fields are verified, while a one-byte displacement of the final
+field is rejected. A later transfer can detach even a previously refined fixed
+buffer, so constructor evidence must eventually compose with ownership
+evidence; that cross-domain composition is not implemented yet. Mutable or
+interprocedural aliases, resize transitions, and SharedArrayBuffer concurrency
+are also not yet modeled. Recognition currently depends on the visible
+helper-type spelling rather than TypeChecker symbol identity.
 
 TypedArray `.set(source, offset)` produces `bulk-copy-bounds`, requiring
 `offset >= 0` and `offset + source.length <= target.length`. Bounded source and

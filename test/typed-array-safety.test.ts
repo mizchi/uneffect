@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram } from "../src/index.js";
-import type { BoundedDataView, BoundedUint32Array, BoundedUint8Array, U32, U8 } from "../src/index.js";
+import { parseBoundedArrayBuffer, parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseFixedArrayBuffer, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram } from "../src/index.js";
+import type { BoundedArrayBuffer, BoundedDataView, BoundedUint32Array, BoundedUint8Array, FixedArrayBuffer, U32, U8 } from "../src/index.js";
 
 describe("bounded Uint8Array safety", () => {
   it("provides optional runtime refinements", () => {
@@ -21,6 +21,14 @@ describe("bounded Uint8Array safety", () => {
     const view = parseBoundedDataView(new DataView(new ArrayBuffer(4)), 4);
     expectTypeOf(view).toEqualTypeOf<BoundedDataView<4>>();
     expect(() => parseBoundedDataView(new DataView(new ArrayBuffer(5)), 4)).toThrow();
+    const resizable = parseBoundedArrayBuffer(new ArrayBuffer(4, { maxByteLength: 8 }), 8);
+    expectTypeOf(resizable).toEqualTypeOf<BoundedArrayBuffer<8>>();
+    expect(() => parseBoundedArrayBuffer(new ArrayBuffer(4, { maxByteLength: 8 }), 7)).toThrow();
+    expect(() => parseBoundedArrayBuffer(new ArrayBuffer(5), 4)).toThrow();
+    const fixed = parseFixedArrayBuffer(new ArrayBuffer(12), 12);
+    expectTypeOf(fixed).toEqualTypeOf<FixedArrayBuffer<12>>();
+    expect(() => parseFixedArrayBuffer(new ArrayBuffer(11), 12)).toThrow();
+    expect(() => parseFixedArrayBuffer(new ArrayBuffer(12, { maxByteLength: 16 }), 12)).toThrow();
     expect(u8Table([0, 255] as const)).toEqual([0, 255]);
     expect(u32Table([0, 0xffff_ffff] as const)).toEqual([0, 0xffff_ffff]);
     expect(() => u8Table([256])).toThrow();
@@ -109,6 +117,46 @@ describe("bounded Uint8Array safety", () => {
     expect(result.obligations).toContainEqual(expect.objectContaining({
       functionName: "write", kind: "dataview-value", result: "verified",
     }));
+  });
+
+  it("checks DataView constructor length against its view and backing buffer", async () => {
+    const result = await verifyTypedArraySafety("data-view-constructor.ts", `
+      import type { BoundedArrayBuffer, BoundedDataView, FixedArrayBuffer, Nat } from "@mizchi/uneffect"
+      /* uneffect: requires length <= 16 && offset + length <= 64 */
+      function slice(buffer: FixedArrayBuffer<64>, offset: Nat, length: Nat): BoundedDataView<16> {
+        return new DataView(buffer, offset, length)
+      }
+      function backingOverflow(buffer: FixedArrayBuffer<64>): BoundedDataView<8> {
+        return new DataView(buffer, 60, 8)
+      }
+      function viewOverflow(buffer: FixedArrayBuffer<64>): BoundedDataView<4> {
+        return new DataView(buffer, 0, 8)
+      }
+      function inferredLength(buffer: FixedArrayBuffer<64>): BoundedDataView<16> {
+        return new DataView(buffer, 48)
+      }
+      function inferredOverflow(buffer: FixedArrayBuffer<64>): BoundedDataView<16> {
+        return new DataView(buffer, 47)
+      }
+      function unbounded(buffer: ArrayBuffer): BoundedDataView<8> {
+        return new DataView(buffer, 0, 8)
+      }
+      function resizableUpperBoundOnly(buffer: BoundedArrayBuffer<8>): BoundedDataView<8> {
+        return new DataView(buffer, 0, 8)
+      }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "slice", kind: "dataview-backing-bounds", result: "verified" }),
+      expect.objectContaining({ functionName: "slice", kind: "max-length", result: "verified" }),
+    ]));
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "backingOverflow", kind: "dataview-backing-bounds" }),
+      expect.objectContaining({ functionName: "viewOverflow", kind: "max-length" }),
+      expect.objectContaining({ functionName: "inferredOverflow", kind: "max-length" }),
+      expect.objectContaining({ functionName: "unbounded", kind: "dataview-backing-bounds" }),
+      expect.objectContaining({ functionName: "resizableUpperBoundOnly", kind: "dataview-backing-bounds" }),
+    ]));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "inferredLength" }));
   });
 
   it("checks SHA-256 style shifts, masks, rotations, and u32 normalization", async () => {

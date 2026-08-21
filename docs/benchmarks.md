@@ -196,7 +196,12 @@ construct a TypeChecker Program or model backing-buffer aliasing.
 The initial practical twelve-field DNS header DataView benchmark measured
 23.5590 ms because it issued six separate Z3 queries for `Nat <= 65535` setter
 domains. After deriving safe integer intervals from simple `requires` bounds,
-the same verification issues zero solver queries and measured 0.4004 ms mean
+the same verification issued zero solver queries and measured 0.4004 ms mean
 over 1,249 samples (2.12% relative margin of error), about 59 times faster.
+After adding its fixed-buffer DataView constructor obligations and constant
+short-circuiting, the expanded fixture measured 0.1851 ms mean over 2,701
+samples (0.57% relative margin of error); the difference is run-to-run noise
+plus a newer fixture, not a claim that adding obligations intrinsically speeds
+the parser.
 Non-interval arithmetic still falls back to Z3 and is reported by the public
 `statistics.solverQueries` counter.

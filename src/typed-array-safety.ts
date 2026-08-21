@@ -6,7 +6,7 @@ import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 
 export interface TypedArrayObligation {
   functionName: string;
-  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "dataview-bounds" | "dataview-value" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
+  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "dataview-bounds" | "dataview-backing-bounds" | "dataview-value" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
   result: "verified" | "trusted" | "counterexample" | "unknown";
   goal: string;
   trustReason?: string;
@@ -72,6 +72,15 @@ function boundedDataViewMaximum(type: string, constants: ReadonlyMap<string, num
   if (literal) return Number(literal[1]);
   const query = /^BoundedDataView<\s*typeof\s+([A-Za-z_$][\w$]*)\s*>$/.exec(type);
   return query ? constants.get(query[1]!) : undefined;
+}
+function fixedArrayBufferBytes(type: string, constants: ReadonlyMap<string, number>): number | undefined {
+  const literal = /^FixedArrayBuffer<\s*(\d+)\s*>$/.exec(type);
+  if (literal) return Number(literal[1]);
+  const query = /^FixedArrayBuffer<\s*typeof\s+([A-Za-z_$][\w$]*)\s*>$/.exec(type);
+  return query ? constants.get(query[1]!) : undefined;
+}
+function boundedDataViewReturnMaximum(type: ts.TypeNode | undefined, source: ts.SourceFile, constants: ReadonlyMap<string, number>): number | undefined {
+  return type ? boundedDataViewMaximum(type.getText(source), constants) : undefined;
 }
 interface DataViewMethod {
   width: number;
@@ -339,6 +348,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     const assumptions = [...extractAnnotations(leading, "requires"), ...typeAssumptions(node.parameters, source)]
       .map((assumption) => [...tableLengths].reduce((text, [name, length]) => text.replaceAll(name, length), assumption));
     const bounded = boundedMaximum(node.type, source, constants), parameterTypes = new Map(node.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [[parameter.name.text, parameter.type?.getText(source) ?? ""] as const] : []));
+    const boundedView = boundedDataViewReturnMaximum(node.type, source, constants);
     const localRanges = contractParameterRanges(node.parameters, source, assumptions);
     let localChanged = true;
     while (localChanged) {
@@ -371,13 +381,48 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       };
       collectAlias(node.body);
     }
-    const candidates: Array<{ kind: TypedArrayObligation["kind"]; goal: string; node: ts.Node; value?: ts.Expression; lower?: number; upper?: number; assumptions?: string[]; requiresInteger?: boolean }> = [];
+    const candidates: Array<{ kind: TypedArrayObligation["kind"]; goal: string; node: ts.Node; value?: ts.Expression; lower?: number; upper?: number; assumptions?: string[]; requiresInteger?: boolean; knownResult?: "verified" | "counterexample" }> = [];
     const visit = (current: ts.Node): void => {
       if (current !== node && ts.isFunctionLike(current)) return;
       if (bounded && ts.isReturnStatement(current) && current.expression && ts.isNewExpression(current.expression)
         && current.expression.expression.getText(source) === bounded.constructor && current.expression.arguments?.length === 1) {
         const length = current.expression.arguments[0]!;
         candidates.push({ kind: "max-length", goal: `${length.getText(source)} >= 0 && ${length.getText(source)} <= ${bounded.maximum}`, node: length, value: length, upper: bounded.maximum });
+      }
+      if (boundedView !== undefined && ts.isReturnStatement(current) && current.expression && ts.isNewExpression(current.expression)
+        && current.expression.expression.getText(source) === "DataView" && current.expression.arguments?.[0]) {
+        const construction = current.expression;
+        const argumentsList = construction.arguments!;
+        const buffer = argumentsList[0]!;
+        const bufferMaximum = ts.isIdentifier(buffer) ? fixedArrayBufferBytes(parameterTypes.get(buffer.text) ?? "", constants) : undefined;
+        const offset = argumentsList[1];
+        const length = argumentsList[2];
+        const offsetText = offset?.getText(source) ?? "0";
+        const offsetConstant = offset ? constantNumber(offset, constants) : 0;
+        if (bufferMaximum === undefined) {
+          candidates.push({ kind: "dataview-backing-bounds", goal: "false", node: buffer, knownResult: "counterexample" });
+        } else if (length) {
+          const lengthText = length.getText(source);
+          const lengthConstant = constantNumber(length, constants);
+          candidates.push({
+            kind: "dataview-backing-bounds",
+            goal: `${offsetText} >= 0 && ${lengthText} >= 0 && ${offsetText} + ${lengthText} <= ${bufferMaximum}`,
+            node: construction,
+            ...(offsetConstant !== undefined && lengthConstant !== undefined ? {
+              knownResult: offsetConstant >= 0 && lengthConstant >= 0 && offsetConstant + lengthConstant <= bufferMaximum ? "verified" as const : "counterexample" as const,
+            } : {}),
+          });
+          candidates.push({ kind: "max-length", goal: `${lengthText} >= 0 && ${lengthText} <= ${boundedView}`, node: length, value: length, upper: boundedView, requiresInteger: true });
+        } else {
+          candidates.push({
+            kind: "dataview-backing-bounds", goal: `${offsetText} >= 0 && ${offsetText} <= ${bufferMaximum}`, node: construction,
+            ...(offsetConstant !== undefined ? { knownResult: offsetConstant >= 0 && offsetConstant <= bufferMaximum ? "verified" as const : "counterexample" as const } : {}),
+          });
+          candidates.push({
+            kind: "max-length", goal: `${bufferMaximum} - ${offsetText} <= ${boundedView}`, node: construction,
+            ...(offsetConstant !== undefined ? { knownResult: bufferMaximum - offsetConstant <= boundedView ? "verified" as const : "counterexample" as const } : {}),
+          });
+        }
       }
       if (ts.isBinaryExpression(current) && current.operatorToken.kind >= ts.SyntaxKind.FirstAssignment && current.operatorToken.kind <= ts.SyntaxKind.LastAssignment && ts.isElementAccessExpression(current.left)) {
         const target = current.left.expression.getText(source);
@@ -458,8 +503,8 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const range = candidate.value ? expressionRange(candidate.value, parameterTypes, constants, tables, localRanges, semantics) : undefined;
       const invalidInteger = candidate.requiresInteger && range?.integer === false;
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
-      if (!invalidInteger && !staticallyInside) solverQueries++;
-      const proofResult = invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal);
+      if (!candidate.knownResult && !invalidInteger && !staticallyInside) solverQueries++;
+      const proofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal));
       const result = proofResult !== "verified" && trustReason ? "trusted" : proofResult, span = { start: candidate.node.getStart(source), end: candidate.node.getEnd() };
       obligations.push({ functionName, kind: candidate.kind, result, goal: candidate.goal, span, ...(result === "trusted" ? { trustReason } : {}) });
       if (result !== "verified" && result !== "trusted") diagnostics.push({ fileName, functionName, kind: candidate.kind, span, message: result === "counterexample" ? `${candidate.kind} constraint may fail: ${candidate.goal}` : `${candidate.kind} constraint could not be proved` });

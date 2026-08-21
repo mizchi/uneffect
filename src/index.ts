@@ -42,6 +42,10 @@ declare const boundedUint32ArrayBrand: unique symbol;
 export type BoundedUint32Array<MaxLength extends number> = Uint32Array & { readonly [boundedUint32ArrayBrand]: MaxLength };
 declare const boundedDataViewBrand: unique symbol;
 export type BoundedDataView<MaxBytes extends number> = DataView & { readonly [boundedDataViewBrand]: MaxBytes };
+declare const boundedArrayBufferBrand: unique symbol;
+export type BoundedArrayBuffer<MaxBytes extends number> = ArrayBuffer & { readonly [boundedArrayBufferBrand]: MaxBytes };
+declare const fixedArrayBufferBrand: unique symbol;
+export type FixedArrayBuffer<Bytes extends number> = ArrayBuffer & { readonly [fixedArrayBufferBrand]: Bytes };
 export function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength) {
   return v.pipe(
     v.instance(Uint8Array),
@@ -59,6 +63,16 @@ export function parseBoundedDataView<MaxBytes extends number>(input: unknown, ma
   const value = v.parse(v.instance(DataView), input);
   if (value.byteLength > maximum) throw new RangeError(`DataView byteLength must be at most ${maximum}`);
   return value as BoundedDataView<MaxBytes>;
+}
+export function parseBoundedArrayBuffer<MaxBytes extends number>(input: unknown, maximum: MaxBytes): BoundedArrayBuffer<MaxBytes> {
+  const value = v.parse(v.instance(ArrayBuffer), input);
+  if (value.maxByteLength > maximum) throw new RangeError(`ArrayBuffer maxByteLength must be at most ${maximum}`);
+  return value as BoundedArrayBuffer<MaxBytes>;
+}
+export function parseFixedArrayBuffer<Bytes extends number>(input: unknown, bytes: Bytes): FixedArrayBuffer<Bytes> {
+  const value = v.parse(v.instance(ArrayBuffer), input);
+  if (value.resizable || value.byteLength !== bytes) throw new RangeError(`ArrayBuffer must be fixed at exactly ${bytes} bytes`);
+  return value as FixedArrayBuffer<Bytes>;
 }
 
 export const parseInt = (input: unknown): Int => v.parse(IntSchema, input);
