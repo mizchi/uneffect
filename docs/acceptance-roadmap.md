@@ -43,7 +43,10 @@ bounded `Uint8Array`/`Uint32Array`, and scalar or literal union parameters. It
 emits and executes test-only Vitest source, filters the restricted `requires`
 language, checks `ensures`, and shrinks both numeric values and array structure.
 Scalar counterexamples retain the `v1` replay format; JSON-safe arrays and
-literals use `v2`. Array generation is resource-bounded to 4096 elements by
+literals use `v2`. Passing `counterexampleDirectory` also makes standalone
+generated Vitest files persist their minimized `v2` artifact and try that
+artifact before newly generated candidates on the next run. Array generation
+is resource-bounded to 4096 elements by
 default and can be raised with `arrayLengthCap`; therefore a larger declared
 type maximum is not silently claimed as an exercised upper edge. Generator
 narrowing recognizes conjunctive integer comparisons and seeds values at and

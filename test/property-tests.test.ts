@@ -77,6 +77,26 @@ describe("property-test generation", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 15_000);
 
+  it("persists a minimized generated-test counterexample and replays it first", async () => {
+    const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-replay-"));
+    const artifactDirectory = join(directory, "counterexamples");
+    try {
+      const source = `
+        /* uneffect: ensures result <= 0 */
+        export function positive(value: Int): number { return Math.abs(value) }
+      `;
+      const fileName = join(directory, "positive.ts"), generatedName = join(directory, "positive.uneffect.test.ts");
+      const generated = generateUneffectPropertyTests({ files: { [fileName]: source }, cases: 20, counterexampleDirectory: artifactDirectory });
+      await writeFile(fileName, `type Int = number\n${source}`);
+      await writeFile(generatedName, generated.generatedFiles[generatedName]!);
+      await expect(execFileAsync("pnpm", ["vitest", "run", generatedName], { cwd: process.cwd() })).rejects.toBeDefined();
+      const artifact = join(artifactDirectory, "positive.uneffect-counterexample.json");
+      expect(JSON.parse(await readFile(artifact, "utf8"))).toMatchObject({ functionName: "positive", arguments: [1] });
+      try { await execFileAsync("pnpm", ["vitest", "run", generatedName], { cwd: process.cwd() }); }
+      catch (cause) { expect(String((cause as { stdout?: string }).stdout)).toContain('"replayed":true'); }
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 20_000);
+
   it("resource-bounds generated arrays unless the caller raises the cap", async () => {
     let largest = 0;
     await checkUneffectProperty({

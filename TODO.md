@@ -134,6 +134,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Minimize a shared structural-size objective and confirm minimality with repeated strict-bound SAT checks instead of trusting nonlinear `Optimize` results.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
+  - [x] Optionally persist minimized failures from standalone generated Vitest files and replay the artifact before newly generated candidates.
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.
     - [x] Define a versioned normalized model trace and replay explicit action/observation/invariant adapters with step-local mismatch artifacts.
     - [x] Parse Quint `run --mbt --out-itf` violation traces, including safe ITF big integers, into normalized traces automatically.
