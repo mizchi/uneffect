@@ -1,4 +1,6 @@
 import ts from "typescript";
+import { posix } from "node:path";
+import { createHash } from "node:crypto";
 import { extractAnnotations } from "./annotations.js";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { formatEffect, registerEffectSchema, type AtomDomain } from "./capabilities.js";
@@ -20,7 +22,7 @@ export interface UneffectValidator extends Readonly<Required<UneffectValidatorDe
 }
 
 export interface ProjectValidatorDiagnostic {
-  code: "validator-cardinality-exceeded";
+  code: "validator-cardinality-exceeded" | "validator-cardinality-unknown";
   fileName: string;
   functionName: string;
   validator: string;
@@ -28,7 +30,13 @@ export interface ProjectValidatorDiagnostic {
 }
 
 export interface FunctionSpecialization {
+  schema: "uneffect-cardinality/v1";
   validator: string;
+  validatorVersion: string;
+  validatorDigest: string;
+  compilerRevision: string;
+  sourceHash: string;
+  projectHash: string;
   kind: "call-cardinality";
   maximum: 1;
   inferredMaximum: "0" | "1";
@@ -87,6 +95,12 @@ export function defineUneffectValidator(definition: UneffectValidatorDefinition)
   return Object.freeze({ schema: "uneffect-validator/v1", version: definition.version ?? "1", ...definition });
 }
 
+function validatorDigest(validator: UneffectValidator): string {
+  return createHash("sha256").update(JSON.stringify({ schema: validator.schema, name: validator.name, version: validator.version, rule: validator.rule, sink: validator.sink, specialization: validator.specialization })).digest("hex");
+}
+
+const sourceDigest = (text: string): string => createHash("sha256").update(text).digest("hex");
+
 type InternalCardinality = 0 | 1 | 2 | "unknown";
 const add = (left: InternalCardinality, right: InternalCardinality): InternalCardinality => left === "unknown" || right === "unknown" ? "unknown" : Math.min(2, left + right) as 0 | 1 | 2;
 const maximum = (left: InternalCardinality, right: InternalCardinality): InternalCardinality => left === "unknown" || right === "unknown" ? "unknown" : Math.max(left, right) as 0 | 1 | 2;
@@ -111,6 +125,17 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
   if (node.name) return node.name.getText();
   if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) return node.parent.name.text;
   return "<anonymous>";
+}
+
+function canonicalSymbol(checker: ts.TypeChecker, symbol: ts.Symbol | undefined): ts.Symbol | undefined {
+  const seen = new Set<ts.Symbol>();
+  while (symbol && symbol.flags & ts.SymbolFlags.Alias && !seen.has(symbol)) {
+    seen.add(symbol);
+    const next = checker.getAliasedSymbol(symbol);
+    if (next === symbol) break;
+    symbol = next;
+  }
+  return symbol;
 }
 
 function cardinalityOfFunction(
@@ -143,6 +168,7 @@ function cardinalityOfFunction(
     const calleeSymbol = checker.getSymbolAtLocation(value.expression);
     const parameterCallback = calleeSymbol?.declarations?.some(ts.isParameter) && value.arguments.some((argument) => ts.isFunctionLike(argument) && containsSink(argument));
     if (parameterCallback) return "unknown";
+    if (identity?.module.startsWith(".") && !(identity.module === validator.sink.module && identity.export === validator.sink.export)) return "unknown";
     let count: InternalCardinality = identity?.module === validator.sink.module && identity.export === validator.sink.export ? 1 : 0;
     for (const argument of value.arguments) count = add(count, expression(argument));
     return count;
@@ -175,8 +201,10 @@ function cardinalityOfFunction(
 }
 
 function resolveLocalFunction(checker: ts.TypeChecker, functions: ReadonlyMap<ts.Symbol, ts.FunctionLikeDeclaration>, call: ts.CallExpression): ts.FunctionLikeDeclaration | undefined {
-  let symbol = checker.getSymbolAtLocation(call.expression);
-  if (symbol && symbol.flags & ts.SymbolFlags.Alias) symbol = checker.getAliasedSymbol(symbol);
+  const signatureDeclaration = checker.getResolvedSignature(call)?.declaration;
+  if (signatureDeclaration && ts.isFunctionLike(signatureDeclaration) && "body" in signatureDeclaration && signatureDeclaration.body) return signatureDeclaration as ts.FunctionLikeDeclaration;
+  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+  const symbol = canonicalSymbol(checker, checker.getSymbolAtLocation(lookup));
   return symbol && functions.get(symbol);
 }
 
@@ -201,6 +229,18 @@ function createVirtualProgram(files: Record<string, string>): ts.Program {
   host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
   host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
   host.getSourceFile = (fileName, version, onError, fresh) => Object.hasOwn(files, fileName) ? ts.createSourceFile(fileName, files[fileName]!, version, true, ts.ScriptKind.TS) : original(fileName, version, onError, fresh);
+  const resolveModule = (moduleName: string, containingFile: string): ts.ResolvedModuleFull | undefined => {
+    if (moduleName.startsWith(".")) {
+      const joined = posix.normalize(posix.join(posix.dirname(containingFile), moduleName));
+      const absoluteStem = joined.replace(/\.[cm]?js$/, "");
+      const stem = posix.isAbsolute(absoluteStem) ? posix.relative(process.cwd().replaceAll("\\", "/"), absoluteStem) : absoluteStem;
+      const candidate = [`${stem}.ts`, `${stem}.tsx`, `${stem}.mts`, `${stem}.cts`, `${stem}/index.ts`].find((name) => Object.hasOwn(files, name));
+      if (candidate) return { resolvedFileName: candidate, extension: candidate.endsWith(".tsx") ? ts.Extension.Tsx : candidate.endsWith(".mts") ? ts.Extension.Mts : candidate.endsWith(".cts") ? ts.Extension.Cts : ts.Extension.Ts, isExternalLibraryImport: false };
+    }
+    return ts.resolveModuleName(moduleName, containingFile, options, host).resolvedModule;
+  };
+  host.resolveModuleNames = (moduleNames, containingFile) => moduleNames.map((moduleName) => resolveModule(moduleName, containingFile));
+  host.resolveModuleNameLiterals = (moduleLiterals, containingFile) => moduleLiterals.map((moduleLiteral) => ({ resolvedModule: resolveModule(moduleLiteral.text, containingFile) }));
   return ts.createProgram(Object.keys(files), options, host);
 }
 
@@ -214,6 +254,7 @@ export function analyzeUneffectProject(options: AnalyzeUneffectProjectOptions): 
     registerEffectSchema({ name: match[1]!, version: 1, arguments: arguments_ as AtomDomain[] });
   }
   const validators = options.validators ?? [], program = createVirtualProgram(options.files), checker = program.getTypeChecker();
+  const projectHash = sourceDigest(JSON.stringify(Object.entries(options.files).sort(([left], [right]) => left.localeCompare(right))));
   const diagnostics: Array<ProjectValidatorDiagnostic | ProjectSafetyDiagnostic> = [], summaries: UneffectProjectSummary[] = [];
   const summary = (fileName: string, name: string): UneffectProjectSummary => {
     let value = summaries.find((item) => item.fileName === fileName && item.functionName === name);
@@ -271,8 +312,8 @@ export function analyzeUneffectProject(options: AnalyzeUneffectProjectOptions): 
           const validator = validators.find((item) => item.name === name);
           if (!validator) continue;
           const cardinality = cardinalityOfFunction(checker, functionNode, validator, functions), inferredMaximum: CallCardinality = cardinality === 0 ? "0" : cardinality === 1 ? "1" : cardinality === "unknown" ? "unknown" : "many";
-          if (cardinality !== "unknown" && cardinality <= validator.specialization.maximum) specializations.push({ validator: validator.name, kind: "call-cardinality", maximum: 1, inferredMaximum: cardinality === 0 ? "0" : "1", evidence: "verified" });
-          else diagnostics.push({ code: "validator-cardinality-exceeded", fileName: source.fileName, functionName: functionName(functionNode), validator: validator.name, inferredMaximum });
+          if (cardinality !== "unknown" && cardinality <= validator.specialization.maximum) specializations.push({ schema: "uneffect-cardinality/v1", validator: validator.name, validatorVersion: validator.version, validatorDigest: validatorDigest(validator), compilerRevision: ts.version, sourceHash: sourceDigest(source.text), projectHash, kind: "call-cardinality", maximum: 1, inferredMaximum: cardinality === 0 ? "0" : "1", evidence: "verified" });
+          else diagnostics.push({ code: cardinality === "unknown" ? "validator-cardinality-unknown" : "validator-cardinality-exceeded", fileName: source.fileName, functionName: functionName(functionNode), validator: validator.name, inferredMaximum });
         }
         if (annotations.length) summary(source.fileName, functionName(functionNode)).specializations.push(...specializations);
       }

@@ -5,6 +5,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
+import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -171,4 +172,14 @@ describe("typed-array static verification", () => {
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/ranges.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
+
+  bench("compose validator cardinality through a 4-file barrel and method graph", () => {
+    const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
+    analyzeUneffectProject({ validators: [validator], files: {
+      "src/metrics.ts": `export declare function sendMetric(): void`,
+      "src/reporters.ts": `import { sendMetric as emit } from "./metrics.js"; export function helper() { emit() }; export class Reporter { report() { emit() } }`,
+      "src/barrel.ts": `export { helper as forwarded, Reporter } from "./reporters.js"`,
+      "src/main.ts": `import { forwarded, Reporter } from "./barrel.js"; /* uneffect: validate Once */ export function main(flag: boolean) { if (flag) forwarded(); else new Reporter().report() }`,
+    } });
+  }, { time: 500, iterations: 5 });
 });

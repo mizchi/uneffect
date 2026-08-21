@@ -45,21 +45,31 @@ The neutral summary uses the finite domain `0 | 1 | many | unknown`.
   therefore add rather than choose;
 - `unknown` cannot satisfy an at-most-once validator.
 
-The first implemented slice covers intraprocedural sequencing, alternatives,
-loops, concurrently started call arguments, direct recursion, and callback
-parameters without an invocation bound. Aliased, method, and cross-module
-calls are the next composition boundary.
+The implementation covers intraprocedural sequencing, alternatives, loops,
+concurrently started call arguments, direct recursion, callback parameters
+without an invocation bound, and resolved calls through aliases, namespace
+imports, default exports, barrel re-exports, methods, and cross-module callees.
+The virtual TypeScript program uses NodeNext `.js`-to-source resolution, so the
+same symbol identities are used for analysis as for normal ESM type checking.
 
 Resolved local callees now compose transitively. For generators, ordinary
 calls contribute zero because they only construct an iterator; `yield*` and
 `for (await) ... of` consume the per-iterator summary. The selected entrypoint
 records both its sink upper bound and whether it consumes zero, one, or many
-generator instances. Alias, method, re-export, and cross-module parity remains
-future work.
+generator instances.
 
 A verified `0 | 1` result becomes a proof-grade `call-cardinality`
-specialization. Modified source, builtin contracts, validator code/version, or
-frontend schema invalidates that evidence.
+specialization. `many` produces `validator-cardinality-exceeded`; an unresolved
+relative callee, recursion, or opaque callback produces
+`validator-cardinality-unknown` and never a specialization. Modified source,
+builtin contracts, validator code/version, or frontend schema invalidates that
+evidence. Each specialization records the validator version and a SHA-256
+digest of its schema, name, version, rule, sink identity, and requested
+specialization, plus its source hash, whole-project source graph hash, TypeScript compiler revision, and
+`uneffect-cardinality/v1` schema. Same-name definition drift and stale source
+are therefore observable to consumers. A future unified cross-domain evidence
+ledger still needs to apply one CI policy to this artifact and the Z3/Quint
+artifacts.
 
 ## Generator semantics
 

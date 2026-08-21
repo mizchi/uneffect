@@ -107,6 +107,45 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("composes validator cardinality through aliases, barrels, namespace imports, default exports, and methods", async () => {
+    const defineValidator = futureApi("defineUneffectValidator");
+    const validateProject = futureApi("validateUneffectProject");
+    const validator = defineValidator({ name: "DatadogOnce", version: "2026-08", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
+    const result = await validateProject({ validator, files: files({
+      "src/metrics.ts": `export declare function sendMetric(): void`,
+      "src/reporters.ts": `
+        import { sendMetric as emit } from "./metrics.js"
+        export function helper() { emit() }
+        export default function defaultReporter() { emit() }
+        export class Reporter { report() { emit() } }
+      `,
+      "src/barrel.ts": `export { helper as forwarded, default as defaultReporter, Reporter } from "./reporters.js"`,
+      "src/main.ts": `
+        import { forwarded as renamed, defaultReporter, Reporter } from "./barrel.js"
+        import * as reports from "./barrel.js"
+        import { opaque } from "./missing.js"
+        /* uneffect: validate DatadogOnce */
+        export function viaAlias() { renamed() }
+        /* uneffect: validate DatadogOnce */
+        export function viaNamespace() { reports.forwarded() }
+        /* uneffect: validate DatadogOnce */
+        export function viaDefault() { defaultReporter() }
+        /* uneffect: validate DatadogOnce */
+        export function viaMethod() { new Reporter().report() }
+        /* uneffect: validate DatadogOnce */
+        export function twice() { renamed(); new Reporter().report() }
+        /* uneffect: validate DatadogOnce */
+        export function unresolved() { opaque() }
+      `,
+    }) }) as { diagnostics: Array<{ code: string; functionName: string; inferredMaximum: string }>; summaries: Array<{ functionName: string; specializations: Array<{ evidence: string; inferredMaximum: string }> }> };
+    for (const functionName of ["viaAlias", "viaNamespace", "viaDefault", "viaMethod"]) {
+      expect(result.summaries).toContainEqual(expect.objectContaining({ functionName, specializations: [expect.objectContaining({ schema: "uneffect-cardinality/v1", evidence: "verified", inferredMaximum: "1", validatorVersion: "2026-08", validatorDigest: expect.stringMatching(/^[0-9a-f]{64}$/), compilerRevision: expect.any(String), sourceHash: expect.stringMatching(/^[0-9a-f]{64}$/), projectHash: expect.stringMatching(/^[0-9a-f]{64}$/) })] }));
+    }
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "validator-cardinality-exceeded", functionName: "twice", inferredMaximum: "many" }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "validator-cardinality-unknown", functionName: "unresolved", inferredMaximum: "unknown" }));
+    expect(result.summaries.find((summary) => summary.functionName === "unresolved")?.specializations).toEqual([]);
+  });
+
   it("rejects sequential, repeated, concurrent, recursive, or unknown callback paths that may call a sink more than once", async () => {
     const defineValidator = futureApi("defineUneffectValidator");
     const validateProject = futureApi("validateUneffectProject");
@@ -127,9 +166,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         function callback(run: (job: () => void) => void) { run(() => sendMetric()) }
       `,
     }) }) as { diagnostics: Array<{ code: string; functionName: string; inferredMaximum: string }> };
-    for (const functionName of ["sequential", "repeated", "concurrent", "recursive", "callback"]) {
+    for (const functionName of ["sequential", "repeated", "concurrent"]) {
       expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "validator-cardinality-exceeded", functionName }));
     }
+    for (const functionName of ["recursive", "callback"]) expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "validator-cardinality-unknown", functionName }));
   });
 
   it("composes call cardinality through Generator yield, yield-star, AsyncGenerator, and a single main consumption", async () => {

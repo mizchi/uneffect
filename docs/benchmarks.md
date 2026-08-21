@@ -95,3 +95,9 @@ A bounded-reachability fixture with three actions, one unreachable action, and
 four transition steps measured 327.73 ms mean over two samples. Runtime grows
 with the number of actions, state variables, and unroll depth; the configured
 depth is therefore part of both the diagnostic and the performance contract.
+
+The first cross-module validator fixture constructs a TypeScript Program for
+four virtual files and composes one sink through a barrel alias and a class
+method. It measured 135.48 ms mean over five samples (2.01% relative margin of
+error). Program construction and lib.d.ts checking dominate; build integrations
+should share the host Program instead of treating this as a per-function cost.

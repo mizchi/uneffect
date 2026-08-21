@@ -77,8 +77,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Register a validator by stable name, version, and symbol-identity sink matcher.
   - [x] Add the `0 | 1 | many | unknown` call-cardinality lattice with intraprocedural branch, sequence, loop, concurrent-argument, recursion, and unknown-callback handling.
   - [x] Compose cardinality through resolved local callees.
-  - [ ] Compose cardinality through aliases, re-exports, methods, and cross-module callees.
-  - [ ] Attach proof-grade specializations only after validator success.
+  - [x] Compose cardinality through aliases, re-exports, methods, and cross-module callees.
+  - [x] Attach proof-grade specializations only after validator success; unresolved relative callees, recursion, and opaque callbacks remain `unknown` rather than becoming zero.
   - [x] Compose Generator and AsyncGenerator effects through `yield`, `yield*`, and iterator consumption count for resolved local functions.
   - [x] Validate an explicit application entrypoint so per-invocation bounds are not confused with process-wide uniqueness.
 
