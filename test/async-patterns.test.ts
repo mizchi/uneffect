@@ -139,6 +139,31 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("tracks timer handles escaping through aggregates and returned closures", () => {
+    const model = analyzeAsyncPatterns("aggregate-timer-escape.ts", `
+      declare function register(value: unknown): void
+      const registry: { value?: unknown } = {}
+      function schedule() {
+        const argumentHandle = setTimeout(() => {}, 10)
+        const propertyHandle = setTimeout(() => {}, 20)
+        const returnHandle = setTimeout(() => {}, 30)
+        const closureHandle = setTimeout(() => {}, 40)
+        register({ nested: [argumentHandle] })
+        registry.value = { propertyHandle }
+        if (Date.now() > 0) return { returnHandle }
+        return () => clearTimeout(closureHandle)
+      }
+    `);
+    expect(model.timerEscapes).toEqual([
+      expect.objectContaining({ kind: "argument", handle: "argumentHandle", timer: 0 }),
+      expect.objectContaining({ kind: "property", handle: "propertyHandle", timer: 1 }),
+      expect.objectContaining({ kind: "return", handle: "returnHandle", timer: 2 }),
+      expect.objectContaining({ kind: "closure", handle: "closureHandle", timer: 3 }),
+    ]);
+    const quint = generateWebEventLoopQuint("aggregate_timer_escape", model);
+    for (const timer of [0, 1, 2, 3]) expect(quint).toContain(`action external_cancel_timer_${timer}`);
+  });
+
   it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
     const model = analyzeAsyncPatterns("web-loop.ts", `
       function job() {}

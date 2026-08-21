@@ -40,11 +40,14 @@ before an eligible timer callback. This is a deliberately small event-loop
 rule, not a complete HTML or Node event-loop model. The negative controls allow
 post-cancellation firing and timer-before-microtask firing; Quint finds both.
 
-The model does not yet include handle aliasing or escape, nested minimum-delay
-clamping, integer overflow, browser background throttling, Node event-loop
-phases, `process.nextTick`, or the distinction between monotonic and wall
-clocks. Source control flow before initial scheduling is only classified for
-definite cancellation, not fully symbolically executed.
+The model preserves reassignment-free local handle aliases and records direct
+identifier, array/object aggregate, property, return, opaque-argument, and
+returned-inline-closure escape. It does not yet resolve computed containers or
+imported closure factories. Nested minimum-delay clamping, integer overflow,
+browser background throttling, Node event-loop phases, `process.nextTick`, and
+the distinction between monotonic and wall clocks also remain unmodeled. Source
+control flow before initial scheduling is only classified for definite
+cancellation, not fully symbolically executed.
 
 ## Promise combinators
 

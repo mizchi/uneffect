@@ -88,8 +88,10 @@ new timer updates only the assigned binding. Returning a handle, storing it in
 a property, or passing it to a non-clear call creates an ordered
 `TimerHandleEscape` IR event tied to the concrete timer generation. The Web
 model then admits optional external cancellation; escape alone is never treated
-as proof that cancellation occurred. Aggregate/closure storage and
-environment-specific Node/browser handle identity remain unknown. Promise
+as proof that cancellation occurred. Direct array/object aggregates are
+traversed, and an inline returned closure records the local handles it captures.
+Computed containers, imported closure factories, and environment-specific
+Node/browser handle identity remain unknown. Promise
 reactions from a synchronously and
 definitely settled local executor are placed in the same checkpoint as
 `queueMicrotask`; running one reaction queues the next link before the

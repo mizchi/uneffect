@@ -348,6 +348,12 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules} }`);
   }, { time: 500, iterations: 5 });
 
+  bench("track 64 aggregate timer handle escapes", () => {
+    const schedules = Array.from({ length: 64 }, (_, index) => `const handle${index} = setTimeout(() => {}, ${index})`).join(";");
+    const handles = Array.from({ length: 64 }, (_, index) => `handle${index}`).join(",");
+    analyzeAsyncPatterns("aggregate-timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules}; register({ handles: [${handles}] }) }`);
+  }, { time: 500, iterations: 5 });
+
   bench("analyze prioritized scheduler dogfood", () => {
     analyzeAsyncPatterns("examples/dogfood/scheduler-priority.ts", readFileSync("examples/dogfood/scheduler-priority.ts", "utf8"));
   }, { time: 500, iterations: 5 });

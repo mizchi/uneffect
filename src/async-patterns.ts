@@ -52,7 +52,7 @@ export interface AbortCompositionPattern {
 
 export interface TimerHandleEscape {
   owner: string;
-  kind: "argument" | "property" | "return";
+  kind: "argument" | "property" | "return" | "closure";
   handle: string;
   timer: number;
   span: { start: number; end: number };
@@ -175,6 +175,36 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (timer === undefined) return;
       timerEscapes.push({ owner: ownerName, kind, handle: resolveHandle(identifier.text), timer, span: { start: node.getStart(source), end: node.getEnd() } });
     };
+    const recordEscapesInValue = (expression: ts.Expression, kind: TimerHandleEscape["kind"], node: ts.Node): void => {
+      while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+      if (ts.isIdentifier(expression)) {
+        recordEscape(expression, kind, node);
+      } else if (ts.isArrayLiteralExpression(expression)) {
+        for (const element of expression.elements) if (!ts.isOmittedExpression(element)) {
+          recordEscapesInValue(ts.isSpreadElement(element) ? element.expression : element, kind, node);
+        }
+      } else if (ts.isObjectLiteralExpression(expression)) {
+        for (const property of expression.properties) {
+          if (ts.isPropertyAssignment(property)) recordEscapesInValue(property.initializer, kind, node);
+          else if (ts.isShorthandPropertyAssignment(property)) recordEscape(property.name, kind, node);
+          else if (ts.isSpreadAssignment(property)) recordEscapesInValue(property.expression, kind, node);
+        }
+      } else if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+        const seen = new Set<number>();
+        const scanCapture = (child: ts.Node): void => {
+          if (child !== expression && ts.isFunctionLike(child)) return;
+          if (ts.isIdentifier(child)) {
+            const timer = handleTargets.get(child.text);
+            if (timer !== undefined && !seen.has(timer)) {
+              seen.add(timer);
+              recordEscape(child, "closure", node);
+            }
+          }
+          ts.forEachChild(child, scanCapture);
+        };
+        scanCapture(expression.body);
+      }
+    };
     const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callback = resolveCallback(callbackExpression);
       if (!callback || !callback.body || visited.has(callback)) return;
@@ -225,11 +255,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         handleTargets.delete(node.left.text);
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
-        && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left)) && ts.isIdentifier(node.right)) recordEscape(node.right, "property", node);
-      if (ts.isReturnStatement(node) && node.expression && ts.isIdentifier(node.expression)) recordEscape(node.expression, "return", node);
+        && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) recordEscapesInValue(node.right, "property", node);
+      if (ts.isReturnStatement(node) && node.expression) recordEscapesInValue(node.expression, "return", node);
       if (ts.isCallExpression(node)) {
         const operation = adapter.resolveCall(node)?.operation;
-        if (operation?.kind !== "timer-clear") for (const argument of node.arguments) if (ts.isIdentifier(argument)) recordEscape(argument, "argument", node);
+        if (operation?.kind !== "timer-clear") for (const argument of node.arguments) recordEscapesInValue(argument, "argument", node);
         if (operation?.kind === "timer") {
           const callbackNode = node.arguments[operation.callbackArgument];
           const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
