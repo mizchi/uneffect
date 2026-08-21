@@ -315,4 +315,34 @@ describe("builtin async temporal patterns", () => {
       timers: [], cancellations: [], combinators: [model.combinators[1]!],
     })).toThrow(/requires an array literal without spreads/);
   }, 20_000);
+
+  it("models local iterator acquisition and generator step failures", () => {
+    const model = analyzeAsyncPatterns("iterator-failures.ts", `
+      const broken = {
+        [Symbol.iterator]() { throw new Error("acquire") }
+      }
+      function* values() {
+        yield Promise.resolve(1)
+        throw new Error("step")
+      }
+      async function load() {
+        try { await Promise.allSettled(broken) } catch {}
+        try { await Promise.any(values()) } catch {}
+      }
+    `);
+    expect(model.combinators).toMatchObject([
+      { combinator: "allSettled", staticIterable: true, iteratorFailure: "acquire", branches: [] },
+      { combinator: "any", staticIterable: true, iteratorFailure: "step", branches: ["Promise.resolve(1)"] },
+    ]);
+    const quint = generateAsyncPatternsQuint("iterator_failures", model);
+    expect(quint).toContain("action fail_iterator_0");
+    expect(quint).toContain("action fail_iterator_1");
+    expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_result' = 2/);
+    expect(quint).toMatch(/action fail_iterator_1[\s\S]*join_1_result' = 2/);
+    const step = quint.slice(quint.indexOf("action step"), quint.indexOf("val asyncSafe"));
+    expect(step).not.toContain("fulfill_join_0");
+    expect(step).not.toContain("fulfill_join_1");
+    expect(step).not.toContain("fulfill_1_0");
+    expect(run(quint, "asyncSafe").status).toBe(0);
+  }, 20_000);
 });

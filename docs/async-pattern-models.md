@@ -63,9 +63,14 @@ await is protected by `try/catch`. Aggregate rejection therefore records an
 explicit `rejection_escapes` state. An empty array starts pending and fulfills
 through a separate join transition rather than synchronously in `init`.
 Dynamic iterables and array literals containing spreads are rejected as
-unsupported instead of being assigned a guessed cardinality. Sparse literal
-holes are retained as `undefined` value slots, matching array iteration rather
-than being dropped.
+unsupported instead of being assigned a guessed cardinality. Two local,
+statically inspectable forms are accepted: an object whose standard
+`[Symbol.iterator]()` method directly throws during acquisition, and a linear
+generator containing only direct `yield`, `throw`, and `return` statements.
+Acquisition or step failure rejects every Promise combinator, including
+`allSettled`, before any yielded Promise reaction can settle the aggregate.
+Sparse literal holes are retained as `undefined` value slots, matching array
+iteration rather than being dropped.
 
 The same neutral combinator IR covers four builtin methods:
 
@@ -91,11 +96,13 @@ Each literal element is classified as a plain value, a thenable, or unknown.
 Plain values (including holes) can only fulfill. Thenables enter an explicit
 assimilation state before fulfillment or rejection; `allSettled` does not count
 that intermediate state as settled. Unknown unions retain both the immediate
-value and thenable paths. The current slice does not yet model throwing `then`
-access, hostile thenables, iterator failure, arbitrary/custom iterables,
-ordered `AggregateError` payloads, cancellation, combinator result values, or
-branch effect interleavings. Rejection is possible but not forced immediately
-without a fairness assumption.
+value and thenable paths. Promise-chain analysis separately recognizes a
+restricted set of direct throwing and hostile thenables, but that richer
+thenable IR is not yet composed into each combinator branch. Conditional
+generator control flow, iterator result getters, imported or arbitrary custom
+iterables, spread cardinality, ordered `AggregateError` payloads, cancellation,
+combinator result values, and branch effect interleavings remain unsupported.
+Rejection is possible but not forced immediately without a fairness assumption.
 
 ## Verification ledger
 

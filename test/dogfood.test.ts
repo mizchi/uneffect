@@ -217,6 +217,24 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action reject_0_2");
   });
 
+  it("rejects allSettled when the telemetry batch iterator itself fails", () => {
+    const fileName = "examples/dogfood/iterable-batch.ts";
+    const source = readFileSync(fileName, "utf8");
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.combinators).toEqual([
+      expect.objectContaining({
+        owner: "drainTelemetrySpool",
+        combinator: "allSettled",
+        branches: ["Promise.resolve(1)"],
+        iteratorFailure: "step",
+        catchesRejection: true,
+      }),
+    ]);
+    const quint = generateAsyncPatternsQuint("iterable_batch", model);
+    expect(quint).toContain("action fail_iterator_0");
+    expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_result' = 2/);
+  });
+
   it("checks a fetch deadline as both Timer authority and a one-shot Web task", () => {
     const fileName = "examples/dogfood/fetch-timeout.ts";
     const source = readFileSync(fileName, "utf8");
