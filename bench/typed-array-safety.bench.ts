@@ -227,6 +227,15 @@ describe("typed-array static verification", () => {
     ` } });
   }, { time: 500, iterations: 1 });
 
+  bench("verify an external Effect timer adapter with Quint", async () => {
+    await verifyUneffectProject({ temporalRuntime: "web", files: { "src/effect-timer.ts": `
+      import { pipe } from "effect/Function"
+      export function schedule(value: number) {
+        setTimeout(() => { const next = pipe(value, current => current + 1); queueMicrotask(() => void next) }, 0)
+      }
+    ` } });
+  }, { time: 500, iterations: 1 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

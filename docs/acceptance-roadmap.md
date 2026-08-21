@@ -84,6 +84,13 @@ and arbitrary external calls remain unsupported non-proofs. The positive
 adapter verifies `result > value`; replacing `current + 1` with `current - 1`
 produces a counterexample. This adds no production runtime code.
 
+The temporal external adapter schedules a timer whose inline callback computes
+through Effect `pipe` and dynamically queues a microtask. Uneffect extracts the
+timer task and nested microtask, generates the Web event-loop Quint model, and
+verifies `eventLoopSafe`. The current guarantee is queue phase/FIFO safety only:
+the callback's numeric `pipe` semantics and an application-specific temporal
+invariant are not yet composed into that model.
+
 The first project verification slice exposes Z3 contract artifacts and
 explicit `assert parameter: Schema` Valibot instrumentation in one result.
 These are separate clauses in the same source file: it does not yet claim that

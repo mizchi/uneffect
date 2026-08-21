@@ -102,9 +102,16 @@ it excludes loading the external TypeScript implementation because the
 contract lowerer validates the exact import declaration and inline callback
 syntax rather than constructing a TypeChecker Program.
 
-These cases remain on the purely static path and do not invoke Z3. Solver
-benchmarks must be reported separately because initialization and individual
-proof queries have a different cost profile.
+Generating and checking the Web event-loop model for an external Effect timer
+adapter with a dynamically queued microtask took 658.75 ms in a one-sample run.
+This includes starting Quint and checking `eventLoopSafe`, so it is verifier
+time rather than frontend-only time. One sample is not a stable distribution,
+and the property covers queue phase/FIFO safety rather than the callback's
+application-level value semantics.
+
+The property-generator cases remain on the purely static path and do not invoke
+Z3. Solver benchmarks are reported separately because initialization and
+individual proof queries have a different cost profile.
 
 The first temporal semantic-lint fixture issues Z3 queries for five properties,
 one guarded action, and pairwise implication candidates. Its one-sample cold

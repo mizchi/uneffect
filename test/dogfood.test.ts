@@ -79,4 +79,17 @@ describe("Uneffect dogfood", () => {
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({ functionName: "increment", clause: "ensures" }));
     expect(broken.obligations).toContainEqual(expect.objectContaining({ status: "counterexample", evidence: "unknown" }));
   }, 20_000);
+
+  it("checks an external Effect adapter against the Web event-loop model", async () => {
+    const entry = "examples/dogfood/effect-temporal-adapter.ts";
+    const source = readFileSync(entry, "utf8");
+    const verified = await verifyUneffectProject({ files: { [entry]: source }, temporalRuntime: "web" });
+    expect(verified.temporal).toMatchObject({
+      sourceLanguage: "uneffect-ts",
+      backend: "quint",
+      properties: [expect.objectContaining({ name: "eventLoopSafe", result: "verified" })],
+    });
+    expect(verified.temporal?.models[0]?.quint).toContain("action run_timer_task_0");
+    expect(verified.temporal?.models[0]?.quint).toContain("action drain_microtask_1");
+  }, 30_000);
 });
