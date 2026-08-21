@@ -276,9 +276,12 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [ ] Add cross-frontend parity fixtures and reject schema drift.
 - [ ] Dogfood against representative external TypeScript programs.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
+  - [x] Run inference-only frontend compatibility over the pinned external `effect` Function module graph; this does not enforce external boundaries.
   - [ ] Record false-positive rate, unknown-summary rate, builtin drift, annotation density, verifier time, and frontend time.
     - [x] Record controlled-corpus false positives, unknown summaries, annotation density, enforced boundaries, and frontend time.
-    - [ ] Run the same report over independently maintained external projects and include actual verifier time.
+    - [x] Record external Effect graph source/function counts, unknown summaries, diagnostics, builtin declaration drift, and frontend time.
+    - [x] Add a reviewed external Effect `pipe` adapter boundary with a positive Console authority check and missing/unused-effect negative control.
+    - [ ] Include actual verifier time for an external invariant or temporal adapter; capability checking alone does not invoke Z3/Quint.
   - [ ] Compare equivalent native Promise, Uneffect, and Effect TS implementations.
     - [x] Compare observable recovered output and an explicit common authority manifest.
     - [ ] Model Effect TS Promise callback ownership and compare the actual `catchAll` recovery path rather than a normalized Effect outcome.

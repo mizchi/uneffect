@@ -58,7 +58,22 @@ refinement adapters; arbitrary application bindings are not inferred.
 
 The adoption KPI is measured over a checked-in controlled corpus. Its reported
 false-positive rate is not an estimate for arbitrary external TypeScript
-applications. External-project evaluation remains required.
+applications. As a phase-zero external compatibility check, the pinned
+`effect@3.22.1` `Function.ts` import graph loads three implementation source
+files and produces at least 40 inferred summaries with no unknown summaries,
+diagnostics, or builtin declaration drift. A same-machine exploratory run took
+103.16 ms. This is deliberately not reported as proof that Effect is pure or
+correct: inference-only mode has no reviewed external annotation boundary and
+runs no verifier. External adapter boundaries with meaningful constraints and
+verifier timing remain required.
+
+A separate checked-in adapter imports `pipe` from the same external package
+and declares `/* uneffect: effect Console */` on its application boundary. The
+boundary verifies with the exact inferred Console authority. A negative control
+replaces it with `FsRead<"$CWD/**">` and must report both the missing Console
+and unused FsRead declarations. This is a meaningful capability constraint over
+an application adapter, but it still does not exercise a Z3 or Quint obligation;
+external verifier timing remains open.
 
 The first project verification slice exposes Z3 contract artifacts and
 explicit `assert parameter: Schema` Valibot instrumentation in one result.
