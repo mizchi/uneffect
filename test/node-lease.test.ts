@@ -41,15 +41,15 @@ function collectionLeaseModel(skewGrace: number): string {
     state nodes: Set<int>
     state activeWriters: Set<int>
     state residentEpochs: Map<int, int>
-    state owner: int
+    state lease: { owner: int, epoch: int }
     init nodes = Set(1, 2)
     init activeWriters = Set(1)
     init residentEpochs = Map([[1, 1], [2, 0]])
-    init owner = 1
-    action takeover: owner' = 2
-    action_when takeover: owner === 1 && realNow + 1 >= 10 + ${skewGrace}
+    init lease = { owner: 1, epoch: 1 }
+    action takeover: lease' = { ...lease, owner: 2, epoch: lease.epoch + 1 }
+    action_when takeover: lease.owner === 1 && realNow + 1 >= 10 + ${skewGrace}
     action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2)
-    action_when publish: owner === 2 && !activeWriters.contains(2)
+    action_when publish: lease.owner === 2 && !activeWriters.contains(2)
     temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
     temporal epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0)
     temporal singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2))
@@ -143,7 +143,7 @@ describe("Node Lease clock-skew model", () => {
         ...Array.from({ length: 9 }, () => "tick_realNow"), "takeover", "publish",
       ]);
       expect(broken.trace.steps.at(-1)?.after).toMatchObject({
-        activeWriters: [1, 2], nodes: [1, 2], residentEpochs: [[1, 1], [2, 2]],
+        activeWriters: [1, 2], nodes: [1, 2], residentEpochs: [[1, 1], [2, 2]], lease: { owner: 2, epoch: 2 },
       });
     }
     await expect(findTemporalCounterexampleWithZ3(parseSpec("node-lease-collections-z3-safe.ts", collectionLeaseModel(1)).temporal, "singleWriter", { maxSteps: 12 }))

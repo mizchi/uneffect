@@ -120,8 +120,11 @@ remain ordinary `lease.owner` expressions. Quint lowering uses record literals,
 field access, and `.with("owner", value)`; runtime assertions use JavaScript
 object literals and spread. Record fields and Map values may themselves contain
 supported collection or record types. Record shapes are exact, optional fields
-and dynamic property access are rejected. Z3 still reports record and nested
-collection domains as unsupported rather than claiming a proof.
+and dynamic property access are rejected. Z3 assigns canonical datatypes to
+closed records whose fields are all `int` or `bool`; field reads and immutable
+spread updates retain their ordinary structural meaning, and counterexamples
+are emitted as JSON objects. Nested record/collection fields still produce an
+explicit unsupported result rather than claiming a proof.
 
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches

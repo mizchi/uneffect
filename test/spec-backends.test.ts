@@ -270,6 +270,49 @@ describe("spec IR and generated verifier programs", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
   });
 
+  it("semantically checks and extracts scalar record state with Z3", async () => {
+    const temporal = parseSpec("record-z3.ts", `/* uneffect:
+      state lease: { owner: int, valid: bool }
+      init lease = { owner: 1, valid: true }
+      action transfer: lease' = { ...lease, owner: 2 }
+      temporal validOwner: !lease.valid || lease.owner > 0
+      temporal booleanValidity: lease.valid || !lease.valid
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({
+      code: "solver-tautology", name: "booleanValidity", backend: "z3",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "validOwner", { maxSteps: 2 })).resolves.toEqual({
+      status: "safe-within-bound", depth: 2,
+    });
+
+    const broken = parseSpec("record-z3-broken.ts", `/* uneffect:
+      state lease: { owner: int, valid: bool }
+      init lease = { owner: 1, valid: true }
+      action invalidate: lease' = { ...lease, owner: 0 }
+      temporal validOwner: !lease.valid || lease.owner > 0
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "validOwner", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: {
+        initialState: { lease: { owner: 1, valid: true } },
+        steps: [{ action: "invalidate", after: { lease: { owner: 0, valid: true } } }],
+      },
+    });
+
+    const nested = parseSpec("nested-record-z3.ts", `/* uneffect:
+      state lease: { owners: Set<int>, valid: bool }
+      init lease = { owners: Set(1), valid: true }
+      temporal valid: lease.valid
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(nested)).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain", backend: "z3",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(nested, "valid", { maxSteps: 1 })).resolves.toEqual({ status: "unknown", depth: 0 });
+  });
+
   it("nests record values inside finite Maps", () => {
     const temporal = parseSpec("nested-records.ts", `/* uneffect:
       state leases: Map<int, { epoch: int, valid: bool }>
