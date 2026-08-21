@@ -44,6 +44,7 @@ function isFunctionParameter(checker: ts.TypeChecker, parameter: ts.ParameterDec
 function builtinTiming(call: ts.CallExpression): InvocationTiming {
   const text = call.expression.getText();
   if (["setTimeout", "setInterval", "queueMicrotask"].includes(text)) return "deferred";
+  if (text === "Array.from") return "inline";
   if (ts.isPropertyAccessExpression(call.expression) && ["map", "flatMap", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find", "findIndex", "sort", "forEachChild"].includes(call.expression.name.text)) return "inline";
   if (ts.isPropertyAccessExpression(call.expression) && ["then", "catch", "finally"].includes(call.expression.name.text)) return "deferred";
   return "unknown";

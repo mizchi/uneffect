@@ -138,4 +138,14 @@ describe("typed-array static verification", () => {
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/properties.ts": `import type { Int, Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
+
+  bench("generate 16 bounded-array and literal-union property tests", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: ensures result >= 0 */
+      export function packet${index}(bytes: BoundedUint8Array<64>, mode: "fast" | "safe"): Nat {
+        return (bytes.length + mode.length) as Nat
+      }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/packets.ts": `import type { BoundedUint8Array, Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
 });

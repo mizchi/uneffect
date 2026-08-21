@@ -104,10 +104,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
-  - [ ] Generate bounded-array and union values and structure-aware shrinkers.
+  - [x] Generate `BoundedUint8Array<N>`, `BoundedUint32Array<N>`, scalar/literal union values, and structure-aware array shrinkers.
   - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
-  - [x] Persist and prioritize replay of versioned scalar property-test counterexamples.
+  - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [ ] Replay model-checker counterexamples through TypeScript refinement adapters.
 - [x] Merge the direct Z3 checker and SMT-LIB generator onto one invariant IR.
 - [x] Lower simple assignments and branches to SSA proof obligations.

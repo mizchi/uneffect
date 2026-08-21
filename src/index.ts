@@ -84,7 +84,7 @@ export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./owne
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
 export { checkUneffectProperty, generateUneffectPropertyTests } from "./property-tests.js";
-export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyTestBoundary } from "./property-tests.js";
+export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
 export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
 export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";

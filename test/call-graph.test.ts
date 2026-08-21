@@ -61,4 +61,13 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.diagnostics.filter((item) => item.functionName === "main")).toEqual([]);
     expect(result.summaries.find((item) => item.functionName === "main")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind)).toContain("Console");
   });
+
+  it("classifies Array.from mapping as synchronous inline invocation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-from-"));
+    const source = join(directory, "array.ts");
+    writeFileSync(source, `export function make(length: number) { return Array.from({ length }, (_, index) => index) }`);
+    const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
 });

@@ -69,6 +69,19 @@ application.
 The first same-machine run measured 0.2902 ms mean (0.30% relative margin of
 error), or roughly 0.018 ms per generated function contract.
 
+After bounded typed arrays, literal unions, and structure-aware shrinking were
+added, a 16-function generation fixture measured 0.2297 ms mean (0.30%
+relative margin of error), roughly 0.014 ms per contract. This measures source
+generation only. A correctness integration test separately starts Vitest and
+executes a generated typed-array/union property; process startup dominates that
+path.
+
 These cases remain on the purely static path and do not invoke Z3. Solver
 benchmarks must be reported separately because initialization and individual
 proof queries have a different cost profile.
+
+The first temporal semantic-lint fixture issues Z3 queries for five properties,
+one guarded action, and pairwise implication candidates. Its one-sample cold
+run measured 806.14 ms. This is acceptable for an explicit build command but
+not yet an editor latency target; context reuse and batched classification
+remain possible optimizations.

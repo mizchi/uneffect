@@ -38,11 +38,16 @@ acceptance test, but they do not replace its end-to-end completion condition.
 The acceptance file uses runtime public-API lookup so a missing product entry
 point fails with a direct diagnostic instead of a secondary TypeScript error.
 
-Property generation currently covers scalar `Int`, `Nat`, `U8`, `U32`, and
-`I32` parameters. It emits test-only Vitest source, filters the restricted
-`requires` language, checks `ensures`, shrinks toward zero, and can persist a
-versioned replay artifact. Bounded arrays, unions, and structure-aware
-shrinking are not implemented.
+Property generation covers scalar `Int`, `Nat`, `U8`, `U32`, and `I32`,
+bounded `Uint8Array`/`Uint32Array`, and scalar or literal union parameters. It
+emits and executes test-only Vitest source, filters the restricted `requires`
+language, checks `ensures`, and shrinks both numeric values and array structure.
+Scalar counterexamples retain the `v1` replay format; JSON-safe arrays and
+literals use `v2`. Array generation is resource-bounded to 4096 elements by
+default and can be raised with `arrayLengthCap`; therefore a larger declared
+type maximum is not silently claimed as an exercised upper edge. Generator
+narrowing from arbitrary refinements and
+model-checker-to-TypeScript replay remain unimplemented.
 
 The adoption KPI is measured over a checked-in controlled corpus. Its reported
 false-positive rate is not an estimate for arbitrary external TypeScript
