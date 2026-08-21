@@ -31,6 +31,10 @@ const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
 const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts", import.meta.url), "utf8");
 const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/worker-codec-transfer.ts", import.meta.url), "utf8");
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
+const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
+  "let delivery: Promise<void>;\n  delivery = sendTelemetryBatch();",
+  "const delivery = sendTelemetryBatch();",
+);
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
 const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
@@ -122,6 +126,10 @@ describe("typed-array static verification", () => {
 
   bench("check telemetry Promise ownership across switch and finally", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", telemetryDeliverySource);
+  }, { time: 500, iterations: 5 });
+
+  bench("check initialized telemetry Promise ownership baseline", () => {
+    analyzeAsyncSafety("telemetry-delivery.ts", initializedTelemetryDeliverySource);
   }, { time: 500, iterations: 5 });
 
   bench("link Promise adapter assimilation by symbol", () => {

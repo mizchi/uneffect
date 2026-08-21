@@ -1,7 +1,8 @@
 declare function sendTelemetryBatch(): Promise<void>;
 
 export async function deliverTelemetry(mode: "required" | "best-effort"): Promise<void> {
-  const delivery = sendTelemetryBatch();
+  let delivery: Promise<void>;
+  delivery = sendTelemetryBatch();
   switch (mode) {
     case "required":
       await delivery;

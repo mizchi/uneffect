@@ -245,6 +245,52 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("tracks rejection ownership from deferred Promise assignments and aliases", () => {
+    const result = analyzeAsyncSafety("deferred-promises.ts", `
+      declare const enabled: boolean
+      declare function task(): Promise<number>
+      async function floating() {
+        let pending: Promise<number>
+        pending = task()
+      }
+      async function observed() {
+        let pending: Promise<number>
+        pending = task()
+        await pending
+      }
+      async function aliased() {
+        let pending: Promise<number>
+        let alias: Promise<number>
+        pending = task()
+        alias = pending
+        return alias
+      }
+      async function branchOwned() {
+        let pending: Promise<number>
+        if (enabled) {
+          pending = task()
+          pending.catch(() => 0)
+        }
+      }
+      async function branchFloating() {
+        let pending: Promise<number>
+        if (enabled) pending = task()
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, binding, status }) => ({ owner, binding, status }))).toEqual([
+      { owner: "floating", binding: "pending", status: "floating" },
+      { owner: "observed", binding: "pending", status: "observed" },
+      { owner: "aliased", binding: "pending", status: "observed" },
+      { owner: "aliased", binding: "alias", status: "observed" },
+      { owner: "branchOwned", binding: "pending", status: "observed" },
+      { owner: "branchFloating", binding: "pending", status: "floating" },
+    ]);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "floating", line: 6 }),
+      expect.objectContaining({ functionName: "branchFloating", line: 29 }),
+    ]);
+  });
+
   it("requires Promise bindings to be observed across switch entry and fallthrough paths", () => {
     const result = analyzeAsyncSafety("switch-promises.ts", `
       declare function task(): Promise<number>

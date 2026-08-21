@@ -372,6 +372,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [];
     const bindingGroups = new Map<ts.Symbol, PromiseBinding[]>();
     const localBindings: PromiseBinding[] = [];
+    const registerBinding = (symbol: ts.Symbol, name: string, spanNode: ts.Node, existing?: PromiseBinding[]): void => {
+      if (bindingGroups.has(symbol)) return;
+      if (existing) {
+        const binding: PromiseBinding = { owner, binding: name, status: existing[0]!.status, observations: existing[0]!.observations, span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        existing.push(binding); bindingGroups.set(symbol, existing); localBindings.push(binding); promiseBindings.push(binding);
+      } else {
+        const binding: PromiseBinding = { owner, binding: name, status: "floating", observations: [], span: { start: spanNode.getStart(source), end: spanNode.getEnd() } };
+        bindingGroups.set(symbol, [binding]); localBindings.push(binding); promiseBindings.push(binding);
+      }
+    };
     const markSymbol = (symbol: ts.Symbol | undefined, status: "transferred" | "observed", observation: string): void => {
       const group = symbol && bindingGroups.get(symbol);
       if (!group) return;
@@ -402,13 +412,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (symbol) {
           const aliasedSymbol = ts.isIdentifier(node.initializer) ? checker.getSymbolAtLocation(node.initializer) : undefined;
           const existing = aliasedSymbol && bindingGroups.get(aliasedSymbol);
-          if (existing) {
-            const binding: PromiseBinding = { owner, binding: node.name.text, status: existing[0]!.status, observations: existing[0]!.observations, span: { start: node.getStart(source), end: node.getEnd() } };
-            existing.push(binding); bindingGroups.set(symbol, existing); localBindings.push(binding); promiseBindings.push(binding);
-          } else if (isPromiseLike(checker, node.initializer)) {
-            const binding: PromiseBinding = { owner, binding: node.name.text, status: "floating", observations: [], span: { start: node.getStart(source), end: node.getEnd() } };
-            const group = [binding]; bindingGroups.set(symbol, group); localBindings.push(binding); promiseBindings.push(binding);
-          }
+          if (existing) registerBinding(symbol, node.name.text, node, existing);
+          else if (isPromiseLike(checker, node.initializer)) registerBinding(symbol, node.name.text, node);
+        }
+      }
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
+        const symbol = checker.getSymbolAtLocation(node.left);
+        if (symbol && !bindingGroups.has(symbol)) {
+          const aliasedSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
+          const existing = aliasedSymbol && bindingGroups.get(aliasedSymbol);
+          if (existing) registerBinding(symbol, node.left.text, node, existing);
+          else if (isPromiseLike(checker, node.right)) registerBinding(symbol, node.left.text, node);
         }
       }
       if (ts.isVariableStatement(node)) {
@@ -432,7 +446,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           observe(expression.expression, options.allowVoid === false ? "floating" : "ignored", false);
           if (options.allowVoid !== false) markBinding(expression.expression, "observed", "void");
         }
-        else if (isPromiseLike(checker, expression)) {
+        else if (isPromiseLike(checker, expression)
+          && !(ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(expression.left))) {
           const handled = handledChain(expression);
           observe(expression, handled ?? "floating", Boolean(handled));
           const receiver = handled && handledReceiver(expression);
@@ -481,7 +496,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         let active = false;
         const scan = (node: ts.Node): void => {
           if (active || (node !== statement && ts.isFunctionLike(node))) return;
-          if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && symbols.has(checker.getSymbolAtLocation(node.name)!)) active = true;
+          if (ts.isVariableDeclaration(node) && node.initializer && ts.isIdentifier(node.name)
+            && symbols.has(checker.getSymbolAtLocation(node.name)!)) active = true;
+          else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+            && referencesGroup(node.left) && isPromiseLike(checker, node.right)) active = true;
           else ts.forEachChild(node, scan);
         };
         scan(statement);
@@ -491,7 +509,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         let reassigned = false;
         const scan = (node: ts.Node): void => {
           if (reassigned || (node !== statement && ts.isFunctionLike(node))) return;
-          if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && referencesGroup(node.left) && isPromiseLike(checker, node.right)) { reassigned = true; return; }
+          if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+            && referencesGroup(node.left) && isPromiseLike(checker, node.right) && !referencesGroup(node.right)) { reassigned = true; return; }
           ts.forEachChild(node, scan);
         };
         scan(statement);
@@ -560,8 +579,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         }
         if (ts.isDoStatement(statement)) return executeStatement(statement.statement, { ...state });
         const next = { ...state };
+        const wasActive = next.active;
         if (activates(statement) && !next.active) { next.active = true; next.pending = true; }
-        if (reassigns(statement) && next.active) { if (next.pending) next.lost = true; next.pending = true; }
+        if (reassigns(statement) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
         if (consumes(statement) && next.active) next.pending = false;
         if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) next.terminated = true;
         return [next];

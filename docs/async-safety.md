@@ -46,6 +46,22 @@ in with a contract. Storing it in an object/array records an explicit escape.
 A binding that reaches the end of the current function without any of those
 events is a `floating-promise` error.
 
+Deferred initialization creates the same obligation at the assignment point,
+including aliases created by later assignment:
+
+```ts
+let delivery: Promise<void>
+let alias: Promise<void>
+delivery = sendBatch()
+alias = delivery
+await alias
+```
+
+The assignment expression is not separately reported as a bare floating
+expression; its binding remains pending until every reachable activated path
+observes or transfers it. A branch on which no Promise was assigned creates no
+obligation, while an assigned-but-unobserved branch is diagnosed.
+
 ```ts
 /* uneffect:
  * consumes_rejection 0
@@ -174,7 +190,9 @@ while `finally` runs for normal and abrupt completion, including early return.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
 execute their body at least once. Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
-awaited.
+awaited. Initial assignment to an uninitialized `let` is activation rather than
+reassignment; assigning the same Promise to another local creates an alias and
+does not lose ownership.
 
 This is not yet a general TypeScript control-flow graph. Conditional or labeled
 `break`/`continue`, throws proven impossible before a catch, and complex loop

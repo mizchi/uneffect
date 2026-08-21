@@ -214,12 +214,15 @@ cross-domain invalidation. Program construction dominates; a compiler or Corsa
 integration should supply and reuse its existing semantic context rather than
 rebuilding one per file.
 
-Promise ownership analysis of the telemetry delivery dogfood fixture measured
-133.64 ms mean over five samples (5.80% relative margin of error). The fixture
-contains exhaustive literal-union `switch` paths, fallthrough-aware ownership,
-and an early-return `try`/`finally` cleanup path. This public convenience API
-constructs a fresh TypeScript Program for every call, so the result is a cold
-standalone-check cost rather than the expected incremental compiler-plugin cost.
+Promise ownership analysis of the telemetry delivery dogfood fixture now
+includes deferred `let` initialization, exhaustive literal-union `switch`
+paths, and an early-return `try`/`finally` cleanup path. In a paired five-sample
+run, the deferred fixture measured 257.43 ms mean (22.90% relative margin of
+error) and the otherwise identical direct-`const` baseline measured 257.29 ms
+(15.47%). The effectively equal result provides no evidence of measurable
+assignment-tracking overhead. Both public convenience calls construct a fresh
+TypeScript Program; their noisy absolute times are cold standalone costs, not
+incremental compiler-plugin latency or a regression budget.
 
 Symbol-linked Promise assimilation for the legacy adapter dogfood fixture
 measured 152.51 ms mean over five cold samples (8.70% relative margin of error).
