@@ -27,7 +27,7 @@ function temporalToSmt(expression: TemporalExpression, resolveName: (name: strin
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
   if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand, resolveName)})` : `(- ${temporalToSmt(expression.operand, resolveName)})`;
-  if (expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by the Z3 lint backend");
+  if (expression.kind === "array" || expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by the Z3 lint backend");
   if (expression.operator === "neq") return `(not (= ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)}))`;
   return `(${smtBinary[expression.operator]} ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)})`;
 }
@@ -313,6 +313,7 @@ function referencedNames(expression: TemporalExpression, names = new Set<string>
   else if (expression.kind === "unary") referencedNames(expression.operand, names, bound);
   else if (expression.kind === "binary") { referencedNames(expression.left, names, bound); referencedNames(expression.right, names, bound); }
   else if (expression.kind === "lambda") referencedNames(expression.body, names, new Set([...bound, expression.parameter]));
+  else if (expression.kind === "array") expression.elements.forEach((element) => referencedNames(element, names, bound));
   else if (expression.kind === "call") expression.arguments.forEach((argument) => referencedNames(argument, names, bound));
   else if (expression.kind === "method") {
     referencedNames(expression.receiver, names, bound);

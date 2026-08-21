@@ -280,7 +280,8 @@ checks of `eventLoopSafe` and the application `sendsAtMostOnce` property. A
 single sample is only a coarse integration-cost observation; batching multiple
 properties into one verifier process remains an important performance task.
 
-Parsing and lowering the node-indexed finite-Set lease fixture to Quint measured
-0.0817 ms mean over 6,124 samples (1.11% relative margin of error). This covers
-the neutral Set/lambda AST and code generation but deliberately excludes Quint
-startup and model exploration; it is a frontend/lowering baseline only.
+Parsing and lowering the node-indexed finite-Set/Map lease fixture to Quint
+measured 0.0678 ms mean over 7,374 samples (0.31% relative margin of error).
+This covers the neutral Set/Map/lambda AST and code generation but deliberately
+excludes Quint startup and model exploration; it is a frontend/lowering
+baseline only.

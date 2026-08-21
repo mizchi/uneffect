@@ -56,4 +56,21 @@ describe("restricted TypeScript temporal expressions", () => {
     const sets = new Map([["nodes", { kind: "set", element: "int" } as const]]);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("nodes.forall(node => node + 1)"), sets)).toThrow(/boolean predicate/);
   });
+
+  it("lowers total Map updates and finite key/value views without partial get", () => {
+    const expression = parseTemporalExpression("epochs.put(2, 1).values().forall(epoch => epoch >= 0)");
+    const mapType = { kind: "map", key: "int", value: "int" } as const;
+    expect(typeCheckTemporalExpression(expression, new Map([["epochs", mapType]]))).toBe("bool");
+    expect(generateQuintExpression(expression)).toBe("epochs.put(2, 1).keys().map(_uneffect_key => epochs.put(2, 1).get(_uneffect_key)).forall(epoch => epoch >= 0)");
+    expect(generateRuntimeAssertionExpression(expression)).toBe("Array.from(new Set(new Map([...epochs, [2, 1]]).values())).every(epoch => epoch >= 0)");
+    const check = new Function("epochs", `return ${generateRuntimeAssertionExpression(expression)}`);
+    expect(check(new Map([[1, 0], [2, 0]]))).toBe(true);
+    expect(check(new Map([[1, -1], [2, 0]]))).toBe(false);
+  });
+
+  it("rejects malformed or heterogeneous Maps and keeps partial lookup outside the DSL", () => {
+    expect(() => parseTemporalExpression("epochs.get(1)")).toThrow(/unsupported temporal method `get`/);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([1, 2])"), new Map())).toThrow(/\[key, value\] pairs/);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([[1, true], [2, 0]])"), new Map())).toThrow(/homogeneous key and value types/);
+  });
 });

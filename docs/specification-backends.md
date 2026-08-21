@@ -88,6 +88,14 @@ counterexample extraction return an explicit unsupported/`unknown` result, and
 TLC scalar trace replay rejects it. Map, records, nested collections, and
 collection trace normalization remain unimplemented.
 
+Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
+TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
+`keys()`/`values()` views. Quint has no direct `values` builtin, so lowering uses
+`map.keys().map(key => map.get(key))`; this keeps every generated `get` inside
+the map's known domain. A general user-written partial `get` is intentionally
+not accepted yet. Runtime lowering constructs a fresh JavaScript `Map`, so
+assertion evaluation does not mutate application state.
+
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches
 depths in ascending order. A satisfiable negated property therefore yields the

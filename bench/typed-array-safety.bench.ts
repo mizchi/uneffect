@@ -249,15 +249,18 @@ describe("typed-array static verification", () => {
     await findTemporalCounterexampleWithZ3(temporal, "singleWriter", { maxSteps: 12 });
   }, { time: 500, iterations: 1 });
 
-  bench("lower a node-indexed Set lease model to Quint", () => {
+  bench("lower a node-indexed Set/Map lease model to Quint", () => {
     const temporal = parseSpec("lease-set.ts", `/* uneffect:
       clock realNow: 1
       state nodes: Set<int>
       state activeWriters: Set<int>
+      state residentEpochs: Map<int, int>
       init nodes = Set(1, 2)
       init activeWriters = Set(1)
-      action publish: activeWriters' = activeWriters.union(Set(2))
+      init residentEpochs = Map([[1, 1], [2, 0]])
+      action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2)
       temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
+      temporal epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0)
     */`).temporal;
     generateQuint("lease_set", temporal);
   }, { time: 500, iterations: 20 });

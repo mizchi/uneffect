@@ -128,7 +128,7 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
     if (expression.operator === "not") return !operand;
     return -Number(operand);
   }
-  if (expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by scalar trace replay");
+  if (expression.kind === "array" || expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by scalar trace replay");
   const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
   switch (expression.operator) {
     case "eq": return left === right;

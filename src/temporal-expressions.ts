@@ -4,9 +4,10 @@ export type TemporalExpression =
   | { kind: "name"; name: string }
   | { kind: "integer"; value: string }
   | { kind: "boolean"; value: boolean }
+  | { kind: "array"; elements: TemporalExpression[] }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
-  | { kind: "call"; name: "Set"; arguments: TemporalExpression[] }
-  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "forall" | "size"; arguments: TemporalExpression[] }
+  | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
+  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "forall" | "size" | "put" | "keys" | "values"; arguments: TemporalExpression[] }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
 
@@ -15,15 +16,23 @@ export type TemporalBinaryOperator =
   | "lt" | "lte" | "gt" | "gte"
   | "add" | "subtract" | "multiply" | "divide" | "modulo";
 export type TemporalScalarType = "int" | "bool" | "never";
-export type TemporalValueType = "int" | "bool" | { kind: "set"; element: TemporalScalarType };
+export type TemporalValueType = "int" | "bool"
+  | { kind: "set"; element: TemporalScalarType }
+  | { kind: "map"; key: TemporalScalarType; value: TemporalScalarType };
 
 export function temporalTypesCompatible(left: TemporalValueType, right: TemporalValueType): boolean {
   if (typeof left === "string" || typeof right === "string") return left === right;
-  return left.kind === right.kind && (left.element === right.element || left.element === "never" || right.element === "never");
+  if (left.kind !== right.kind) return false;
+  if (left.kind === "set" && right.kind === "set") return left.element === right.element || left.element === "never" || right.element === "never";
+  if (left.kind === "map" && right.kind === "map") return (left.key === right.key || left.key === "never" || right.key === "never")
+    && (left.value === right.value || left.value === "never" || right.value === "never");
+  return false;
 }
 
 export function formatTemporalValueType(type: TemporalValueType): string {
-  return typeof type === "string" ? type : `Set[${type.element === "never" ? "int" : type.element}]`;
+  if (typeof type === "string") return type;
+  if (type.kind === "set") return `Set[${type.element === "never" ? "int" : type.element}]`;
+  return `${type.key === "never" ? "int" : type.key} -> ${type.value === "never" ? "int" : type.value}`;
 }
 
 export function typeCheckTemporalExpression(
@@ -37,8 +46,22 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "integer") return "int";
   if (expression.kind === "boolean") return "bool";
+  if (expression.kind === "array") throw new Error("temporal array literals are only valid inside Map entries");
   if (expression.kind === "lambda") throw new Error("temporal lambda is only valid as a finite quantifier predicate");
   if (expression.kind === "call") {
+    if (expression.name === "Map") {
+      if (expression.arguments.length !== 1 || expression.arguments[0]?.kind !== "array") throw new Error("temporal Map requires one array of [key, value] entries");
+      const pairs = expression.arguments[0].elements;
+      const typed = pairs.map((pair) => {
+        if (pair.kind !== "array" || pair.elements.length !== 2) throw new Error("temporal Map entries must be [key, value] pairs");
+        const key = typeCheckTemporalExpression(pair.elements[0]!, symbols), value = typeCheckTemporalExpression(pair.elements[1]!, symbols);
+        if (typeof key !== "string" || typeof value !== "string") throw new Error("temporal Map keys and values must be scalar");
+        return { key, value };
+      });
+      const key: TemporalScalarType = typed[0]?.key ?? "never", value: TemporalScalarType = typed[0]?.value ?? "never";
+      if (typed.some((pair) => pair.key !== key || pair.value !== value)) throw new Error("temporal Map requires homogeneous key and value types");
+      return { kind: "map", key, value };
+    }
     const elements = expression.arguments.map((item) => typeCheckTemporalExpression(item, symbols));
     if (elements.some((item) => typeof item !== "string")) throw new Error("temporal Set elements must be scalar values");
     const element: TemporalScalarType = (elements[0] as "int" | "bool" | undefined) ?? "never";
@@ -47,6 +70,17 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "method") {
     const receiver = typeCheckTemporalExpression(expression.receiver, symbols);
+    if (expression.name === "put" || expression.name === "keys" || expression.name === "values") {
+      if (typeof receiver === "string" || receiver.kind !== "map") throw new Error(`temporal ${expression.name} requires a Map receiver`);
+      if (expression.name === "keys" || expression.name === "values") {
+        if (expression.arguments.length !== 0) throw new Error(`temporal ${expression.name} does not accept arguments`);
+        return { kind: "set", element: expression.name === "keys" ? receiver.key : receiver.value };
+      }
+      if (expression.arguments.length !== 2) throw new Error("temporal put requires a key and value");
+      const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols), value = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
+      if (typeof key !== "string" || typeof value !== "string" || (receiver.key !== "never" && receiver.key !== key) || (receiver.value !== "never" && receiver.value !== value)) throw new Error("temporal put key/value types must match the Map");
+      return receiver;
+    }
     if (typeof receiver === "string" || receiver.kind !== "set") throw new Error(`temporal ${expression.name} requires a Set receiver`);
     if (expression.name === "size") {
       if (expression.arguments.length !== 0) throw new Error("temporal size does not accept arguments");
@@ -100,13 +134,20 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
   if (node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
+  if (ts.isArrayLiteralExpression(node)) return { kind: "array", elements: node.elements.map((element) => {
+    if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) throw new Error("temporal arrays do not support spread or holes");
+    return convert(element);
+  }) };
   if (ts.isArrowFunction(node) && node.parameters.length === 1 && ts.isIdentifier(node.parameters[0]!.name) && !ts.isBlock(node.body)) {
     return { kind: "lambda", parameter: node.parameters[0]!.name.text, body: convert(node.body) };
   }
   if (ts.isCallExpression(node)) {
-    if (ts.isIdentifier(node.expression) && node.expression.text === "Set") return { kind: "call", name: "Set", arguments: node.arguments.map(convert) };
-    if (ts.isPropertyAccessExpression(node.expression) && ["contains", "union", "forall", "size"].includes(node.expression.name.text)) {
-      return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as "contains" | "union" | "forall" | "size", arguments: node.arguments.map(convert) };
+    if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
+    if (ts.isPropertyAccessExpression(node.expression)) {
+      if (!["contains", "union", "forall", "size", "put", "keys", "values"].includes(node.expression.name.text)) {
+        throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
+      }
+      return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as "contains" | "union" | "forall" | "size" | "put" | "keys" | "values", arguments: node.arguments.map(convert) };
     }
   }
   if (ts.isPrefixUnaryExpression(node)) {
@@ -166,14 +207,24 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
   if (expression.kind === "name") return expression.name;
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
+  if (expression.kind === "array") return `[${expression.elements.map((item) => emit(item, backend)).join(", ")}]`;
   if (expression.kind === "lambda") return `${expression.parameter} => ${emit(expression.body, backend)}`;
   if (expression.kind === "call") {
+    if (expression.name === "Map") {
+      const entries = (expression.arguments[0] as Extract<TemporalExpression, { kind: "array" }>).elements.map((pair) => (pair as Extract<TemporalExpression, { kind: "array" }>).elements);
+      if (backend === "quint") return `Map(${entries.map(([key, value]) => `${emit(key!, backend)} -> ${emit(value!, backend)}`).join(", ")})`;
+      return `new Map([${entries.map(([key, value]) => `[${emit(key!, backend)}, ${emit(value!, backend)}]`).join(", ")}])`;
+    }
     const items = expression.arguments.map((item) => emit(item, backend)).join(", ");
     return backend === "quint" ? `Set(${items})` : `new Set([${items}])`;
   }
   if (expression.kind === "method") {
     const receiver = emit(expression.receiver, backend, 100);
+    if (backend === "quint" && expression.name === "values") return `${receiver}.keys().map(_uneffect_key => ${receiver}.get(_uneffect_key))`;
     if (backend === "quint") return `${receiver}.${expression.name}(${expression.arguments.map((item) => emit(item, backend)).join(", ")})`;
+    if (expression.name === "put") return `new Map([...${receiver}, [${emit(expression.arguments[0]!, backend)}, ${emit(expression.arguments[1]!, backend)}]])`;
+    if (expression.name === "keys") return `new Set(${receiver}.keys())`;
+    if (expression.name === "values") return `new Set(${receiver}.values())`;
     if (expression.name === "size") return `${receiver}.size`;
     if (expression.name === "contains") return `${receiver}.has(${emit(expression.arguments[0]!, backend)})`;
     if (expression.name === "union") return `new Set([...${receiver}, ...${emit(expression.arguments[0]!, backend)}])`;

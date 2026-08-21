@@ -57,15 +57,21 @@ export function registerEffectSchema(schema: EffectSchema): void {
 
 export function splitTopLevel(input: string, separator: string): string[] {
   const values: string[] = [];
-  let start = 0, angleDepth = 0, quote: string | undefined;
+  let start = 0, angleDepth = 0, parenDepth = 0, bracketDepth = 0, braceDepth = 0, quote: string | undefined;
   for (let index = 0; index < input.length; index++) {
     const char = input[index]!;
     if (quote) {
       if (char === quote && input[index - 1] !== "\\") quote = undefined;
-    } else if (char === '"') quote = char;
+    } else if (char === '"' || char === "`" || (char === "'" && !/[\w$]/.test(input[index - 1] ?? ""))) quote = char;
     else if (char === "<") angleDepth++;
     else if (char === ">") angleDepth--;
-    else if (char === separator && angleDepth === 0) {
+    else if (char === "(") parenDepth++;
+    else if (char === ")") parenDepth--;
+    else if (char === "[") bracketDepth++;
+    else if (char === "]") bracketDepth--;
+    else if (char === "{") braceDepth++;
+    else if (char === "}") braceDepth--;
+    else if (char === separator && angleDepth === 0 && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
       values.push(input.slice(start, index).trim());
       start = index + 1;
     }

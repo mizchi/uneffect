@@ -61,6 +61,26 @@ describe("spec IR and generated verifier programs", () => {
     await expect(findTemporalCounterexampleWithZ3(temporal, "ownersAreNodes")).resolves.toEqual({ status: "unknown", depth: 0 });
     await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({ code: "unsupported-backend-domain", backend: "z3" }));
   });
+
+  it("parses and verifies finite Map state with immutable updates", () => {
+    const temporal = parseSpec("maps.ts", `/* uneffect:
+      state epochs: Map<int, int>
+      init epochs = Map([[1, 1], [2, 0]])
+      action publish: epochs' = epochs.put(2, 1)
+      temporal nonNegative: epochs.values().forall(epoch => epoch >= 0)
+    */`).temporal;
+    expect(temporal.states).toEqual([{ name: "epochs", type: { kind: "map", key: "int", value: "int" } }]);
+    const quint = generateQuint("finite_maps", temporal);
+    expect(quint).toContain("var epochs: int -> int");
+    expect(quint).toContain("epochs' = epochs.put(2, 1)");
+    expect(quint).toContain("epochs.keys().map(_uneffect_key => epochs.get(_uneffect_key)).forall(epoch => epoch >= 0)");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-finite-maps-"));
+    const path = join(directory, "maps.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=nonNegative", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
   it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
     const temporal = parseSpec("counter.ts", `/* uneffect:
       state value: int

@@ -40,15 +40,18 @@ function collectionLeaseModel(skewGrace: number): string {
     clock realNow: 1
     state nodes: Set<int>
     state activeWriters: Set<int>
+    state residentEpochs: Map<int, int>
     state owner: int
     init nodes = Set(1, 2)
     init activeWriters = Set(1)
+    init residentEpochs = Map([[1, 1], [2, 0]])
     init owner = 1
     action takeover: owner' = 2
     action_when takeover: owner === 1 && realNow + 1 >= 10 + ${skewGrace}
-    action publish: activeWriters' = activeWriters.union(Set(2))
+    action publish: activeWriters' = activeWriters.union(Set(2)), residentEpochs' = residentEpochs.put(2, 2)
     action_when publish: owner === 2 && !activeWriters.contains(2)
     temporal writersAreNodes: activeWriters.forall(node => nodes.contains(node))
+    temporal epochsAreNonNegative: residentEpochs.values().forall(epoch => epoch >= 0)
     temporal singleWriter: !(activeWriters.contains(1) && realNow < 10 && activeWriters.contains(2))
   */`;
 }
@@ -78,9 +81,10 @@ function checkLeaseModel(skewGrace: number) {
 }
 
 describe("Node Lease clock-skew model", () => {
-  it("uses finite Set state to model node-indexed writer membership without per-node booleans", () => {
+  it("uses finite Set and Map state without per-node writer or epoch fields", () => {
     const broken = runCollectionLease(0);
     expect(broken.model).toContain("var activeWriters: Set[int]");
+    expect(broken.model).toContain("var residentEpochs: int -> int");
     expect(broken.model).toContain("activeWriters.forall(node => nodes.contains(node))");
     expect(broken.execution.status).not.toBe(0);
     expect(broken.execution.stdout + broken.execution.stderr).toMatch(/violation|counterexample/i);
