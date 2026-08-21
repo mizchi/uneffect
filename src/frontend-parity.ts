@@ -2,13 +2,19 @@ import { spawnSync } from "node:child_process";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectExpression, splitTopLevel } from "./capabilities.js";
+import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
 
 export interface CompareUneffectFrontendsOptions { files: Record<string, string>; corsaSchemaVersion?: number }
 export interface NormalizedFrontendIr {
-  schemaVersion: 1;
+  schemaVersion: 2;
   functions: Array<{ name: string; effects: string[] }>;
   calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
   orderedEvents: Array<{ kind: "call"; caller: string; callee: string; start: number; end: number }>;
+  promiseObservations: Array<{ owner: string; source: string; observation: string; catchesRejection: boolean; start: number; end: number }>;
+  rejectionOwnership: Array<{ owner: string; binding: string; status: string; observations: string[]; start: number; end: number }>;
+  resourceScopes: Array<{ owner: string; binding: string; ownerAsync: boolean; asynchronous: boolean; acquisitionIndex: number; scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean; disposalFailureType: string; start: number; end: number }>;
+  disposals: Array<{ owner: string; binding: string; order: number; asynchronous: boolean; scopeId: string; scopeDepth: number; disposalPoint: number; failureKind: string; failureType: string; catchesFailure: boolean; escapingFailure: string; exits: string[] }>;
+  suppressedErrors: Array<{ owner: string; payload: ResourceError }>;
 }
 export interface FrontendSchemaDrift { frontend: "corsa"; message: string }
 export interface CompareUneffectFrontendsResult {
@@ -57,7 +63,41 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
     };
     ts.forEachChild(node.body!, visit);
   }
-  return { schemaVersion, fileId: 1, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia };
+  const idsByName = new Map(symbols.map((symbol) => [symbol.name as string, symbol.id as number]));
+  const promiseObservations: unknown[] = [], rejectionOwnership: unknown[] = [], resourceScopes: unknown[] = [], disposals: unknown[] = [], suppressedErrors: unknown[] = [];
+  for (const [fileName, text] of Object.entries(files)) {
+    const async = analyzeAsyncSafety(fileName, text);
+    for (const item of async.promises) {
+      const owner = idsByName.get(item.owner); if (!owner) continue;
+      promiseObservations.push({ owner, source: item.source, observation: item.observation, catchesRejection: item.catchesRejection,
+        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+    }
+    for (const item of async.promiseBindings) {
+      const owner = idsByName.get(item.owner); if (!owner) continue;
+      rejectionOwnership.push({ owner, binding: item.binding, status: item.status, observations: item.observations,
+        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+    }
+    for (const item of async.resources) {
+      const owner = idsByName.get(item.owner); if (!owner) continue;
+      resourceScopes.push({ owner, binding: item.binding, ownerAsync: item.ownerAsync, asynchronous: item.asynchronous,
+        acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: byteOffset(text, item.scopeEnd),
+        catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType,
+        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+    }
+    for (const item of async.disposals) {
+      const owner = idsByName.get(item.owner); if (!owner) continue;
+      disposals.push({ owner, binding: item.binding, order: item.order, asynchronous: item.asynchronous, scopeId: item.scopeId,
+        scopeDepth: item.scopeDepth, disposalPoint: byteOffset(text, item.disposalPoint), failureKind: item.failureKind,
+        failureType: item.failureType, catchesFailure: item.catchesFailure, escapingFailure: item.escapingFailure, exits: item.exits });
+    }
+    for (const ownerName of [...new Set(async.disposals.map((item) => item.owner))]) {
+      const owner = idsByName.get(ownerName); if (!owner) continue;
+      const bindings = async.disposals.filter((item) => item.owner === ownerName).sort((left, right) => left.order - right.order).map((item) => item.binding);
+      const payload = composeResourceFailures(async, ownerName, undefined, bindings);
+      if (payload) suppressedErrors.push({ owner, payload });
+    }
+  }
+  return { schemaVersion, fileId: 1, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
 }
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
@@ -69,7 +109,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     functions.push({ name: node.name.text, effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 1);
+  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 2);
   const names = new Map(input.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
   const calls = input.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
   let changed = true;
@@ -83,7 +123,19 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   }
   const orderedEvents = input.calls.map((call) => ({ kind: "call" as const, caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end }))
     .sort((left, right) => left.start - right.start || left.end - right.end);
-  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 1, functions, calls, orderedEvents };
+  const promiseObservations = input.promiseObservations.map((item: any) => ({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
+    catchesRejection: item.catchesRejection, start: item.span.start, end: item.span.end }));
+  const rejectionOwnership = input.rejectionOwnership.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
+    observations: item.observations, start: item.span.start, end: item.span.end }));
+  const resourceScopes = input.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
+    asynchronous: item.asynchronous, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
+    catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, start: item.span.start, end: item.span.end }));
+  const disposals = input.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
+    asynchronous: item.asynchronous, scopeId: item.scopeId, scopeDepth: item.scopeDepth, disposalPoint: item.disposalPoint,
+    failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
+    escapingFailure: item.escapingFailure, exits: item.exits }));
+  const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
+  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 2, functions, calls, orderedEvents, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], { input: JSON.stringify(input), encoding: "utf8", timeout: 30_000 });
   if (execution.error || execution.status !== 0) return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {

@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 1;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,16 @@ pub struct CorsaFrontendFile {
     pub symbols: Vec<CorsaSymbol>,
     pub calls: Vec<CorsaCall>,
     pub trivia: Vec<CorsaTrivia>,
+    #[serde(default)]
+    pub promise_observations: Vec<CorsaPromiseObservation>,
+    #[serde(default)]
+    pub rejection_ownership: Vec<CorsaRejectionOwnership>,
+    #[serde(default)]
+    pub resource_scopes: Vec<CorsaResourceScope>,
+    #[serde(default)]
+    pub disposals: Vec<CorsaDisposal>,
+    #[serde(default)]
+    pub suppressed_errors: Vec<CorsaSuppressedError>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -64,6 +74,83 @@ pub struct CorsaTrivia {
     pub span: SourceSpanDto,
 }
 
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaPromiseObservation {
+    pub owner: u64,
+    pub source: String,
+    pub observation: String,
+    pub catches_rejection: bool,
+    pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaRejectionOwnership {
+    pub owner: u64,
+    pub binding: String,
+    pub status: String,
+    pub observations: Vec<String>,
+    pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaResourceScope {
+    pub owner: u64,
+    pub binding: String,
+    pub owner_async: bool,
+    pub asynchronous: bool,
+    pub acquisition_index: usize,
+    pub scope_id: String,
+    pub scope_depth: usize,
+    pub scope_end: u32,
+    pub catches_failure: bool,
+    pub disposal_failure_type: String,
+    pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaDisposal {
+    pub owner: u64,
+    pub binding: String,
+    pub order: usize,
+    pub asynchronous: bool,
+    pub scope_id: String,
+    pub scope_depth: usize,
+    pub disposal_point: u32,
+    pub failure_kind: String,
+    pub failure_type: String,
+    pub catches_failure: bool,
+    pub escaping_failure: String,
+    pub exits: Vec<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaSuppressedError {
+    pub owner: u64,
+    pub payload: CorsaResourceError,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum CorsaResourceError {
+    Error {
+        error_type: String,
+        source: String,
+    },
+    Suppressed {
+        error: Box<CorsaResourceError>,
+        suppressed: Box<CorsaResourceError>,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceSpanDto {
@@ -96,6 +183,11 @@ pub struct NativeFrontendProgram {
     pub compiler_revision: String,
     pub symbols: BTreeMap<u64, NativeSymbolSummary>,
     pub calls: Vec<CorsaCall>,
+    pub promise_observations: Vec<CorsaPromiseObservation>,
+    pub rejection_ownership: Vec<CorsaRejectionOwnership>,
+    pub resource_scopes: Vec<CorsaResourceScope>,
+    pub disposals: Vec<CorsaDisposal>,
+    pub suppressed_errors: Vec<CorsaSuppressedError>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -105,6 +197,11 @@ pub struct NormalizedFrontendProgram {
     pub functions: Vec<NormalizedFunction>,
     pub calls: Vec<NormalizedCall>,
     pub ordered_events: Vec<NormalizedCallEvent>,
+    pub promise_observations: Vec<NormalizedPromiseObservation>,
+    pub rejection_ownership: Vec<NormalizedRejectionOwnership>,
+    pub resource_scopes: Vec<NormalizedResourceScope>,
+    pub disposals: Vec<NormalizedDisposal>,
+    pub suppressed_errors: Vec<NormalizedSuppressedError>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -130,6 +227,69 @@ pub struct NormalizedCallEvent {
     pub callee: String,
     pub start: u32,
     pub end: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedPromiseObservation {
+    pub owner: String,
+    pub source: String,
+    pub observation: String,
+    pub catches_rejection: bool,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedRejectionOwnership {
+    pub owner: String,
+    pub binding: String,
+    pub status: String,
+    pub observations: Vec<String>,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedResourceScope {
+    pub owner: String,
+    pub binding: String,
+    pub owner_async: bool,
+    pub asynchronous: bool,
+    pub acquisition_index: usize,
+    pub scope_id: String,
+    pub scope_depth: usize,
+    pub scope_end: u32,
+    pub catches_failure: bool,
+    pub disposal_failure_type: String,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedDisposal {
+    pub owner: String,
+    pub binding: String,
+    pub order: usize,
+    pub asynchronous: bool,
+    pub scope_id: String,
+    pub scope_depth: usize,
+    pub disposal_point: u32,
+    pub failure_kind: String,
+    pub failure_type: String,
+    pub catches_failure: bool,
+    pub escaping_failure: String,
+    pub exits: Vec<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedSuppressedError {
+    pub owner: String,
+    pub payload: CorsaResourceError,
 }
 
 impl NativeFrontendProgram {
@@ -167,6 +327,74 @@ impl NativeFrontendProgram {
                 .collect(),
             calls,
             ordered_events,
+            promise_observations: self
+                .promise_observations
+                .iter()
+                .map(|item| NormalizedPromiseObservation {
+                    owner: self.symbols[&item.owner].name.clone(),
+                    source: item.source.clone(),
+                    observation: item.observation.clone(),
+                    catches_rejection: item.catches_rejection,
+                    start: item.span.start,
+                    end: item.span.end,
+                })
+                .collect(),
+            rejection_ownership: self
+                .rejection_ownership
+                .iter()
+                .map(|item| NormalizedRejectionOwnership {
+                    owner: self.symbols[&item.owner].name.clone(),
+                    binding: item.binding.clone(),
+                    status: item.status.clone(),
+                    observations: item.observations.clone(),
+                    start: item.span.start,
+                    end: item.span.end,
+                })
+                .collect(),
+            resource_scopes: self
+                .resource_scopes
+                .iter()
+                .map(|item| NormalizedResourceScope {
+                    owner: self.symbols[&item.owner].name.clone(),
+                    binding: item.binding.clone(),
+                    owner_async: item.owner_async,
+                    asynchronous: item.asynchronous,
+                    acquisition_index: item.acquisition_index,
+                    scope_id: item.scope_id.clone(),
+                    scope_depth: item.scope_depth,
+                    scope_end: item.scope_end,
+                    catches_failure: item.catches_failure,
+                    disposal_failure_type: item.disposal_failure_type.clone(),
+                    start: item.span.start,
+                    end: item.span.end,
+                })
+                .collect(),
+            disposals: self
+                .disposals
+                .iter()
+                .map(|item| NormalizedDisposal {
+                    owner: self.symbols[&item.owner].name.clone(),
+                    binding: item.binding.clone(),
+                    order: item.order,
+                    asynchronous: item.asynchronous,
+                    scope_id: item.scope_id.clone(),
+                    scope_depth: item.scope_depth,
+                    disposal_point: item.disposal_point,
+                    failure_kind: item.failure_kind.clone(),
+                    failure_type: item.failure_type.clone(),
+                    catches_failure: item.catches_failure,
+                    escaping_failure: item.escaping_failure.clone(),
+                    exits: item.exits.clone(),
+                })
+                .collect(),
+            suppressed_errors: self
+                .suppressed_errors
+                .iter()
+                .map(|item| NormalizedSuppressedError {
+                    owner: self.symbols[&item.owner].name.clone(),
+                    payload: item.payload.clone(),
+                })
+                .collect(),
         }
     }
 }
@@ -279,6 +507,21 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
             }
         }
     }
+    for owner in file
+        .promise_observations
+        .iter()
+        .map(|item| item.owner)
+        .chain(file.rejection_ownership.iter().map(|item| item.owner))
+        .chain(file.resource_scopes.iter().map(|item| item.owner))
+        .chain(file.disposals.iter().map(|item| item.owner))
+        .chain(file.suppressed_errors.iter().map(|item| item.owner))
+    {
+        if !symbols.contains_key(&owner) {
+            return Err(CorsaFrontendError(
+                "async record references an unknown symbol".into(),
+            ));
+        }
+    }
     let mut changed = true;
     while changed {
         changed = false;
@@ -296,6 +539,11 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
         compiler_revision: file.compiler_revision,
         symbols,
         calls: file.calls,
+        promise_observations: file.promise_observations,
+        rejection_ownership: file.rejection_ownership,
+        resource_scopes: file.resource_scopes,
+        disposals: file.disposals,
+        suppressed_errors: file.suppressed_errors,
     })
 }
 

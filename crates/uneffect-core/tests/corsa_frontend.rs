@@ -3,7 +3,7 @@ use uneffect_core::corsa::{CallbackTiming, CorsaSymbolKind, NativeEvidence, cons
 #[test]
 fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
     let program = consume_corsa_json(r#"{
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "fileId": 7,
       "compilerRevision": "typescript-go@deadbeef",
       "symbols": [
@@ -23,13 +23,13 @@ fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
 
 #[test]
 fn rejects_unknown_schema_and_dangling_symbol_edges() {
-    let unsupported = r#"{"schemaVersion":2,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[],"trivia":[]}"#;
+    let unsupported = r#"{"schemaVersion":3,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[],"trivia":[]}"#;
     assert!(
         consume_corsa_json(unsupported)
             .unwrap_err()
             .to_string()
             .contains("unsupported")
     );
-    let dangling = r#"{"schemaVersion":1,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[]}"#;
+    let dangling = r#"{"schemaVersion":2,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[]}"#;
     assert!(consume_corsa_json(dangling).is_err());
 }

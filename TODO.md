@@ -335,9 +335,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
   - [x] Resolve local/imported named function and variable callback bodies by TypeChecker identity and propagate dynamically scheduled microtasks.
   - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
-- [ ] Bring Promise/resource IR to Rust/Corsa parity.
-  - [ ] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
-  - [ ] Add cross-frontend parity fixtures and reject schema drift.
+- [x] Bring Promise/resource IR to Rust/Corsa parity.
+  - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
+  - [x] Add cross-frontend parity fixtures and reject schema drift.
 - [x] Dogfood against representative external TypeScript programs.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
   - [x] Run inference-only frontend compatibility over the pinned external `effect` Function module graph; this does not enforce external boundaries.
