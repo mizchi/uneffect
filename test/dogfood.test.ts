@@ -1,7 +1,7 @@
 import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { analyzeProgramEffects } from "../src/effects.js";
+import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { analyzeAsyncPatterns, generateAsyncPatternsQuint } from "../src/async-patterns.js";
@@ -185,5 +185,23 @@ describe("Uneffect dogfood", () => {
     expect(quint).not.toContain("action reject_0_1");
     expect(quint).toContain("action assimilate_0_2");
     expect(quint).toContain("action reject_0_2");
+  });
+
+  it("checks a fetch deadline as both Timer authority and a one-shot Web task", () => {
+    const fileName = "examples/dogfood/fetch-timeout.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toEqual([
+      expect.objectContaining({ kind: "abort-timeout", delay: 5_000, handle: "signal" }),
+    ]);
+    const quint = generateAsyncPatternsQuint("fetch_timeout", model);
+    expect(quint).toContain("action fire_abort_timeout_0");
+    expect(quint).toContain("timer_0_fires <= 1");
+
+    const missingTimer = source.replace("Timer | ", "");
+    expect(analyzeEffects(fileName, missingTimer)).toContainEqual(expect.objectContaining({
+      functionName: "fetchDashboard", kind: "missing", effect: "Timer",
+    }));
   });
 });

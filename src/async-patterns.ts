@@ -12,6 +12,8 @@ export interface TimerPattern {
   queue: "timer" | "microtask" | "animation-frame";
   enqueuedBy?: number;
   handle?: string;
+  kind?: "abort-timeout";
+  abortReason?: "TimeoutError";
   span: { start: number; end: number };
 }
 
@@ -142,6 +144,21 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           collectNestedMicrotasks(callbackNode, timerIndex);
+        } else if (operation?.kind === "abort-timeout") {
+          const delayNode = node.arguments[operation.delayArgument];
+          const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
+          timers.push({
+            owner: ownerName,
+            callback: "<abort>",
+            delay: delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : undefined,
+            recursive: false,
+            repeats: false,
+            queue: "timer",
+            handle: declaration,
+            kind: "abort-timeout",
+            abortReason: "TimeoutError",
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
         } else if (operation?.kind === "timer-clear") {
           const handleNode = node.arguments[operation.handleArgument];
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
@@ -201,9 +218,16 @@ export function analyzeAsyncPatterns(fileName: string, text: string): AsyncPatte
 }
 
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_"); }
+function timerAction(kind: "fire" | "run", timer: TimerPattern, index: number): string {
+  if (timer.kind === "abort-timeout") return kind === "fire" ? `fire_abort_timeout_${index}` : `run_abort_timeout_task_${index}`;
+  return kind === "fire" ? `fire_timer_${index}` : `run_timer_task_${index}`;
+}
 
 export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatternModel, options: { allowEarlyTimer?: boolean; allowEarlyJoin?: boolean; allowSpuriousReject?: boolean; allowFireAfterCancel?: boolean; allowMacroBeforeMicrotask?: boolean } = {}): string {
-  for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: timer model requires a static non-negative delay`);
+  for (const timer of model.timers) {
+    if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: timer model requires a static non-negative delay`);
+    if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
+  }
   for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires an array literal without spreads`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int"];
   model.timers.forEach((_, index) => lines.push(`  var timer_${index}_scheduled: bool`, `  var timer_${index}_cancelled: bool`, `  var timer_${index}_due: int`, `  var timer_${index}_early: bool`, `  var timer_${index}_after_cancel: bool`, `  var timer_${index}_macro_first: bool`, `  var timer_${index}_fires: int`));
@@ -228,7 +252,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   action("tick", [], new Map([["clock", "clock + 1"]]));
   model.timers.forEach((timer, index) => {
     const pendingMicrotasks = model.timers.flatMap((candidate, candidateIndex) => candidate.owner === timer.owner && candidate.queue === "microtask" ? [`timer_${candidateIndex}_scheduled`] : []);
-    action(`fire_timer_${index}`, [...(options.allowFireAfterCancel ? [] : [`timer_${index}_scheduled`]), ...(options.allowEarlyTimer ? [] : [`clock >= timer_${index}_due`]), ...(timer.queue === "timer" && !options.allowMacroBeforeMicrotask ? pendingMicrotasks.map((name) => `not(${name})`) : [])], new Map([
+    action(timerAction("fire", timer, index), [...(options.allowFireAfterCancel ? [] : [`timer_${index}_scheduled`]), ...(options.allowEarlyTimer ? [] : [`clock >= timer_${index}_due`]), ...(timer.queue === "timer" && !options.allowMacroBeforeMicrotask ? pendingMicrotasks.map((name) => `not(${name})`) : [])], new Map([
     [`timer_${index}_scheduled`, timer.recursive || timer.repeats ? "true" : "false"],
     [`timer_${index}_early`, `clock < timer_${index}_due`],
     [`timer_${index}_after_cancel`, `timer_${index}_cancelled`],
@@ -271,14 +295,14 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
       [`join_${index}_rejection_escapes`, String(!join.catchesRejection)],
     ]));
   });
-  const actions = ["tick", ...model.timers.map((_, i) => `fire_timer_${i}`), ...model.combinators.flatMap((join, i) => [...join.branches.flatMap((_, b) => {
+  const actions = ["tick", ...model.timers.map((timer, i) => timerAction("fire", timer, i)), ...model.combinators.flatMap((join, i) => [...join.branches.flatMap((_, b) => {
     const kind = join.branchKinds?.[b] ?? "unknown";
     return kind === "value" ? [`fulfill_${i}_${b}`]
       : kind === "thenable" ? [`assimilate_${i}_${b}`, `fulfill_${i}_${b}`, `reject_${i}_${b}`]
       : [`fulfill_${i}_${b}`, `assimilate_${i}_${b}`, `reject_${i}_${b}`];
   }), `fulfill_join_${i}`, `reject_join_${i}`])];
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
-  const safeTerms = [...model.timers.flatMap((_, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`]), ...model.combinators.flatMap((join, i) => {
+  const safeTerms = [...model.timers.flatMap((timer, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`, ...(timer.kind === "abort-timeout" ? [`timer_${i}_fires <= 1`] : [])]), ...model.combinators.flatMap((join, i) => {
     const allFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" and ") || "true";
     const anyFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" or ") || "false";
     const allRejected = join.branches.map((_, b) => `join_${i}_branch_${b} == 2`).join(" and ") || "true";
@@ -294,7 +318,10 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 
 /** Browser event-loop profile: one task, a draining microtask checkpoint, then an optional rendering opportunity. */
 export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean } = {}, promiseModel?: PromiseChainModel): string {
-  for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
+  for (const timer of model.timers) {
+    if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
+    if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
+  }
   const microtasks = model.timers.flatMap((timer, index) => timer.queue === "microtask" ? [index] : []);
   const frames = model.timers.flatMap((timer, index) => timer.queue === "animation-frame" ? [index] : []);
   const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
@@ -382,8 +409,9 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
       ["phase", "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"],
     ]);
     enqueueChildren(index, updates);
-    action(`run_timer_task_${index}`, [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
+    action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
   });
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)", "}", "");
+  const oneShotSignals = model.timers.flatMap((timer, index) => timer.kind === "abort-timeout" ? [`callback_${index}_fires <= 1`] : []);
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)${oneShotSignals.map((term) => ` and ${term}`).join("")}`, "}", "");
   return lines.join("\n");
 }

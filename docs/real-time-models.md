@@ -32,6 +32,16 @@ throttling, background-tab suspension, and the 4 ms nested-timer clamp affect
 eligibility and physical time, so they are deliberately not encoded as exact
 latency guarantees in this finite safety model.
 
+`AbortSignal.timeout(ms)` is resolved by builtin declaration identity and
+lowers to a one-shot task on the timer task source. Its deadline uses the
+model's **active-time** clock: suspension and bfcache pauses are environment
+behavior, not elapsed wall-clock progress. The transition may run only at or
+after the static deadline, aborts once with the abstract `TimeoutError` reason,
+and contributes the `Timer` capability. Static delays outside
+`0..Number.MAX_SAFE_INTEGER` are rejected. This follows the
+[DOM timeout algorithm](https://dom.spec.whatwg.org/#dom-abortsignal-timeout)
+and [MDN active-time description](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static).
+
 ```sh
 just spec-web-event-loop examples/async-patterns.ts
 ```

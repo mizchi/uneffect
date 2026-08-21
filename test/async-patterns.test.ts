@@ -125,6 +125,32 @@ describe("builtin async temporal patterns", () => {
     expect(run(generateWebEventLoopQuint("web_loop_broken", model, { allowWrongPhase: true }), "eventLoopSafe").status).not.toBe(0);
   }, 20_000);
 
+  it("models AbortSignal.timeout as a one-shot timer-source abort task", () => {
+    const model = analyzeAsyncPatterns("abort-timeout.ts", `
+      async function request() {
+        const signal = AbortSignal.timeout(50)
+        return fetch("/slow", { signal })
+      }
+    `);
+    expect(model.timers).toEqual([
+      expect.objectContaining({ owner: "request", callback: "<abort>", delay: 50, repeats: false, queue: "timer", kind: "abort-timeout", abortReason: "TimeoutError", handle: "signal" }),
+    ]);
+    const quint = generateWebEventLoopQuint("abort_timeout", model);
+    expect(quint).toContain("action run_abort_timeout_task_0");
+    expect(quint).toMatch(/action run_abort_timeout_task_0[\s\S]*clock >= callback_0_due/);
+    expect(quint).toContain("callback_0_fires <= 1");
+    const positive = run(quint, "eventLoopSafe");
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    expect(analyzeAsyncPatterns("shadow-abort.ts", `
+      class AbortSignal { static timeout(_ms: number) { return {} } }
+      function request() { return AbortSignal.timeout(50) }
+    `).timers).toEqual([]);
+    expect(() => generateWebEventLoopQuint("invalid_abort_timeout", analyzeAsyncPatterns("invalid-abort.ts", `
+      function request() { return AbortSignal.timeout(9007199254740992) }
+    `))).toThrow(/exceeds Number\.MAX_SAFE_INTEGER/);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}

@@ -73,7 +73,7 @@ describe("effect checker", () => {
   });
 
   it("treats timer scheduling and cancellation as the same Timer capability", () => {
-    const source = `/* uneffect: effect Timer */ function f() { const h = setTimeout(() => {}, 1); clearTimeout(h) }`;
+    const source = `/* uneffect: effect Timer */ function f() { const h = setTimeout(() => {}, 1); clearTimeout(h); AbortSignal.timeout(10) }`;
     expect(analyzeEffects("timer.ts", source)).toEqual([]);
   });
 

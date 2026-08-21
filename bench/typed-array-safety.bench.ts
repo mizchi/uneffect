@@ -33,6 +33,7 @@ const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/work
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
+const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -128,6 +129,10 @@ describe("typed-array static verification", () => {
 
   bench("classify mixed Promise combinator elements", () => {
     analyzeAsyncPatterns("mixed-promise-batch.ts", mixedPromiseBatchSource);
+  }, { time: 500, iterations: 5 });
+
+  bench("analyze AbortSignal fetch deadline", () => {
+    analyzeAsyncPatterns("fetch-timeout.ts", fetchTimeoutSource);
   }, { time: 500, iterations: 5 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {
