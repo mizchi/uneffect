@@ -141,6 +141,8 @@ export { generateQuintExpression, generateRuntimeAssertionExpression, generateRu
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
 export type { TemporalDomainActionSource, TemporalDomainExpansion, TemporalDomainPropertySource, TemporalSemanticDomain } from "./temporal-domains.js";
+export { checkClockConformance, createBrowserClockObserver, createDenoClockObserver, createNodeClockObserver } from "./clock-conformance.js";
+export type { ClockConformanceDiagnostic, ClockConformancePolicy, ClockConformanceResult, ClockObservation, ClockRateRange, HostClockObserver, HostClockSources } from "./clock-conformance.js";
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, findBuiltinContract } from "./builtin-contracts.js";

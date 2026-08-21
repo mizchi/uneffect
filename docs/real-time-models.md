@@ -175,7 +175,14 @@ Finite variable rates use `monotonic_clock mono: 1..2` or
 transition. `wall_clock_jump wall: 1..2` independently bounds rollback
 magnitudes. Ranges contain at most 32 positive integer values, keeping the
 generated transition system reviewable. Host-clock observation adapters and
-platform conformance remain unimplemented. The core `clock` directive continues to mean
+platform conformance are exposed through `createNodeClockObserver`,
+`createBrowserClockObserver`, `createDenoClockObserver`, and
+`checkClockConformance`. Observers normalize `performance.now()` and
+`Date.now()` to a shared local origin and quantize elapsed samples; injected
+clock functions make platform tests deterministic. The pure checker reports
+rate, rollback, and skew violations with the offending sample index. A finite
+conformant trace validates only those observations—it does not prove that the
+host will satisfy the assumptions forever. The core `clock` directive continues to mean
 logical model time, not elapsed host time.
 
 ## Expressible patterns
