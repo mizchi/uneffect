@@ -2,6 +2,8 @@ import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
 import type { TemporalExpression } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
 import { init as initZ3 } from "z3-solver";
+import { createHash } from "node:crypto";
+import { createModelCounterexample, type ModelCounterexample, type ModelState } from "./model-replay.js";
 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
@@ -44,6 +46,93 @@ async function checkSmt(declarations: readonly string[], assertions: readonly st
   const solver = new context.Solver();
   solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
   return String(await solver.check()) as "sat" | "unsat" | "unknown";
+}
+
+export type TemporalCounterexampleResult =
+  | { status: "counterexample"; depth: number; trace: ModelCounterexample }
+  | { status: "safe-within-bound"; depth: number }
+  | { status: "unknown"; depth: number };
+
+function parseZ3TemporalValue(value: string, type: "int" | "bool"): number | boolean {
+  if (type === "bool") {
+    if (value === "true") return true;
+    if (value === "false") return false;
+    throw new Error(`Z3 returned a non-boolean temporal value: ${value}`);
+  }
+  if (/^-?\d+$/.test(value)) {
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed)) throw new Error(`Z3 temporal integer exceeds JavaScript's safe range: ${value}`);
+    return parsed;
+  }
+  const negative = /^\(-\s+(\d+)\)$/.exec(value);
+  if (negative) {
+    const parsed = -Number(negative[1]);
+    if (!Number.isSafeInteger(parsed)) throw new Error(`Z3 temporal integer exceeds JavaScript's safe range: ${value}`);
+    return parsed;
+  }
+  throw new Error(`Z3 returned a non-integer temporal value: ${value}`);
+}
+
+/** Finds the shortest bounded safety violation and extracts its chosen actions and states. */
+export async function findTemporalCounterexampleWithZ3(
+  spec: TemporalSpec,
+  propertyName: string,
+  options: { maxSteps?: number } = {},
+): Promise<TemporalCounterexampleResult> {
+  const property = spec.properties.find((candidate) => candidate.name === propertyName);
+  if (!property) throw new Error(`unknown temporal property: ${propertyName}`);
+  const maxSteps = options.maxSteps ?? 8;
+  if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
+  const at = (name: string, step: number) => `${name}__${step}`;
+  const actionAt = (step: number) => `uneffect_action__${step}`;
+  const stateDeclarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${state.type === "int" ? "Int" : "Bool"})`)).flat();
+  const actionDeclarations = Array.from({ length: maxSteps }, (_, step) => `(declare-const ${actionAt(step)} Int)`);
+  const declarations = [...stateDeclarations, ...actionDeclarations];
+  const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0))})`);
+  const transition = (step: number): string => `(or ${spec.actions.map((action, actionIndex) => {
+    const assignments = new Map(action.assignments.map((assignment) => [assignment.target, assignment]));
+    const guard = action.guard ? temporalToSmt(action.guard.expressionAst, (name) => at(name, step)) : "true";
+    const updates = spec.states.map((state) => {
+      const assignment = assignments.get(state.name);
+      const value = assignment ? temporalToSmt(assignment.expressionAst, (name) => at(name, step)) : at(state.name, step);
+      return `(= ${at(state.name, step + 1)} ${value})`;
+    });
+    return `(and (= ${actionAt(step)} ${actionIndex}) ${guard} ${updates.join(" ")})`;
+  }).join(" ")})`;
+  const { Context } = await initZ3();
+  const context: any = new Context(`uneffect_temporal_counterexample_${solverSequence++}`);
+  for (let depth = 0; depth <= maxSteps; depth++) {
+    if (depth > 0 && spec.actions.length === 0) break;
+    const assertions = [
+      ...init,
+      ...Array.from({ length: depth }, (_, step) => transition(step)),
+      `(not ${temporalToSmt(property.expressionAst, (name) => at(name, depth))})`,
+    ];
+    const solver = new context.Solver();
+    const program = ["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n");
+    solver.fromString(program);
+    const status = String(await solver.check());
+    if (status === "unknown") return { status: "unknown", depth };
+    if (status !== "sat") continue;
+    const model = solver.model();
+    const states: ModelState[] = Array.from({ length: depth + 1 }, (_, step) => Object.fromEntries(spec.states.map((state) => {
+      const expression = state.type === "int" ? context.Int.const(at(state.name, step)) : context.Bool.const(at(state.name, step));
+      return [state.name, parseZ3TemporalValue(model.eval(expression, true).toString(), state.type)];
+    })));
+    const actions = Array.from({ length: depth }, (_, step) => {
+      const selected = Number(model.eval(context.Int.const(actionAt(step)), true).toString());
+      const action = spec.actions[selected];
+      if (!action) throw new Error(`Z3 selected invalid temporal action ${selected} at step ${step}`);
+      return action.name;
+    });
+    const modelHash = createHash("sha256").update(program).digest("hex");
+    const trace = createModelCounterexample({
+      backend: "z3", modelHash, initialState: states[0]!,
+      steps: actions.map((action, index) => ({ action, before: states[index]!, after: states[index + 1]! })),
+    });
+    return { status: "counterexample", depth, trace };
+  }
+  return { status: "safe-within-bound", depth: maxSteps };
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */

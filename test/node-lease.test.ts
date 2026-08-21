@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { generateQuint } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { parseQuintItfCounterexample, replayModelCounterexample, type ModelState } from "../src/model-replay.js";
+import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
 
 function leaseModel(skewGrace: number): string {
   return `
@@ -49,6 +50,32 @@ function checkLeaseModel(skewGrace: number) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("extracts and replays the same lease violation with bounded Z3", async () => {
+    const broken = await findTemporalCounterexampleWithZ3(parseSpec("node-lease.ts", leaseModel(0)).temporal, "singleWriter", { maxSteps: 12 });
+    expect(broken.status).toBe("counterexample");
+    if (broken.status !== "counterexample") return;
+    expect(broken.trace.steps.map((step) => step.action)).toEqual([
+      ...Array.from({ length: 9 }, () => "tick_realNow"), "takeoverB", "publishB",
+    ]);
+    const replay = await replayModelCounterexample(broken.trace, {
+      schema: "uneffect-refinement-adapter/v1", name: "node-lease-z3", version: "1",
+      create: (state) => structuredClone(state), observe: (runtime) => structuredClone(runtime),
+      actions: {
+        tick_realNow: (runtime) => { runtime.realNow = Number(runtime.realNow) + 1; },
+        takeoverB: (runtime) => { runtime.ownerIsA = false; runtime.ownerEpoch = Number(runtime.ownerEpoch) + 1; },
+        publishB: (runtime) => { runtime.residentEpochB = runtime.ownerEpoch; },
+      },
+      invariants: {
+        singleWriter: (runtime: ModelState) => !(Number(runtime.residentEpochA) > 0 && Number(runtime.realNow) < Number(runtime.localDeadlineA) && Number(runtime.residentEpochB) > 0),
+      },
+    });
+    expect(replay).toMatchObject({ status: "replayed", violations: [{ invariant: "singleWriter", step: 11 }] });
+
+    await expect(findTemporalCounterexampleWithZ3(parseSpec("node-lease.ts", leaseModel(1)).temporal, "singleWriter", { maxSteps: 12 })).resolves.toEqual({
+      status: "safe-within-bound", depth: 12,
+    });
+  });
+
   it("reproduces the early-takeover double-writer counterexample", () => {
     const { execution: result } = checkLeaseModel(0);
     expect(result.status).not.toBe(0);

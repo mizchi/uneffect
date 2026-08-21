@@ -77,6 +77,13 @@ It covers async invalidation, lifecycle protocols, retries, cancellation, Worker
 
 The prototype generates a Quint module containing variables, an `init` action, named actions with explicit or generated stuttering assignments, a nondeterministic `step`, and named safety predicates. Quint simulation supplies fast counterexamples. Exhaustive verification remains a separate Apalache/TLC CI tier.
 
+For bounded safety exploration, the direct Z3 backend unrolls the same neutral
+actions, adds a solver-visible action selector per transition, and searches
+depths in ascending order. A satisfiable negated property therefore yields the
+shortest trace at or below the configured bound, including concrete states and
+action names suitable for TypeScript refinement replay. `safe-within-bound`
+remains a bounded result; `unknown` is never promoted to safety.
+
 Actions may have TypeScript-like guards with
 `action_when actionName: predicate`. This is sufficient for discrete logical
 clocks, deadlines, leases, periodic/sporadic releases, throttling, watchdogs,

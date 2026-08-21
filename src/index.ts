@@ -94,8 +94,8 @@ export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafet
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationVariable } from "./invariant-ir.js";
 export { parseSpec } from "./spec-ir.js";
-export { lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
-export type { SpecLintDiagnostic } from "./spec-lint.js";
+export { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
+export type { SpecLintDiagnostic, TemporalCounterexampleResult } from "./spec-lint.js";
 export type {
   CapabilitySpec,
   InvariantSpec,

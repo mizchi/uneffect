@@ -3,7 +3,7 @@ import ts from "typescript";
 import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
-import { lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, replayModelCounterexample } from "../src/model-replay.js";
@@ -142,6 +142,30 @@ describe("typed-array static verification", () => {
       action_when never: phase === 99
     */`).temporal;
     await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
+  }, { time: 500, iterations: 1 });
+
+  bench("extract a bounded 11-step Node Lease Z3 counterexample", async () => {
+    const temporal = parseSpec("lease-counterexample.ts", `/* uneffect:
+      clock realNow: 1
+      state leaseExpiryA: int
+      state localDeadlineA: int
+      state ownerEpoch: int
+      state residentEpochA: int
+      state residentEpochB: int
+      state ownerIsA: bool
+      init leaseExpiryA = 10
+      init localDeadlineA = 10
+      init ownerEpoch = 1
+      init residentEpochA = 1
+      init residentEpochB = 0
+      init ownerIsA = true
+      action takeoverB: ownerIsA' = false, ownerEpoch' = ownerEpoch + 1
+      action_when takeoverB: ownerIsA && realNow + 1 >= leaseExpiryA
+      action publishB: residentEpochB' = ownerEpoch
+      action_when publishB: !ownerIsA && residentEpochB !== ownerEpoch
+      temporal singleWriter: !(residentEpochA > 0 && realNow < localDeadlineA && residentEpochB > 0)
+    */`).temporal;
+    await findTemporalCounterexampleWithZ3(temporal, "singleWriter", { maxSteps: 12 });
   }, { time: 500, iterations: 1 });
 
   bench("generate 16 scalar contract property tests", () => {

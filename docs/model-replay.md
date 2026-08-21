@@ -53,6 +53,16 @@ and converts `#bigint` values to JavaScript numbers only when they are safe.
 Larger integers remain tagged JSON objects and must be projected deliberately
 by an adapter.
 
+The temporal Z3 path does not scrape a printed model. Instead,
+`findTemporalCounterexampleWithZ3` unrolls the neutral transition IR from depth
+zero to the configured bound, constrains an explicit action selector at every
+step, and returns the first satisfiable invariant violation as the same
+normalized trace. Its result is one of `counterexample`, `safe-within-bound`,
+or `unknown`; bounded safety is deliberately not reported as an unbounded
+proof. The Node Lease fixture extracts the eleven-action skew violation and
+replays it against TypeScript, while the skew-grace variant has no violation
+within twelve steps.
+
 The result binds hashes of the full trace and adapter metadata. The adapter
 digest covers its schema, name, version, action names, and invariant names; the
 adapter version is therefore a deliberate trust boundary for implementation
@@ -63,5 +73,6 @@ code changes.
 The executable Node Lease fixture runs Quint with MBT ITF output, parses the
 produced broken trace, replays all clock/takeover/publish actions, and observes
 `singleWriter` failing at the same final step. A deliberately incorrect runtime
-also produces a step-local mismatch. Uneffect does not yet parse standalone TLC
-or temporal Z3 output, nor generate adapters from source annotations.
+also produces a step-local mismatch. The same fixture now exercises the direct
+bounded-Z3 trace path. Uneffect does not yet parse standalone TLC output or
+generate adapters from source annotations.

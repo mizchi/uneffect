@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { replayModelCounterexample } from "../src/model-replay.js";
 
 const source = `
   /*
@@ -31,6 +32,53 @@ const source = `
 `;
 
 describe("spec IR and generated verifier programs", () => {
+  it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
+    const temporal = parseSpec("counter.ts", `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+      temporal belowTwo: value < 2
+    */`).temporal;
+    const result = await findTemporalCounterexampleWithZ3(temporal, "belowTwo", { maxSteps: 4 });
+    expect(result.status).toBe("counterexample");
+    if (result.status !== "counterexample") return;
+    expect(result.trace).toMatchObject({
+      backend: "z3", initialState: { value: 0 },
+      steps: [
+        { action: "increment", before: { value: 0 }, after: { value: 1 } },
+        { action: "increment", before: { value: 1 }, after: { value: 2 } },
+      ],
+    });
+    const replay = await replayModelCounterexample(result.trace, {
+      schema: "uneffect-refinement-adapter/v1", name: "counter", version: "1",
+      create: (state) => ({ value: Number(state.value) }), observe: (runtime) => ({ value: runtime.value }),
+      actions: { increment: (runtime) => { runtime.value++; } },
+      invariants: { belowTwo: (runtime) => runtime.value < 2 },
+    });
+    expect(replay).toMatchObject({ status: "replayed", matchedSteps: 2, violations: [{ invariant: "belowTwo", step: 2 }] });
+  });
+
+  it("checks initial temporal violations and reports bounded safety honestly", async () => {
+    const initiallyBroken = parseSpec("initial.ts", `/* uneffect:
+      state ready: bool
+      init ready = false
+      temporal readyNow: ready
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(initiallyBroken, "readyNow", { maxSteps: 3 })).resolves.toMatchObject({
+      status: "counterexample", depth: 0, trace: { initialState: { ready: false }, steps: [] },
+    });
+
+    const boundedSafe = parseSpec("safe.ts", `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+      temporal belowThree: value < 3
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(boundedSafe, "belowThree", { maxSteps: 2 })).resolves.toEqual({
+      status: "safe-within-bound", depth: 2,
+    });
+  });
+
   it("classifies capability, invariant, and temporal specifications", () => {
     const spec = parseSpec("input.ts", source);
     expect(spec.capabilities[0]).toMatchObject({

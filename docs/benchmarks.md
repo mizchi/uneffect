@@ -111,3 +111,10 @@ Parsing and normalizing a 100-step Quint MBT ITF violation measured 0.2078 ms
 mean (0.75% relative margin of error). This includes JSON parsing, removal of
 ITF/MBT metadata, safe-bigint conversion, trace validation, and cloning; it
 excludes Quint startup and model exploration.
+
+Searching depths zero through eleven and extracting the vulnerable Node Lease
+trace with the in-process Z3 backend measured 129.16 ms mean in an initial
+four-sample run (13.03% relative margin of error). This includes repeated
+bounded solver checks, model extraction, hashing, and normalized trace
+validation; the sample is noisy and is an observation rather than a regression
+budget.
