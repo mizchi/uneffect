@@ -48,6 +48,8 @@ declare const fixedArrayBufferBrand: unique symbol;
 export type FixedArrayBuffer<Bytes extends number> = ArrayBuffer & { readonly [fixedArrayBufferBrand]: Bytes };
 declare const boundedSetBrand: unique symbol;
 export type BoundedSet<Element, MaxSize extends number> = Set<Element> & { readonly [boundedSetBrand]: MaxSize };
+declare const boundedMapBrand: unique symbol;
+export type BoundedMap<Key, Value, MaxSize extends number> = Map<Key, Value> & { readonly [boundedMapBrand]: MaxSize };
 export function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength) {
   return v.pipe(
     v.instance(Uint8Array),
@@ -86,6 +88,18 @@ export function parseBoundedSet<Element, MaxSize extends number>(
   if (input.size > maximum) throw new RangeError(`Set size must be at most ${maximum}`);
   for (const value of input) parseElement(value);
   return input as BoundedSet<Element, MaxSize>;
+}
+export function parseBoundedMap<Key, Value, MaxSize extends number>(
+  input: unknown,
+  maximum: MaxSize,
+  parseKey: (input: unknown) => Key,
+  parseValue: (input: unknown) => Value,
+): BoundedMap<Key, Value, MaxSize> {
+  if (!Number.isSafeInteger(maximum) || maximum < 0) throw new RangeError(`Map maximum size must be a non-negative safe integer, got ${maximum}`);
+  if (!(input instanceof Map)) throw new TypeError("Expected a Map");
+  if (input.size > maximum) throw new RangeError(`Map size must be at most ${maximum}`);
+  for (const [key, value] of input) { parseKey(key); parseValue(value); }
+  return input as BoundedMap<Key, Value, MaxSize>;
 }
 
 export const parseInt = (input: unknown): Int => v.parse(IntSchema, input);

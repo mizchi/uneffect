@@ -66,7 +66,11 @@ with a zero value, and shrinking can omit them. `BoundedSet<T, N>` uses a
 finite solver universe assembled from literal `has(...)` observations and
 machine-domain edge values; `.size` and literal membership are constrained as
 SMT membership bits, then materialized as a native `Set` in generated tests.
-Nested optional object fields and Maps remain unsupported. The generator injects
+`BoundedMap<K, V, N>` uses the same finite key universe plus guarded scalar
+value variables. Counterexamples persist as parallel JSON-safe `keys` and
+`values` columns, while generated tests materialize native `Map` instances;
+`get(k)` also asserts key presence. Optional object-valued fields remain
+unsupported. The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the

@@ -129,7 +129,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Recursively generate, constrain, reconstruct, and shrink closed nested records.
         - [x] Generate scalar optional record fields with explicit SMT presence bits and omission-first shrinking.
         - [x] Generate finite `BoundedSet<T, N>` values with native-Set materialization, membership/size SMT constraints, and structural/element shrinking.
-        - [ ] Generate finite Maps and nested optional object fields.
+        - [x] Generate finite `BoundedMap<K, V, N>` values with JSON-safe key/value columns, native-Map materialization, lookup/membership/size SMT constraints, and shrinking.
+        - [ ] Generate optional object-valued fields with presence-aware nested leaves.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

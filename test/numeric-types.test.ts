@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { BoundedSet, F32, Float, I32, Int, Nat, U8, U32 } from "../src/index.js";
-import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseBoundedSet, parseFloat, parseInt, parseNat, parseU8, u8, u32 } from "../src/index.js";
+import type { BoundedMap, BoundedSet, F32, Float, I32, Int, Nat, U8, U32 } from "../src/index.js";
+import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseBoundedMap, parseBoundedSet, parseFloat, parseInt, parseNat, parseU8, u8, u32 } from "../src/index.js";
 
 describe("numeric helper types", () => {
   it("parses branded numeric values with Valibot", () => {
@@ -49,5 +49,14 @@ describe("numeric helper types", () => {
     expect(() => parseBoundedSet(new Set([0, 1, 2]), 2, parseU8)).toThrow(/at most 2/);
     expect(() => parseBoundedSet(new Set([256]), 2, parseU8)).toThrow();
     expect(() => parseBoundedSet([0, 1], 2, parseU8)).toThrow(/Set/);
+  });
+
+  it("optionally validates bounded Map size, keys, and values at runtime", () => {
+    const values = parseBoundedMap(new Map([[1, 255]]), 2, parseU8, parseU8);
+    expect(values).toEqual(new Map([[1, 255]]));
+    expectTypeOf(values).toEqualTypeOf<BoundedMap<U8, U8, 2>>();
+    expect(() => parseBoundedMap(new Map([[0, 0], [1, 1], [2, 2]]), 2, parseU8, parseU8)).toThrow(/at most 2/);
+    expect(() => parseBoundedMap(new Map([[256, 0]]), 2, parseU8, parseU8)).toThrow();
+    expect(() => parseBoundedMap(new Map([[0, 256]]), 2, parseU8, parseU8)).toThrow();
   });
 });

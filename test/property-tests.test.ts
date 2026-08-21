@@ -315,6 +315,51 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("derives bounded Map domains and materializes JSON-safe entries as native Maps", async () => {
+    const source = `
+      type U8 = number
+      type BoundedMap<K, V, N extends number> = Map<K, V>
+      /* uneffect: ensures result >= 0 */
+      export function total(values: BoundedMap<U8, U8, 3>): number {
+        return [...values.values()].reduce((sum, value) => sum + value, 0)
+      }
+    `;
+    const generated = generateUneffectPropertyTests({ files: { "map.ts": source }, cases: 8 });
+    expect(generated.boundaries[0]?.generators).toEqual([
+      { kind: "bounded-map", key: "U8", value: "U8", maximum: 3 },
+    ]);
+    expect(generated.generatedFiles["map.uneffect.test.ts"]).toContain("new Map(value.keys.map");
+
+    let sawMap = false;
+    await checkUneffectProperty({
+      functionName: "map-materialization",
+      domains: [{ kind: "bounded-map", key: "U8", value: "U8", maximum: 3 }],
+      cases: 8,
+      property: (values) => { sawMap ||= values instanceof Map; return values instanceof Map; },
+    });
+    expect(sawMap).toBe(true);
+  });
+
+  it("generates finite Map inputs satisfying size, membership, and lookup refinements", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "map-refined.ts": `
+      type U8 = number
+      type BoundedMap<K, V, N extends number> = Map<K, V>
+      /* uneffect: requires values.size === 2 && values.get(1) === 10 && values.has(2) */
+      /* uneffect: ensures result === 10 */
+      export function lookup(values: BoundedMap<U8, U8, 3>): number { return values.get(1)! }
+    ` }, solverCases: 6 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThan(0);
+    expect(tuples.every(([encoded]) => {
+      if (encoded === null || typeof encoded !== "object" || Array.isArray(encoded)
+        || !Array.isArray(encoded.keys) || !Array.isArray(encoded.values)) return false;
+      const keys = encoded.keys, entries = encoded.values;
+      const values = new Map(keys.map((key, index) => [key, entries[index]]));
+      return values.size === 2 && values.get(1) === 10 && values.has(2);
+    })).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number
