@@ -175,7 +175,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     };
     const abortTarget = (expression: ts.Expression): { timer?: number; alreadyAborted?: boolean; reason?: string } | undefined => {
       if (ts.isIdentifier(expression)) return abortSignalTargets.get(expression.text);
-      if (!ts.isCallExpression(expression) || adapter.resolveCall(expression)?.operation?.kind !== "abort-timeout") return undefined;
+      if (!ts.isCallExpression(expression)) return undefined;
+      const operation = adapter.resolveCall(expression)?.operation;
+      if (operation?.kind === "abort-static") return {
+        alreadyAborted: true,
+        reason: expression.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError",
+      };
+      if (operation?.kind !== "abort-timeout") return undefined;
       const existing = inlineAbortTimeoutTargets.get(expression);
       if (existing !== undefined) return { timer: existing, reason: "TimeoutError" };
       const delayNode = expression.arguments[0];

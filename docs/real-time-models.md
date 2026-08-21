@@ -53,7 +53,9 @@ counterexample. This follows the [DOM dependent-signal algorithm](https://dom.sp
 and [MDN's first-abort behavior](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static).
 Reason values are retained as source text in IR but abstracted to a one-based
 source index in Quint. Named and inline static `AbortSignal.timeout(...)`
-sources link to their concrete timer tasks without duplicate extraction.
+sources link to their concrete timer tasks without duplicate extraction, while
+inline `AbortSignal.abort(reason)` sources retain array order and initialize the
+composition from the first already-aborted entry.
 Dynamic iterables, nested dynamic compositions, and interprocedural signal
 aliases remain conservative gaps.
 

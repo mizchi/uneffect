@@ -298,6 +298,28 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("preserves inline pre-aborted source order in AbortSignal.any", () => {
+    const model = analyzeAsyncPatterns("inline-pre-aborted.ts", `
+      function request() {
+        return AbortSignal.any([
+          AbortSignal.abort("first"),
+          AbortSignal.abort("second"),
+          AbortSignal.timeout(25),
+        ])
+      }
+    `);
+    expect(model.abortCompositions).toEqual([
+      expect.objectContaining({
+        initiallyAbortedSource: 0,
+        sourceReasons: ['"first"', '"second"', "TimeoutError"],
+        sourceTimers: [undefined, undefined, 0],
+      }),
+    ]);
+    const quint = generateWebEventLoopQuint("inline_pre_aborted", model);
+    expect(quint).toMatch(/abort_0_aborted' = true[\s\S]*abort_0_reason_source' = 1/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("orders eligible scheduler.postTask callbacks by static priority and FIFO", () => {
     const model = analyzeAsyncPatterns("scheduler-tasks.ts", `
       function background() {}
