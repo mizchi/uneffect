@@ -140,6 +140,13 @@ The same works through an imported source declaration included in the analyzed
 TypeScript Program. Factories with multiple possible returns and declaration-
 only or otherwise opaque imported factories remain dynamic.
 
+A direct external `AbortSignal` on `scheduler.postTask` is represented by an
+explicit initially-live abstract state and a nondeterministic abort transition.
+The transition cancels the pending task and is inherited by modeled
+`scheduler.yield` continuations. This records that cancellation may happen; it
+does not claim knowledge of the external signal's concrete initial state or
+abort reason.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts

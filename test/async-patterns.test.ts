@@ -437,6 +437,22 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("keeps a direct external AbortSignal as a nondeterministic cancellation source", () => {
+    const model = analyzeAsyncPatterns("scheduler-external-signal.ts", `
+      function schedule(signal: AbortSignal) {
+        return scheduler.postTask(() => {}, { signal, priority: "background" })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", externalAbortSignal: true, priority: "background" },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_external_signal", model);
+    expect(quint).toContain("var callback_0_external_aborted: bool");
+    expect(quint).toContain("action cancel_scheduler_task_0_from_external_signal");
+    expect(quint).toMatch(/action cancel_scheduler_task_0_from_external_signal[\s\S]*callback_0_pending' = false[\s\S]*callback_0_external_aborted' = true/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}
