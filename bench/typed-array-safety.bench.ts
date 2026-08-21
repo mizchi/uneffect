@@ -9,6 +9,7 @@ import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-v
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
+import { analyzeAsyncPatterns } from "../src/async-patterns.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -252,6 +253,12 @@ describe("typed-array static verification", () => {
       }
     ` } });
   }, { time: 500, iterations: 1 });
+
+  bench("resolve 64 named timer callback bodies", () => {
+    const callbacks = Array.from({ length: 64 }, (_, index) => `function callback${index}() { queueMicrotask(() => {}) }`).join("\n");
+    const schedules = Array.from({ length: 64 }, (_, index) => `setTimeout(callback${index}, ${index})`).join(";");
+    analyzeAsyncPatterns("named-callbacks.ts", `${callbacks}\nfunction schedule() { ${schedules} }`);
+  }, { time: 500, iterations: 5 });
 
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });

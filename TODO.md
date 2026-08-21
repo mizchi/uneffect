@@ -272,7 +272,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
-  - [ ] Resolve named callback bodies and propagate their dynamically scheduled jobs through the call graph.
+  - [x] Resolve local/imported named function and variable callback bodies by TypeChecker identity and propagate dynamically scheduled microtasks.
+  - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
 - [ ] Bring Promise/resource IR to Rust/Corsa parity.
   - [ ] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [ ] Add cross-frontend parity fixtures and reject schema drift.

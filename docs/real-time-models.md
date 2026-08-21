@@ -49,9 +49,12 @@ queued `queueMicrotask` callback. A negative lowering that removes this guard
 sets `fifo_broken`, and Quint finds the ordering violation. Extracting new
 `queueMicrotask` calls from inline timer, microtask, or animation-frame
 callbacks creates dormant jobs that receive tickets only when their parent
-callback runs. An animation-frame callback returns to a microtask checkpoint
-before the remaining frame callbacks and paint continue. Resolving the bodies
-of named callback references through the call graph remains follow-up work.
+callback runs. Named function declarations and arrow/function values, including
+aliased imports, are resolved by TypeChecker symbol identity and scanned the
+same way; they are not also misclassified as initially queued jobs. Methods,
+callbacks returned by calls, and dynamically selected values remain unknown.
+An animation-frame callback returns to a microtask checkpoint before the
+remaining frame callbacks and paint continue.
 
 ```ts
 /*

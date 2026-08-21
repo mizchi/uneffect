@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import ts from "typescript";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const source = `
@@ -153,6 +154,38 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action run_animation_frame_3[\s\S]*phase' = 1[\s\S]*callback_4_pending' = true/);
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 10_000);
+
+  it("resolves named timer callback bodies and dynamically enqueues their microtasks", () => {
+    const model = analyzeAsyncPatterns("named-callback.ts", `
+      function job() {}
+      function onTimer() { queueMicrotask(job) }
+      export function schedule() { setTimeout(onTimer, 0) }
+    `);
+    expect(model.timers).toEqual([
+      expect.objectContaining({ callback: "onTimer", queue: "timer" }),
+      expect.objectContaining({ callback: "job", queue: "microtask", enqueuedBy: 0 }),
+    ]);
+    const quint = generateWebEventLoopQuint("named_callback", model);
+    expect(quint).toMatch(/action run_timer_task_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_ticket' = next_microtask_ticket/);
+  });
+
+  it("resolves an imported scheduled callback through TypeChecker identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-named-callback-"));
+    try {
+      const handlers = join(directory, "handlers.ts"), main = join(directory, "main.ts");
+      writeFileSync(handlers, `export function onTimer() { queueMicrotask(() => {}) }`);
+      writeFileSync(main, `import { onTimer as handler } from "./handlers.js"; export function schedule() { setTimeout(handler, 0) }`);
+      const program = ts.createProgram([main, handlers], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!);
+      expect(model.timers).toEqual([
+        expect.objectContaining({ callback: "handler", queue: "timer" }),
+        expect.objectContaining({ queue: "microtask", enqueuedBy: 0 }),
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 
   it("retains await/catch context and rejects unsound dynamic Promise.all inputs", () => {
     const model = analyzeAsyncPatterns("awaited.ts", `

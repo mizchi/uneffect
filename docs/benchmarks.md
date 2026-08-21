@@ -120,6 +120,12 @@ time rather than frontend-only time. One sample is not a stable distribution,
 and the property covers queue phase/FIFO safety rather than the callback's
 application-level value semantics.
 
+Resolving 64 named timer callback bodies, each dynamically queuing one
+microtask, measured 126.23 ms mean over five samples (4.08% relative margin of
+error). This includes TypeScript Program construction and TypeChecker symbol
+resolution; integrations should reuse an existing Program rather than paying
+that setup cost per file.
+
 The property-generator cases remain on the purely static path and do not invoke
 Z3. Solver benchmarks are reported separately because initialization and
 individual proof queries have a different cost profile.

@@ -47,12 +47,41 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
 
 export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile): AsyncPatternModel {
   const adapter = new TypeScriptFrontendAdapter(program);
+  const checker = program.getTypeChecker();
   const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [];
+  const resolveCallback = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined => {
+    if (!callback) return undefined;
+    if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) return callback;
+    if (!ts.isIdentifier(callback)) return undefined;
+    const original = checker.getSymbolAtLocation(callback);
+    const symbol = original && (original.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(original) : original;
+    for (const declaration of symbol?.declarations ?? []) {
+      if (ts.isFunctionDeclaration(declaration) && declaration.body) return declaration;
+      if (ts.isVariableDeclaration(declaration) && declaration.initializer
+        && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))) return declaration.initializer;
+    }
+    return undefined;
+  };
+  const scheduledCallbacks = new Set<ts.FunctionLikeDeclaration>();
+  const collectScheduledCallbacks = (node: ts.Node, owner?: ts.FunctionLikeDeclaration): void => {
+    const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
+    if (ts.isCallExpression(node)) {
+      const operation = adapter.resolveCall(node)?.operation;
+      if (operation?.kind === "timer") {
+        const callback = resolveCallback(node.arguments[operation.callbackArgument]);
+        if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
+      }
+    }
+    ts.forEachChild(node, (child) => collectScheduledCallbacks(child, currentOwner));
+  };
+  collectScheduledCallbacks(source);
   const visitFunction = (owner: ts.FunctionLikeDeclaration): void => {
     if (!owner.body) return;
     const ownerName = functionName(owner);
-    const collectNestedMicrotasks = (callback: ts.Expression | undefined, parent: number): void => {
-      if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) return;
+    const collectNestedMicrotasks = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
+      const callback = resolveCallback(callbackExpression);
+      if (!callback || !callback.body || visited.has(callback)) return;
+      visited.add(callback);
       const scan = (node: ts.Node): void => {
         if (node !== callback && ts.isFunctionLike(node)) return;
         if (ts.isCallExpression(node)) {
@@ -60,14 +89,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           if (operation?.kind === "timer" && operation.queue === "microtask") {
             const child = timers.length;
             const callbackNode = node.arguments[operation.callbackArgument];
-            timers.push({ owner: ownerName, callback: callbackNode?.getText(source) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: "microtask", enqueuedBy: parent, span: { start: node.getStart(source), end: node.getEnd() } });
-            collectNestedMicrotasks(callbackNode, child);
+            const childSource = node.getSourceFile();
+            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: "microtask", enqueuedBy: parent, span: { start: node.getStart(childSource), end: node.getEnd() } });
+            collectNestedMicrotasks(callbackNode, child, visited);
             return;
           }
         }
         ts.forEachChild(node, scan);
       };
       scan(callback.body);
+      visited.delete(callback);
     };
     const visit = (node: ts.Node): void => {
       if (node !== owner.body && ts.isFunctionLike(node)) return;
@@ -125,7 +156,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
       const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
       const scheduledCallback = Boolean(parentCall && operation?.kind === "timer" && parentCall.arguments[operation.callbackArgument] === node);
-      if (!scheduledCallback) visitFunction(node as ts.FunctionLikeDeclaration);
+      if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }
     ts.forEachChild(node, visit);
   };
