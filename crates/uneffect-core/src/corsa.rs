@@ -103,6 +103,8 @@ pub struct NativeFrontendProgram {
 pub struct NormalizedFrontendProgram {
     pub schema_version: u32,
     pub functions: Vec<NormalizedFunction>,
+    pub calls: Vec<NormalizedCall>,
+    pub ordered_events: Vec<NormalizedCallEvent>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -112,8 +114,47 @@ pub struct NormalizedFunction {
     pub effects: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedCall {
+    pub caller: String,
+    pub callee: String,
+    pub callback_timing: CallbackTiming,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedCallEvent {
+    pub kind: &'static str,
+    pub caller: String,
+    pub callee: String,
+    pub start: u32,
+    pub end: u32,
+}
+
 impl NativeFrontendProgram {
     pub fn normalized(&self) -> NormalizedFrontendProgram {
+        let calls = self
+            .calls
+            .iter()
+            .map(|call| NormalizedCall {
+                caller: self.symbols[&call.caller].name.clone(),
+                callee: self.symbols[&call.callee].name.clone(),
+                callback_timing: call.callback_timing,
+            })
+            .collect();
+        let mut ordered_events: Vec<_> = self
+            .calls
+            .iter()
+            .map(|call| NormalizedCallEvent {
+                kind: "call",
+                caller: self.symbols[&call.caller].name.clone(),
+                callee: self.symbols[&call.callee].name.clone(),
+                start: call.span.start,
+                end: call.span.end,
+            })
+            .collect();
+        ordered_events.sort_by_key(|event| (event.start, event.end));
         NormalizedFrontendProgram {
             schema_version: CORSA_FRONTEND_SCHEMA_VERSION,
             functions: self
@@ -124,6 +165,8 @@ impl NativeFrontendProgram {
                     effects: symbol.effects.iter().map(Effect::canonical).collect(),
                 })
                 .collect(),
+            calls,
+            ordered_events,
         }
     }
 }
@@ -234,6 +277,19 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
                     "invalid overload index {index}"
                 )));
             }
+        }
+    }
+    let mut changed = true;
+    while changed {
+        changed = false;
+        for call in &file.calls {
+            let callee_effects: Vec<_> = symbols[&call.callee].effects.iter().cloned().collect();
+            let caller = symbols.get_mut(&call.caller).expect("validated caller");
+            let before = caller.effects.iter().count();
+            for effect in callee_effects {
+                caller.effects.insert(effect);
+            }
+            changed |= caller.effects.iter().count() != before;
         }
     }
     Ok(NativeFrontendProgram {

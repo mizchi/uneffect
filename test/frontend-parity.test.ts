@@ -12,4 +12,16 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
   });
+
+  it("compares inferred effects, call edges, and ordered call events", async () => {
+    const result = await compareUneffectFrontends({ files: { "calls.ts": `
+      /* uneffect: effect Console */
+      export function emit() { console.log("x") }
+      export function main() { emit() }
+    ` } });
+    expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
+    expect(result.typescriptIr.functions).toContainEqual({ name: "main", effects: ["Console"] });
+    expect(result.typescriptIr.calls).toEqual([{ caller: "main", callee: "emit", callbackTiming: "none" }]);
+    expect(result.typescriptIr.orderedEvents).toEqual([expect.objectContaining({ kind: "call", caller: "main", callee: "emit" })]);
+  });
 });

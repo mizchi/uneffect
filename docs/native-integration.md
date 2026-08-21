@@ -17,11 +17,12 @@ Rust attaches `uneffect:` trivia to the resolved owner, parses its structured ef
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
 reference side emits schema-v1 mapper records, the Rust
 `uneffect-corsa-normalize` binary consumes them, and both sides are compared as
-the same `{ function, declaredEffects }` neutral projection. UTF-16 versus UTF-8 spans
-and frontend-specific evidence provenance are intentionally outside this
-semantic projection. The mapper records are currently produced by the
-TypeScript reference adapter, not by a linked typescript-go/Corsa build; symbol,
-call-edge, ordered-event, and real Context Mapper parity remain later slices.
+the same normalized functions, transitive inferred effect sets, resolved local
+call edges, and source-ordered call events. UTF-16 offsets are converted to
+UTF-8 byte spans before crossing the schema. Frontend-specific evidence
+provenance remains outside this semantic projection. The mapper records are
+currently produced by the TypeScript reference adapter, not by a linked
+typescript-go/Corsa build; actual Context Mapper parity remains a later slice.
 
 ## TypeScript reference frontend
 

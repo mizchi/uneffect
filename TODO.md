@@ -233,6 +233,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Context Mapper output.
+  - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
+  - [ ] Consume and compare actual typescript-go/Corsa Context Mapper output instead of reference-adapter synthesized records.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
