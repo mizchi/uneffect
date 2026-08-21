@@ -246,7 +246,7 @@ describe("builtin async temporal patterns", () => {
       .toContain("join_0_rejection_escapes' = false");
     expect(() => generateAsyncPatternsQuint("dynamic", analyzeAsyncPatterns("dynamic-all.ts", `
       async function load(items: Promise<number>[]) { return Promise.all(items) }
-    `))).toThrow(/Promise\.all model requires an array literal/);
+    `))).toThrow(/Promise\.all model requires a statically bounded iterable/);
 
     const spurious = run(generateAsyncPatternsQuint("spurious_reject", { ...model, combinators: [model.combinators[0]!] }, { allowSpuriousReject: true }), "asyncSafe");
     expect(spurious.status).not.toBe(0);
@@ -286,9 +286,11 @@ describe("builtin async temporal patterns", () => {
   it("treats sparse holes as fulfilled undefined values and assimilates thenables", () => {
     const model = analyzeAsyncPatterns("iterable-elements.ts", `
       declare const remote: PromiseLike<number>
+      declare const dynamic: PromiseLike<number>[]
       async function load() {
         await Promise.all([1, , remote])
         await Promise.all([...([remote])])
+        await Promise.all([...dynamic])
       }
     `);
     expect(model.combinators).toMatchObject([
@@ -297,6 +299,7 @@ describe("builtin async temporal patterns", () => {
         branchKinds: ["value", "value", "thenable"],
         staticIterable: true,
       },
+      { branches: ["remote"], branchKinds: ["thenable"], staticIterable: true },
       { staticIterable: false },
     ]);
     const quint = generateAsyncPatternsQuint("iterable_elements", {
@@ -311,9 +314,13 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toContain("action reject_0_2");
     const positive = run(quint, "asyncSafe");
     expect(positive.status, positive.stdout + positive.stderr).toBe(0);
-    expect(() => generateAsyncPatternsQuint("spread", {
+    const spread = generateAsyncPatternsQuint("spread", {
       timers: [], cancellations: [], combinators: [model.combinators[1]!],
-    })).toThrow(/requires an array literal without spreads/);
+    });
+    expect(spread).toContain("action assimilate_0_0");
+    expect(() => generateAsyncPatternsQuint("dynamic_spread", {
+      timers: [], cancellations: [], combinators: [model.combinators[2]!],
+    })).toThrow(/requires a statically bounded iterable/);
   }, 20_000);
 
   it("models local iterator acquisition and generator step failures", () => {

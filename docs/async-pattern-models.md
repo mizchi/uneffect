@@ -62,8 +62,10 @@ The projection retains whether the call is directly awaited and whether that
 await is protected by `try/catch`. Aggregate rejection therefore records an
 explicit `rejection_escapes` state. An empty array starts pending and fulfills
 through a separate join transition rather than synchronously in `init`.
-Dynamic iterables and array literals containing spreads are rejected as
-unsupported instead of being assigned a guessed cardinality. Two local,
+Dynamic iterables and spreads whose operand is not itself a nested array
+literal are rejected as unsupported instead of being assigned a guessed
+cardinality. Nested array-literal spreads are recursively flattened while
+preserving holes and element order. Two other local,
 statically inspectable forms are accepted: an object whose standard
 `[Symbol.iterator]()` method directly throws during acquisition, and a linear
 generator containing only direct `yield`, `throw`, and `return` statements.
@@ -100,7 +102,7 @@ value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
 thenable IR is not yet composed into each combinator branch. Conditional
 generator control flow, iterator result getters, imported or arbitrary custom
-iterables, spread cardinality, ordered `AggregateError` payloads, cancellation,
+iterables, dynamic spread cardinality, ordered `AggregateError` payloads, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.
 

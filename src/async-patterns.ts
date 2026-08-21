@@ -65,6 +65,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const symbol = checker.getSymbolAtLocation(node);
     return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
   };
+  const expandStaticArray = (expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined => {
+    while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+    if (!ts.isArrayLiteralExpression(expression)) return undefined;
+    const expanded: (ts.Expression | ts.OmittedExpression)[] = [];
+    for (const element of expression.elements) {
+      if (!ts.isSpreadElement(element)) expanded.push(element);
+      else {
+        const nested = expandStaticArray(element.expression);
+        if (!nested) return undefined;
+        expanded.push(...nested);
+      }
+    }
+    return expanded;
+  };
   const localIterable = (expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined => {
     if (!expression) return undefined;
     let declaration: ts.Declaration | undefined;
@@ -204,12 +218,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           cancellations.push({ owner: ownerName, handle, definite, span: { start: node.getStart(source), end: node.getEnd() } });
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
-          const array = iterable && ts.isArrayLiteralExpression(iterable) ? iterable : undefined;
+          const array = iterable ? expandStaticArray(iterable) : undefined;
           const local = array ? undefined : localIterable(iterable);
-          const staticIterable = Boolean((array && !array.elements.some(ts.isSpreadElement)) || local);
+          const staticIterable = Boolean(array || local);
           const branchNodes = local?.branches;
-          const branches = array ? array.elements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
-          const branchKinds = array ? array.elements.map(branchKind) : branchNodes?.map(branchKind) ?? [];
+          const branches = array ? array.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
+          const branchKinds = array ? array.map(branchKind) : branchNodes?.map(branchKind) ?? [];
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -262,7 +276,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: timer model requires a static non-negative delay`);
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
   }
-  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires an array literal without spreads`);
+  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires a statically bounded iterable`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int"];
   model.timers.forEach((_, index) => lines.push(`  var timer_${index}_scheduled: bool`, `  var timer_${index}_cancelled: bool`, `  var timer_${index}_due: int`, `  var timer_${index}_early: bool`, `  var timer_${index}_after_cancel: bool`, `  var timer_${index}_macro_first: bool`, `  var timer_${index}_fires: int`));
   model.combinators.forEach((join, index) => {
