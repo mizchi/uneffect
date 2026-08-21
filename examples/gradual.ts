@@ -1,4 +1,4 @@
-import type { Nat } from "uneffect";
+import type { Nat } from "@mizchi/uneffect";
 
 type Counter = { value: number };
 

@@ -5,7 +5,7 @@ Uneffect annotations are ordinary block comments. They do not change TypeScript 
 Once a block contains the explicit `uneffect:` marker, its following non-empty lines are owned by the Uneffect grammar. Unknown directive names, missing payloads, and empty effect-union members are errors rather than ignored text. Ordinary JSDoc outside such a block is untouched. Parsed directives and capability members retain exact UTF-16 source spans in TypeScript. The Rust/Corsa boundary uses file IDs and UTF-8 byte spans; adapters must convert positions explicitly rather than mixing the two coordinate systems.
 
 ```ts
-import type { Nat } from "uneffect"
+import type { Nat } from "@mizchi/uneffect"
 
 /*
  * uneffect:
@@ -83,7 +83,7 @@ For overloads, each signature has an upper bound. The implementation signature m
 Uneffect provides branded helpers where TypeScript's number type is too broad:
 
 ```ts
-import type { Float, Int, Nat } from "uneffect"
+import type { Float, Int, Nat } from "@mizchi/uneffect"
 ```
 
 - `Int`: finite safe integer

@@ -5,7 +5,7 @@ import { verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 describe("runtime assertion instrumenter", () => {
   it("injects a named numeric assertion into a function", () => {
     const source = `
-      import type { Nat } from "uneffect";
+      import type { Nat } from "@mizchi/uneffect";
       /* uneffect: assert value: Nat */
       function double(value: Nat) { return value * 2 }
     `;
