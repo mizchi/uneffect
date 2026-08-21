@@ -122,6 +122,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Enumerate bounded-count Z3 models for scalar nonlinear `requires` clauses and prioritize them as correlated tuples.
     - [x] Jointly shrink across known correlated tuples while rechecking the full precondition.
     - [ ] Derive solver-backed structured/collection inputs and synthesize new constraint-preserving shrink candidates.
+      - [x] Enumerate bounded U8/U32 array lengths and literal-index elements with Z3, then reuse size-ordered satisfying tuples as constraint-preserving joint shrink candidates.
+      - [ ] Extend solver-backed generation to records, Maps/Sets, and dynamic finite indices.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

@@ -11,7 +11,7 @@ export type PropertyLiteral = string | number | boolean;
 export type PropertyTestDomain = PropertyBoundaryKind
   | { kind: "bounded-array"; element: "U8" | "U32"; maximum: number }
   | { kind: "union"; members: Array<PropertyBoundaryKind | { kind: "literal"; value: PropertyLiteral }> };
-type PropertyValue = PropertyLiteral | number[];
+export type PropertyValue = PropertyLiteral | number[];
 
 export interface PropertyTestBoundary {
   fileName: string;
@@ -19,7 +19,7 @@ export interface PropertyTestBoundary {
   generators: PropertyTestDomain[];
   shrinkers: PropertyTestDomain[];
   generatorHints: PropertyLiteral[][];
-  generatorTuples: PropertyLiteral[][];
+  generatorTuples: PropertyValue[][];
   requires: string[];
   ensures: string[];
 }
@@ -31,7 +31,7 @@ export interface GenerateUneffectPropertyTestsOptions {
   cases?: number;
   seed?: number;
   arrayLengthCap?: number;
-  refinementTuples?: Record<string, readonly (readonly PropertyLiteral[])[]>;
+  refinementTuples?: Record<string, readonly (readonly PropertyValue[])[]>;
 }
 
 export interface GenerateUneffectPropertyTestsWithZ3Options extends GenerateUneffectPropertyTestsOptions { solverCases?: number }
@@ -67,7 +67,7 @@ export interface CheckUneffectPropertyOptions {
   counterexamplePath?: string;
   arrayLengthCap?: number;
   refinementValues?: readonly (readonly PropertyLiteral[])[];
-  refinementTuples?: readonly (readonly PropertyLiteral[])[];
+  refinementTuples?: readonly (readonly PropertyValue[])[];
 }
 
 export interface CheckUneffectPropertyResult {
@@ -100,9 +100,11 @@ function scalarAccepts(domain: PropertyBoundaryKind, value: PropertyLiteral): bo
   return true;
 }
 
-function domainAccepts(domain: PropertyTestDomain, value: PropertyLiteral): boolean {
-  if (typeof domain === "string") return scalarAccepts(domain, value);
-  if (domain.kind === "bounded-array") return false;
+function domainAccepts(domain: PropertyTestDomain, value: PropertyValue): boolean {
+  if (typeof domain === "string") return !Array.isArray(value) && scalarAccepts(domain, value);
+  if (domain.kind === "bounded-array") return Array.isArray(value) && value.length <= domain.maximum
+    && value.every((entry) => scalarAccepts(domain.element, entry));
+  if (Array.isArray(value)) return false;
   return domain.members.some((member) => typeof member === "string" ? scalarAccepts(member, value) : member.value === value);
 }
 
@@ -150,7 +152,7 @@ function sampleSize(values: readonly PropertyValue[]): number {
     : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value)), 0);
 }
 
-function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[], refinementTuples: readonly (readonly PropertyLiteral[])[] = []): PropertyValue[][] {
+function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[], refinementTuples: readonly (readonly PropertyValue[])[] = []): PropertyValue[][] {
   const samples: PropertyValue[][] = refinementTuples.filter((tuple) => tuple.length === domains.length && tuple.every((value, index) => domainAccepts(domains[index]!, value))).map((tuple) => [...tuple]);
   const limit = Math.max(cases, samples.length);
   const visit = (index: number, values: PropertyValue[]): void => {
@@ -245,7 +247,36 @@ function importPath(sourceName: string, generatedFile: string): string {
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
-function validateExpression(expression: string): void { parseLogicExpression(expression); }
+function propertyExpression(expression: string): ts.Expression {
+  const source = ts.createSourceFile("property-expression.ts", `const value = (${expression})`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const statement = source.statements[0];
+  const value = statement && ts.isVariableStatement(statement) ? statement.declarationList.declarations[0]?.initializer : undefined;
+  if (!value) throw new Error(`invalid property expression: ${expression}`);
+  return value;
+}
+
+function validateStructuredPropertyExpression(node: ts.Expression): void {
+  if (ts.isIdentifier(node) || ts.isNumericLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return;
+  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression);
+  if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand);
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "length") return;
+  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) return;
+  if (ts.isBinaryExpression(node) && [
+    ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
+    ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
+    ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken, ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken,
+    ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken,
+  ].includes(node.operatorToken.kind)) {
+    validateStructuredPropertyExpression(node.left);
+    validateStructuredPropertyExpression(node.right);
+    return;
+  }
+  throw new Error(`unsupported property expression: ${node.getText()}`);
+}
+
+function validateExpression(expression: string): void {
+  try { parseLogicExpression(expression); } catch { validateStructuredPropertyExpression(propertyExpression(expression)); }
+}
 
 function integerValue(expression: LogicExpression): number | undefined {
   if (expression.kind === "integer") return Number(expression.value);
@@ -282,7 +313,7 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
       : operator === "lte" ? [value - 1, value] : operator === "lt" ? [value - 2, value - 1] : [value];
     hints[index]!.push(...candidates.filter((candidate) => scalarAccepts(domain, candidate)));
   };
-  for (const requirement of requires) addComparison(parseLogicExpression(requirement));
+  for (const requirement of requires) try { addComparison(parseLogicExpression(requirement)); } catch { /* Structured hints are derived by the solver-backed path. */ }
   return hints.map((values) => [...new Set(values)].sort((left, right) => Number(left) - Number(right)));
 }
 
@@ -299,7 +330,7 @@ function correlatedRefinementTuples(requires: readonly string[], parameters: rea
     const target = parameters.indexOf(targetName), sourceIndex = parameters.indexOf(source.name);
     if (target >= 0 && sourceIndex >= 0) relations.push({ target, source: sourceIndex, offset: source.offset });
   };
-  requires.map(parseLogicExpression).forEach(visit);
+  for (const requirement of requires) try { visit(parseLogicExpression(requirement)); } catch { /* Structured relations are handled by Z3. */ }
   const tuples: PropertyLiteral[][] = [];
   const related = new Set(relations.flatMap((relation) => [relation.source, relation.target]));
   const hintedSeeds = [...related].filter((index) => hints[index]?.length);
@@ -425,13 +456,47 @@ function scalarDomainConstraint(name: string, domain: PropertyBoundaryKind): str
   return [];
 }
 
+interface Z3ArrayLayout { name: string; maximum: number; element: "U8" | "U32" }
+
+function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>): string {
+  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return structuredPropertyToSmt(node.expression, arrays);
+  if (ts.isIdentifier(node)) return node.text;
+  if (ts.isNumericLiteral(node)) return node.text;
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return "true";
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return "false";
+  if (ts.isPrefixUnaryExpression(node)) {
+    const operand = structuredPropertyToSmt(node.operand, arrays);
+    if (node.operator === ts.SyntaxKind.ExclamationToken) return `(not ${operand})`;
+    if (node.operator === ts.SyntaxKind.MinusToken) return `(- ${operand})`;
+  }
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "length" && arrays.has(node.expression.text)) {
+    return `${node.expression.text}__length`;
+  }
+  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) {
+    const layout = arrays.get(node.expression.text), index = Number(node.argumentExpression.text);
+    if (!layout || !Number.isSafeInteger(index) || index < 0 || index >= layout.maximum) throw new Error(`array index ${node.getText()} is outside the solver-backed finite layout`);
+    return `${layout.name}__${index}`;
+  }
+  if (ts.isBinaryExpression(node)) {
+    const operator = new Map<ts.SyntaxKind, string>([
+      [ts.SyntaxKind.PlusToken, "+"], [ts.SyntaxKind.MinusToken, "-"], [ts.SyntaxKind.AsteriskToken, "*"], [ts.SyntaxKind.SlashToken, "div"], [ts.SyntaxKind.PercentToken, "mod"],
+      [ts.SyntaxKind.LessThanToken, "<"], [ts.SyntaxKind.LessThanEqualsToken, "<="], [ts.SyntaxKind.GreaterThanToken, ">"], [ts.SyntaxKind.GreaterThanEqualsToken, ">="],
+      [ts.SyntaxKind.EqualsEqualsToken, "="], [ts.SyntaxKind.EqualsEqualsEqualsToken, "="], [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
+    ]).get(node.operatorToken.kind);
+    const left = structuredPropertyToSmt(node.left, arrays), right = structuredPropertyToSmt(node.right, arrays);
+    if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) return `(not (= ${left} ${right}))`;
+    if (operator) return `(${operator} ${left} ${right})`;
+  }
+  throw new Error(`unsupported solver-backed property expression: ${node.getText()}`);
+}
+
 /** Enumerates numeric models for restricted nonlinear `requires` clauses, then emits ordinary standalone tests. */
 export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneffectPropertyTestsWithZ3Options): Promise<GenerateUneffectPropertyTestsWithZ3Result> {
   const solverCases = options.solverCases ?? 16;
   if (!Number.isSafeInteger(solverCases) || solverCases < 1) throw new Error(`solverCases must be a positive safe integer, got ${solverCases}`);
   const initial = generateUneffectPropertyTests(options);
   const accepted = new Set(initial.boundaries.map((boundary) => boundaryKey(boundary.fileName, boundary.functionName)));
-  const injected: Record<string, PropertyLiteral[][]> = {};
+  const injected: Record<string, PropertyValue[][]> = {};
   const solverDiagnostics: PropertySolverDiagnostic[] = [];
   const { Context } = await initZ3();
   const context: any = new Context(`uneffect_property_models_${Date.now()}_${Math.random()}`);
@@ -444,14 +509,37 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       if (requires.length === 0) continue;
       const names = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : "");
       const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
-      if (names.some((name) => !name) || domains.some((domain) => typeof domain !== "string")) continue;
-      const declarations = names.map((name) => `(declare-const ${name} Int)`);
+      if (names.some((name) => !name) || domains.some((domain) => !domain || typeof domain === "object" && domain.kind === "union")) continue;
+      const layouts = new Map<string, Z3ArrayLayout>();
+      names.forEach((name, index) => {
+        const domain = domains[index]!;
+        if (typeof domain === "object" && domain.kind === "bounded-array") layouts.set(name, {
+          name, element: domain.element, maximum: Math.min(domain.maximum, arrayCap(options.arrayLengthCap)),
+        });
+      });
+      const declarations = names.flatMap((name, index) => {
+        const domain = domains[index]!;
+        if (typeof domain === "string") return [`(declare-const ${name} Int)`];
+        const layout = layouts.get(name)!;
+        return [`(declare-const ${name}__length Int)`, ...Array.from({ length: layout.maximum }, (_, at) => `(declare-const ${name}__${at} Int)` )];
+      });
       const assertions = [
-        ...requires.map((requirement) => logicToSmt(parseLogicExpression(requirement))),
-        ...names.flatMap((name, index) => scalarDomainConstraint(name, domains[index] as PropertyBoundaryKind)),
+        ...requires.map((requirement) => structuredPropertyToSmt(propertyExpression(requirement), layouts)),
+        ...names.flatMap((name, index) => {
+          const domain = domains[index]!;
+          if (typeof domain === "string") return scalarDomainConstraint(name, domain);
+          const layout = layouts.get(name)!;
+          const upper = layout.element === "U8" ? 255 : 4_294_967_295;
+          return [
+            `(>= ${name}__length 0)`, `(<= ${name}__length ${layout.maximum})`,
+            ...Array.from({ length: layout.maximum }, (_, at) => `(>= ${name}__${at} 0)`),
+            ...Array.from({ length: layout.maximum }, (_, at) => `(<= ${name}__${at} ${upper})`),
+            ...Array.from({ length: layout.maximum }, (_, at) => `(=> (<= ${name}__length ${at}) (= ${name}__${at} 0))`),
+          ];
+        }),
       ];
       const blocks: string[] = [];
-      const tuples: PropertyLiteral[][] = [];
+      const tuples: PropertyValue[][] = [];
       let terminal: "unsat" | "unknown" | undefined;
       for (let count = 0; count < solverCases; count++) {
         const solver = new context.Solver();
@@ -459,24 +547,34 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         const status = String(await solver.check());
         if (status !== "sat") { terminal = status === "unsat" ? "unsat" : "unknown"; break; }
         const model = solver.model();
-        const tuple = names.map((name) => z3Integer(model.eval(context.Int.const(name), true).toString()));
+        const tuple = names.map((name, index): PropertyValue | undefined => {
+          const domain = domains[index]!;
+          if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
+          const layout = layouts.get(name)!;
+          const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());
+          if (length === undefined || length < 0 || length > layout.maximum) return undefined;
+          const values = Array.from({ length }, (_, at) => z3Integer(model.eval(context.Int.const(`${name}__${at}`), true).toString()));
+          return values.some((value) => value === undefined) ? undefined : values as number[];
+        });
         if (tuple.some((value) => value === undefined)) { terminal = "unknown"; break; }
-        const values = tuple as number[];
+        const values = tuple as PropertyValue[];
         tuples.push(values);
-        blocks.push(`(or ${names.map((name, index) => `(not (= ${name} ${values[index]}))`).join(" ")})`);
+        const equalities = names.flatMap((name, index) => {
+          const value = values[index]!;
+          if (!Array.isArray(value)) return [`(= ${name} ${value})`];
+          const layout = layouts.get(name)!;
+          return [`(= ${name}__length ${value.length})`, ...Array.from({ length: layout.maximum }, (_, at) => `(= ${name}__${at} ${value[at] ?? 0})`)];
+        });
+        blocks.push(`(not (and ${equalities.join(" ")}))`);
       }
-      tuples.sort((left, right) => {
-        for (let index = 0; index < left.length; index++) {
-          const order = Number(left[index]) - Number(right[index]);
-          if (order !== 0) return order;
-        }
-        return 0;
-      });
+      tuples.sort((left, right) => sampleSize(left) - sampleSize(right) || JSON.stringify(left).localeCompare(JSON.stringify(right)));
       const key = boundaryKey(fileName, node.name.text);
       injected[key] = [...(options.refinementTuples?.[key] ?? []).map((tuple) => [...tuple]), ...tuples];
       if (terminal === "unknown" || terminal === "unsat" && tuples.length === 0) solverDiagnostics.push({
         fileName, functionName: node.name.text, status: terminal,
-        message: terminal === "unsat" ? "requires has no scalar model" : "Z3 could not enumerate a scalar model",
+        message: terminal === "unsat"
+          ? `requires has no ${layouts.size === 0 ? "scalar" : "supported structured"} model`
+          : `Z3 could not enumerate a ${layouts.size === 0 ? "scalar" : "supported structured"} model`,
       });
     }
   }

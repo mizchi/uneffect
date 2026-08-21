@@ -156,6 +156,32 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("derives solver-backed bounded-array inputs and constraint-preserving shrink tuples", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "packet.ts": `
+      type U8 = number
+      type BoundedUint8Array<N extends number> = Uint8Array
+      /* uneffect: requires bytes.length === 2 && bytes[0] + bytes[1] === 300 */
+      /* uneffect: ensures result === 300 */
+      export function checksum(bytes: BoundedUint8Array<2>): number { return bytes[0]! + bytes[1]! }
+    ` }, solverCases: 6 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThanOrEqual(2);
+    expect(tuples.every(([bytes]) => Array.isArray(bytes) && bytes.length === 2 && bytes[0]! + bytes[1]! === 300)).toBe(true);
+    expect(result.generatedFiles["packet.uneffect.test.ts"]).toContain(`const refinementTuples = ${JSON.stringify(tuples)}`);
+    expect(result.solverDiagnostics).toEqual([]);
+
+    const shrunk = await checkUneffectProperty({
+      functionName: "packet-failure",
+      domains: [{ kind: "bounded-array", element: "U8", maximum: 2 }],
+      refinementTuples: tuples,
+      precondition: (bytes: Uint8Array) => bytes.length === 2 && bytes[0]! + bytes[1]! === 300,
+      property: () => false,
+    });
+    expect(shrunk.status).toBe("counterexample");
+    const bytes = shrunk.counterexample?.arguments[0];
+    expect(Array.isArray(bytes) && bytes.length === 2 && bytes[0]! + bytes[1]! === 300).toBe(true);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number
