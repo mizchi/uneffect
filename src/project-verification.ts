@@ -9,11 +9,13 @@ import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instru
 import { analyzePromiseChains } from "./promise-chains.js";
 import { analyzeOwnership, type OwnershipDiagnostic } from "./ownership.js";
 import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
+import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
   runtimeAssertions?: "off" | "fallback";
   temporalRuntime?: "web";
+  assumptionPolicy?: AssumptionPolicy;
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -23,10 +25,11 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic>;
   emittedFiles: Record<string, string>;
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
+  assumptions: AssumptionLedger;
   temporal?: ProjectTemporalVerification;
 }
 
@@ -96,7 +99,7 @@ function verifyQuintInvariant(program: string, invariant: string): ProjectTempor
 
 export async function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
@@ -129,6 +132,8 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
+  const assumptions = collectAssumptionLedger(program, options.files, typedArrays, options.assumptionPolicy);
+  diagnostics.push(...assumptions.diagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
     const verification = await verifyContractObligations(fileName, source);
     obligations.push(...verification.artifacts.map((artifact) => ({ ...artifact, backend: "z3" as const, result: artifact.status })));
@@ -153,5 +158,5 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporal = options.temporalRuntime === "web"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
-  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, ...(temporal ? { temporal } : {}) };
+  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, ...(temporal ? { temporal } : {}) };
 }

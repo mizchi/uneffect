@@ -4,6 +4,7 @@ import { createEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipOblig
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
 import { analyzeEffectSummariesInProgram } from "../src/effects.js";
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
+import { verifyUneffectProject } from "../src/project-verification.js";
 
 function programOf(text: string) {
   const fileName = "/virtual/evidence.ts";
@@ -68,5 +69,56 @@ describe("evidence and optimizer obligations", () => {
     expect(applyOwnershipAssertionElision(source, optimization, { start, end: source.indexOf(";done") + 1 }).code).toBe("work();done()");
     expect(applyOwnershipAssertionElision(source, { ...optimization, artifact: { ...artifact, result: "unknown", evidence: "unknown" } }, { start, end: source.indexOf(";done") + 1 }).code).toBe(source);
     expect(evaluateOwnershipGuardElision({ ...optimization, generatedAssertion: false }).allowed).toBe(false);
+  });
+
+  it("emits a cross-domain assumption ledger and enforces owner/expiration CI policy", async () => {
+    const fileName = "src/trusted-boundary.ts";
+    const source = `
+      type BoundedUint8Array<N extends number> = Uint8Array
+      /* uneffect: trust typed-array validated by the wire-format review */
+      /* uneffect: trust_owner binary-platform */
+      /* uneffect: trust_expires 2027-01-31 */
+      function decode(output: BoundedUint8Array<1>, value: number) {
+        output[0] = value
+        console.log("decoded")
+      }
+      /* uneffect: temporal_ensures ready' = true */
+      /* uneffect: temporal_modifies ready */
+      /* uneffect: trust_owner runtime-team */
+      /* uneffect: trust_expires 2026-12-31 */
+      function start() {}
+    `;
+    const result = await verifyUneffectProject({
+      files: { [fileName]: source },
+      assumptionPolicy: {
+        requireOwner: true,
+        requireExpiration: true,
+        allowUnboundedDomains: ["builtin"],
+        asOf: "2026-08-21",
+      },
+    });
+    expect(result.assumptions.schema).toBe("uneffect-assumptions/v1");
+    expect(result.assumptions.entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ domain: "typed-array", reason: "validated by the wire-format review", owner: "binary-platform", expiresOn: "2027-01-31", scope: expect.objectContaining({ fileName, functionName: "decode", span: expect.any(Object) }) }),
+      expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("reviewed builtin"), owner: "@mizchi/uneffect", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
+      expect.objectContaining({ domain: "temporal-summary", owner: "runtime-team", expiresOn: "2026-12-31", scope: expect.objectContaining({ functionName: "start" }) }),
+    ]));
+    expect(result.assumptions.violations).toEqual([]);
+
+    const missingOwner = await verifyUneffectProject({
+      files: { [fileName]: source.replace("/* uneffect: trust_owner binary-platform */", "") },
+      assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
+    });
+    expect(missingOwner.assumptions.violations).toContainEqual(expect.objectContaining({ rule: "owner-required", domain: "typed-array" }));
+    expect(missingOwner.diagnostics).toContainEqual(expect.objectContaining({ kind: "assumption-policy", rule: "owner-required" }));
+
+    const expired = await verifyUneffectProject({
+      files: { [fileName]: source },
+      assumptionPolicy: { denyExpired: true, asOf: "2028-01-01" },
+    });
+    expect(expired.assumptions.violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: "expired", domain: "typed-array" }),
+      expect.objectContaining({ rule: "expired", domain: "temporal-summary" }),
+    ]));
   });
 });

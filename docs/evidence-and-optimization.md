@@ -15,6 +15,51 @@ Uneffect separates gradual diagnostics from authority to rewrite code. Every eff
 
 Builtin overlays are `trusted`; Z3 `unsat` obligations are `verified`; Z3 counterexamples, `unknown`, and unsupported lowering produce `unknown` evidence. Temporal summaries are currently `trusted` because composition checks their use but does not prove their bodies.
 
+## Assumption ledger and CI policy
+
+`verifyUneffectProject` returns an `uneffect-assumptions/v1` ledger. It currently
+records every trusted builtin call that the frontend resolves, every
+function-level `trust typed-array` escape hatch, and every user-supplied
+temporal function summary. Each entry has a stable content-derived ID, reason,
+domain, file/function scope, UTF-16 source span, and optional owner and
+expiration date. Builtin defaults are owned by `@mizchi/uneffect`; their
+expiration is deliberately unbounded and must be explicitly allowed by policy.
+
+User assumptions attach review metadata without changing JSDoc semantics:
+
+```ts
+/* uneffect: trust typed-array validated by the packet conformance suite */
+/* uneffect: trust_owner telemetry-platform */
+/* uneffect: trust_expires 2027-06-30 */
+function encodePacket(output: BoundedUint8Array<1>, value: number) {
+  output[0] = value
+}
+```
+
+A CI caller can require review ownership and expiration, reject assumptions
+whose valid calendar date is earlier than `asOf`, and exempt selected domains:
+
+```ts
+const result = await verifyUneffectProject({
+  files,
+  assumptionPolicy: {
+    requireOwner: true,
+    requireExpiration: true,
+    denyExpired: true,
+    allowUnboundedDomains: ["builtin"],
+    asOf: "2026-08-21",
+  },
+})
+if (result.assumptions.violations.length > 0) process.exitCode = 1
+```
+
+Violations also appear in project diagnostics with kind `assumption-policy`.
+The ledger is exhaustive for the three trusted domains listed above, not for
+arbitrary objects constructed through the low-level `trustedSummary` evidence
+helper. New trusted domains must integrate with the collector before claiming
+project-wide audit completeness. Metadata is review accountability rather than
+a proof: the typed-array escape hatch and temporal body remain assumed.
+
 ## Transformation obligations
 
 Each transformation has a distinct versioned schema.
@@ -74,3 +119,9 @@ authorization plan for a downstream compressor, not rewritten JavaScript.
 ## Dogfood gate
 
 `just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode, then runs a regression test requiring zero diagnostics and zero `unknown` summaries. This exercise found and fixed two frontend issues: mutations of freshly allocated locals were incorrectly escaping into caller summaries, and known synchronous TypeScript/Array callback APIs were being classified with unknown invocation timing. Annotated boundaries remain enforced in inference-only mode.
+
+The telemetry packet dogfood fixture additionally applies the assumption policy
+to a typed-array wire-format escape hatch, a Console builtin, and a temporal
+summary. Removing either user assumption owner produces a CI diagnostic. This
+shows useful review enforcement at a realistic serialization boundary, while
+the underlying byte-domain safety is intentionally not claimed as verified.

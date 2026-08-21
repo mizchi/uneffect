@@ -101,4 +101,16 @@ describe("Uneffect annotation marker", () => {
     expect(extractAnnotations(source, "action_fair")).toEqual(["tick_clock: weak"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
+
+  it("recognizes assumption review owner and expiration metadata", () => {
+    const source = `/*
+     * uneffect:
+     * trust typed-array reviewed against the wire format
+     * trust_owner binary-platform
+     * trust_expires 2027-06-30
+     */`;
+    expect(extractAnnotations(source, "trust_owner")).toEqual(["binary-platform"]);
+    expect(extractAnnotations(source, "trust_expires")).toEqual(["2027-06-30"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
 });

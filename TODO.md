@@ -203,7 +203,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 ## P5 — Evidence and optimization
 
-- [ ] Add a cross-domain assumption ledger for every `trusted` result, with reason, scope, source span, expiration/owner metadata, and CI policy.
+- [x] Add a cross-domain assumption ledger for every currently emitted `trusted` builtin call, typed-array escape hatch, and temporal summary, with reason, scope, source span, expiration/owner metadata, and CI policy. Extend it when new trusted domains are introduced.
 - [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms.
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Include compiler revision, tsconfig hash, source hash, builtin-contract digest, and Uneffect version in artifacts.

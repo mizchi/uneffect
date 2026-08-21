@@ -155,6 +155,30 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("audits trusted telemetry boundaries with owner and expiration policy", async () => {
+    const fileName = "examples/dogfood/telemetry-packet.ts";
+    const source = readFileSync(fileName, "utf8");
+    const policy = {
+      requireOwner: true,
+      requireExpiration: true,
+      denyExpired: true,
+      allowUnboundedDomains: ["builtin" as const],
+      asOf: "2026-08-21",
+    };
+    const verified = await verifyUneffectProject({ files: { [fileName]: source }, assumptionPolicy: policy });
+    expect(verified.assumptions.entries.map(({ domain }) => domain)).toEqual(["typed-array", "builtin", "temporal-summary"]);
+    expect(verified.assumptions.violations).toEqual([]);
+
+    const ownerless = await verifyUneffectProject({
+      files: { [fileName]: source.replaceAll("/* uneffect: trust_owner telemetry-platform */\n", "") },
+      assumptionPolicy: policy,
+    });
+    expect(ownerless.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "assumption-policy", domain: "typed-array", rule: "owner-required" }),
+      expect.objectContaining({ kind: "assumption-policy", domain: "temporal-summary", rule: "owner-required" }),
+    ]));
+  });
+
   it("links a wrapped legacy Promise to the operation it adopts", () => {
     const fileName = "examples/dogfood/promise-adapter.ts";
     const source = readFileSync(fileName, "utf8");

@@ -41,11 +41,16 @@ export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
   evidence: "trusted";
+  trustReason?: string;
+  trustOwner?: string;
+  trustExpiresOn?: string;
   result?: PathResultRefinement;
   operation?: BuiltinOperation;
 }
 
-function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract { return { ...contract, evidence: "trusted" }; }
+function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract {
+  return { ...contract, evidence: "trusted" };
+}
 
 export interface BuiltinContractRegistry {
   version: 1;
