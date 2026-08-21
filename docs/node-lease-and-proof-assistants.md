@@ -28,6 +28,14 @@ real time 9 while A's local deadline is 10. Quint finds A/e1 and B/e2 both with
 local write authority. The positive bounded model waits one additional
 skew-grace tick and reports no violation within the configured search.
 
+The lifecycle acceptance model separately covers delayed renewal completion,
+renewal CAS failure that self-fences the worker, crash followed by resource GC,
+and a write that remains in flight across lease takeover. The fenced variant
+permits completion only when the captured write epoch still equals the current
+owner epoch. Removing that guard lets Quint reach `badCommit = true`; this
+negative control demonstrates that the constraint is load-bearing rather than
+an invariant that passes because the relevant transition is absent.
+
 This is not a proof of a Node implementation. The model currently omits lease
 renewal, delayed completion, held-lease sets, node GC, in-flight writes, CAS
 failure, crashes, storage behavior, and an implementation-to-model refinement

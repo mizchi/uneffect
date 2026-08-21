@@ -80,7 +80,69 @@ function checkLeaseModel(skewGrace: number) {
   return { execution, trace, modelHash: createHash("sha256").update(model).digest("hex") };
 }
 
+function leaseLifecycleModel(fencedCommit: boolean): string {
+  return `/* uneffect:
+    clock realNow: 1
+    state leaseExpiry: int
+    state ownerEpoch: int
+    state workerAlive: bool
+    state renewalInFlight: bool
+    state renewalEpoch: int
+    state selfFenced: bool
+    state resourceHeld: bool
+    state writeInFlight: bool
+    state writeEpoch: int
+    state badCommit: bool
+    init leaseExpiry = 2
+    init ownerEpoch = 1
+    init workerAlive = true
+    init renewalInFlight = false
+    init renewalEpoch = 0
+    init selfFenced = false
+    init resourceHeld = true
+    init writeInFlight = false
+    init writeEpoch = 0
+    init badCommit = false
+    action startRenewal: renewalInFlight' = true, renewalEpoch' = ownerEpoch
+    action_when startRenewal: workerAlive && !selfFenced && !renewalInFlight
+    action completeRenewal: renewalInFlight' = false, leaseExpiry' = realNow + 2
+    action_when completeRenewal: renewalInFlight && workerAlive && !selfFenced && renewalEpoch === ownerEpoch
+    action renewalCasFailure: renewalInFlight' = false, selfFenced' = true
+    action_when renewalCasFailure: renewalInFlight
+    action startWrite: writeInFlight' = true, writeEpoch' = ownerEpoch
+    action_when startWrite: workerAlive && !selfFenced && !writeInFlight
+    action takeover: ownerEpoch' = ownerEpoch + 1
+    action_when takeover: realNow >= leaseExpiry
+    action completeWrite: writeInFlight' = false, badCommit' = writeEpoch !== ownerEpoch
+    action_when completeWrite: writeInFlight${fencedCommit ? " && writeEpoch === ownerEpoch" : ""}
+    action crash: workerAlive' = false
+    action_when crash: workerAlive
+    action gc: resourceHeld' = false
+    action_when gc: !workerAlive && resourceHeld
+    temporal noStaleCommit: !badCommit
+    temporal casFailureFences: !selfFenced || !renewalInFlight
+    temporal gcDoesNotInventResources: resourceHeld || !workerAlive
+  */`;
+}
+
+function runLeaseLifecycle(fencedCommit: boolean) {
+  const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-lifecycle-"));
+  const path = join(directory, "lifecycle.qnt");
+  writeFileSync(path, generateQuint("node_lease_lifecycle", parseSpec("lifecycle.ts", leaseLifecycleModel(fencedCommit)).temporal));
+  const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=noStaleCommit", "--max-steps=20", "--max-samples=5000", "--seed=0x6c6966656379636c"], { encoding: "utf8", timeout: 30_000 });
+  rmSync(directory, { recursive: true, force: true });
+  return result;
+}
+
 describe("Node Lease clock-skew model", () => {
+  it("fences delayed writes across renewal, CAS failure, crash, GC, and takeover lifecycle", () => {
+    const broken = runLeaseLifecycle(false);
+    expect(broken.status).not.toBe(0);
+    expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    const safe = runLeaseLifecycle(true);
+    expect(safe.status, safe.stdout + safe.stderr).toBe(0);
+  });
+
   it("uses finite Set and Map state without per-node writer or epoch fields", () => {
     const broken = runCollectionLease(0);
     expect(broken.model).toContain("var activeWriters: Set[int]");
