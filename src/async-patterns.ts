@@ -24,6 +24,7 @@ export interface PromiseCombinatorPattern {
   branchKinds: ("value" | "thenable" | "unknown")[];
   staticIterable: boolean;
   iteratorFailure?: "acquire" | "step";
+  aggregateErrorOrder?: number[];
   awaited: boolean;
   catchesRejection: boolean;
   span: { start: number; end: number };
@@ -233,7 +234,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable, iteratorFailure: local?.failure, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
+          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable, iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }
       ts.forEachChild(node, visit);
@@ -282,6 +283,10 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   model.combinators.forEach((join, index) => {
     join.branches.forEach((_, branch) => lines.push(`  var join_${index}_branch_${branch}: int`));
     lines.push(`  var join_${index}_result: int`, `  var join_${index}_iterator_failed: bool`, `  var join_${index}_rejection_escapes: bool`);
+    if (join.aggregateErrorOrder) {
+      lines.push(`  val join_${index}_aggregate_error_count = ${join.aggregateErrorOrder.length}`);
+      join.aggregateErrorOrder.forEach((slot, rank) => lines.push(`  val join_${index}_aggregate_error_slot_${rank} = ${slot}`));
+    }
   });
   lines.push("", "  action init = all {", "    clock' = 0,");
   model.timers.forEach((timer, index) => {

@@ -270,7 +270,13 @@ describe("builtin async temporal patterns", () => {
       ["allSettled", 2], ["race", 2], ["any", 2],
       ["allSettled", 0], ["race", 0], ["any", 0],
     ]);
+    expect(model.combinators[2]).toMatchObject({ aggregateErrorOrder: [0, 1] });
+    expect(model.combinators[5]).toMatchObject({ aggregateErrorOrder: [] });
     const program = generateAsyncPatternsQuint("combinators", model);
+    expect(program).toContain("val join_2_aggregate_error_count = 2");
+    expect(program).toContain("val join_2_aggregate_error_slot_0 = 0");
+    expect(program).toContain("val join_2_aggregate_error_slot_1 = 1");
+    expect(program).toContain("val join_5_aggregate_error_count = 0");
     expect(program).toContain("action fulfill_join_3");
     expect(program).toContain("false,\n    clock' = clock"); // race([]) has no settlement transition enabled
     expect(program).toContain("action reject_join_5");

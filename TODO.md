@@ -276,7 +276,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
   - [x] Model direct local standard-iterator acquisition failure and linear local-generator step failure before Promise reactions settle.
   - [x] Flatten nested array-literal spreads with exact cardinality and element order.
-  - [ ] Model conditional/imported custom iterables, iterator result getters, dynamic spread cardinality, and ordered `AggregateError.errors`.
+  - [x] Preserve `AggregateError.errors` slot order independently of Promise rejection order.
+  - [ ] Model conditional/imported custom iterables, iterator result getters, dynamic spread cardinality, and concrete aggregate rejection reasons.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.

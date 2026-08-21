@@ -91,8 +91,10 @@ still executes them, so their side effects require a later branch-effect
 composition model.
 
 `allSettled` preserves branch indexes and settlement status in the IR state,
-but values and rejection reasons are currently abstracted away. `any` models
-the AggregateError control outcome, not its ordered `.errors` payload.
+but values and rejection reasons are currently abstracted away. `any` retains
+the input-index order used by `AggregateError.errors`, independently of branch
+rejection order, and emits count/rank constants to Quint. The rejection reason
+values occupying those slots remain abstract.
 
 Each literal element is classified as a plain value, a thenable, or unknown.
 Plain values (including holes) can only fulfill. Thenables enter an explicit
@@ -102,7 +104,7 @@ value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
 thenable IR is not yet composed into each combinator branch. Conditional
 generator control flow, iterator result getters, imported or arbitrary custom
-iterables, dynamic spread cardinality, ordered `AggregateError` payloads, cancellation,
+iterables, dynamic spread cardinality, concrete `AggregateError` reasons, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.
 
