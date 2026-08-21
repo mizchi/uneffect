@@ -67,6 +67,14 @@ treated as `user-visible`. The returned Promise remains subject to the normal
 rejection-ownership analysis. See the [Prioritized Task Scheduling specification](https://wicg.github.io/scheduling-apis/)
 and [MDN `postTask`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/postTask).
 
+`scheduler.yield()` lowers to a scheduler continuation. At top level it uses
+`user-visible`; inside a statically resolved `postTask` callback it inherits the
+parent's static priority and becomes runnable only after that callback runs.
+The current model does not inherit abort cancellation, resolve dynamically
+selected callbacks, or connect the yielded promise to every following statement
+in an async function. It therefore is not yet a complete async control-flow
+proof. See [MDN `yield`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/yield).
+
 ```sh
 just spec-web-event-loop examples/async-patterns.ts
 ```

@@ -287,7 +287,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model static `AbortSignal.any` source order, already-aborted inputs, timeout/external sources, and first-reason-wins in Web Quint.
   - [x] Track direct timer-handle escape through opaque arguments, property storage, and return as optional external cancellation.
   - [x] Model static `scheduler.postTask` priority, FIFO, minimum delay, pre-abort, and Promise-returning task boundaries.
-  - [ ] Track aggregate/closure handle escape, Node/browser handle differences, dynamic/interprocedural abort compositions, TaskSignal reprioritization, and `scheduler.yield`.
+  - [x] Model top-level `scheduler.yield` at default priority and inline `postTask` continuations with inherited static priority and parent-time enqueue.
+  - [ ] Track aggregate/closure handle escape, Node/browser handle differences, dynamic/interprocedural abort compositions, TaskSignal reprioritization, inherited `scheduler.yield` cancellation, and dynamically resolved parent callbacks.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

@@ -253,6 +253,27 @@ describe("builtin async temporal patterns", () => {
     `))).toThrow(/requires a static priority/);
   }, 20_000);
 
+  it("models scheduler.yield as a continuation inheriting its postTask priority", () => {
+    const model = analyzeAsyncPatterns("scheduler-yield.ts", `
+      async function topLevel() { await scheduler.yield() }
+      function schedule() {
+        return scheduler.postTask(async () => {
+          await scheduler.yield()
+        }, { priority: "background" })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-yield", queue: "scheduler-task", priority: "user-visible", callback: "<continuation>" },
+      { kind: "scheduler-post-task", queue: "scheduler-task", priority: "background" },
+      { kind: "scheduler-yield", queue: "scheduler-task", priority: "background", enqueuedBy: 1, callback: "<continuation>" },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_yield", model);
+    expect(quint).toMatch(/action init[\s\S]*callback_2_pending' = false/);
+    expect(quint).toMatch(/action run_scheduler_task_1[\s\S]*callback_2_pending' = true/);
+    expect(quint).toContain("action run_scheduler_yield_2");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}

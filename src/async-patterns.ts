@@ -12,7 +12,7 @@ export interface TimerPattern {
   queue: "timer" | "microtask" | "animation-frame" | "scheduler-task";
   enqueuedBy?: number;
   handle?: string;
-  kind?: "abort-timeout" | "scheduler-post-task";
+  kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
   initiallyCancelled?: boolean;
@@ -175,7 +175,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (timer === undefined) return;
       timerEscapes.push({ owner: ownerName, kind, handle: resolveHandle(identifier.text), timer, span: { start: node.getStart(source), end: node.getEnd() } });
     };
-    const collectNestedMicrotasks = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
+    const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callback = resolveCallback(callbackExpression);
       if (!callback || !callback.body || visited.has(callback)) return;
       visited.add(callback);
@@ -188,7 +188,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             const callbackNode = node.arguments[operation.callbackArgument];
             const childSource = node.getSourceFile();
             timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: "microtask", enqueuedBy: parent, span: { start: node.getStart(childSource), end: node.getEnd() } });
-            collectNestedMicrotasks(callbackNode, child, visited);
+            collectNestedJobs(callbackNode, child, visited);
+            return;
+          } else if (operation?.kind === "scheduler-yield") {
+            const childSource = node.getSourceFile();
+            timers.push({
+              owner: ownerName,
+              callback: "<continuation>",
+              delay: 0,
+              recursive: false,
+              repeats: false,
+              queue: "scheduler-task",
+              enqueuedBy: parent,
+              kind: "scheduler-yield",
+              priority: timers[parent]?.priority ?? "user-visible",
+              span: { start: node.getStart(childSource), end: node.getEnd() },
+            });
             return;
           }
         }
@@ -232,7 +247,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           if (declaration) handleTargets.set(declaration, timerIndex);
-          collectNestedMicrotasks(callbackNode, timerIndex);
+          collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
@@ -302,7 +317,19 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             initiallyCancelled: signal?.alreadyAborted,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
-          collectNestedMicrotasks(callbackNode, timerIndex);
+          collectNestedJobs(callbackNode, timerIndex);
+        } else if (operation?.kind === "scheduler-yield") {
+          timers.push({
+            owner: ownerName,
+            callback: "<continuation>",
+            delay: 0,
+            recursive: false,
+            repeats: false,
+            queue: "scheduler-task",
+            kind: "scheduler-yield",
+            priority: "user-visible",
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
         } else if (operation?.kind === "timer-clear") {
           const handleNode = node.arguments[operation.handleArgument];
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
@@ -368,6 +395,7 @@ function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_")
 function timerAction(kind: "fire" | "run", timer: TimerPattern, index: number): string {
   if (timer.kind === "abort-timeout") return kind === "fire" ? `fire_abort_timeout_${index}` : `run_abort_timeout_task_${index}`;
   if (timer.kind === "scheduler-post-task") return kind === "fire" ? `fire_scheduler_task_${index}` : `run_scheduler_task_${index}`;
+  if (timer.kind === "scheduler-yield") return kind === "fire" ? `fire_scheduler_yield_${index}` : `run_scheduler_yield_${index}`;
   return kind === "fire" ? `fire_timer_${index}` : `run_timer_task_${index}`;
 }
 
@@ -539,6 +567,10 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
       updates.set(`callback_${child}_ticket`, offset === 0 ? "next_microtask_ticket" : `next_microtask_ticket + ${offset}`);
     });
     if (children.length) updates.set("next_microtask_ticket", children.length === 1 ? "next_microtask_ticket + 1" : `next_microtask_ticket + ${children.length}`);
+    schedulerTasks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+      updates.set(`callback_${child}_pending`, "true");
+      updates.set(`callback_${child}_due`, `clock + ${model.timers[child]!.delay}`);
+    });
   };
   microtasks.forEach((index) => {
     const ticket = `callback_${index}_ticket`;
@@ -580,9 +612,11 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
       return otherRank > rank || (otherRank === rank && other < index) ? [`(callback_${other}_pending and callback_${other}_due <= clock)`] : [];
     });
     const violation = outranking.join(" or ") || "false";
-    action(`run_scheduler_task_${index}`, [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`])], new Map([
+    const updates = new Map<string, string>([
       ["phase", "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"], ["scheduler_priority_broken", violation],
-    ]));
+    ]);
+    enqueueChildren(index, updates);
+    action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`])], updates);
   });
   timers.forEach((index, order) => {
     const timer = model.timers[index]!;

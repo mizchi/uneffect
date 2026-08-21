@@ -27,5 +27,9 @@ describe("builtin semantic overlays", () => {
       symbol: { module: "lib.dom", export: "Scheduler#postTask" },
       operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 },
     }));
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+      symbol: { module: "lib.dom", export: "Scheduler#yield" },
+      operation: { kind: "scheduler-yield" },
+    }));
   });
 });

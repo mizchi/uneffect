@@ -97,7 +97,7 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   if (resolved?.operation?.kind === "timer-clear") return [capability("Timer")];
   if (resolved?.operation?.kind === "abort-timeout") return [capability("Timer")];
   if (resolved?.operation?.kind === "abort-static" || resolved?.operation?.kind === "abort-any") return [];
-  if (resolved?.operation?.kind === "scheduler-post-task") return [capability("Timer")];
+  if (resolved?.operation?.kind === "scheduler-post-task" || resolved?.operation?.kind === "scheduler-yield") return [capability("Timer")];
   if (resolved?.operation?.kind === "promise-combinator") return [];
   if (resolved?.operation?.kind === "effect") return [capability(resolved.operation.effect)];
   if (resolved?.operation?.kind === "mutation" && ts.isPropertyAccessExpression(call.expression)) return [mutateEffect(call.expression.expression)];

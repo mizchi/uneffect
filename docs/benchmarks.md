@@ -251,10 +251,12 @@ error). The pass assigns each escape to a concrete timer generation and keeps
 the external-cancellation transition optional. The variance is too high for a
 regression threshold; this is a scaling observation for the 64-handle fixture.
 
-Analyzing the two-task prioritized scheduler dogfood fixture measured 130.62 ms
-mean over five cold samples (4.39% relative margin of error). This includes
-TypeChecker identity resolution, static option extraction, and callback-body
-discovery, but excludes Quint execution.
+Analyzing the two-task prioritized scheduler dogfood fixture, including one
+inherited-priority `scheduler.yield` continuation, measured 240.16 ms mean over
+five cold samples (7.69% relative margin of error). This includes TypeChecker
+identity resolution, static option extraction, and callback-body discovery, but
+excludes Quint execution. This replaces the earlier pre-yield 130.62 ms sample;
+the small cold sample is observational and not yet a regression threshold.
 
 Auditing the telemetry packet fixture across its statement-scoped typed-array
 escape hatch, Console builtin, temporal summary, and owner/expiration policy

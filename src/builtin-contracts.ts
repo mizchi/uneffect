@@ -27,6 +27,7 @@ export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgu
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
 export interface AbortAnyBuiltinOperation { kind: "abort-any"; signalsArgument: number }
 export interface SchedulerPostTaskBuiltinOperation { kind: "scheduler-post-task"; callbackArgument: number; optionsArgument: number }
+export interface SchedulerYieldBuiltinOperation { kind: "scheduler-yield" }
 export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
 export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
 export type DomOperation = "Read" | "LayoutRead" | "ValueWrite" | "TreeWrite" | "Create" | "Listen" | "Dispatch" | "Parse";
@@ -39,7 +40,7 @@ export interface DomBuiltinOperation {
   queryArgument?: number;
 }
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
@@ -134,6 +135,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     trusted({ symbol: { module: "global", export: "AbortSignal.abort" }, operation: { kind: "abort-static", reasonArgument: 0 } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
     trusted({ symbol: { module: "lib.dom", export: "Scheduler#postTask" }, operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 } }),
+    trusted({ symbol: { module: "lib.dom", export: "Scheduler#yield" }, operation: { kind: "scheduler-yield" } }),
     ...(["all", "allSettled", "race", "any"] as const).map((combinator): BuiltinContract => trusted({
       symbol: { module: "lib.es", export: `PromiseConstructor#${combinator}` },
       operation: { kind: "promise-combinator", combinator, iterableArgument: 0 },
