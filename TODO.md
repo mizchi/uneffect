@@ -126,8 +126,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Parse Quint `run --mbt --out-itf` violation traces, including safe ITF big integers, into normalized traces automatically.
     - [x] Extract shortest bounded temporal-Z3 counterexamples with explicit action selectors into normalized traces automatically.
     - [x] Parse standalone scalar TLC counterexample output and recover unambiguous actions from the neutral temporal IR into normalized traces automatically.
-    - [x] Parse compact finite Set, scalar-key Map, and closed-record TLC console values and recover their neutral collection actions.
-    - [ ] Support multiline/general TLA+ values and upstream machine-readable TLC traces when Quint exposes them.
+    - [x] Parse multiline finite Set, scalar-key Map, and closed-record TLC console values and recover their neutral collection actions.
+    - [ ] Support the remaining general TLA+ values and upstream machine-readable TLC traces when Quint exposes them.
 - [x] Merge the direct Z3 checker and SMT-LIB generator onto one invariant IR.
 - [x] Lower simple assignments and branches to SSA proof obligations.
 - [x] Lower loop initialization, preservation, and exit obligations through the shared IR.
@@ -147,8 +147,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add scalar-key/value `Map<K, V>`, TypeScript `Map([[k, v]])`, immutable `put`, and finite `keys`/`values` views without exposing partial `get`.
   - [x] Replace per-node resident epoch fields with a finite Map in the Node Lease model.
   - [x] Add record state, field reads, immutable spread updates, and nested collection value types.
-  - [x] Add compact collection-valued TLC replay for the supported Set/Map/record fragment.
-  - [ ] Add multiline/general TLA+ TLC values and a solver representation or finite expansion for Z3.
+  - [x] Add multiline collection-valued TLC replay for the supported Set/Map/record fragment.
+  - [ ] Add the remaining general TLA+ TLC values and a solver representation or finite expansion for Z3.
 - [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
   - [x] Route protected logical-clock state/init/actions through a public directive registry and allow independently registered domain directives.
   - [ ] Add an optional physical-clock pack that distinguishes monotonic and wall clocks and makes drift/skew/jump assumptions explicit.

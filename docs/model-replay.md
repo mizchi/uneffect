@@ -64,7 +64,7 @@ replays it against TypeScript, while the skew-grace variant has no violation
 within twelve steps.
 
 `parseTlcCounterexample` supports TLC's console trace for scalar `int`/`bool`
-and compact single-line finite Set, scalar-key Map/function, and closed-record
+and single- or multiline finite Set, scalar-key Map/function, and closed-record
 values. Collections normalize to JSON-safe sorted arrays (Maps use `[key,
 value]` pairs), while records normalize to objects. TLC prints only the
 generated `q_step` action,
@@ -73,8 +73,9 @@ state pair. Exactly one action must match; zero or multiple matches are rejected
 instead of assigning a guessed action name. The integration test executes an
 actual two-step TLC violation in CI. Quint 0.32 advertises `--out-itf` for
 `verify --backend=tlc`, but its TLC implementation does not currently write or
-return that trace, so this path necessarily consumes console text. Multiline
-and general TLA+ values remain unsupported and are not silently approximated.
+return that trace, so this path necessarily consumes console text. General
+TLA+ values outside the declared Uneffect state fragment remain unsupported and
+are not silently approximated.
 
 The result binds hashes of the full trace and adapter metadata. The adapter
 digest covers its schema, name, version, action names, and invariant names; the
@@ -87,7 +88,7 @@ The executable Node Lease fixture runs Quint with MBT ITF output, parses the
 produced broken trace, replays all clock/takeover/publish actions, and observes
 `singleWriter` failing at the same final step. A deliberately incorrect runtime
 also produces a step-local mismatch. The same fixture now exercises the direct
-bounded-Z3 trace path. Compact collection-valued standalone TLC output is
+bounded-Z3 trace path. Collection-valued standalone TLC output for the supported fragment is
 covered as well. Uneffect does not yet generate adapters
 from source annotations.
 

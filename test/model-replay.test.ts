@@ -81,9 +81,18 @@ State 1: <Initial predicate>
 /\\ lease = [owner |-> 1, valid |-> TRUE]
 
 State 2: <q_step>
-/\\ writers = {2, 1}
-/\\ epochs = [2 |-> 1, 1 |-> 1]
-/\\ lease = [owner |-> 2, valid |-> TRUE]
+/\\ writers = {
+  2,
+  1
+}
+/\\ epochs = [
+  2 |-> 1,
+  1 |-> 1
+]
+/\\ lease = [
+  owner |-> 2,
+  valid |-> TRUE
+]
 `, spec, "collections-model");
     expect(trace).toMatchObject({
       initialState: { writers: [1], epochs: [[1, 1]], lease: { owner: 1, valid: true } },

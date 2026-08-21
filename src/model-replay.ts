@@ -237,6 +237,28 @@ function parseTlcValue(raw: string, type: TemporalValueType, name: string): Mode
     .sort((a, b) => stable((a as ModelValue[])[0]).localeCompare(stable((b as ModelValue[])[0])));
 }
 
+function parseTlcAssignments(block: string): Map<string, string> {
+  const assignments = new Map<string, string>();
+  let currentName: string | undefined, currentValue: string[] = [];
+  const flush = () => {
+    if (currentName) assignments.set(currentName, currentValue.join(" ").trim());
+    currentName = undefined;
+    currentValue = [];
+  };
+  for (const line of block.split(/\r?\n/)) {
+    const start = /^\s*(?:\/\\\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(line);
+    if (start) {
+      flush();
+      currentName = start[1]!;
+      currentValue.push(start[2]!);
+    } else if (currentName && line.trim()) {
+      currentValue.push(line.trim());
+    }
+  }
+  flush();
+  return assignments;
+}
+
 function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, after: TemporalScalarState, step: number): string {
   const candidates = spec.actions.filter((action) => {
     if (action.guard && evaluateTemporalExpression(action.guard.expressionAst, before) !== true) return false;
@@ -262,7 +284,7 @@ export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHa
   const states = headers.map((header, index): TemporalScalarState => {
     const start = header.index! + header[0].length, end = headers[index + 1]?.index ?? text.length;
     const block = text.slice(start, end);
-    const assignments = new Map([...block.matchAll(/^(?:\/\\\s+)?([A-Za-z_$][\w$]*)\s*=\s*([^\n\r]+)$/gm)].map((match) => [match[1]!, match[2]!]));
+    const assignments = parseTlcAssignments(block);
     return Object.fromEntries(spec.states.map((state) => {
       const raw = assignments.get(state.name);
       if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}; parsed assignments: ${[...assignments.keys()].join(", ") || "<none>"}; block: ${JSON.stringify(block.trim())}`);
