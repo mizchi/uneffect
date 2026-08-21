@@ -726,6 +726,10 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "bounded-no-state-progress", name: "<progress>", depth: 1,
     }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "reachable-stutter-cycle", name: "<liveness>", depth: 1,
+      message: expect.stringContaining("fairness"),
+    }));
   });
 
   it("reports a bounded invariant that holds only because its referenced state is frozen", async () => {

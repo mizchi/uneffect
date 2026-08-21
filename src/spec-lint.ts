@@ -10,7 +10,7 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "inductively-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -610,6 +610,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       diagnostics.push({
         code: "bounded-no-state-progress", name: "<progress>", backend: "z3", depth,
         message: `a state where actions are enabled but every enabled action stutters is reachable in ${depth} transition steps`,
+      });
+      diagnostics.push({
+        code: "reachable-stutter-cycle", name: "<liveness>", backend: "z3", depth,
+        message: `the reachable stuttering state yields an infinite no-progress execution; a stronger fairness or progress specification must rule it out`,
       });
       break;
     }

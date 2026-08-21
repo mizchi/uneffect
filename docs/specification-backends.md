@@ -241,6 +241,11 @@ properties. It also unrolls complete action transitions for eight steps by
 default, reports action unreachability with that explicit bound, proves initial
 deadlock, finds the shortest later reachable deadlock within the bound, and
 finds the shortest bounded reachable state where every enabled action stutters.
+Because that state and its enabled transitions reproduce the same state, the
+checker also reports `reachable-stutter-cycle` as an unbounded no-progress
+execution witness. This is narrower than general fairness or eventuality
+checking: cycles that change state before returning still require Quint/TLC or
+a future liveness backend.
 It also proves when enabled initial transitions cannot change state. Bounded
 unreachability is not an unbounded proof. Bounded property-specific vacuity is
 reported when the invariant holds but none of its referenced state can change
@@ -258,7 +263,7 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Parameterized/scoped capability lattice | Implemented in both lattices with target-aware path/env and normalized URL/host domains |
 | Shared SMT-LIB/direct-Z3 invariant obligations | Implemented prototype and executed with Z3 |
 | Z3-backed temporal semantic lint | Implemented for global validity/contradiction, init consistency, globally impossible guards, and duplicate/subsumed safety properties |
-| Bounded temporal reachability lint | Implemented with depth-labelled Z3 unrolling, definitive initial deadlock, shortest bounded later-deadlock and all-enabled-actions-stutter witnesses, frozen-state property vacuity, and initial state-progress checks; unbounded reachability remains open |
+| Bounded temporal reachability lint | Implemented with depth-labelled Z3 unrolling, definitive initial deadlock, shortest bounded later-deadlock, all-enabled-actions-stutter witnesses promoted to infinite stutter cycles, frozen-state property vacuity, and initial state-progress checks; general unbounded reachability remains open |
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |
