@@ -37,6 +37,9 @@ package-check:
 spec-ir file:
     pnpm tsx src/spec-cli.ts ir {{ file }}
 
+spec-lint file:
+    pnpm tsx src/spec-cli.ts lint {{ file }}
+
 spec-z3 file function="":
     pnpm tsx src/spec-cli.ts z3 {{ file }} {{ function }}
 

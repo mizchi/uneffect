@@ -1,11 +1,82 @@
 import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
 import type { TemporalExpression } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
+import { init as initZ3 } from "z3-solver";
 
 export interface SpecLintDiagnostic {
-  code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action";
+  code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
+    | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property";
   name: string;
   message: string;
+  relatedName?: string;
+  backend?: "z3";
+}
+
+const smtBinary: Record<string, string> = {
+  eq: "=", and: "and", or: "or", lt: "<", lte: "<=", gt: ">", gte: ">=",
+  add: "+", subtract: "-", multiply: "*", divide: "div", modulo: "mod",
+};
+
+function temporalToSmt(expression: TemporalExpression): string {
+  if (expression.kind === "name") return expression.name;
+  if (expression.kind === "integer") return expression.value;
+  if (expression.kind === "boolean") return String(expression.value);
+  if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand)})` : `(- ${temporalToSmt(expression.operand)})`;
+  if (expression.operator === "neq") return `(not (= ${temporalToSmt(expression.left)} ${temporalToSmt(expression.right)}))`;
+  return `(${smtBinary[expression.operator]} ${temporalToSmt(expression.left)} ${temporalToSmt(expression.right)})`;
+}
+
+let solverSequence = 0;
+async function check(spec: TemporalSpec, assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> {
+  const { Context } = await initZ3();
+  const context: any = new Context(`uneffect_spec_lint_${solverSequence++}`);
+  const solver = new context.Solver();
+  const declarations = spec.states.map((state) => `(declare-const ${state.name} ${state.type === "int" ? "Int" : "Bool"})`);
+  solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
+  return String(await solver.check()) as "sat" | "unsat" | "unknown";
+}
+
+/** Semantic lint over all typed states. It does not claim reachable-state or progress analysis. */
+export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLintDiagnostic[]> {
+  const diagnostics: SpecLintDiagnostic[] = [];
+  const initConstraints = spec.init.map((item) => `(= ${item.target} ${temporalToSmt(item.expressionAst)})`);
+  if (await check(spec, initConstraints) === "unsat") diagnostics.push({
+    code: "inconsistent-init", name: "<init>", backend: "z3", message: "temporal init constraints are jointly unsatisfiable",
+  });
+
+  const classified = new Set<string>();
+  for (const property of spec.properties) {
+    const expression = temporalToSmt(property.expressionAst);
+    if (await check(spec, [`(not ${expression})`]) === "unsat") {
+      classified.add(property.name);
+      diagnostics.push({ code: "solver-tautology", name: property.name, backend: "z3", message: `${property.name} is valid for every typed state` });
+    } else if (await check(spec, [expression]) === "unsat") {
+      classified.add(property.name);
+      diagnostics.push({ code: "solver-contradiction", name: property.name, backend: "z3", message: `${property.name} is false for every typed state` });
+    }
+  }
+  for (const action of spec.actions) if (action.guard && await check(spec, [temporalToSmt(action.guard.expressionAst)]) === "unsat") diagnostics.push({
+    code: "unreachable-action", name: action.name, backend: "z3", message: `${action.name} has an unsatisfiable guard for every typed state`,
+  });
+
+  for (let index = 0; index < spec.properties.length; index++) {
+    const current = spec.properties[index]!;
+    if (classified.has(current.name)) continue;
+    for (let earlierIndex = 0; earlierIndex < index; earlierIndex++) {
+      const earlier = spec.properties[earlierIndex]!;
+      if (classified.has(earlier.name)) continue;
+      if (same(current.expressionAst, earlier.expressionAst)) {
+        diagnostics.push({ code: "duplicate-property", name: current.name, relatedName: earlier.name, backend: "z3", message: `${current.name} duplicates ${earlier.name}` });
+        break;
+      }
+      const implicationCounterexample = [temporalToSmt(earlier.expressionAst), `(not ${temporalToSmt(current.expressionAst)})`];
+      if (await check(spec, implicationCounterexample) === "unsat") {
+        diagnostics.push({ code: "subsumed-property", name: current.name, relatedName: earlier.name, backend: "z3", message: `${current.name} is implied by earlier property ${earlier.name}` });
+        break;
+      }
+    }
+  }
+  return diagnostics;
 }
 
 function same(left: TemporalExpression, right: TemporalExpression): boolean {
@@ -61,4 +132,13 @@ export function lintTemporalSpec(spec: TemporalSpec): SpecLintDiagnostic[] {
 export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] } {
   const spec = parseSpec(fileName, text);
   return { spec, diagnostics: lintTemporalSpec(spec.temporal) };
+}
+
+/** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
+export async function lintSpecWithZ3(fileName: string, text: string): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+  const result = lintSpec(fileName, text);
+  return {
+    spec: result.spec,
+    diagnostics: [...result.diagnostics, ...await lintTemporalSpecWithZ3(result.spec.temporal)],
+  };
 }

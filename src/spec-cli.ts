@@ -6,10 +6,11 @@ import { parseSpec } from "./spec-ir.js";
 import { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "./promise-chains.js";
+import { lintSpecWithZ3 } from "./spec-lint.js";
 
 const [command, fileName, selectedFunction] = process.argv.slice(2);
-if (!command || !fileName || !["ir", "z3", "quint", "compose", "async-quint", "web-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|z3|quint|compose|async-quint|web-loop-quint|promise-quint> <file.ts> [function]");
+if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "promise-quint"].includes(command)) {
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|promise-quint> <file.ts> [function]");
   process.exit(2);
 }
 
@@ -18,6 +19,10 @@ const spec = parseSpec(fileName, source);
 
 if (command === "ir") {
   console.log(JSON.stringify(spec, null, 2));
+} else if (command === "lint") {
+  const result = await lintSpecWithZ3(fileName, source);
+  console.log(JSON.stringify(result.diagnostics, null, 2));
+  if (result.diagnostics.length > 0) process.exitCode = 1;
 } else if (command === "z3") {
   const invariant = selectedFunction
     ? spec.invariants.find((item) => item.functionName === selectedFunction)

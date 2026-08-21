@@ -140,6 +140,20 @@ just spec-quint examples/spec.ts > /tmp/spec.qnt
 pnpm quint run /tmp/spec.qnt --invariant=cacheIsSound
 ```
 
+Run source-level lint, including Z3-backed semantic checks:
+
+```sh
+just spec-lint examples/spec.ts
+```
+
+The command emits JSON and exits with status 1 when it finds a diagnostic. In
+addition to the cheap syntax checks, it detects jointly inconsistent initial
+constraints, properties that are valid or false for every typed state, guards
+that are unsatisfiable for every typed state, and duplicate or subsumed safety
+properties. These are global satisfiability checks: they do not yet prove that
+an otherwise satisfiable action is reachable from `init`, or detect deadlock,
+vacuity, fairness, or progress failures.
+
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
 ## Epistemic status
@@ -150,6 +164,7 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Capability effect checking | Implemented for structured scoped and unscoped effects in TypeScript and Rust |
 | Parameterized/scoped capability lattice | Implemented in both lattices with target-aware path/env and normalized URL/host domains |
 | Shared SMT-LIB/direct-Z3 invariant obligations | Implemented prototype and executed with Z3 |
+| Z3-backed temporal semantic lint | Implemented for global validity/contradiction, init consistency, globally impossible guards, and duplicate/subsumed safety properties; reachability and progress lint remain open |
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |

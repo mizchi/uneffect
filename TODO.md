@@ -95,6 +95,12 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 - [x] Lint syntactically constant temporal invariants and actions consisting only of self-assignments.
 - [ ] Detect solver-level tautologies, inconsistent initial states, unreachable actions, vacuous invariants, duplicate/subsumed properties, and invariants preserved only because no progress is possible.
+  - [x] Detect solver-level tautologies and contradictions over all typed states.
+  - [x] Detect jointly inconsistent initial constraints.
+  - [x] Detect action guards that are unsatisfiable over all typed states.
+  - [x] Detect exact duplicates and properties implied by an earlier property.
+  - [ ] Detect actions unreachable from the transition system's initial states.
+  - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

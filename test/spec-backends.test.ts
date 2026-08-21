@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { lintSpec } from "../src/spec-lint.js";
+import { lintSpec, lintSpecWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 
 const source = `
   /*
@@ -166,6 +166,45 @@ describe("spec IR and generated verifier programs", () => {
       expect.objectContaining({ code: "tautological-invariant", name: "tautology" }),
       expect.objectContaining({ code: "contradictory-invariant", name: "contradiction" }),
       expect.objectContaining({ code: "no-op-action", name: "idle" }),
+    ]));
+  });
+
+  it("uses Z3 to reject semantic tautologies, contradictions, inconsistent init, unreachable guards, and subsumed properties", async () => {
+    const temporal = parseSpec("semantic-lint.ts", `/* uneffect:
+      state epoch: int
+      state ready: bool
+      init epoch = 0
+      init epoch = 1
+      init ready = false
+      action impossible: ready' = true
+      action_when impossible: epoch > 0 && epoch <= 0
+      temporal totalOrder: epoch > 0 || epoch <= 0
+      temporal impossibleState: epoch > 0 && epoch <= 0
+      temporal positive: epoch > 0
+      temporal nonnegative: epoch >= 0
+      temporal positiveAgain: epoch > 0
+    */`).temporal;
+    const diagnostics = await lintTemporalSpecWithZ3(temporal);
+    expect(diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "inconsistent-init" }),
+      expect.objectContaining({ code: "solver-tautology", name: "totalOrder" }),
+      expect.objectContaining({ code: "solver-contradiction", name: "impossibleState" }),
+      expect.objectContaining({ code: "unreachable-action", name: "impossible" }),
+      expect.objectContaining({ code: "duplicate-property", name: "positiveAgain" }),
+      expect.objectContaining({ code: "subsumed-property", name: "nonnegative", relatedName: "positive" }),
+    ]));
+  });
+
+  it("combines syntax and solver diagnostics from source text", async () => {
+    const result = await lintSpecWithZ3("combined-lint.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action idle: epoch' = epoch
+      temporal totalOrder: epoch > 0 || epoch <= 0
+    */`);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "no-op-action", name: "idle" }),
+      expect.objectContaining({ code: "solver-tautology", name: "totalOrder", backend: "z3" }),
     ]));
   });
 });

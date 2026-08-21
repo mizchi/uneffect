@@ -3,7 +3,7 @@ import ts from "typescript";
 import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
-import { lintTemporalSpec } from "../src/spec-lint.js";
+import { lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
@@ -110,6 +110,23 @@ describe("typed-array static verification", () => {
     lintTemporalSpec(temporal);
     generateQuint("node_lease", temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("solver-lint 5 temporal properties and one guarded action", async () => {
+    const temporal = parseSpec("semantic-lint.ts", `/* uneffect:
+      state epoch: int
+      state ready: bool
+      init epoch = 0
+      init ready = false
+      action publish: ready' = true
+      action_when publish: epoch >= 0
+      temporal nonnegative: epoch >= 0
+      temporal positive: epoch > 0
+      temporal bounded: epoch >= 0 && epoch < 100
+      temporal totalOrder: epoch > 0 || epoch <= 0
+      temporal readyAfterPublish: ready || !ready
+    */`).temporal;
+    await lintTemporalSpecWithZ3(temporal);
+  }, { time: 500, iterations: 1 });
 
   bench("generate 16 scalar contract property tests", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
