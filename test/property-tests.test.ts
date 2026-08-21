@@ -156,6 +156,17 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("synthesizes a minimum-size constraint-preserving shrink tuple first", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "factor.ts": `
+      type Nat = number
+      /* uneffect: requires x >= 1 && y >= 1 && x * y === 36 */
+      /* uneffect: ensures result === 36 */
+      export function factor(x: Nat, y: Nat): Nat { return x * y }
+    ` }, solverCases: 1 });
+    expect(result.boundaries[0]?.generatorTuples).toEqual([[6, 6]]);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("derives solver-backed bounded-array inputs and constraint-preserving shrink tuples", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "packet.ts": `
       type U8 = number

@@ -73,8 +73,11 @@ value variables. Counterexamples persist as parallel JSON-safe `keys` and
 parent presence bit across every nested scalar leaf, preventing impossible
 partially-present objects. Optional objects containing independently optional
 children are still rejected rather than assigned ambiguous presence semantics.
-The generator injects
-satisfying tuples before Cartesian samples and reports an unsatisfiable
+The solver minimizes a shared structural-size objective over scalar magnitudes,
+array lengths/elements, record leaves, and collection membership/value state.
+Because nonlinear Z3 optimization can return a non-minimal local result, Uneffect
+then repeats ordinary SAT checks under a strict smaller-size bound until `unsat`.
+The generator injects satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the
 whole precondition, allowing dependent values to shrink together before the

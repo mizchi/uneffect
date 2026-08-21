@@ -809,40 +809,76 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       ];
       const blocks: string[] = [];
       const tuples: PropertyValue[][] = [];
+      const absolute = (value: string): string => `(ite (< ${value} 0) (- ${value}) ${value})`;
+      const sizeTerms = names.flatMap((name, index): string[] => {
+        const domain = domains[index]!;
+        if (typeof domain === "string") return [absolute(name)];
+        if (domain.kind === "bounded-array") {
+          const layout = layouts.get(name)!;
+          return [`${name}__length`, ...Array.from({ length: layout.maximum }, (_, at) => absolute(`${name}__${at}`))];
+        }
+        if (domain.kind === "bounded-set") return sets.get(name)!.universe.map((value, at) =>
+          `(ite ${name}__member__${at} ${Math.abs(value) + 1} 0)`);
+        if (domain.kind === "bounded-map") return maps.get(name)!.universe.map((key, at) =>
+          `(ite ${name}__member__${at} (+ ${Math.abs(key) + 1} ${absolute(`${name}__value__${at}`)}) 0)`);
+        if (domain.kind !== "record") return [];
+        return recordLeaves(domain.fields, "", domain.optional).map(({ path, presence }) => {
+          const size = absolute(`${name}__${path}`);
+          return presence ? `(ite ${name}__${presence}__present (+ 1 ${size}) 0)` : size;
+        });
+      });
+      const sizeObjective = sizeTerms.length === 0 ? "0" : sizeTerms.length === 1 ? sizeTerms[0]! : `(+ ${sizeTerms.join(" ")})`;
+      const sizeName = "uneffect_property_size";
+      const solverDeclarations = [...declarations, `(declare-const ${sizeName} Int)`];
+      const solverAssertions = [...assertions, `(= ${sizeName} ${sizeObjective})`];
+      const decodeTuple = (model: any): Array<PropertyValue | undefined> => names.map((name, index): PropertyValue | undefined => {
+        const domain = domains[index]!;
+        if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
+        if (domain.kind === "bounded-array") {
+          const layout = layouts.get(name)!;
+          const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());
+          if (length === undefined || length < 0 || length > layout.maximum) return undefined;
+          const values = Array.from({ length }, (_, at) => z3Integer(model.eval(context.Int.const(`${name}__${at}`), true).toString()));
+          return values.some((value) => value === undefined) ? undefined : values as number[];
+        }
+        if (domain.kind === "bounded-set") {
+          const layout = sets.get(name)!;
+          return layout.universe.filter((_, at) => model.eval(context.Bool.const(`${name}__member__${at}`), true).toString() === "true");
+        }
+        if (domain.kind === "bounded-map") {
+          const layout = maps.get(name)!;
+          const keys = layout.universe.filter((_, at) => model.eval(context.Bool.const(`${name}__member__${at}`), true).toString() === "true");
+          const entries = keys.map((key) => z3Integer(model.eval(context.Int.const(`${name}__value__${layout.universe.indexOf(key)}`), true).toString()));
+          return entries.some((entry) => entry === undefined) ? undefined : { keys, values: entries as number[] };
+        }
+        if (domain.kind !== "record") return undefined;
+        const leaves = recordLeaves(domain.fields, "", domain.optional);
+        const entries = leaves.filter(({ presence }) => !presence || model.eval(context.Bool.const(`${name}__${presence}__present`), true).toString() === "true")
+          .map(({ path }) => [path, z3Integer(model.eval(context.Int.const(`${name}__${path}`), true).toString())] as const);
+        return entries.some(([, value]) => value === undefined) ? undefined : nestedRecordValue(entries as Array<readonly [string, number]>);
+      });
       let terminal: "unsat" | "unknown" | undefined;
       for (let count = 0; count < solverCases; count++) {
-        const solver = new context.Solver();
-        solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`), ...blocks.map((value) => `(assert ${value})`)].join("\n"));
+        const solver = new context.Optimize();
+        solver.fromString(["(set-logic ALL)", ...solverDeclarations, ...solverAssertions.map((value) => `(assert ${value})`), ...blocks.map((value) => `(assert ${value})`), `(minimize ${sizeName})`].join("\n"));
         const status = String(await solver.check());
         if (status !== "sat") { terminal = status === "unsat" ? "unsat" : "unknown"; break; }
-        const model = solver.model();
-        const tuple = names.map((name, index): PropertyValue | undefined => {
-          const domain = domains[index]!;
-          if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
-          if (domain.kind === "bounded-array") {
-            const layout = layouts.get(name)!;
-            const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());
-            if (length === undefined || length < 0 || length > layout.maximum) return undefined;
-            const values = Array.from({ length }, (_, at) => z3Integer(model.eval(context.Int.const(`${name}__${at}`), true).toString()));
-            return values.some((value) => value === undefined) ? undefined : values as number[];
-          }
-          if (domain.kind === "bounded-set") {
-            const layout = sets.get(name)!;
-            return layout.universe.filter((_, at) => model.eval(context.Bool.const(`${name}__member__${at}`), true).toString() === "true");
-          }
-          if (domain.kind === "bounded-map") {
-            const layout = maps.get(name)!;
-            const keys = layout.universe.filter((_, at) => model.eval(context.Bool.const(`${name}__member__${at}`), true).toString() === "true");
-            const entries = keys.map((key) => z3Integer(model.eval(context.Int.const(`${name}__value__${layout.universe.indexOf(key)}`), true).toString()));
-            return entries.some((entry) => entry === undefined) ? undefined : { keys, values: entries as number[] };
-          }
-          if (domain.kind !== "record") return undefined;
-          const leaves = recordLeaves(domain.fields, "", domain.optional);
-          const entries = leaves.filter(({ presence }) => !presence || model.eval(context.Bool.const(`${name}__${presence}__present`), true).toString() === "true")
-            .map(({ path }) => [path, z3Integer(model.eval(context.Int.const(`${name}__${path}`), true).toString())] as const);
-          return entries.some(([, value]) => value === undefined) ? undefined : nestedRecordValue(entries as Array<readonly [string, number]>);
-        });
-        if (tuple.some((value) => value === undefined)) { terminal = "unknown"; break; }
+        let tuple = decodeTuple(solver.model());
+        let objective = z3Integer(solver.model().eval(context.Int.const(sizeName), true).toString());
+        while (!tuple.some((value) => value === undefined)) {
+          const better = new context.Solver();
+          if (objective === undefined) { tuple = []; terminal = "unknown"; break; }
+          better.fromString(["(set-logic ALL)", ...solverDeclarations, ...solverAssertions.map((value) => `(assert ${value})`), ...blocks.map((value) => `(assert ${value})`), `(assert (< ${sizeName} ${objective}))`].join("\n"));
+          const betterStatus = String(await better.check());
+          if (betterStatus === "unsat") break;
+          if (betterStatus !== "sat") { tuple = []; terminal = "unknown"; break; }
+          const candidate = decodeTuple(better.model());
+          const candidateObjective = z3Integer(better.model().eval(context.Int.const(sizeName), true).toString());
+          if (candidate.some((value) => value === undefined) || candidateObjective === undefined || candidateObjective >= objective) { tuple = []; terminal = "unknown"; break; }
+          tuple = candidate;
+          objective = candidateObjective;
+        }
+        if (terminal === "unknown" || tuple.length !== names.length || tuple.some((value) => value === undefined)) { terminal = "unknown"; break; }
         const values = tuple as PropertyValue[];
         tuples.push(values);
         const equalities = names.flatMap((name, index) => {
