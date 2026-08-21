@@ -224,10 +224,11 @@ assignment-tracking overhead. Both public convenience calls construct a fresh
 TypeScript Program; their noisy absolute times are cold standalone costs, not
 incremental compiler-plugin latency or a regression budget.
 
-Symbol-linked Promise assimilation for the legacy adapter dogfood fixture
-measured 152.51 ms mean over five cold samples (8.70% relative margin of error).
-The analyzer constructs a TypeScript Program, performs a two-pass executor and
-reaction scan, and connects the outer resolver to the inner operation. As with
+Symbol-linked Promise assimilation for the legacy adapter dogfood fixture,
+including one direct hostile thenable, measured 130.61 ms mean over five cold
+samples (4.31% relative margin of error). The analyzer constructs a TypeScript
+Program, discovers local thenables, performs a two-pass executor and reaction
+scan, and connects outer resolvers to the inner operation or thenable. As with
 the ownership benchmark, Program construction dominates and the small sample is
 an observation rather than a regression threshold.
 

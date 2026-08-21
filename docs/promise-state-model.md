@@ -50,6 +50,15 @@ adapter. The same link is retained for a direct Promise binding returned by an
 inline arrow or direct-return function handler. Forward declarations work
 because executor discovery precedes reaction discovery.
 
+The same resolution phase recognizes two direct local object forms. A `get
+then()` body consisting of a throw rejects the adopting Promise. A callable
+`then(resolve, reject)` body is analyzed with the executor's restricted path
+semantics, so only its first resolver/rejecter call controls settlement. Calls
+after settlement and later throws are ignored. Both patterns retain
+`invokesUserCode: true` in neutral Promise IR. Resolving a Promise with itself
+transitions from assimilation to rejection, representing the required
+`TypeError`, rather than leaving an impossible adoption cycle pending.
+
 ## Reactions
 
 - `then`: handles fulfillment; rejection propagates when no rejection handler
@@ -79,13 +88,15 @@ violations.
 ## Current boundary
 
 The model currently abstracts values and rejection reasons. Unknown or
-ambiguous adoption targets still admit either terminal state. It does not yet
-model reading a thenable's `then` property, invoking that user code,
-misbehaving thenables, or self-resolution cycles. Links currently require a
-direct local constructor binding and at least one analyzed reaction chain for
-the adopted executor; aliases, parameters, object properties, and named
-handler summaries remain conservative. The model also does not cover handler
-capability effects or handled/unhandled rejection timing. Loops,
+ambiguous adoption targets still admit either terminal state. Direct local
+throwing getters and callable hostile thenables are modeled, but conditional or
+returned getters, Proxy traps, imported thenables, nested thenable resolution,
+and the capability effects of executing getter/method user code remain
+conservative gaps. Links currently require a direct local constructor binding
+and at least one analyzed reaction chain for the adopted executor; aliases,
+parameters, object properties, and named handler summaries remain conservative.
+The model also does not cover handler capability effects or handled/unhandled
+rejection timing. Loops,
 `switch`, `try`/`finally`, aliases of resolver parameters, and resolver calls
 through helper functions are outside the executor path-analysis subset and
 remain conservative gaps rather than proved behavior.

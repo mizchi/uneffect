@@ -17,13 +17,25 @@ export interface PromiseExecutorPattern {
   possibleSettlements: PromiseExecutorSettlement[];
   adoptedExecutor?: number;
   adoptedExecutors?: number[];
+  adoptedThenable?: number;
+  selfResolution?: boolean;
   mayRemainPending: boolean;
   span: { start: number; end: number };
 }
 export type PromiseHandlerReturn = "absent" | "value" | "promise-like" | "unknown";
 export interface PromiseReactionPattern { kind: PromiseReactionKind; handlers: string[]; handlerReturns: PromiseHandlerReturn[]; handlerExecutors?: (number | undefined)[]; span: { start: number; end: number } }
 export interface PromiseChainPattern { owner: string; source: string; executor?: number; links: PromiseReactionPattern[]; span: { start: number; end: number } }
-export interface PromiseChainModel { executors: PromiseExecutorPattern[]; chains: PromiseChainPattern[] }
+export interface PromiseThenablePattern {
+  owner: string;
+  binding: string;
+  thenAccess: "throws" | "callable";
+  invokesUserCode: true;
+  possibleSettlements: Exclude<PromiseExecutorSettlement, "assimilating">[];
+  firstCallWins: true;
+  mayRemainPending: boolean;
+  span: { start: number; end: number };
+}
+export interface PromiseChainModel { executors: PromiseExecutorPattern[]; thenables: PromiseThenablePattern[]; chains: PromiseChainPattern[] }
 
 function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
   const symbol = checker.getSymbolAtLocation(node);
@@ -32,7 +44,7 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
 function librarySymbol(checker: ts.TypeChecker, node: ts.Node): boolean {
   return targetSymbol(checker, node)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
 }
-function ownerName(node: ts.FunctionLikeDeclaration): string {
+function ownerName(node: ts.SignatureDeclaration): string {
   if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) && node.name) return node.name.getText();
   if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) return node.parent.name.text;
   return "<anonymous>";
@@ -61,11 +73,11 @@ function handlerReturn(expression: ts.Expression, checker: ts.TypeChecker): Prom
 type ExecutorPath = "open" | PromiseExecutorSettlement;
 
 function analyzeExecutor(
-  callback: ts.Expression | undefined,
+  callback: ts.Expression | ts.MethodDeclaration | undefined,
   checker: ts.TypeChecker,
   source: ts.SourceFile,
 ): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> & { adoptedSymbols: ts.Symbol[] } {
-  if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
+  if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback) && !ts.isMethodDeclaration(callback)) || !callback.body) {
     return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, adoptedSymbols: [] };
   }
   const resolveParameter = callback.parameters[0]?.name;
@@ -136,9 +148,42 @@ function returnedExpressions(handler: ts.Expression): ts.Expression[] {
 }
 
 export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.SourceFile): PromiseChainModel {
-  const checker = program.getTypeChecker(), executors: PromiseExecutorPattern[] = [], chains: PromiseChainPattern[] = [];
+  const checker = program.getTypeChecker(), executors: PromiseExecutorPattern[] = [], thenables: PromiseThenablePattern[] = [], chains: PromiseChainPattern[] = [];
   const executorBySymbol = new Map<ts.Symbol, number>();
+  const thenableBySymbol = new Map<ts.Symbol, number>();
   const pendingAdoptions: { executor: number; symbols: ts.Symbol[] }[] = [];
+  const collectThenables = (node: ts.Node): void => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+      const property = node.initializer.properties.find((item) => item.name?.getText(source) === "then");
+      let pattern: Omit<PromiseThenablePattern, "owner" | "binding" | "span"> | undefined;
+      if (property && ts.isGetAccessorDeclaration(property) && property.body?.statements.length === 1 && ts.isThrowStatement(property.body.statements[0]!)) {
+        pattern = { thenAccess: "throws", invokesUserCode: true, possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+      } else {
+        const callback = property && ts.isMethodDeclaration(property) ? property
+          : property && ts.isPropertyAssignment(property) && (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) ? property.initializer
+            : undefined;
+        if (callback) {
+          const analyzed = analyzeExecutor(callback, checker, source);
+          pattern = {
+            thenAccess: "callable", invokesUserCode: true,
+            possibleSettlements: analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
+            firstCallWins: true, mayRemainPending: analyzed.mayRemainPending,
+          };
+        }
+      }
+      const symbol = pattern && targetSymbol(checker, node.name);
+      if (pattern && symbol) {
+        thenableBySymbol.set(symbol, thenables.length);
+        thenables.push({ owner: enclosingOwner(node), binding: node.name.text, ...pattern, span: { start: node.initializer.getStart(source), end: node.initializer.getEnd() } });
+      }
+    }
+    ts.forEachChild(node, collectThenables);
+  };
+  const enclosingOwner = (node: ts.Node): string => {
+    for (let current = node.parent; current; current = current.parent) if (ts.isFunctionLike(current)) return ownerName(current);
+    return "<module>";
+  };
+  collectThenables(source);
   const visitFunctionExecutors = (owner: ts.FunctionLikeDeclaration): void => {
     if (!owner.body) return;
     const name = ownerName(owner);
@@ -212,13 +257,19 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     }))];
     if (adopted.length) executors[pending.executor]!.adoptedExecutors = adopted;
     if (adopted.length === 1) executors[pending.executor]!.adoptedExecutor = adopted[0];
+    if (adopted.includes(pending.executor)) executors[pending.executor]!.selfResolution = true;
+    const adoptedThenables = [...new Set(pending.symbols.flatMap((symbol) => {
+      const thenable = thenableBySymbol.get(symbol);
+      return thenable === undefined ? [] : [thenable];
+    }))];
+    if (adoptedThenables.length === 1) executors[pending.executor]!.adoptedThenable = adoptedThenables[0];
   }
   const visitChains = (node: ts.Node): void => {
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunctionChains(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visitChains);
   };
   visitChains(source);
-  return { executors, chains };
+  return { executors, thenables, chains };
 }
 
 export function analyzePromiseChains(fileName: string, text: string): PromiseChainModel {
@@ -247,8 +298,22 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     const index = model.chains.findIndex((chain) => chain.executor === executor);
     return index < 0 ? undefined : index;
   };
-  const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string): void => {
+  const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string, adoptedThenable?: number, selfResolution = false): void => {
+    if (selfResolution) {
+      action(`${name}_self_resolution_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
+      return;
+    }
     const adoptedChain = adoptedExecutor === undefined ? undefined : chainForExecutor(adoptedExecutor);
+    const thenable = adoptedThenable === undefined ? undefined : model.thenables[adoptedThenable];
+    if (thenable?.thenAccess === "throws") {
+      action(`${name}_thenable_${adoptedThenable}_getter_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
+      return;
+    }
+    if (thenable) {
+      if (thenable.possibleSettlements.includes("fulfilled")) action(`${name}_thenable_${adoptedThenable}_fulfilled`, [`${state} == 3`], new Map([[state, fulfilled]]));
+      if (thenable.possibleSettlements.includes("rejected")) action(`${name}_thenable_${adoptedThenable}_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
+      return;
+    }
     if (adoptedChain === undefined) {
       action(`${name}_fulfilled`, [`${state} == 3`], new Map([[state, fulfilled]]));
       action(`${name}_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
@@ -267,7 +332,8 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     if (settlements.includes("rejected")) action(`settle_${chainIndex}_rejected`, [`${root} == 0`], new Map([[root, "2"]]));
     if (settlements.includes("assimilating")) {
       action(`settle_${chainIndex}_assimilating`, [`${root} == 0`], new Map([[root, "3"]]));
-      emitAdoption(`assimilate_${chainIndex}`, root, chain.executor === undefined ? undefined : model.executors[chain.executor]?.adoptedExecutor, "1", "2");
+      const executor = chain.executor === undefined ? undefined : model.executors[chain.executor];
+      emitAdoption(`assimilate_${chainIndex}`, root, executor?.adoptedExecutor, "1", "2", executor?.adoptedThenable, executor?.selfResolution);
     }
     if (options.allowDoubleSettlement) action(`settle_${chainIndex}_again`, [`${root} == 1`], new Map([[root, "2"], [`chain_${chainIndex}_double_settlement`, "true"]]));
     chain.links.forEach((link, stage) => {

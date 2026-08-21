@@ -176,7 +176,7 @@ export type { OptimizeUneffectProjectOptions, OptimizeUneffectProjectResult, Pro
 export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 export type { AsyncPatternModel, PromiseCombinatorPattern, TimerCancellation, TimerPattern } from "./async-patterns.js";
 export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
-export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern } from "./promise-chains.js";
+export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern, PromiseThenablePattern } from "./promise-chains.js";
 export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
 export type { AsyncControlEdge, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceBinding, ResourceDisposal, ResourceError, ResourceExit } from "./async-safety.js";
 export { resolveDisposalProtocol } from "./disposal-symbols.js";

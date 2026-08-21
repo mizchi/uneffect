@@ -86,6 +86,45 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("assimilate_1_rejected");
   });
 
+  it("models self-resolution, throwing then getters, and hostile first-call-wins thenables", () => {
+    const model = analyzePromiseChains("thenables.ts", `
+      function selfResolving() {
+        const promise = new Promise<number>((resolve) => resolve(promise))
+        return promise.catch(() => 0)
+      }
+      function throwingGetter() {
+        const foreign = { get then(): never { throw new Error("getter") } }
+        const promise = new Promise<never>((resolve) => resolve(foreign))
+        return promise.catch(() => undefined)
+      }
+      function hostile() {
+        const foreign = {
+          then(resolve: (value: number) => void, reject: (error: Error) => void) {
+            resolve(1)
+            reject(new Error("ignored"))
+          }
+        }
+        const promise = new Promise<number>((resolve) => resolve(foreign))
+        return promise.then(value => value)
+      }
+    `);
+    expect(model.executors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ binding: "promise", selfResolution: true, possibleSettlements: ["assimilating"] }),
+      expect.objectContaining({ owner: "throwingGetter", adoptedThenable: 0 }),
+      expect.objectContaining({ owner: "hostile", adoptedThenable: 1 }),
+    ]));
+    expect(model.thenables).toEqual([
+      expect.objectContaining({ binding: "foreign", thenAccess: "throws", invokesUserCode: true, possibleSettlements: ["rejected"], firstCallWins: true }),
+      expect.objectContaining({ binding: "foreign", thenAccess: "callable", invokesUserCode: true, possibleSettlements: ["fulfilled"], firstCallWins: true }),
+    ]);
+    const quint = generatePromiseChainsQuint("hostile_thenables", model);
+    expect(quint).toContain("assimilate_0_self_resolution_rejected");
+    expect(quint).toContain("assimilate_1_thenable_0_getter_rejected");
+    expect(quint).toContain("assimilate_2_thenable_1_fulfilled");
+    expect(quint).not.toContain("assimilate_2_thenable_1_rejected");
+    expect(run(quint).status).toBe(0);
+  }, 20_000);
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {
@@ -138,7 +177,7 @@ describe("Promise state and reaction chains", () => {
     expect(analyzePromiseChains("shadow.ts", `
       class Promise<T> { constructor(_f: unknown) {} then() { return this } }
       function f() { return new Promise(() => {}).then() }
-    `)).toEqual({ executors: [], chains: [] });
+    `)).toEqual({ executors: [], thenables: [], chains: [] });
   });
 
   it("distinguishes omitted handlers from handlers that may reject", () => {

@@ -186,10 +186,16 @@ describe("Uneffect dogfood", () => {
     expect(model.executors).toEqual([
       expect.objectContaining({ binding: "operation", possibleSettlements: ["rejected"] }),
       expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedExecutor: 0 }),
+      expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedThenable: 0 }),
+    ]);
+    expect(model.thenables).toEqual([
+      expect.objectContaining({ binding: "legacy", thenAccess: "callable", possibleSettlements: ["fulfilled"], firstCallWins: true }),
     ]);
     const quint = generatePromiseChainsQuint("legacy_adapter", model);
     expect(quint).toContain("assimilate_1_from_0_rejected");
     expect(quint).not.toContain("assimilate_1_fulfilled");
+    expect(quint).toContain("assimilate_2_thenable_0_fulfilled");
+    expect(quint).not.toContain("assimilate_2_thenable_0_rejected");
   });
 
   it("models cached values, sparse slots, and remote thenables in one batch", () => {
