@@ -272,7 +272,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [ ] Model throwing `then` getters, proxy/getter `InvokeUserCode`, hostile multiple settlement, and self-resolution rejection.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
-  - [ ] Model iterator acquisition/step failure, custom iterables, thenable elements, sparse arrays, and ordered `AggregateError.errors`.
+  - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
+  - [ ] Model iterator acquisition/step failure, custom iterables, spread cardinality, and ordered `AggregateError.errors`.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.

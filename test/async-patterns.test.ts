@@ -27,7 +27,7 @@ describe("builtin async temporal patterns", () => {
   it("extracts a recursive timeout and Promise.all fork/join by builtin symbol", () => {
     expect(analyzeAsyncPatterns("patterns.ts", source)).toMatchObject({
       timers: [{ owner: "poll", callback: "poll", delay: 5, recursive: true }],
-      combinators: [{ owner: "load", combinator: "all", branches: ["readUsers()", "readPosts()"] }],
+      combinators: [{ owner: "load", combinator: "all", branches: ["readUsers()", "readPosts()"], branchKinds: ["thenable", "thenable"] }],
     });
     expect(analyzeAsyncPatterns("shadowed.ts", `
       function setTimeout() {}
@@ -255,5 +255,38 @@ describe("builtin async temporal patterns", () => {
     const invalid = run(generateAsyncPatternsQuint("invalid_combinators", model, { allowEarlyJoin: true, allowSpuriousReject: true }), "asyncSafe");
     expect(invalid.status).not.toBe(0);
     expect(invalid.stdout + invalid.stderr).toMatch(/violation|counterexample/i);
+  }, 20_000);
+
+  it("treats sparse holes as fulfilled undefined values and assimilates thenables", () => {
+    const model = analyzeAsyncPatterns("iterable-elements.ts", `
+      declare const remote: PromiseLike<number>
+      async function load() {
+        await Promise.all([1, , remote])
+        await Promise.all([...([remote])])
+      }
+    `);
+    expect(model.combinators).toMatchObject([
+      {
+        branches: ["1", "<hole>", "remote"],
+        branchKinds: ["value", "value", "thenable"],
+        staticIterable: true,
+      },
+      { staticIterable: false },
+    ]);
+    const quint = generateAsyncPatternsQuint("iterable_elements", {
+      timers: [], cancellations: [], combinators: [model.combinators[0]!],
+    });
+    expect(quint).toContain("action fulfill_0_0");
+    expect(quint).not.toContain("action reject_0_0");
+    expect(quint).toContain("action fulfill_0_1");
+    expect(quint).not.toContain("action reject_0_1");
+    expect(quint).toContain("action assimilate_0_2");
+    expect(quint).toMatch(/action fulfill_0_2[\s\S]*join_0_branch_2 == 3/);
+    expect(quint).toContain("action reject_0_2");
+    const positive = run(quint, "asyncSafe");
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+    expect(() => generateAsyncPatternsQuint("spread", {
+      timers: [], cancellations: [], combinators: [model.combinators[1]!],
+    })).toThrow(/requires an array literal without spreads/);
   }, 20_000);
 });

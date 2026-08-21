@@ -62,8 +62,10 @@ The projection retains whether the call is directly awaited and whether that
 await is protected by `try/catch`. Aggregate rejection therefore records an
 explicit `rejection_escapes` state. An empty array starts pending and fulfills
 through a separate join transition rather than synchronously in `init`.
-Dynamic iterables are rejected as unsupported instead of being confused with
-the empty-array case.
+Dynamic iterables and array literals containing spreads are rejected as
+unsupported instead of being assigned a guessed cardinality. Sparse literal
+holes are retained as `undefined` value slots, matching array iteration rather
+than being dropped.
 
 The same neutral combinator IR covers four builtin methods:
 
@@ -85,11 +87,15 @@ composition model.
 but values and rejection reasons are currently abstracted away. `any` models
 the AggregateError control outcome, not its ordered `.errors` payload.
 
-The current slice does not yet model iterator failure, thenable assimilation
-and its possible user-code invocation, exact Promise-job queue integration,
-cancellation, combinator result values, or branch effect interleavings.
-Rejection is possible but not forced immediately without a fairness
-assumption.
+Each literal element is classified as a plain value, a thenable, or unknown.
+Plain values (including holes) can only fulfill. Thenables enter an explicit
+assimilation state before fulfillment or rejection; `allSettled` does not count
+that intermediate state as settled. Unknown unions retain both the immediate
+value and thenable paths. The current slice does not yet model throwing `then`
+access, hostile thenables, iterator failure, arbitrary/custom iterables,
+ordered `AggregateError` payloads, cancellation, combinator result values, or
+branch effect interleavings. Rejection is possible but not forced immediately
+without a fairness assumption.
 
 ## Verification ledger
 

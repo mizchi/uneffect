@@ -227,3 +227,9 @@ The analyzer constructs a TypeScript Program, performs a two-pass executor and
 reaction scan, and connects the outer resolver to the inner operation. As with
 the ownership benchmark, Program construction dominates and the small sample is
 an observation rather than a regression threshold.
+
+Classifying the mixed Promise combinator dogfood fixture measured 152.90 ms
+mean over five cold samples (11.17% relative margin of error). The fixture has
+one immediate cached value, one sparse `undefined` slot, and one thenable that
+must pass through assimilation. The high variance and fresh TypeScript Program
+construction make this a baseline observation, not an editor-latency budget.

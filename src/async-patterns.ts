@@ -19,6 +19,7 @@ export interface PromiseCombinatorPattern {
   owner: string;
   combinator: PromiseCombinator;
   branches: string[];
+  branchKinds: ("value" | "thenable" | "unknown")[];
   staticIterable: boolean;
   awaited: boolean;
   catchesRejection: boolean;
@@ -49,6 +50,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
   const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [];
+  const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
+    if (ts.isOmittedExpression(element)) return "value";
+    const type = checker.getTypeAtLocation(element);
+    const members = type.isUnion() ? type.types : [type];
+    if (members.some((member) => Boolean(member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) return "unknown";
+    const thenable = members.map((member) => Boolean(checker.getPropertyOfType(member, "then")));
+    return thenable.every(Boolean) ? "thenable" : thenable.some(Boolean) ? "unknown" : "value";
+  };
   const resolveCallback = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined => {
     if (!callback) return undefined;
     if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) return callback;
@@ -146,8 +155,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           cancellations.push({ owner: ownerName, handle, definite, span: { start: node.getStart(source), end: node.getEnd() } });
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
-          const staticIterable = Boolean(iterable && ts.isArrayLiteralExpression(iterable));
-          const branches = iterable && ts.isArrayLiteralExpression(iterable) ? iterable.elements.map((item) => item.getText(source)) : [];
+          const array = iterable && ts.isArrayLiteralExpression(iterable) ? iterable : undefined;
+          const staticIterable = Boolean(array && !array.elements.some(ts.isSpreadElement));
+          const branches = array ? array.elements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : [];
+          const branchKinds = array ? array.elements.map(branchKind) : [];
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -157,7 +168,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, staticIterable, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
+          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }
       ts.forEachChild(node, visit);
@@ -193,7 +204,7 @@ function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_")
 
 export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatternModel, options: { allowEarlyTimer?: boolean; allowEarlyJoin?: boolean; allowSpuriousReject?: boolean; allowFireAfterCancel?: boolean; allowMacroBeforeMicrotask?: boolean } = {}): string {
   for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: timer model requires a static non-negative delay`);
-  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires an array literal`);
+  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires an array literal without spreads`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int"];
   model.timers.forEach((_, index) => lines.push(`  var timer_${index}_scheduled: bool`, `  var timer_${index}_cancelled: bool`, `  var timer_${index}_due: int`, `  var timer_${index}_early: bool`, `  var timer_${index}_after_cancel: bool`, `  var timer_${index}_macro_first: bool`, `  var timer_${index}_fires: int`));
   model.combinators.forEach((join, index) => {
@@ -228,6 +239,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   });
   model.combinators.forEach((join, index) => {
     join.branches.forEach((_, branch) => {
+      const kind = join.branchKinds?.[branch] ?? "unknown";
       const raceGuard = join.combinator === "race" ? [`join_${index}_result == 0`] : [];
       const fulfillUpdates = new Map([[`join_${index}_branch_${branch}`, "1"]]);
       const rejectUpdates = new Map([[`join_${index}_branch_${branch}`, "2"]]);
@@ -236,14 +248,21 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
         rejectUpdates.set(`join_${index}_result`, "2");
         rejectUpdates.set(`join_${index}_rejection_escapes`, String(!join.catchesRejection));
       }
-      action(`fulfill_${index}_${branch}`, [`join_${index}_branch_${branch} == 0`, ...raceGuard], fulfillUpdates);
-      action(`reject_${index}_${branch}`, [`join_${index}_branch_${branch} == 0`, ...raceGuard], rejectUpdates);
+      if (kind === "value") action(`fulfill_${index}_${branch}`, [`join_${index}_branch_${branch} == 0`, ...raceGuard], fulfillUpdates);
+      else {
+        action(`assimilate_${index}_${branch}`, [`join_${index}_branch_${branch} == 0`, ...raceGuard], new Map([[`join_${index}_branch_${branch}`, "3"]]));
+        const fulfillGuard = kind === "unknown"
+          ? `(join_${index}_branch_${branch} == 0 or join_${index}_branch_${branch} == 3)`
+          : `join_${index}_branch_${branch} == 3`;
+        action(`fulfill_${index}_${branch}`, [fulfillGuard, ...raceGuard], fulfillUpdates);
+        action(`reject_${index}_${branch}`, [`join_${index}_branch_${branch} == 3`, ...raceGuard], rejectUpdates);
+      }
     });
     const allFulfilled = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 1`).join(" and ") || "true";
     const anyFulfilled = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 1`).join(" or ") || "false";
     const allRejected = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 2`).join(" and ") || "true";
     const anyRejected = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 2`).join(" or ") || "false";
-    const allSettled = join.branches.map((_, branch) => `join_${index}_branch_${branch} != 0`).join(" and ") || "true";
+    const allSettled = join.branches.map((_, branch) => `(join_${index}_branch_${branch} == 1 or join_${index}_branch_${branch} == 2)`).join(" and ") || "true";
     const fulfilled = join.combinator === "all" ? allFulfilled : join.combinator === "allSettled" ? allSettled : join.combinator === "race" ? "false" : anyFulfilled;
     const rejected = join.combinator === "all" ? anyRejected : join.combinator === "any" ? allRejected : "false";
     action(`fulfill_join_${index}`, [`join_${index}_result == 0`, ...(options.allowEarlyJoin ? ["true"] : [fulfilled])], new Map([[`join_${index}_result`, "1"]]));
@@ -252,14 +271,19 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
       [`join_${index}_rejection_escapes`, String(!join.catchesRejection)],
     ]));
   });
-  const actions = ["tick", ...model.timers.map((_, i) => `fire_timer_${i}`), ...model.combinators.flatMap((join, i) => [...join.branches.flatMap((_, b) => [`fulfill_${i}_${b}`, `reject_${i}_${b}`]), `fulfill_join_${i}`, `reject_join_${i}`])];
+  const actions = ["tick", ...model.timers.map((_, i) => `fire_timer_${i}`), ...model.combinators.flatMap((join, i) => [...join.branches.flatMap((_, b) => {
+    const kind = join.branchKinds?.[b] ?? "unknown";
+    return kind === "value" ? [`fulfill_${i}_${b}`]
+      : kind === "thenable" ? [`assimilate_${i}_${b}`, `fulfill_${i}_${b}`, `reject_${i}_${b}`]
+      : [`fulfill_${i}_${b}`, `assimilate_${i}_${b}`, `reject_${i}_${b}`];
+  }), `fulfill_join_${i}`, `reject_join_${i}`])];
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const safeTerms = [...model.timers.flatMap((_, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`]), ...model.combinators.flatMap((join, i) => {
     const allFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" and ") || "true";
     const anyFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" or ") || "false";
     const allRejected = join.branches.map((_, b) => `join_${i}_branch_${b} == 2`).join(" and ") || "true";
     const anyRejected = join.branches.map((_, b) => `join_${i}_branch_${b} == 2`).join(" or ") || "false";
-    const allSettled = join.branches.map((_, b) => `join_${i}_branch_${b} != 0`).join(" and ") || "true";
+    const allSettled = join.branches.map((_, b) => `(join_${i}_branch_${b} == 1 or join_${i}_branch_${b} == 2)`).join(" and ") || "true";
     const fulfilled = join.combinator === "all" ? allFulfilled : join.combinator === "allSettled" ? allSettled : anyFulfilled;
     const rejected = join.combinator === "all" || join.combinator === "race" ? anyRejected : join.combinator === "any" ? allRejected : "false";
     return [`((join_${i}_result != 1) or (${fulfilled}))`, `((join_${i}_result != 2) or (${rejected}))`];

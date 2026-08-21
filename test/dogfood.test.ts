@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
+import { analyzeAsyncPatterns, generateAsyncPatternsQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -165,5 +166,24 @@ describe("Uneffect dogfood", () => {
     const quint = generatePromiseChainsQuint("legacy_adapter", model);
     expect(quint).toContain("assimilate_1_from_0_rejected");
     expect(quint).not.toContain("assimilate_1_fulfilled");
+  });
+
+  it("models cached values, sparse slots, and remote thenables in one batch", () => {
+    const fileName = "examples/dogfood/mixed-promise-batch.ts";
+    const source = readFileSync(fileName, "utf8");
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.combinators).toEqual([
+      expect.objectContaining({
+        combinator: "all",
+        branches: ['"cached-profile"', "<hole>", "remote"],
+        branchKinds: ["value", "value", "thenable"],
+        staticIterable: true,
+      }),
+    ]);
+    const quint = generateAsyncPatternsQuint("mixed_batch", model);
+    expect(quint).not.toContain("action reject_0_0");
+    expect(quint).not.toContain("action reject_0_1");
+    expect(quint).toContain("action assimilate_0_2");
+    expect(quint).toContain("action reject_0_2");
   });
 });
