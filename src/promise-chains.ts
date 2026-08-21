@@ -183,6 +183,14 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       };
     }
     if (proxy && checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then")) {
+      const handler = expression.arguments?.[1];
+      const getTrap = handler && ts.isObjectLiteralExpression(handler)
+        ? handler.properties.find((item) => item.name?.getText(handler.getSourceFile()) === "get")
+        : undefined;
+      const trapBody = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.body : undefined;
+      if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
+        return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+      }
       return { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
     }
     if (!ts.isCallExpression(expression)) return undefined;

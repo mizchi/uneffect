@@ -119,6 +119,10 @@ When a local `then` callback itself resolves another thenable, the model keeps
 fulfillment, rejection, and pending outcomes rather than turning assimilation
 into a dead state. This is currently conservative: it does not yet link the
 inner thenable's exact terminal states by symbol identity.
+For a direct standard `Proxy`, an object-literal `get` trap consisting solely
+of a throw is recognized as a definite rejection during `then` lookup. Other
+Proxy handlers remain dynamic because property tests, `Reflect.get`, target
+forwarding, and arbitrary trap code can invoke user code or return any value.
 
 Conditional APIs can expose the guard explicitly:
 

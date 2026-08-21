@@ -214,6 +214,28 @@ describe("Promise state and reaction chains", () => {
     expect(quint).toContain("thenable_0_rejected");
   });
 
+  it("recognizes a direct Proxy get trap that always throws during then lookup", () => {
+    const model = analyzePromiseChains("proxy-trap.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(_target, _key) { throw new TypeError("blocked") }
+        })
+        const result = new Promise<void>((resolve) => resolve(hostile))
+        return result.catch(() => undefined)
+      }
+    `);
+    expect(model.thenables).toContainEqual(expect.objectContaining({
+      binding: "hostile",
+      provenance: "proxy",
+      thenAccess: "throws",
+      possibleSettlements: ["rejected"],
+      mayRemainPending: false,
+    }));
+    const quint = generatePromiseChainsQuint("proxy_trap", model);
+    expect(quint).toContain("thenable_0_getter_rejected");
+    expect(quint).not.toContain("thenable_0_fulfilled");
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {
