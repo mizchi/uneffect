@@ -92,8 +92,8 @@ observation is complete for this fragment, including signed integer literals.
 If a Set constructor receives a state-derived value such as `Set(owner)`, the
 array semantics remain available to semantic lint and bounded reachability,
 but counterexample extraction reports `unknown`: it does not hide members that
-fall outside the literal observation universe. Map, record, and
-nested-collection Z3 models remain explicit unsupported/`unknown` results.
+fall outside the literal observation universe. Record and nested-collection Z3
+models remain explicit unsupported/`unknown` results.
 
 Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
 TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
@@ -103,14 +103,25 @@ the map's known domain. A general user-written partial `get` is intentionally
 not accepted yet. Runtime lowering constructs a fresh JavaScript `Map`, so
 assertion evaluation does not mutate application state.
 
+Z3 represents each scalar Map type as a datatype containing a Boolean domain
+array and a separate total value array. This prevents the value at an absent
+key from leaking into `keys()` or `values()`. `put` updates both arrays,
+`keys()` projects the domain, and `values()` is the existential image of the
+value array over present keys. Semantic lint and bounded reachability use that
+full meaning. Counterexample extraction observes literal keys and values and
+emits stable JSON entry arrays such as `[[1, 0], [2, -1]]`. As with Sets, a
+state-derived key or value in `Map(...)` or `put(...)` keeps solver reasoning
+available but makes trace extraction return `unknown`, because the literal
+observation universe is no longer complete.
+
 Closed TypeScript-style records are supported as state types and values, for
 example `{ owner: int, valid: bool }` and `{ ...lease, owner: 2 }`. Field reads
 remain ordinary `lease.owner` expressions. Quint lowering uses record literals,
 field access, and `.with("owner", value)`; runtime assertions use JavaScript
 object literals and spread. Record fields and Map values may themselves contain
 supported collection or record types. Record shapes are exact, optional fields
-and dynamic property access are rejected. Z3 still reports record and Map
-domains as unsupported rather than claiming a proof.
+and dynamic property access are rejected. Z3 still reports record and nested
+collection domains as unsupported rather than claiming a proof.
 
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches

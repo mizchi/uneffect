@@ -196,6 +196,61 @@ describe("spec IR and generated verifier programs", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
   });
 
+  it("semantically checks scalar Map keys and values with Z3", async () => {
+    const temporal = parseSpec("map-z3.ts", `/* uneffect:
+      state epochs: Map<int, int>
+      init epochs = Map([[1, 0]])
+      action publish: epochs' = epochs.put(2, 1)
+      temporal nonnegative: epochs.values().forall(epoch => epoch >= 0)
+      temporal keysKnown: epochs.keys().forall(node => node === 1 || node === 2)
+      temporal excludedMiddle: epochs.values().forall(epoch => epoch >= 0 || epoch < 0)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({
+      code: "solver-tautology", name: "excludedMiddle", backend: "z3",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+
+    const broken = parseSpec("map-z3-broken.ts", `/* uneffect:
+      state epochs: Map<int, int>
+      init epochs = Map([[1, 0]])
+      action corrupt: epochs' = epochs.put(2, -1)
+      temporal nonnegative: epochs.values().forall(epoch => epoch >= 0)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "nonnegative", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { initialState: { epochs: [[1, 0]] }, steps: [{ action: "corrupt", after: { epochs: [[1, 0], [2, -1]] } }] },
+    });
+
+    const flags = parseSpec("bool-map-z3.ts", `/* uneffect:
+      state flags: Map<bool, bool>
+      init flags = Map([[false, false], [true, false]])
+      action enable: flags' = flags.put(true, true)
+      temporal booleanValues: flags.values().forall(flag => flag || !flag)
+      temporal bothKeys: flags.keys().contains(false) && flags.keys().contains(true)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(flags)).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "solver-tautology", name: "booleanValues" }),
+    ]));
+    await expect(findTemporalCounterexampleWithZ3(flags, "bothKeys", { maxSteps: 2 })).resolves.toEqual({
+      status: "safe-within-bound", depth: 2,
+    });
+
+    const dynamic = parseSpec("dynamic-map-z3.ts", `/* uneffect:
+      state epoch: int
+      state epochs: Map<int, int>
+      init epoch = 1
+      init epochs = Map([[1, 0]])
+      action publish: epochs' = epochs.put(2, epoch)
+      temporal empty: !epochs.keys().contains(2)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(dynamic, "empty", { maxSteps: 2 })).resolves.toEqual({ status: "unknown", depth: 0 });
+    await expect(lintTemporalReachabilityWithZ3(dynamic, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+  });
+
   it("parses and verifies record state with field reads and immutable updates", () => {
     const temporal = parseSpec("records.ts", `/* uneffect:
       state lease: { owner: int, valid: bool }

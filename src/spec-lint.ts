@@ -39,14 +39,46 @@ function smtSort(type: TemporalValueType | "never"): string {
   if (type === "bool") return "Bool";
   if (type === "never") return "Int";
   if (type.kind === "set" && (type.element === "int" || type.element === "bool" || type.element === "never")) return `(Array ${smtSort(type.element)} Bool)`;
+  const mapType = scalarMapType(type);
+  if (mapType) return mapNames(mapType).sort;
   throw new Error("this temporal value type is not supported by the Z3 lint backend");
 }
 
 function supportsZ3SemanticType(type: TemporalValueType): boolean {
-  return typeof type === "string" || (type.kind === "set" && (type.element === "int" || type.element === "bool" || type.element === "never"));
+  return typeof type === "string"
+    || (type.kind === "set" && (type.element === "int" || type.element === "bool" || type.element === "never"))
+    || (type.kind === "map" && type.key !== "never" && (type.value === "int" || type.value === "bool"));
 }
 
-function supportsZ3FiniteSetState(type: TemporalValueType): boolean { return supportsZ3SemanticType(type); }
+function supportsZ3FiniteCollectionState(type: TemporalValueType): boolean { return supportsZ3SemanticType(type); }
+
+type ScalarMapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool"; value: "int" | "bool" };
+
+function mapNames(type: ScalarMapType) {
+  const suffix = `${type.key}_${type.value}`;
+  return {
+    sort: `UneffectMap_${suffix}`,
+    constructor: `uneffect_map_${suffix}`,
+    domain: `uneffect_map_domain_${suffix}`,
+    values: `uneffect_map_values_${suffix}`,
+  };
+}
+
+function scalarMapType(type: TemporalValueType | undefined): ScalarMapType | undefined {
+  return type && typeof type !== "string" && type.kind === "map" && type.key !== "never"
+    && (type.value === "int" || type.value === "bool") ? type as ScalarMapType : undefined;
+}
+
+function z3TypeDeclarations(types: readonly TemporalValueType[]): string[] {
+  const declarations = new Map<string, string>();
+  for (const candidate of types) {
+    const type = scalarMapType(candidate);
+    if (!type) continue;
+    const names = mapNames(type);
+    declarations.set(names.sort, `(declare-datatypes ((${names.sort} 0)) (((${names.constructor} (${names.domain} (Array ${smtSort(type.key)} Bool)) (${names.values} (Array ${smtSort(type.key)} ${smtSort(type.value)}))))))`);
+  }
+  return [...declarations.values()];
+}
 
 function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<string, TemporalValueType>): TemporalValueType {
   if (expression.kind === "name") {
@@ -62,8 +94,22 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
     if (expression.arguments.length === 0) return { kind: "set", element: "never" };
     return { kind: "set", element: z3TemporalType(expression.arguments[0]!, symbols) };
   }
+  if (expression.kind === "call" && expression.name === "Map") {
+    const entries = expression.arguments[0];
+    if (!entries || entries.kind !== "array" || entries.elements.length === 0) return { kind: "map", key: "never", value: "never" };
+    const pair = entries.elements[0];
+    if (!pair || pair.kind !== "array" || pair.elements.length !== 2) throw new Error("Z3 Map entries must be key/value pairs");
+    const key = z3TemporalType(pair.elements[0]!, symbols), value = z3TemporalType(pair.elements[1]!, symbols);
+    if (key !== "int" && key !== "bool") throw new Error("Z3 Map keys must be scalar");
+    return { kind: "map", key, value };
+  }
   if (expression.kind === "method") {
     const receiver = z3TemporalType(expression.receiver, symbols);
+    if (typeof receiver !== "string" && receiver.kind === "map") {
+      if (expression.name === "put") return receiver;
+      if (expression.name === "keys") return { kind: "set", element: receiver.key };
+      if (expression.name === "values") return { kind: "set", element: receiver.value };
+    }
     if (expression.name === "union") return receiver;
     if (expression.name === "contains" || expression.name === "forall") return "bool";
     if (expression.name === "size") return "int";
@@ -71,7 +117,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
   throw new Error("this temporal value type is not supported by the Z3 lint backend");
 }
 
-function finiteSetUniverse(spec: TemporalSpec): { int: number[]; bool: boolean[]; complete: boolean } {
+function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: boolean[]; complete: boolean } {
   const integers = new Set<number>(), booleans = new Set<boolean>();
   let complete = true;
   const literal = (expression: TemporalExpression): number | boolean | undefined => {
@@ -82,6 +128,25 @@ function finiteSetUniverse(spec: TemporalSpec): { int: number[]; bool: boolean[]
   };
   const visit = (expression: TemporalExpression): void => {
     if (expression.kind === "call" && expression.name === "Set") for (const item of expression.arguments) {
+      const value = literal(item);
+      if (typeof value === "number") integers.add(value);
+      else if (typeof value === "boolean") booleans.add(value);
+      else complete = false;
+    }
+    if (expression.kind === "call" && expression.name === "Map") {
+      const entries = expression.arguments[0];
+      if (!entries || entries.kind !== "array") complete = false;
+      else for (const pair of entries.elements) {
+        if (pair.kind !== "array" || pair.elements.length !== 2) { complete = false; continue; }
+        for (const item of pair.elements) {
+          const value = literal(item);
+          if (typeof value === "number") integers.add(value);
+          else if (typeof value === "boolean") booleans.add(value);
+          else complete = false;
+        }
+      }
+    }
+    if (expression.kind === "method" && expression.name === "put") for (const item of expression.arguments) {
       const value = literal(item);
       if (typeof value === "number") integers.add(value);
       else if (typeof value === "boolean") booleans.add(value);
@@ -120,9 +185,42 @@ function temporalToSmt(
     for (const item of expression.arguments) set = `(store ${set} ${temporalToSmt(item, resolveName, symbols, undefined, boundName)} true)`;
     return set;
   }
+  if (expression.kind === "call" && expression.name === "Map") {
+    const type = scalarMapType(expression.arguments[0]?.kind === "array" && expression.arguments[0].elements.length === 0 ? expected : z3TemporalType(expression, symbols));
+    const entries = expression.arguments[0];
+    if (!type || !entries || entries.kind !== "array") throw new Error("Z3 Map literals require a scalar Map type");
+    const names = mapNames(type);
+    let domain = `((as const (Array ${smtSort(type.key)} Bool)) false)`;
+    const defaultValue = type.value === "int" ? "0" : "false";
+    let values = `((as const (Array ${smtSort(type.key)} ${smtSort(type.value)})) ${defaultValue})`;
+    for (const entry of entries.elements) {
+      if (entry.kind !== "array" || entry.elements.length !== 2) throw new Error("Z3 Map entries must be key/value pairs");
+      const key = temporalToSmt(entry.elements[0]!, resolveName, symbols, undefined, boundName);
+      const value = temporalToSmt(entry.elements[1]!, resolveName, symbols, undefined, boundName);
+      domain = `(store ${domain} ${key} true)`;
+      values = `(store ${values} ${key} ${value})`;
+    }
+    return `(${names.constructor} ${domain} ${values})`;
+  }
   if (expression.kind === "method") {
     const receiverType = z3TemporalType(expression.receiver, symbols);
-    if (typeof receiverType === "string" || receiverType.kind !== "set" || !supportsZ3SemanticType(receiverType)) throw new Error("Z3 collection methods currently require a scalar Set receiver");
+    const mapType = scalarMapType(receiverType);
+    if (mapType) {
+      const names = mapNames(mapType);
+      const receiver = temporalToSmt(expression.receiver, resolveName, symbols, mapType, boundName);
+      if (expression.name === "put") {
+        const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
+        const value = temporalToSmt(expression.arguments[1]!, resolveName, symbols, undefined, boundName);
+        return `(${names.constructor} (store (${names.domain} ${receiver}) ${key} true) (store (${names.values} ${receiver}) ${key} ${value}))`;
+      }
+      if (expression.name === "keys") return `(${names.domain} ${receiver})`;
+      if (expression.name === "values") {
+        const keySort = smtSort(mapType.key), valueSort = smtSort(mapType.value);
+        return `(lambda ((uneffect_value ${valueSort})) (exists ((uneffect_key ${keySort})) (and (select (${names.domain} ${receiver}) uneffect_key) (= (select (${names.values} ${receiver}) uneffect_key) uneffect_value))))`;
+      }
+      throw new Error(`Z3 Map method \`${expression.name}\` is not supported`);
+    }
+    if (typeof receiverType === "string" || receiverType.kind !== "set" || !supportsZ3SemanticType(receiverType)) throw new Error("Z3 collection methods currently require a scalar Set or Map receiver");
     const receiver = temporalToSmt(expression.receiver, resolveName, symbols, receiverType, boundName);
     if (expression.name === "contains") return `(select ${receiver} ${temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName)})`;
     if (expression.name === "union") return `((_ map or) ${receiver} ${temporalToSmt(expression.arguments[0]!, resolveName, symbols, receiverType, boundName)})`;
@@ -145,7 +243,7 @@ async function check(spec: TemporalSpec, assertions: readonly string[]): Promise
   const { Context } = await initZ3();
   const context: any = new Context(`uneffect_spec_lint_${solverSequence++}`);
   const solver = new context.Solver();
-  const declarations = spec.states.map((state) => `(declare-const ${state.name} ${smtSort(state.type)})`);
+  const declarations = [...z3TypeDeclarations(spec.states.map((state) => state.type)), ...spec.states.map((state) => `(declare-const ${state.name} ${smtSort(state.type)})`)];
   solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
   return String(await solver.check()) as "sat" | "unsat" | "unknown";
 }
@@ -193,22 +291,34 @@ export async function findTemporalCounterexampleWithZ3(
   if (!property) throw new Error(`unknown temporal property: ${propertyName}`);
   const maxSteps = options.maxSteps ?? 8;
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
-  if (spec.states.some((state) => !supportsZ3FiniteSetState(state.type))) return { status: "unknown", depth: 0 };
+  if (spec.states.some((state) => !supportsZ3FiniteCollectionState(state.type))) return { status: "unknown", depth: 0 };
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
-  const universe = finiteSetUniverse(spec);
+  const universe = finiteCollectionUniverse(spec);
   if (!universe.complete) return { status: "unknown", depth: 0 };
   const at = (name: string, step: number) => `${name}__${step}`;
   const actionAt = (step: number) => `uneffect_action__${step}`;
   const stateDeclarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat();
   const actionDeclarations = Array.from({ length: maxSteps }, (_, step) => `(declare-const ${actionAt(step)} Int)`);
   const memberName = (name: string, step: number, index: number) => `${name}__${step}__member__${index}`;
+  const mapValueName = (name: string, step: number, index: number) => `${name}__${step}__value__${index}`;
   const memberViews = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.flatMap((state) => {
     if (typeof state.type === "string") return [];
-    if (state.type.kind !== "set") throw new Error("bounded Z3 finite expansion supports Set state only");
-    const values = state.type.element === "bool" ? universe.bool.map(String) : universe.int.map(String);
-    return values.flatMap((value, index) => [`(declare-const ${memberName(state.name, step, index)} Bool)`, `(assert (= ${memberName(state.name, step, index)} (select ${at(state.name, step)} ${value})))`]);
+    if (state.type.kind === "set") {
+      const values = state.type.element === "bool" ? universe.bool.map(String) : universe.int.map(String);
+      return values.flatMap((value, index) => [`(declare-const ${memberName(state.name, step, index)} Bool)`, `(assert (= ${memberName(state.name, step, index)} (select ${at(state.name, step)} ${value})))`]);
+    }
+    const type = scalarMapType(state.type);
+    if (!type) throw new Error("bounded Z3 finite expansion supports scalar Set and Map state only");
+    const names = mapNames(type);
+    const keys = type.key === "bool" ? universe.bool.map(String) : universe.int.map(String);
+    return keys.flatMap((key, index) => [
+      `(declare-const ${memberName(state.name, step, index)} Bool)`,
+      `(declare-const ${mapValueName(state.name, step, index)} ${smtSort(type.value)})`,
+      `(assert (= ${memberName(state.name, step, index)} (select (${names.domain} ${at(state.name, step)}) ${key})))`,
+      `(assert (= ${mapValueName(state.name, step, index)} (select (${names.values} ${at(state.name, step)}) ${key})))`,
+    ]);
   })).flat();
-  const declarations = [...stateDeclarations, ...actionDeclarations, ...memberViews];
+  const declarations = [...z3TypeDeclarations(spec.states.map((state) => state.type)), ...stateDeclarations, ...actionDeclarations, ...memberViews];
   const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0), symbols, symbols.get(assignment.target))})`);
   const transition = (step: number): string => `(or ${spec.actions.map((action, actionIndex) => {
     const assignments = new Map(action.assignments.map((assignment) => [assignment.target, assignment]));
@@ -241,9 +351,19 @@ export async function findTemporalCounterexampleWithZ3(
         const expression = state.type === "int" ? context.Int.const(at(state.name, step)) : context.Bool.const(at(state.name, step));
         return [state.name, parseZ3TemporalValue(model.eval(expression, true).toString(), state.type)];
       }
-      if (state.type.kind !== "set") throw new Error("bounded Z3 finite expansion supports Set state only");
-      const values = state.type.element === "bool" ? universe.bool : universe.int;
-      return [state.name, values.filter((_value, index) => model.eval(context.Bool.const(memberName(state.name, step, index)), true).toString() === "true")];
+      if (state.type.kind === "set") {
+        const values = state.type.element === "bool" ? universe.bool : universe.int;
+        return [state.name, values.filter((_value, index) => model.eval(context.Bool.const(memberName(state.name, step, index)), true).toString() === "true")];
+      }
+      const type = scalarMapType(state.type);
+      if (!type) throw new Error("bounded Z3 finite expansion supports scalar Set and Map state only");
+      const keys = type.key === "bool" ? universe.bool : universe.int;
+      const entries = keys.flatMap((key, index) => {
+        if (model.eval(context.Bool.const(memberName(state.name, step, index)), true).toString() !== "true") return [];
+        const valueExpression = type.value === "int" ? context.Int.const(mapValueName(state.name, step, index)) : context.Bool.const(mapValueName(state.name, step, index));
+        return [[key, parseZ3TemporalValue(model.eval(valueExpression, true).toString(), type.value)]];
+      });
+      return [state.name, entries];
     })));
     const actions = Array.from({ length: depth }, (_, step) => {
       const selected = Number(model.eval(context.Int.const(actionAt(step)), true).toString());
@@ -264,15 +384,18 @@ export async function findTemporalCounterexampleWithZ3(
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
 export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
-  if (spec.states.some((state) => !supportsZ3FiniteSetState(state.type))) return [{
+  if (spec.states.some((state) => !supportsZ3FiniteCollectionState(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
-    message: "bounded Z3 reachability supports scalar state and scalar-element Sets only; use Quint for this temporal domain",
+    message: "bounded Z3 reachability supports scalar state, scalar-element Sets, and scalar Maps only; use Quint for this temporal domain",
   }];
   const maxSteps = options.maxSteps ?? 8;
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
   const at = (name: string, step: number) => `${name}__${step}`;
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
-  const declarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat();
+  const declarations = [
+    ...z3TypeDeclarations(spec.states.map((state) => state.type)),
+    ...Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat(),
+  ];
   const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0), symbols, symbols.get(assignment.target))})`);
   const guard = (action: TemporalSpec["actions"][number], step: number) => action.guard ? temporalToSmt(action.guard.expressionAst, (name) => at(name, step), symbols) : "true";
   const actionTransition = (action: TemporalSpec["actions"][number], step: number): string => {
@@ -367,7 +490,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
 export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLintDiagnostic[]> {
   if (spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
-    message: "Z3 semantic lint supports scalar state and scalar-element Sets only; use Quint for this temporal domain",
+    message: "Z3 semantic lint supports scalar state, scalar-element Sets, and scalar Maps only; use Quint for this temporal domain",
   }];
   const diagnostics: SpecLintDiagnostic[] = [];
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
