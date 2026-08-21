@@ -6,7 +6,7 @@ import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 
 export interface TypedArrayObligation {
   functionName: string;
-  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "dataview-bounds" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
+  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "dataview-bounds" | "dataview-value" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
   result: "verified" | "trusted" | "counterexample" | "unknown";
   goal: string;
   trustReason?: string;
@@ -72,6 +72,23 @@ function boundedDataViewMaximum(type: string, constants: ReadonlyMap<string, num
   const query = /^BoundedDataView<\s*typeof\s+([A-Za-z_$][\w$]*)\s*>$/.exec(type);
   return query ? constants.get(query[1]!) : undefined;
 }
+interface DataViewMethod {
+  width: number;
+  value?: { minimum: number; maximum: number; kind: "u8-write" | "u32-write" | "dataview-value" };
+}
+const DATA_VIEW_METHODS = new Map<string, DataViewMethod>([
+  ["getInt8", { width: 1 }], ["getUint8", { width: 1 }],
+  ["getInt16", { width: 2 }], ["getUint16", { width: 2 }],
+  ["getInt32", { width: 4 }], ["getUint32", { width: 4 }], ["getFloat32", { width: 4 }],
+  ["getBigInt64", { width: 8 }], ["getBigUint64", { width: 8 }], ["getFloat64", { width: 8 }],
+  ["setInt8", { width: 1, value: { minimum: -0x80, maximum: 0x7f, kind: "dataview-value" } }],
+  ["setUint8", { width: 1, value: { minimum: 0, maximum: 0xff, kind: "u8-write" } }],
+  ["setInt16", { width: 2, value: { minimum: -0x8000, maximum: 0x7fff, kind: "dataview-value" } }],
+  ["setUint16", { width: 2, value: { minimum: 0, maximum: 0xffff, kind: "dataview-value" } }],
+  ["setInt32", { width: 4, value: { minimum: -0x8000_0000, maximum: 0x7fff_ffff, kind: "dataview-value" } }],
+  ["setUint32", { width: 4, value: { minimum: 0, maximum: 0xffff_ffff, kind: "u32-write" } }],
+  ["setFloat32", { width: 4 }], ["setBigInt64", { width: 8 }], ["setBigUint64", { width: 8 }], ["setFloat64", { width: 8 }],
+]);
 function typedArrayElement(type: string): "u8" | "u32" | undefined {
   if (/^(?:Bounded)?Uint8Array(?:<.*>)?$/.test(type)) return "u8";
   if (/^(?:Bounded)?Uint32Array(?:<.*>)?$/.test(type)) return "u32";
@@ -303,7 +320,24 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       };
       collectLocal(node.body);
     }
-    const candidates: Array<{ kind: TypedArrayObligation["kind"]; goal: string; node: ts.Node; value?: ts.Expression; upper?: number; assumptions?: string[]; requiresInteger?: boolean }> = [];
+    const dataViewTypes = new Map([...parameterTypes].filter(([, type]) => boundedDataViewMaximum(type, constants) !== undefined));
+    let aliasChanged = true;
+    while (aliasChanged) {
+      aliasChanged = false;
+      const collectAlias = (current: ts.Node): void => {
+        if (current !== node.body && ts.isFunctionLike(current)) return;
+        if (ts.isVariableDeclaration(current) && ts.isVariableDeclarationList(current.parent)
+          && (current.parent.flags & ts.NodeFlags.Const) && ts.isIdentifier(current.name)) {
+          const explicit = current.type?.getText(source);
+          const inherited = current.initializer && ts.isIdentifier(current.initializer) ? dataViewTypes.get(current.initializer.text) : undefined;
+          const type = explicit && boundedDataViewMaximum(explicit, constants) !== undefined ? explicit : inherited;
+          if (type && !dataViewTypes.has(current.name.text)) { dataViewTypes.set(current.name.text, type); aliasChanged = true; }
+        }
+        ts.forEachChild(current, collectAlias);
+      };
+      collectAlias(node.body);
+    }
+    const candidates: Array<{ kind: TypedArrayObligation["kind"]; goal: string; node: ts.Node; value?: ts.Expression; lower?: number; upper?: number; assumptions?: string[]; requiresInteger?: boolean }> = [];
     const visit = (current: ts.Node): void => {
       if (current !== node && ts.isFunctionLike(current)) return;
       if (bounded && ts.isReturnStatement(current) && current.expression && ts.isNewExpression(current.expression)
@@ -340,20 +374,20 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
         candidates.push({ kind: "shift-count", goal: `${current.right.getText(source)} >= 0 && ${current.right.getText(source)} <= 31`, node: current.right, value: current.right, upper: 31 });
       }
       if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)
-        && ts.isIdentifier(current.expression.expression) && ["setUint8", "setUint32"].includes(current.expression.name.text)
-        && current.arguments[0] && current.arguments[1]) {
-        const maximum = boundedDataViewMaximum(parameterTypes.get(current.expression.expression.text) ?? "", constants);
-        if (maximum !== undefined) {
-          const width = current.expression.name.text === "setUint8" ? 1 : 4;
-          const offset = current.arguments[0]!, value = current.arguments[1]!;
+        && ts.isIdentifier(current.expression.expression) && current.arguments[0]) {
+        const method = DATA_VIEW_METHODS.get(current.expression.name.text);
+        const maximum = boundedDataViewMaximum(dataViewTypes.get(current.expression.expression.text) ?? "", constants);
+        if (method && maximum !== undefined) {
+          const offset = current.arguments[0]!;
           candidates.push({
-            kind: "dataview-bounds", goal: `${offset.getText(source)} >= 0 && ${offset.getText(source)} + ${width} <= ${maximum}`,
-            node: offset, value: offset, upper: maximum - width, requiresInteger: true,
+            kind: "dataview-bounds", goal: `${offset.getText(source)} >= 0 && ${offset.getText(source)} + ${method.width} <= ${maximum}`,
+            node: offset, value: offset, upper: maximum - method.width, requiresInteger: true,
           });
-          const kind = current.expression.name.text === "setUint8" ? "u8-write" : "u32-write";
-          candidates.push({
-            kind, goal: `${value.getText(source)} >= 0 && ${value.getText(source)} <= ${kind === "u8-write" ? 255 : 0xffff_ffff}`,
-            node: value, value, upper: kind === "u8-write" ? 255 : 0xffff_ffff, requiresInteger: true,
+          const value = current.arguments[1];
+          if (method.value && value) candidates.push({
+            kind: method.value.kind,
+            goal: `${value.getText(source)} >= ${method.value.minimum} && ${value.getText(source)} <= ${method.value.maximum}`,
+            node: value, value, lower: method.value.minimum, upper: method.value.maximum, requiresInteger: true,
           });
         }
       }
@@ -389,7 +423,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     for (const candidate of candidates) {
       const range = candidate.value ? expressionRange(candidate.value, parameterTypes, constants, tables, localRanges, semantics) : undefined;
       const invalidInteger = candidate.requiresInteger && range?.integer === false;
-      const staticallyInside = range && candidate.upper !== undefined && range.minimum >= 0 && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
+      const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
       const proofResult = invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal);
       const result = proofResult !== "verified" && trustReason ? "trusted" : proofResult, span = { start: candidate.node.getStart(source), end: candidate.node.getEnd() };
       obligations.push({ functionName, kind: candidate.kind, result, goal: candidate.goal, span, ...(result === "trusted" ? { trustReason } : {}) });

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeProgramEffects } from "../src/effects.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
+import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 
 describe("Uneffect dogfood", () => {
   it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {
@@ -92,4 +93,20 @@ describe("Uneffect dogfood", () => {
     expect(verified.temporal?.models[0]?.quint).toContain("action run_timer_task_0");
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_microtask_1");
   }, 30_000);
+
+  it("proves a DNS binary codec and catches an off-by-one field offset", async () => {
+    const entry = "examples/dogfood/binary-codec.ts";
+    const source = readFileSync(entry, "utf8");
+    const verified = await verifyTypedArraySafety(entry, source);
+    expect(verified.diagnostics).toEqual([]);
+    expect(verified.obligations.filter((item) => item.kind === "dataview-bounds")).toHaveLength(12);
+    expect(verified.obligations.filter((item) => item.kind === "dataview-value")).toHaveLength(6);
+
+    const broken = await verifyTypedArraySafety(entry, source.replace("getUint16(10, false)", "getUint16(11, false)"));
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "decodeDnsHeader",
+      kind: "dataview-bounds",
+      message: expect.stringContaining("11 + 2 <= 12"),
+    }));
+  });
 });

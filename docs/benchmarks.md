@@ -192,3 +192,11 @@ Checking 64 direct `BoundedDataView<256>.setUint32` writes measured 0.4533 ms
 mean over 1,104 samples (0.23% relative margin of error). This exercises the
 source-level range checker and proof-obligation construction; it does not
 construct a TypeChecker Program or model backing-buffer aliasing.
+
+Checking the practical twelve-field DNS header DataView codec, including six
+getter bounds, six setter bounds, and six `Nat <= 65535` setter-domain proofs,
+measured 23.5590 ms mean over 22 samples (1.63% relative margin of error). The
+large difference from literal writes comes from separate Z3 queries for the
+contract-refined setter values. Sharing a solver context or deriving simple
+intervals from `requires` clauses is a concrete optimization target; this
+measurement is not presented as an editor-latency budget.

@@ -1,4 +1,5 @@
 import { bench, describe } from "vitest";
+import { readFileSync } from "node:fs";
 import ts from "typescript";
 import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
@@ -25,6 +26,7 @@ const aliasedIntegerWrites = Array.from({ length: 256 }, (_, index) =>
 const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
   `view.setUint32(${index * 4}, word)`,
 ).join("\n");
+const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts", import.meta.url), "utf8");
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -100,6 +102,10 @@ describe("typed-array static verification", () => {
       type BoundedDataView<N extends number> = DataView
       function write(view: BoundedDataView<256>, word: U32) { ${boundedDataViewWrites} }
     `);
+  }, { time: 500, iterations: 20 });
+
+  bench("DNS header DataView codec dogfood", async () => {
+    await verifyTypedArraySafety("binary-codec.ts", dnsCodecSource);
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

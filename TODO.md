@@ -172,7 +172,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Prove direct Uint8Array constructor bounds and indexed u8 writes from helper-type domains and `requires` clauses.
 - [x] Reject implicit coercion and retain compound/update writes as non-proofs.
 - [x] Model direct bounded DataView `setUint8`/`setUint32` byte offsets and value domains, with optional Valibot refinement.
-- [ ] Model DataView constructors/aliases, remaining accessors, exact backing-buffer offsets, resizable ArrayBuffer bounds, and SharedArrayBuffer concurrency.
+- [x] Model all standard bounded DataView accessor widths, integer setter domains, and reassignment-free local alias chains.
+- [x] Dogfood DataView obligations against a DNS header codec and retain an off-by-one negative control.
+- [ ] Model DataView constructors, mutable/interprocedural aliases, exact backing-buffer offsets, resizable ArrayBuffer bounds, and SharedArrayBuffer concurrency.
 - [x] Add `U32`, bounded Uint32Array runtime refinements, and ECMAScript-aware ranges for SHA-256-style shifts, masks, and explicit `>>> 0` normalization.
 - [x] Generate independent bounded-index and dynamic shift-count obligations instead of trusting JavaScript out-of-range or modulo-32 behavior.
 - [ ] Compose the verified SHA-256 building blocks interprocedurally and cover non-canonical control-flow bounds.

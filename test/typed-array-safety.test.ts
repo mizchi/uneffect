@@ -66,6 +66,36 @@ describe("bounded Uint8Array safety", () => {
     expectTypeOf<BoundedDataView<64>>().toMatchTypeOf<DataView>();
   });
 
+  it("tracks const DataView aliases and byte widths for standard accessors", async () => {
+    const result = await verifyTypedArraySafety("data-view-codec.ts", `
+      import type { BoundedDataView, Nat } from "@mizchi/uneffect"
+      /* uneffect: requires offset <= 8 */
+      function decode(view: BoundedDataView<16>, offset: Nat) {
+        const cursor = view
+        const alias = cursor
+        const tag = alias.getUint8(offset)
+        const length = alias.getUint16(offset + 1, false)
+        const timestamp = alias.getFloat64(offset, false)
+        alias.setInt16(offset + 2, -32768, false)
+        return { tag, length, timestamp }
+      }
+      function broken(view: BoundedDataView<8>) {
+        const cursor = view
+        cursor.getBigUint64(1, false)
+        cursor.setUint16(7, 65536, false)
+      }
+    `);
+    expect(result.obligations.filter((item) => item.functionName === "decode" && item.kind === "dataview-bounds")).toHaveLength(4);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "decode", kind: "dataview-bounds", result: "verified", goal: expect.stringContaining("+ 8 <= 16") }),
+      expect.objectContaining({ functionName: "decode", kind: "dataview-value", result: "verified", goal: expect.stringContaining(">= -32768") }),
+    ]));
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "broken", kind: "dataview-bounds" }),
+      expect.objectContaining({ functionName: "broken", kind: "dataview-value" }),
+    ]));
+  });
+
   it("checks SHA-256 style shifts, masks, rotations, and u32 normalization", async () => {
     const result = await verifyTypedArraySafety("sha256-words.ts", `
       import type { BoundedUint8Array, BoundedUint32Array, U32 } from "@mizchi/uneffect"

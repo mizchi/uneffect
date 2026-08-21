@@ -29,15 +29,22 @@ Valibot and its `byteLength` limit is checked synchronously without introducing
 an opaque user-callback boundary. Code which already has trusted branded values
 has no Uneffect runtime cost.
 
-The current DataView static slice recognizes direct
-`BoundedDataView<MaxBytes>.setUint8(offset, value)` and
-`.setUint32(offset, value)` calls. It proves `offset + width <= MaxBytes` and
-the corresponding `U8`/`U32` value domain from helper types and `requires`
-clauses. It intentionally rejects JavaScript's implicit numeric coercion as a
-proof. Constructors, aliases, the remaining DataView accessors, exact backing
-buffer byte offsets, resizable buffers, and SharedArrayBuffer concurrency are
-not yet modeled. Recognition currently depends on the visible helper-type
-spelling rather than TypeChecker symbol identity.
+The current DataView static slice recognizes all standard `get*` and `set*`
+accessors on `BoundedDataView<MaxBytes>` and follows reassignment-free local
+`const` alias chains. It proves `offset + accessorWidth <= MaxBytes`.
+`setInt8`, `setUint8`, `setInt16`, `setUint16`, `setInt32`, and `setUint32`
+also produce signed or unsigned integer-domain obligations from helper types
+and `requires` clauses. It intentionally rejects JavaScript's implicit numeric
+coercion as a proof. Float and BigInt setters currently receive byte-bound
+obligations but no value-domain obligation.
+
+The DNS header codec in `examples/dogfood/binary-codec.ts` is a practical
+positive and negative control: all twelve 16-bit fields are verified, while a
+one-byte displacement of the final field is rejected. Constructors, mutable
+or interprocedural aliases, exact backing-buffer byte offsets, resizable
+buffers, and SharedArrayBuffer concurrency are not yet modeled. Recognition
+currently depends on the visible helper-type spelling rather than TypeChecker
+symbol identity.
 
 TypedArray `.set(source, offset)` produces `bulk-copy-bounds`, requiring
 `offset >= 0` and `offset + source.length <= target.length`. Bounded source and
