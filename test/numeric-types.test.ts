@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { F32, Float, I32, Int, Nat, U8, U32 } from "../src/index.js";
-import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseFloat, parseInt, parseNat, u8, u32 } from "../src/index.js";
+import type { BoundedSet, F32, Float, I32, Int, Nat, U8, U32 } from "../src/index.js";
+import { F32_BITS, I32_MAX, I32_MIN, U8_BITS, U8_MAX, U32_BITS, U32_MAX, FloatSchema, IntSchema, NatSchema, f32, i32, parseBoundedSet, parseFloat, parseInt, parseNat, parseU8, u8, u32 } from "../src/index.js";
 
 describe("numeric helper types", () => {
   it("parses branded numeric values with Valibot", () => {
@@ -40,5 +40,14 @@ describe("numeric helper types", () => {
     });
     expectTypeOf(U8_MAX).toEqualTypeOf<255>();
     expectTypeOf(U32_BITS).toEqualTypeOf<32>();
+  });
+
+  it("optionally validates bounded Set size and elements at runtime", () => {
+    const values = parseBoundedSet(new Set([0, 255]), 2, parseU8);
+    expect(values).toEqual(new Set([0, 255]));
+    expectTypeOf(values).toEqualTypeOf<BoundedSet<U8, 2>>();
+    expect(() => parseBoundedSet(new Set([0, 1, 2]), 2, parseU8)).toThrow(/at most 2/);
+    expect(() => parseBoundedSet(new Set([256]), 2, parseU8)).toThrow();
+    expect(() => parseBoundedSet([0, 1], 2, parseU8)).toThrow(/Set/);
   });
 });

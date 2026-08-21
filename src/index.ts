@@ -46,6 +46,8 @@ declare const boundedArrayBufferBrand: unique symbol;
 export type BoundedArrayBuffer<MaxBytes extends number> = ArrayBuffer & { readonly [boundedArrayBufferBrand]: MaxBytes };
 declare const fixedArrayBufferBrand: unique symbol;
 export type FixedArrayBuffer<Bytes extends number> = ArrayBuffer & { readonly [fixedArrayBufferBrand]: Bytes };
+declare const boundedSetBrand: unique symbol;
+export type BoundedSet<Element, MaxSize extends number> = Set<Element> & { readonly [boundedSetBrand]: MaxSize };
 export function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength) {
   return v.pipe(
     v.instance(Uint8Array),
@@ -73,6 +75,17 @@ export function parseFixedArrayBuffer<Bytes extends number>(input: unknown, byte
   const value = v.parse(v.instance(ArrayBuffer), input);
   if (value.resizable || value.byteLength !== bytes) throw new RangeError(`ArrayBuffer must be fixed at exactly ${bytes} bytes`);
   return value as FixedArrayBuffer<Bytes>;
+}
+export function parseBoundedSet<Element, MaxSize extends number>(
+  input: unknown,
+  maximum: MaxSize,
+  parseElement: (input: unknown) => Element,
+): BoundedSet<Element, MaxSize> {
+  if (!Number.isSafeInteger(maximum) || maximum < 0) throw new RangeError(`Set maximum size must be a non-negative safe integer, got ${maximum}`);
+  if (!(input instanceof Set)) throw new TypeError("Expected a Set");
+  if (input.size > maximum) throw new RangeError(`Set size must be at most ${maximum}`);
+  for (const value of input) parseElement(value);
+  return input as BoundedSet<Element, MaxSize>;
 }
 
 export const parseInt = (input: unknown): Int => v.parse(IntSchema, input);

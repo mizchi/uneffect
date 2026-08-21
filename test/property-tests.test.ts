@@ -275,6 +275,46 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("derives bounded Set domains and materializes them as native Sets", async () => {
+    const source = `
+      type U8 = number
+      type BoundedSet<T, N extends number> = Set<T>
+      /* uneffect: ensures result >= 0 */
+      export function total(values: BoundedSet<U8, 3>): number {
+        return [...values].reduce((sum, value) => sum + value, 0)
+      }
+    `;
+    const generated = generateUneffectPropertyTests({ files: { "set.ts": source }, cases: 8 });
+    expect(generated.boundaries[0]?.generators).toEqual([
+      { kind: "bounded-set", element: "U8", maximum: 3 },
+    ]);
+    expect(generated.generatedFiles["set.uneffect.test.ts"]).toContain("new Set(value)");
+
+    let sawSet = false;
+    await checkUneffectProperty({
+      functionName: "set-materialization",
+      domains: [{ kind: "bounded-set", element: "U8", maximum: 3 }],
+      cases: 8,
+      property: (values) => { sawSet ||= values instanceof Set; return values instanceof Set; },
+    });
+    expect(sawSet).toBe(true);
+  });
+
+  it("generates finite Set inputs satisfying size and membership refinements", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "set-refined.ts": `
+      type U8 = number
+      type BoundedSet<T, N extends number> = Set<T>
+      /* uneffect: requires values.size === 2 && values.has(10) && !values.has(0) */
+      /* uneffect: ensures result === true */
+      export function containsTen(values: BoundedSet<U8, 3>): boolean { return values.has(10) }
+    ` }, solverCases: 6 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThan(0);
+    expect(tuples.every(([values]) => Array.isArray(values) && values.length === 2
+      && values.includes(10) && !values.includes(0))).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number

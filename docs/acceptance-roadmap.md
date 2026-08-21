@@ -62,8 +62,11 @@ test still rechecks the original JavaScript precondition. All modeled lengths
 and elements receive their machine-domain bounds. Closed nested records are
 flattened into solver leaves and reconstructed as ordinary objects. Scalar
 optional fields use separate SMT presence bits, so absence is not conflated
-with a zero value, and shrinking can omit them. Nested optional fields, Maps,
-and Sets remain unsupported. The generator injects
+with a zero value, and shrinking can omit them. `BoundedSet<T, N>` uses a
+finite solver universe assembled from literal `has(...)` observations and
+machine-domain edge values; `.size` and literal membership are constrained as
+SMT membership bits, then materialized as a native `Set` in generated tests.
+Nested optional object fields and Maps remain unsupported. The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the

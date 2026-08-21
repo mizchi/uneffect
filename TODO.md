@@ -128,7 +128,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [ ] Extend solver-backed generation to nested records, Maps/Sets, and optional fields.
         - [x] Recursively generate, constrain, reconstruct, and shrink closed nested records.
         - [x] Generate scalar optional record fields with explicit SMT presence bits and omission-first shrinking.
-        - [ ] Generate finite Maps/Sets and nested optional fields.
+        - [x] Generate finite `BoundedSet<T, N>` values with native-Set materialization, membership/size SMT constraints, and structural/element shrinking.
+        - [ ] Generate finite Maps and nested optional object fields.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.
