@@ -741,4 +741,19 @@ describe("builtin async temporal patterns", () => {
       { queue: "microtask", enqueuedBy: 0 },
     ]);
   });
+
+  it("resolves a callback returned by an imported source factory", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-callback-factory-"));
+    try {
+      const factory = join(directory, "factory.ts"), main = join(directory, "main.ts");
+      writeFileSync(factory, `export function makeCallback() { return () => queueMicrotask(() => undefined) }`);
+      writeFileSync(main, `import { makeCallback } from "./factory.js"; export function start() { setTimeout(makeCallback(), 0) }`);
+      const program = ts.createProgram([factory, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!);
+      expect(model.timers).toMatchObject([
+        { callback: "makeCallback()", queue: "timer" },
+        { queue: "microtask", enqueuedBy: 0 },
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 });

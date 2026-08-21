@@ -341,13 +341,14 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Cancel modeled `scheduler.postTask` jobs after timeout/composition abort and inherit the same cancellation source across inline `scheduler.yield` continuations.
   - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/imported/interprocedural abort compositions, TaskSignal reprioritization, direct external-signal state, and dynamically resolved parent callbacks.
     - [x] Resolve direct property-access and literal computed-property method callbacks by TypeChecker symbol identity, including microtasks scheduled from their bodies.
+    - [x] Resolve direct imported source callback factories when exactly one function-valued return is present in the analyzed Program.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
   - [x] Resolve local/imported named function and variable callback bodies by TypeChecker identity and propagate dynamically scheduled microtasks.
   - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
     - [x] Resolve direct property-access and literal computed-property methods; polymorphic receiver dispatch remains dynamic.
-    - [x] Resolve direct local callback factories with exactly one explicit function-valued return.
+    - [x] Resolve direct local or imported-source callback factories with exactly one explicit function-valued return.
 - [x] Bring Promise/resource IR to Rust/Corsa parity.
   - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [x] Add cross-frontend parity fixtures and reject schema drift.
