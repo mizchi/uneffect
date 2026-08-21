@@ -172,11 +172,14 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         : undefined;
     if (callback) {
       const analyzed = analyzeExecutor(callback, checker, expression.getSourceFile());
+      const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
       return {
         thenAccess: "callable", invokesUserCode: true,
         capabilityEffects: ["InvokeUserCode"], provenance: "local",
-        possibleSettlements: analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
-        firstCallWins: true, mayRemainPending: analyzed.mayRemainPending,
+        possibleSettlements: nestedAssimilation
+          ? ["fulfilled", "rejected"]
+          : analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
+        firstCallWins: true, mayRemainPending: analyzed.mayRemainPending || nestedAssimilation,
       };
     }
     if (proxy && checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then")) {

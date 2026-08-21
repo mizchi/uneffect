@@ -195,6 +195,25 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("thenable_0_fulfilled");
   });
 
+  it("keeps nested thenable assimilation live instead of dropping its outcomes", () => {
+    const model = analyzePromiseChains("nested-thenable.ts", `
+      declare const inner: PromiseLike<number>
+      function run() {
+        const outer = { then(resolve: (value: PromiseLike<number>) => void) { resolve(inner) } }
+        const result = new Promise<number>((resolve) => resolve(outer))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables).toContainEqual(expect.objectContaining({
+      binding: "outer",
+      possibleSettlements: ["fulfilled", "rejected"],
+      mayRemainPending: true,
+    }));
+    const quint = generatePromiseChainsQuint("nested_thenable", model);
+    expect(quint).toContain("thenable_0_fulfilled");
+    expect(quint).toContain("thenable_0_rejected");
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

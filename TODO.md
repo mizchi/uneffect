@@ -309,6 +309,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
   - [ ] Resolve returned or dynamically selected thenables, imported call results, nested thenable resolution, and concrete Proxy trap behavior.
     - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
+    - [x] Preserve conservative fulfill/reject/pending outcomes when a local thenable resolves to another thenable; exact nested symbol linkage remains open.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.

@@ -115,6 +115,10 @@ explicit return is an analyzable object-literal thenable. Getter failure and
 first-call-wins settlement facts are retained at the receiving Promise. Mixed,
 implicit, imported-call, or dynamically selected returns remain conservative
 external user code rather than being reported as proven local behavior.
+When a local `then` callback itself resolves another thenable, the model keeps
+fulfillment, rejection, and pending outcomes rather than turning assimilation
+into a dead state. This is currently conservative: it does not yet link the
+inner thenable's exact terminal states by symbol identity.
 
 Conditional APIs can expose the guard explicitly:
 
