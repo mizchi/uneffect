@@ -742,7 +742,24 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "bounded-vacuous-property", name: "phaseFixed", depth: 3,
     }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "inductively-vacuous-property", name: "phaseFixed", depth: 1,
+    }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-vacuous-property", name: "counterNonnegative" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "inductively-vacuous-property", name: "counterNonnegative" }));
+  });
+
+  it("does not promote reachability-specific frozen state to unbounded vacuity", async () => {
+    const temporal = parseSpec("bounded-only-vacuity.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action unreachableChange: phase' = 1
+      action_when unreachableChange: phase < 0
+      temporal phaseFixed: phase === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "bounded-vacuous-property", name: "phaseFixed" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "inductively-vacuous-property", name: "phaseFixed" }));
   });
 
   it("detects models whose enabled initial transitions cannot change state", async () => {

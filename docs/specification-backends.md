@@ -150,6 +150,13 @@ an unbounded invariant proof. If that one-step induction fails, the bounded
 diagnostic is retained; Uneffect does not infer an unstated strengthening
 invariant or promote the result.
 
+Property vacuity follows the same split. `bounded-vacuous-property` means the
+referenced state did not change on any reachable transition within the chosen
+depth. `inductively-vacuous-property` is added only when init establishes the
+property and no typed transition can change any referenced state at all. An
+unreachable mutating transition prevents this promotion until a strengthening
+invariant can justify excluding it.
+
 Standalone TLC output is normalized for scalar values and the supported
 single- or multiline finite Set, scalar-key Map/function, and closed-record
 fragment. Each transition is matched against neutral action guards and updates;

@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "inductively-unreachable-action"
+    | "inductively-unreachable-action" | "inductively-vacuous-property"
     | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
@@ -628,10 +628,17 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       const changes = disjoin(references.map((name) => `(not (= ${at(name, depth + 1)} ${at(name, depth)}))`));
       return `(and ${[...transitions, changes].join(" ")})`;
     });
-    if (await checkSmt(declarations, [...init, disjoin(relevantChanges)]) === "unsat") diagnostics.push({
-      code: "bounded-vacuous-property", name: property.name, backend: "z3", depth: maxSteps,
-      message: `${property.name} holds within ${maxSteps} steps, but none of its referenced state can change on a reachable transition within that bound`,
-    });
+    if (await checkSmt(declarations, [...init, disjoin(relevantChanges)]) === "unsat") {
+      diagnostics.push({
+        code: "bounded-vacuous-property", name: property.name, backend: "z3", depth: maxSteps,
+        message: `${property.name} holds within ${maxSteps} steps, but none of its referenced state can change on a reachable transition within that bound`,
+      });
+      const changesOnAnyTransition = disjoin(references.map((name) => `(not (= ${at(name, 1)} ${at(name, 0)}))`));
+      if (await checkSmt(declarations, [step(0), changesOnAnyTransition]) === "unsat") diagnostics.push({
+        code: "inductively-vacuous-property", name: property.name, backend: "z3", depth: 1,
+        message: `${property.name} is vacuous without a bound: init establishes it and no transition can change any state it references`,
+      });
+    }
   }
   for (const action of spec.actions) {
     const prefixes: string[] = [];

@@ -108,7 +108,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
     - [x] Find the shortest bounded reachable state where actions are enabled but every enabled action stutters.
     - [x] Report bounded property-specific vacuity when a safe property's referenced state cannot change on any bounded reachable transition.
-    - [ ] Detect unbounded vacuity and liveness/fairness progress failures.
+    - [x] Upgrade property-specific vacuity to an unbounded result when no typed transition can change any referenced state.
+    - [ ] Discover strengthening invariants for reachability-specific frozen state and detect liveness/fairness progress failures.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
