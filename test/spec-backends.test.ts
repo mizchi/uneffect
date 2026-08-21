@@ -8,7 +8,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { extractAnnotations } from "../src/annotations.js";
-import { createDefaultTemporalDomainRegistry } from "../src/temporal-domains.js";
+import { createDefaultTemporalDomainRegistry, createPhysicalClockDomain } from "../src/temporal-domains.js";
 
 const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
 
@@ -62,6 +62,26 @@ describe("spec IR and generated verifier programs", () => {
     expect(temporal.actions[0]?.name).toBe("enqueue_pending");
     expect(generateQuint("domain", temporal)).toContain("pending' = pending + 1");
     expect(() => registry.register({ name: "duplicate", directives: ["queue_depth"], expand: () => ({}) })).toThrow(/already owned/);
+  });
+
+  it("models monotonic time, wall-clock rollback, and bounded skew as an optional domain pack", () => {
+    const registry = createDefaultTemporalDomainRegistry().register(createPhysicalClockDomain());
+    const temporal = parseSpec("physical-clock.ts", `/* uneffect:
+      monotonic_clock mono: 1
+      wall_clock wall: 1
+      clock_skew wall, mono: 1
+      action_fair tick_mono: weak
+    */`, { temporalDomains: registry }).temporal;
+    expect(temporal.states).toEqual([{ name: "mono", type: "int" }, { name: "wall", type: "int" }]);
+    expect(temporal.actions.find((action) => action.name === "jump_back_wall")?.guard?.expression).toContain("wall >= 1");
+    expect(temporal.properties).toContainEqual(expect.objectContaining({ name: "skew_wall_mono" }));
+    const quint = generateQuint("physical_clock", temporal);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-physical-clock-"));
+    const path = join(directory, "clock.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=skew_wall_mono", "--max-steps=20", "--max-samples=100"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
   });
 
   it("parses and verifies finite Set state without flattening node identities", async () => {

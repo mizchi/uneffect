@@ -164,8 +164,15 @@ semantic-domain registry. Applications can register additional directive packs
 that expand into typed state, init constraints, generated actions, and protected
 state ownership without adding parser conditionals. Registration does not make
 a domain trustworthy by itself: its generated transition relation is still the
-model being checked. A physical wall/monotonic clock and skew pack remains
-planned; `clock` continues to mean logical model time, not elapsed host time.
+model being checked. `createPhysicalClockDomain()` optionally adds
+`monotonic_clock mono: 1`, `wall_clock wall: 1`, and `clock_skew wall, mono: 1`.
+Monotonic clocks only tick forward. Wall clocks can tick forward or roll back by
+their declared step while remaining non-negative. A skew declaration generates
+both a named invariant and guards on generated transitions, making the skew
+bound an explicit environment assumption rather than an accidental theorem.
+Variable-rate drift, nondeterministic jump magnitudes, and host-clock
+conformance remain unimplemented. The core `clock` directive continues to mean
+logical model time, not elapsed host time.
 
 ## Expressible patterns
 

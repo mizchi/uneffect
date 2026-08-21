@@ -139,8 +139,8 @@ export { generateComposedQuint, parseTemporalComposition } from "./temporal-comp
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
 export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
-export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
-export type { TemporalDomainActionSource, TemporalDomainExpansion, TemporalSemanticDomain } from "./temporal-domains.js";
+export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, createPhysicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
+export type { TemporalDomainActionSource, TemporalDomainExpansion, TemporalDomainPropertySource, TemporalSemanticDomain } from "./temporal-domains.js";
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, findBuiltinContract } from "./builtin-contracts.js";

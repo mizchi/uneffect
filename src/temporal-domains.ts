@@ -5,7 +5,10 @@ import type { TemporalValueType } from "./temporal-expressions.js";
 export interface TemporalDomainActionSource {
   name: string;
   assignments: readonly string[];
+  guard?: string;
 }
+
+export interface TemporalDomainPropertySource { name: string; expression: string }
 
 export interface TemporalDomainExpansion {
   states?: readonly TemporalState[];
@@ -13,6 +16,7 @@ export interface TemporalDomainExpansion {
   actions?: readonly TemporalDomainActionSource[];
   clocks?: readonly TemporalClock[];
   protectedStates?: Readonly<Record<string, { explicitInit: string; explicitAssignment: string }>>;
+  properties?: readonly TemporalDomainPropertySource[];
 }
 
 export interface TemporalSemanticDomain {
@@ -45,8 +49,52 @@ export class TemporalDomainRegistry {
       actions: expansions.flatMap((item) => item.actions ?? []),
       clocks: expansions.flatMap((item) => item.clocks ?? []),
       protectedStates: Object.assign({}, ...expansions.map((item) => item.protectedStates ?? {})),
+      properties: expansions.flatMap((item) => item.properties ?? []),
     };
   }
+}
+
+export function createPhysicalClockDomain(): TemporalSemanticDomain {
+  return {
+    name: "physical-clock",
+    directives: ["monotonic_clock", "wall_clock", "clock_skew"],
+    expand(source) {
+      const parseClock = (directive: string) => extractAnnotations(source, directive).map((value) => {
+        const match = /^([A-Za-z_$][\w$]*)\s*:\s*([1-9]\d*)$/.exec(value);
+        if (!match) throw new Error(`${directive} requires name: positiveInteger`);
+        return { name: match[1]!, step: Number(match[2]) };
+      });
+      const monotonic = parseClock("monotonic_clock"), wall = parseClock("wall_clock");
+      const skews = extractAnnotations(source, "clock_skew").map((value) => {
+        const match = /^([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*:\s*(\d+)$/.exec(value);
+        if (!match) throw new Error("clock_skew requires wallClock, monotonicClock: nonNegativeBound");
+        if (!wall.some((item) => item.name === match[1]) || !monotonic.some((item) => item.name === match[2])) throw new Error("clock_skew must reference clocks declared in the same physical-clock pack");
+        return { wall: match[1]!, monotonic: match[2]!, bound: Number(match[3]) };
+      });
+      const guardFor = (name: string, next: string): string | undefined => {
+        const terms = skews.filter((item) => item.wall === name || item.monotonic === name).map((item) => {
+          const wallValue = item.wall === name ? next : item.wall;
+          const monotonicValue = item.monotonic === name ? next : item.monotonic;
+          return `${wallValue} <= ${monotonicValue} + ${item.bound} && ${monotonicValue} <= ${wallValue} + ${item.bound}`;
+        });
+        return terms.length ? terms.join(" && ") : undefined;
+      };
+      const actions: TemporalDomainActionSource[] = [
+        ...monotonic.map((item) => ({ name: `tick_${item.name}`, assignments: [`${item.name}' = ${item.name} + ${item.step}`], guard: guardFor(item.name, `${item.name} + ${item.step}`) })),
+        ...wall.flatMap((item) => [
+          { name: `tick_${item.name}`, assignments: [`${item.name}' = ${item.name} + ${item.step}`], guard: guardFor(item.name, `${item.name} + ${item.step}`) },
+          { name: `jump_back_${item.name}`, assignments: [`${item.name}' = ${item.name} - ${item.step}`], guard: [`${item.name} >= ${item.step}`, guardFor(item.name, `${item.name} - ${item.step}`)].filter(Boolean).join(" && ") },
+        ]),
+      ];
+      const clocks = [...monotonic, ...wall];
+      return {
+        states: clocks.map((item) => ({ name: item.name, type: "int" as const })),
+        init: clocks.map((item) => `${item.name} = 0`), actions,
+        properties: skews.map((item) => ({ name: `skew_${item.wall}_${item.monotonic}`, expression: `${item.wall} <= ${item.monotonic} + ${item.bound} && ${item.monotonic} <= ${item.wall} + ${item.bound}` })),
+        protectedStates: Object.fromEntries(clocks.map((item) => [item.name, { explicitInit: `physical clock \`${item.name}\` owns its init`, explicitAssignment: `physical clock \`${item.name}\` owns its transitions` }])),
+      };
+    },
+  };
 }
 
 export function createLogicalClockDomain(): TemporalSemanticDomain {

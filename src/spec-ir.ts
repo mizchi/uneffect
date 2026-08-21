@@ -186,6 +186,7 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     ...(domainExpansion.actions ?? []).map((action): TemporalAction => ({
       name: action.name,
       assignments: action.assignments.map((item) => assignment(item, "temporal domain action")),
+      ...(action.guard ? { guard: { name: action.name, expression: action.guard, expressionAst: parseTemporalExpression(action.guard) } } : {}),
     })),
     ...explicitActions,
   ];
@@ -197,7 +198,13 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
   for (const name of actionGuards.keys()) {
     if (!actions.some((action) => action.name === name)) throw new Error(`action_when references unknown action \`${name}\``);
   }
-  for (const action of actions) action.guard = actionGuards.get(action.name);
+  for (const action of actions) {
+    const declared = actionGuards.get(action.name);
+    if (action.guard && declared) {
+      const expression = `(${action.guard.expression}) && (${declared.expression})`;
+      action.guard = { name: action.name, expression, expressionAst: parseTemporalExpression(expression) };
+    } else if (declared) action.guard = declared;
+  }
   const actionFairness = new Map(extractAnnotations(text, "action_fair").map((value) => {
     const parsed = namedExpression(value, "action_fair");
     if (parsed.expression !== "weak" && parsed.expression !== "strong") throw new Error(`action_fair for \`${parsed.name}\` requires weak or strong`);
@@ -205,10 +212,13 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
   }));
   for (const name of actionFairness.keys()) if (!actions.some((action) => action.name === name)) throw new Error(`action_fair references unknown action \`${name}\``);
   for (const action of actions) action.fairness = actionFairness.get(action.name);
-  const properties = extractAnnotations(text, "temporal").map((value): TemporalProperty => {
+  const properties = [
+    ...(domainExpansion.properties ?? []).map((property): TemporalProperty => ({ ...property, expressionAst: parseTemporalExpression(property.expression) })),
+    ...extractAnnotations(text, "temporal").map((value): TemporalProperty => {
     const property = namedExpression(value, "temporal");
     return { ...property, expressionAst: parseTemporalExpression(property.expression) };
-  });
+    }),
+  ];
   const liveness = extractAnnotations(text, "temporal_eventually").map((value): TemporalLiveness => {
     const property = namedExpression(value, "temporal_eventually");
     return { ...property, expressionAst: parseTemporalExpression(property.expression) };
