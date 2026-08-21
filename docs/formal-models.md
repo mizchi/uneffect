@@ -1,0 +1,142 @@
+# Formal models and the neutral IR
+
+The unordered `effect` declaration answers what may happen. Async invalidation, ownership transfer, and optimization require an ordered model of when facts stop being valid. Uneffect therefore keeps two representations:
+
+- `EffectSet`: an unordered may-effect upper bound.
+- `EffectTrace`: phase-tagged `Read`, `Mutate`, `Invalidate`, `External`, and `Suspend` events.
+
+`EffectTrace::may_effects()` erases order and projects to `EffectSet`. The reverse operation is impossible because the set has discarded temporal information.
+
+## Cache validity
+
+A fact derived from reading region `r` cannot be reused after:
+
+1. a `Mutate` or `Invalidate` event overlapping `r`; or
+2. a `Suspend` whose invalidation set overlaps `r`.
+
+Region overlap is symmetric ancestor/descendant overlap. A suspension does not invalidate every local fact. Escape analysis supplies the set of regions that may be shared with concurrent work; uncertainty is handled conservatively.
+
+The Rust prototype implements this rule as `EffectTrace::cache_reusable(region, from, to)`.
+
+## Quint regression model
+
+[`../specs/invalidate.qnt`](../specs/invalidate.qnt) models an epoch and cache validity. Its invariant is:
+
+```text
+cacheValid implies cachedAt == epoch
+```
+
+[`../specs/invalidate-broken.qnt`](../specs/invalidate-broken.qnt) deliberately preserves cache validity across suspension. The regression test requires the normal model to produce no violation and the broken model to produce a counterexample under a fixed seed.
+
+```sh
+just formal
+```
+
+The broken trace has the domain meaning:
+
+```text
+read at epoch 0
+-> suspend and advance to epoch 1
+-> stale epoch-0 fact remains marked valid
+```
+
+This negative control ensures the invariant is load-bearing. The current command uses Quint simulation, so a successful run is not an exhaustive proof. CI can add Apalache or TLC when a Java-based model-checking environment is available.
+
+## Ownership extension
+
+Transferable objects require an additional state machine:
+
+```text
+Available(region)
+  -> Transfer(region, target)
+  -> Unavailable(region, transferKind)
+```
+
+Required invariants include:
+
+```text
+an unavailable region is never read, mutated, or transferred again
+every definite transfer invalidates facts derived from the source region
+a clone without transfer leaves source ownership available
+```
+
+This model is implemented by the TypeScript ownership trace and Rust neutral event IR. Quint confirms the positive clone/shared trace and finds the deliberately broken transfer-then-read trace.
+
+## Function-summary composition
+
+The first synchronous composition slice treats each annotated function as an abstract transition contract:
+
+```ts
+/*
+ * uneffect:
+ * temporal_requires phase === 0
+ * temporal_ensures phase' = 1
+ * temporal_modifies phase
+ */
+function open() {}
+```
+
+Predicate syntax is intentionally TypeScript-like: use `===`, `!==`, `&&`, `||`, and `!`. These expressions are not passed through to Quint. They are parsed into Uneffect's neutral temporal-expression AST, then printed as Quint operators such as `==`, `!=`, `and`, `or`, and `not(...)`. The same AST can emit a runtime assertion statement, preserving an optional executable interpretation for supported predicates.
+
+For a root such as `function main() { open(); close() }`, Uneffect resolves local direct calls from the TypeScript AST and generates one guarded Quint action per call. A generated `pc` records the call position. Each action checks the callee requirements, updates exactly its declared modified state, stutters every other state variable, and advances `pc`.
+
+```sh
+just spec-compose examples/temporal-compose.ts main
+```
+
+This is contract composition, not body inlining. A callee may additionally declare `temporal_throws RangeError`. The generator then emits separate normal-return and synchronous-throw actions. An uncaught throw transitions to the distinguished escaping control state `pc = -1`; a call directly protected by `try/catch` discharges that exit and advances to the next control position. The thrown type remains in the IR but the first control model collapses all synchronous error types into the same exit.
+
+The composition graph supports explicit return, non-empty catch/finally bodies, synchronous throws, awaited Promise rejection, suspension/resume, and cancellation exits. `pc = -1`, `-2`, and `-3` distinguish uncaught throw, unhandled rejection, and cancellation. A return cuts off unreachable following statements. Calls in catch and finally blocks receive explicit control-flow targets rather than being flattened onto the normal path. Branches, loops, recursion, callbacks, and concurrent environment steps remain outside this local composition subset. Regression tests remove requirement guards, expose uncaught errors, and enable cancellation; Quint must find the corresponding violations. Progress requirements use `temporal_eventually`, and a suspending summary may declare weak or strong action fairness; generated programs are Quint-typechecked even though fixed-step simulation remains a safety oracle rather than a liveness proof.
+
+Builtin async-pattern projection is a separate bounded abstraction. It turns a
+direct recursive `setTimeout` into a cyclic timer transition, links definite
+`clearTimeout` calls to local handles, orders microtasks before timers, and
+turns literal Promise combinator inputs into nondeterministic branch and
+aggregate states. `all`, `allSettled`, `race`, and `any` have distinct
+settlement guards and empty-input semantics. The projection also retains
+direct await/catch context and escaping aggregate rejection. It does not make
+the local function-summary composer itself concurrent.
+
+Promise reaction chains use a separate settlement-state projection. Builtin
+`new Promise` records synchronous executor invocation, rejection conversion,
+first-settlement-wins path outcomes, and PromiseLike assimilation;
+`then`, `catch`, and `finally` produce ordered derived-Promise states whose
+reactions are separate microtask transitions. Negative controls forbid
+reaction-before-settlement and enforce successful `finally` transparency.
+
+## Transferable ownership
+
+The neutral ownership trace uses `Available`, `Detached`, `Transferred`, `Locked`, and `Shared`. `Clone` preserves availability. `Transfer` consumes ordinary Transferables and rejects a second transfer; subsequent read or mutation is an error. `SharedArrayBuffer` remains shared and is never modeled as detached. TypeChecker-resolved overlays instantiate compound `Clone`, `Transfer`, or `SharedMemory` effects for `structuredClone`, `Worker.postMessage`, and `MessagePort.postMessage`.
+
+## Quicksort dogfood boundary
+
+`examples/quicksort.ts` is the first recursive, destructive algorithm used as a
+dogfood case. The effect checker proves the narrow capability claim: both the
+partition step and the recursive sort require only
+`Mutate<typeof values>`. Numeric element indexes no longer conservatively emit
+`InvokeUserCode`; object-valued computed keys still do.
+
+The `decreases hi - lo` directive is accepted as source-compatible contract
+syntax, but is currently **unverified metadata**. The checker must not issue
+termination evidence from it yet. Full functional verification also remains
+open: it needs sequence/array sorts, `old(values)`, quantified `sorted`
+predicates, multiset `permutation`, frame conditions such as
+`unchangedOutside`, verified partition summaries, and recursive-summary
+composition. Until those obligations exist, the executable regression tests
+establish examples only; they are not a proof for arbitrary arrays.
+
+`generateOwnershipQuint` emits the same ordered events as a safety model. The positive clone/shared trace preserves `ownershipSafe`; the deliberately broken transfer-then-read trace is a fixed-seed negative control that Quint confirms violates it. The Rust neutral event IR independently locks the same transition rule.
+
+## Z3 boundary
+
+Z3 checks sequential preconditions, postconditions, and loop invariants. It is not used to approximate temporal interleavings. The current prototype proves partial correctness over a restricted integer language and does not prove termination.
+
+## Verification ledger
+
+| Claim | Source of truth | Machine status | Regression lock |
+|---|---|---|---|
+| A caught synchronous throw does not escape | Uneffect effect semantics | Implemented | TypeScript tests |
+| Cache facts do not survive overlapping invalidation | Temporal IR design | Implemented | Rust tests + Quint model |
+| Broken invalidation is observable | Quint model | Confirmed counterexample | Fixed-seed negative model |
+| Transferred values cannot be reused | HTML ownership semantics + Uneffect design | Implemented | TypeScript/Rust checks + Quint negative model |
+| Scoped glob actuals are subsets of declarations | Scoped-effect design | Not implemented | Planned automata/subset tests |

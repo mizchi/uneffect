@@ -1,0 +1,334 @@
+# Async error and explicit resource safety
+
+Uneffect analyzes ordinary TypeScript syntax; these checks require no new
+annotation grammar.
+
+## Promise rejection ownership
+
+A Promise-valued expression statement must transfer responsibility for its
+possible rejection to one of the following constructs:
+
+```ts
+await task()
+return task()
+task().catch(recover)
+task().then(onValue, onError)
+void task() // explicit, unchecked abandonment
+```
+
+A bare expression is an error:
+
+```ts
+task() // floating-promise
+```
+
+`await` connects rejection to the nearest enclosing `try` block that has a
+`catch`. A synchronous `try/catch` around a non-awaited Promise call does not
+catch its rejection and therefore does not discharge the diagnostic.
+
+```ts
+try {
+  await task().then(transform) // rejection enters catch
+} catch (error) {
+  recover(error)
+}
+
+try {
+  task() // still floating
+} catch {}
+```
+
+Promise-valued variable declarations create a rejection-ownership obligation.
+The analyzer follows symbol aliases and records observation by `await`,
+`return`, `.catch`, or a `.then` rejection handler. Passing the Promise as an
+argument transfers responsibility only when the resolved callee signature opts
+in with a contract. Storing it in an object/array records an explicit escape.
+A binding that reaches the end of the current function without any of those
+events is a `floating-promise` error.
+
+```ts
+/* uneffect:
+ * consumes_rejection 0
+ */
+declare function enqueue(job: Promise<void>): void
+
+const job = startJob()
+enqueue(job) // rejection ownership moves to enqueue
+```
+
+The payload is a comma-separated list of zero-based parameter indices. Calls
+without this contract borrow their Promise arguments and therefore do not hide
+an unresolved rejection obligation in the caller. The contract is read from
+the declaration selected by TypeScript's resolved signature, rather than by
+callee spelling. Non-integer and out-of-range indices are declaration errors;
+duplicates collapse into the same ownership obligation.
+
+Direct forwarding wrappers inherit the contract when their parameter is passed
+to a consuming parameter:
+
+```ts
+function enqueueLater(job: Promise<void>) {
+  enqueue(job)
+}
+```
+
+Calls to `enqueueLater` transfer parameter zero as well. This inference is
+symbol-based and cycle-safe, but does not yet describe conditional consumption
+or propagate callback contracts through higher-order wrappers.
+
+Promise-returning callbacks have a separate ownership boundary:
+
+```ts
+/* uneffect: consumes_callback_rejection 0 */
+declare function schedule(task: () => Promise<void>): void
+
+schedule(async () => work())       // accepted
+[1, 2].forEach(async () => work()) // floating-callback-promise
+```
+
+Standard `Promise.then`, `catch`, and `finally` callbacks are recognized from
+their TypeScript standard-library declarations because their returned thenables
+are assimilated. User-defined APIs must declare which callback parameters own
+returned rejections. Direct unconditional wrappers inherit callback ownership;
+this also works for named async callback arguments. Conditional wrappers do not
+inherit it, because consuming on only one path cannot satisfy a must-consume
+obligation.
+
+Conditional APIs can expose the guard explicitly:
+
+```ts
+/* uneffect: consumes_rejection_when 1: enabled */
+declare function maybeEnqueue(enabled: boolean, job: Promise<void>): void
+
+maybeEnqueue(true, job)  // must-consume: ownership transfers
+maybeEnqueue(false, job) // may-consume only: obligation remains
+maybeEnqueue(flag, job)  // unproven: obligation remains
+```
+
+`consumes_callback_rejection_when` provides the corresponding callback form.
+The current prover recognizes literal `true`, TypeScript control-flow narrowing
+to the `true` literal type, and enclosing `requires enabled` or
+`requires enabled === true` preconditions. A precondition is evidence only at a
+checked Uneffect boundary; callers remain responsible for satisfying it.
+Other symbolic guards are preserved conservatively for future Z3/Quint
+discharge.
+
+Guard expressions may use the shared boolean specification subset, including
+`!`, `&&`, `||`, `===`, and `!==`. The synchronous frontend parses them into
+the same logic IR used by the Z3 backend and decides small propositional
+implications by exhaustive finite valuation. This keeps ordinary linting
+deterministic and synchronous. Unresolved obligations still need explicit
+Z3/Quint evidence before they can become must-consume.
+
+Every guarded call is retained in `AsyncSafetyResult.ownershipObligations`, not
+just the failures. An entry records the callee, ownership kind, parameter index,
+instantiated assumptions and goal, source span, status, and evidence class.
+`generateOwnershipObligationSmt` emits a refutation query (`unsat` proves the
+transfer), while `generateOwnershipObligationQuint` emits the equivalent pure
+implication for temporal composition. Generated text is not itself trusted
+evidence; importing reproducible backend results is a separate step.
+
+`verifyOwnershipObligationWithZ3` and
+`verifyOwnershipObligationWithQuint` produce `ownership-evidence/v1`
+artifacts. They bind the obligation hash, generated verifier-program hash,
+backend version, exit code, stdout, and stderr. `validateOwnershipEvidence`
+accepts only a successful proof whose hashes still match; counterexamples,
+unknown results, tool failures, and modified artifacts remain non-proof. Quint
+verification requires the Java runtime used by TLC/Apalache; its absence is
+recorded as unknown rather than silently falling back to randomized execution.
+
+The optimizer consumes this evidence only through
+`ownership-guard-elision/v1`. It may remove a generated
+`uneffectAssertOwnership(...)` runtime assertion after a matching proof, but it
+cannot rewrite user-authored Promise control flow. Stronger compression needs
+separate semantic obligations for handler reachability, scheduling, and cleanup.
+
+The initial runtime path supports direct call statements:
+
+```ts
+uneffectAssertOwnership(enabled && active, "run:120:2")
+consumeWhenActive(enabled, active, pending)
+```
+
+The assertion remains in gradual/runtime-checked builds. A matching Z3/Quint
+artifact lets a verified build remove the generated assertion and, once unused,
+its helper. The `consumeWhenActive` call itself is never removed by this proof.
+
+`void` is an explicit escape hatch, not proof that rejection is operationally
+handled. It is accepted by default for incremental adoption and can be rejected
+independently:
+
+```ts
+analyzeAsyncSafety(fileName, source, { allowVoid: false })
+```
+
+The binding analysis uses a deliberately restricted path-sensitive pass. An
+observation must occur on every `if`/`else` path. `while` and `for` loops retain
+their zero-iteration path, while `do` loops execute their body at least once.
+Reassigning an unresolved Promise records the previous ownership obligation as
+lost, even when the replacement value is later awaited.
+
+This is not yet a general TypeScript control-flow graph. `switch`, exact
+`try`/`finally` sequencing, labeled `break`/`continue`, and complex loop joins
+need a fixed-point CFG analysis. Higher-order and conditional ownership
+contracts remain future work.
+
+## Explicit resource management
+
+`using` and `await using` are recognized from TypeScript AST flags:
+
+```ts
+async function work() {
+  using file = openFile()
+  await using session = await openSession()
+  await use(session)
+}
+```
+
+Resources are disposed at their lexical block boundary in reverse acquisition
+order on normal completion, return, synchronous throw, and rejected
+asynchronous exit. `using` requires a
+`Symbol.dispose` protocol. `await using` accepts `Symbol.asyncDispose` or the
+synchronous fallback.
+
+Implicit disposal is also an effectful call edge. Effects declared or inferred
+for the selected disposal method propagate to the function containing the
+`using` declaration:
+
+```ts
+class Resource {
+  /* uneffect: effect Console */
+  [Symbol.dispose]() {
+    console.log("disposed")
+  }
+}
+
+/* uneffect: effect Console */
+function work() {
+  using resource = new Resource()
+}
+```
+
+Removing `Console` from `work` is therefore a missing-effect error; declaring
+it is not reported as unused.
+
+The Quint projection represents asynchronous disposal as two transitions:
+
+```text
+dispose_start -> suspended disposal -> dispose_resume
+```
+
+Positive models complete every acquired resource in reverse order. Negative
+controls skip disposal, dispose twice, violate reverse order, or advance
+without awaiting asynchronous disposal. Quint reports every violation.
+
+Every acquisition also has a failure transition. A failed initializer never
+marks that resource acquired, enters cleanup, and disposes only resources whose
+earlier initializers succeeded. Disposal failure changes the abstract
+completion state as follows:
+
+```text
+Normal + disposal failure       -> DisposalError
+PriorError + disposal failure   -> SuppressedError
+SuppressedError + later failure -> SuppressedError (nested abstraction)
+```
+
+The analysis IR also retains the exact recursive payload when error types are
+available from `Throw<E>` or `temporal_rejects E` disposal contracts:
+
+```ts
+type ResourceError =
+  | { kind: "error"; errorType: string; source: string }
+  | {
+      kind: "suppressed"
+      error: ResourceError
+      suppressed: ResourceError
+    }
+```
+
+If the body fails with `PrimaryError`, then `second` fails with `SecondError`,
+then `first` fails with `FirstError`, the result is equivalent to:
+
+```ts
+new SuppressedError(
+  new FirstError(),
+  new SuppressedError(new SecondError(), new PrimaryError()),
+)
+```
+
+Synchronous disposal failure is a throw; asynchronous disposal failure is a
+rejection after `dispose_start`. A broken control that overwrites the prior
+error instead of preserving it as suppressed is rejected by the invariant.
+
+Disposal runs while leaving the resource's lexical scope. A failure inside a
+protected `try` region therefore enters its `catch`, including an asynchronous
+disposal rejection:
+
+```ts
+async function handled() {
+  try {
+    await using resource = await open()
+  } catch (error) {
+    // also receives failure from resource[Symbol.asyncDispose]()
+  }
+}
+```
+
+Without an enclosing catch, synchronous cleanup escapes as a throw from a
+synchronous function, while cleanup in an async function rejects its returned
+Promise. The IR records this as `catchesFailure` and `escapingFailure`.
+
+## Unified async control edges
+
+Awaited expressions are matched to analyzed Promise chains by owner and source
+span. The async-safety IR then emits explicit edges across the previously
+separate projections:
+
+```text
+promise:N:fulfilled -> await:resume
+promise:N:rejected  -> catch | function:rejected
+return/throw/reject -> dispose:resource
+dispose:resource:rejected -> catch | function:rejected
+```
+
+For example, a returned awaited chain inside `try/catch`, followed by a
+function-scoped `await using`, connects chain rejection to the catch while a
+later async-disposal rejection settles the async function's returned Promise
+as rejected. `promiseChains` and `controlEdges` are both retained in the public
+analysis result so a backend can generate one transition system.
+
+The initial unified Quint lowering selects one function and composes resource
+acquisition, awaited Promise terminal outcomes, catch recovery, return-driven
+cleanup, synchronous/asynchronous disposal, and the returned async function's
+final fulfillment or rejection:
+
+```sh
+just spec-unified-async examples/composed-async.ts run
+```
+
+Promise reaction internals remain checked by the detailed Promise-chain model;
+the unified module consumes its abstract fulfilled/rejected terminal boundary.
+A negative lowering can finish without cleanup, and the shared resource safety
+invariant rejects that execution.
+
+```sh
+just spec-resource-quint examples/resources.ts
+```
+
+## Current boundary
+
+Protocol detection resolves computed properties back to the standard
+`SymbolConstructor.dispose` and `SymbolConstructor.asyncDispose` declaration
+symbols. Same-spelled or shadowed computed keys receive no disposal semantics;
+typed aliases, inherited interfaces, intersections, and generic constraints
+retain the standard identity. Encoding the same identity in the Corsa schema
+is still pending. The
+projection records lexical scope endpoints, partial initialization, disposal
+failure, and an abstract `SuppressedError` completion. Implicit cleanup
+capability effects propagate through the selected disposal method. Exact
+recursive `SuppressedError` payloads are retained in the analysis IR, while the
+Quint projection still uses an abstract completion state. The model records
+all exit kinds conservatively. Unified control edges connect Promise chains,
+await/catch, scope exits, and disposal failures. The initial single-function
+Quint lowering is implemented; exact statement sequencing for arbitrary nested
+catch/finally bodies remains outside this slice.

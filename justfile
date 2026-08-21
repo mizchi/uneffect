@@ -1,0 +1,75 @@
+set shell := ["zsh", "-cu"]
+
+install:
+    pnpm install
+
+test:
+    pnpm test
+    cargo test --workspace
+
+check:
+    pnpm check
+    cargo fmt --all --check
+    cargo test --workspace
+
+formal:
+    pnpm vitest run test/formal-models.test.ts
+
+formal-z3:
+    pnpm vitest run test/contracts.test.ts test/invariant-ir.test.ts test/spec-backends.test.ts
+
+formal-quint:
+    pnpm vitest run test/formal-models.test.ts test/temporal-compose.test.ts test/ownership.test.ts
+
+formal-realtime:
+    pnpm vitest run test/spec-backends.test.ts -t "guarded real-time"
+
+formal-exhaustive:
+    pnpm exec quint verify specs/invalidate.qnt --invariant=cacheIsSound --max-steps=8 --verbosity=1
+
+package-check:
+    npm pack --dry-run
+    cargo package --workspace --allow-dirty --no-verify
+
+spec-ir file:
+    pnpm tsx src/spec-cli.ts ir {{file}}
+
+spec-z3 file function="":
+    pnpm tsx src/spec-cli.ts z3 {{file}} {{function}}
+
+spec-quint file:
+    pnpm tsx src/spec-cli.ts quint {{file}}
+
+spec-compose file function:
+    pnpm tsx src/spec-cli.ts compose {{file}} {{function}}
+
+spec-async-quint file:
+    pnpm tsx src/spec-cli.ts async-quint {{file}}
+
+spec-promise-quint file:
+    pnpm tsx src/spec-cli.ts promise-quint {{file}}
+
+spec-resource-quint file:
+    pnpm tsx src/resource-cli.ts {{file}}
+
+spec-unified-async file function:
+    pnpm tsx src/unified-async-cli.ts {{file}} {{function}}
+
+build:
+    pnpm build
+
+demo:
+    pnpm tsx src/cli.ts examples/demo.ts
+
+effect-demo:
+    pnpm tsx -e 'import { runEffectExample } from "./examples/effect-ts.ts"; runEffectExample(1).then(console.log)'
+
+instrument-demo:
+    pnpm tsx src/instrument-cli.ts examples/gradual.ts
+
+evidence file:
+    pnpm tsx src/evidence-cli.ts {{file}}
+
+dogfood:
+    pnpm tsx src/cli.ts --infer src/*.ts
+    pnpm vitest run test/dogfood.test.ts

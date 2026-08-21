@@ -1,0 +1,41 @@
+{
+  "name": "uneffect",
+  "version": "0.0.0-alpha.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    }
+  },
+  "files": ["dist/src", "README.md", "docs"],
+  "publishConfig": { "access": "public" },
+  "bin": {
+    "uneffect": "./dist/src/cli.js",
+    "uneffect-instrument": "./dist/src/instrument-cli.js",
+    "uneffect-spec": "./dist/src/spec-cli.js",
+    "uneffect-evidence": "./dist/src/evidence-cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "tsc -p tsconfig.json --noEmit && vitest run",
+    "prepack": "pnpm build"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "effect": "^3.22.1",
+    "typescript": "^6.0.0-dev.20260820",
+    "valibot": "^1.4.2",
+    "z3-solver": "^4.15.4"
+  },
+  "devDependencies": {
+    "@informalsystems/quint": "^0.32.0",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.5",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@10.15.0"
+}

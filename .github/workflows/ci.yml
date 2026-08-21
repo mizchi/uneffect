@@ -1,0 +1,60 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - uses: dtolnay/rust-toolchain@stable
+        with: { toolchain: "1.92.0", components: rustfmt }
+      - uses: extractions/setup-just@v3
+      - run: pnpm install --frozen-lockfile
+      - run: just check
+      - run: just build
+      - run: just package-check
+
+  z3:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - uses: extractions/setup-just@v3
+      - run: pnpm install --frozen-lockfile
+      - run: just formal-z3
+
+  quint-simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - uses: extractions/setup-just@v3
+      - run: pnpm install --frozen-lockfile
+      - run: just formal-quint
+
+  exhaustive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 10.15.0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "21" }
+      - uses: extractions/setup-just@v3
+      - run: pnpm install --frozen-lockfile
+      - run: just formal-exhaustive

@@ -1,0 +1,161 @@
+export interface BuiltinSymbolKey {
+  module: string;
+  export: string;
+}
+
+export interface PathResultRefinement {
+  kind: "path";
+  pattern: string;
+}
+
+export interface FsBuiltinOperation {
+  kind: "fs";
+  read: boolean;
+  write: boolean;
+  readPathArgument?: number;
+  writePathArgument?: number;
+  mutateArgument?: number;
+}
+
+export interface StaticEffectBuiltinOperation { kind: "effect"; effect: string }
+export interface MutationBuiltinOperation { kind: "mutation" }
+export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
+export interface FetchBuiltinOperation { kind: "fetch" }
+export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" }
+export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number }
+export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
+export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
+export type DomOperation = "Read" | "LayoutRead" | "ValueWrite" | "TreeWrite" | "Create" | "Listen" | "Dispatch" | "Parse";
+export interface DomBuiltinOperation {
+  kind: "dom";
+  operation: DomOperation;
+  mutatesReceiver?: boolean;
+  mutatesArguments?: readonly number[];
+  invokesUserCode?: boolean;
+  queryArgument?: number;
+}
+
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | TimerClearBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+
+export interface BuiltinContract {
+  symbol: BuiltinSymbolKey;
+  evidence: "trusted";
+  result?: PathResultRefinement;
+  operation?: BuiltinOperation;
+}
+
+function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract { return { ...contract, evidence: "trusted" }; }
+
+export interface BuiltinContractRegistry {
+  version: 1;
+  contracts: readonly BuiltinContract[];
+  declarations: readonly DeclarationFingerprint[];
+}
+
+export interface DeclarationFingerprint { library: string; compilerVersion: string; sha256: string }
+
+export function builtinSymbolId(symbol: BuiltinSymbolKey): string {
+  return `${symbol.module}#${symbol.export}`;
+}
+
+export function findBuiltinContract(registry: BuiltinContractRegistry, symbol: BuiltinSymbolKey): BuiltinContract | undefined {
+  const id = builtinSymbolId(symbol);
+  return registry.contracts.find((contract) => builtinSymbolId(contract.symbol) === id);
+}
+
+const fsReadNames = [
+  "access", "accessSync", "exists", "existsSync", "readFile", "readFileSync", "readdir", "readdirSync",
+  "readlink", "readlinkSync", "realpath", "realpathSync", "stat", "statSync", "lstat", "lstatSync",
+  "open", "openSync", "watch", "watchFile", "createReadStream",
+] as const;
+const fsWriteNames = [
+  "appendFile", "appendFileSync", "chmod", "chmodSync", "chown", "chownSync", "link", "linkSync",
+  "mkdir", "mkdirSync", "rename", "renameSync", "rm", "rmSync", "rmdir", "rmdirSync", "symlink",
+  "symlinkSync", "truncate", "truncateSync", "unlink", "unlinkSync", "utimes", "utimesSync", "writeFile",
+  "writeFileSync", "createWriteStream",
+] as const;
+
+function fsBuiltinContracts(module: string): BuiltinContract[] {
+  const contracts: BuiltinContract[] = [];
+  for (const name of fsReadNames) contracts.push(trusted({
+    symbol: { module, export: name },
+    operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0 },
+  }));
+  for (const name of fsWriteNames) contracts.push(trusted({
+    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, writePathArgument: 0 },
+  }));
+  for (const name of ["copyFile", "copyFileSync", "cp", "cpSync"]) contracts.push(trusted({
+    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1 },
+  }));
+  for (const name of ["read", "readSync"]) contracts.push(trusted({
+    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1 },
+  }));
+  for (const name of ["write", "writeSync"]) contracts.push(trusted({
+    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true },
+  }));
+  return contracts;
+}
+
+/**
+ * Semantic overlays are applied after TypeChecker symbol resolution. They do
+ * not modify or wrap the runtime builtin.
+ */
+export const builtinContractRegistry: BuiltinContractRegistry = {
+  version: 1,
+  declarations: [{ library: "lib.dom.d.ts", compilerVersion: "6.0.3", sha256: "d6b1eba8496bdd0eed6fc8a685768fe01b2da4a0388b5fe7df558290bffcf32f" }],
+  contracts: [
+    trusted({
+      symbol: { module: "node:os", export: "tmpdir" },
+      result: { kind: "path", pattern: "$TEMP" },
+    }),
+    ...fsBuiltinContracts("node:fs"),
+    ...fsBuiltinContracts("node:fs/promises"),
+    trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
+    ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
+      ...trusted({ symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" } }),
+    })),
+    trusted({ symbol: { module: "global", export: "setTimeout" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: false, queue: "timer" } }),
+    trusted({ symbol: { module: "global", export: "setInterval" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: true, queue: "timer" } }),
+    trusted({ symbol: { module: "global", export: "queueMicrotask" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "microtask" } }),
+    trusted({ symbol: { module: "global", export: "clearTimeout" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
+    trusted({ symbol: { module: "global", export: "clearInterval" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
+    ...(["all", "allSettled", "race", "any"] as const).map((combinator): BuiltinContract => trusted({
+      symbol: { module: "lib.es", export: `PromiseConstructor#${combinator}` },
+      operation: { kind: "promise-combinator", combinator, iterableArgument: 0 },
+    })),
+    trusted({ symbol: { module: "global", export: "Math.random" }, operation: { kind: "effect", effect: "Random" } }),
+    trusted({ symbol: { module: "global", export: "crypto.randomUUID" }, operation: { kind: "effect", effect: "Random" } }),
+    trusted({ symbol: { module: "global", export: "structuredClone" }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } }),
+    ...["Worker#postMessage", "MessagePort#postMessage"].map((name): BuiltinContract => trusted({ symbol: { module: "lib.dom", export: name }, operation: { kind: "clone", valueArgument: 0, transferArgument: 1 } })),
+    ...["Array#copyWithin", "Array#fill", "Array#pop", "Array#push", "Array#reverse", "Array#shift", "Array#sort", "Array#splice", "Array#unshift", "Map#clear", "Map#delete", "Map#set", "Set#add", "Set#clear", "Set#delete"].map((name): BuiltinContract => ({
+      ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
+    })),
+    ...domBuiltinContracts(),
+  ],
+};
+
+function domBuiltinContracts(): BuiltinContract[] {
+  const entries: Array<[string, DomBuiltinOperation]> = [
+    ["ParentNode#querySelector", { kind: "dom", operation: "Read", queryArgument: 0 }],
+    ["ParentNode#querySelectorAll", { kind: "dom", operation: "Read", queryArgument: 0 }],
+    ["Document#getElementById", { kind: "dom", operation: "Read" }],
+    ["Element#getAttribute", { kind: "dom", operation: "Read" }],
+    ["Element#matches", { kind: "dom", operation: "Read", invokesUserCode: true, queryArgument: 0 }],
+    ["Element#closest", { kind: "dom", operation: "Read", invokesUserCode: true, queryArgument: 0 }],
+    ["Element#getBoundingClientRect", { kind: "dom", operation: "LayoutRead" }],
+    ["Document#createElement", { kind: "dom", operation: "Create" }],
+    ["Document#createTextNode", { kind: "dom", operation: "Create" }],
+    ["Element#setAttribute", { kind: "dom", operation: "ValueWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["Node#appendChild", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
+    ["Node#removeChild", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
+    ["ParentNode#replaceChildren", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ParentNode#append", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ParentNode#prepend", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ChildNode#remove", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["EventTarget#addEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true, invokesUserCode: true }],
+    ["EventTarget#removeEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true }],
+    ["EventTarget#dispatchEvent", { kind: "dom", operation: "Dispatch", invokesUserCode: true }],
+    ["DOMParser#parseFromString", { kind: "dom", operation: "Parse" }],
+  ];
+  return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
+}

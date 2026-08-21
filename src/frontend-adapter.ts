@@ -1,0 +1,181 @@
+import ts from "typescript";
+import { createHash } from "node:crypto";
+import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinSymbolKey, type PathResultRefinement } from "./builtin-contracts.js";
+import type { SourceSpan } from "./annotations.js";
+
+export interface ResolvedCallSite {
+  symbol: BuiltinSymbolKey;
+  span: SourceSpan;
+  result?: PathResultRefinement;
+  operation?: BuiltinOperation;
+  queryRefinement?: { kind: "css-selector"; selector: string };
+}
+
+export interface FrontendSymbolAdapter {
+  resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
+  mayInvokeUserCode(node: ts.Node): boolean;
+  ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared";
+  thrownErrorType(expression: ts.Expression): string;
+}
+
+function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
+  const symbol = checker.getSymbolAtLocation(node);
+  return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+}
+
+export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
+  readonly #checker: ts.TypeChecker;
+  readonly #contracts: Map<ts.Symbol, BuiltinContract>;
+  readonly #globalContracts: Map<string, BuiltinContract>;
+  readonly #memberContracts: Map<string, BuiltinContract>;
+  readonly #errorType?: ts.Type;
+
+  constructor(program: ts.Program, registry: BuiltinContractRegistry = builtinContractRegistry) {
+    this.#checker = program.getTypeChecker();
+    this.#contracts = new Map();
+    this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
+    this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
+    const errorDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Error");
+    const errorSymbol = errorDeclaration ? this.#checker.getSymbolAtLocation(errorDeclaration.name) : undefined;
+    this.#errorType = errorSymbol ? this.#checker.getDeclaredTypeOfSymbol(errorSymbol) : undefined;
+    const modules = new Map<string, BuiltinContract[]>();
+    for (const contract of registry.contracts) {
+      const values = modules.get(contract.symbol.module) ?? [];
+      values.push(contract);
+      modules.set(contract.symbol.module, values);
+    }
+    for (const source of program.getSourceFiles()) for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const contracts = modules.get(statement.moduleSpecifier.text);
+      if (!contracts) continue;
+      const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
+      if (!moduleSymbol) continue;
+      const exports = new Map(this.#checker.getExportsOfModule(moduleSymbol).map((symbol) => [symbol.name, symbol]));
+      for (const contract of contracts) {
+        const symbol = exports.get(contract.symbol.export);
+        if (symbol) this.#contracts.set(symbol, contract);
+      }
+    }
+  }
+
+  resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined {
+    const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+    const symbol = targetSymbol(this.#checker, lookup);
+    if (!symbol) return undefined;
+    let contract = this.#contracts.get(symbol);
+    if (!contract) {
+      const path = ts.isIdentifier(call.expression) ? call.expression.text
+        : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
+          ? `${call.expression.expression.text}.${call.expression.name.text}` : undefined;
+      const root = ts.isIdentifier(call.expression) ? call.expression
+        : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression) ? call.expression.expression : undefined;
+      const rootSymbol = root ? targetSymbol(this.#checker, root) : undefined;
+      const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+      if (path && isLibraryGlobal) contract = this.#globalContracts.get(path);
+    }
+    if (!contract && ts.isPropertyAccessExpression(call.expression)) {
+      for (const declaration of symbol.declarations ?? []) {
+        const parent = declaration.parent;
+        if ((ts.isInterfaceDeclaration(parent) || ts.isClassDeclaration(parent)) && parent.name) {
+          contract = this.#memberContracts.get(`${parent.name.text}#${symbol.name}`);
+          if (contract) break;
+        }
+      }
+    }
+    if (!contract) return undefined;
+    return {
+      symbol: contract.symbol,
+      span: { start: call.getStart(), end: call.getEnd() },
+      result: contract.result,
+      operation: contract.operation,
+      queryRefinement: contract.operation?.kind === "dom" && contract.operation.queryArgument !== undefined
+        && call.arguments[contract.operation.queryArgument] !== undefined
+        && ts.isStringLiteralLike(call.arguments[contract.operation.queryArgument]!)
+        ? { kind: "css-selector", selector: (call.arguments[contract.operation.queryArgument] as ts.StringLiteralLike).text }
+        : undefined,
+    };
+  }
+
+  mayInvokeUserCode(node: ts.Node): boolean {
+    if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+      const lookup = ts.isPropertyAccessExpression(node) ? node.name : node.argumentExpression;
+      const symbol = lookup ? targetSymbol(this.#checker, lookup) : undefined;
+      if (symbol?.declarations?.some((declaration) => ts.isGetAccessorDeclaration(declaration) || ts.isSetAccessorDeclaration(declaration))) return true;
+      const receiverType = this.#checker.getTypeAtLocation(node.expression);
+      if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0) return true;
+      const receiverSymbol = targetSymbol(this.#checker, node.expression);
+      if (receiverSymbol?.declarations?.some((declaration) => ts.isVariableDeclaration(declaration)
+        && declaration.initializer && ts.isNewExpression(declaration.initializer)
+        && ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text === "Proxy")) return true;
+      if (ts.isElementAccessExpression(node) && node.argumentExpression && !ts.isStringLiteralLike(node.argumentExpression) && !ts.isNumericLiteral(node.argumentExpression)) {
+        const keyFlags = this.#checker.getTypeAtLocation(node.argumentExpression).flags;
+        const staticallyPrimitiveKey = (keyFlags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike)) !== 0;
+        if (!staticallyPrimitiveKey) return true;
+      }
+    }
+    if (ts.isBinaryExpression(node) && [ts.SyntaxKind.PlusToken, ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken].includes(node.operatorToken.kind)) {
+      const primitive = (value: ts.Expression): boolean => {
+        const flags = this.#checker.getTypeAtLocation(value).flags;
+        return (flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BigIntLike | ts.TypeFlags.BooleanLike)) !== 0;
+      };
+      return !primitive(node.left) || !primitive(node.right);
+    }
+    return false;
+  }
+
+  ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared" {
+    const type = this.#checker.getTypeAtLocation(expression);
+    const name = type.aliasSymbol?.name ?? type.getSymbol()?.name ?? this.#checker.typeToString(type);
+    if (name.includes("SharedArrayBuffer")) return "shared";
+    if (name.includes("ArrayBuffer")) return "detached";
+    if (name.includes("ReadableStream") || name.includes("WritableStream") || name.includes("TransformStream")) return "locked";
+    return "transferred";
+  }
+
+  thrownErrorType(expression: ts.Expression): string {
+    const type = this.#checker.getTypeAtLocation(expression);
+    if (!this.#errorType || !this.#checker.isTypeAssignableTo(type, this.#errorType)) return "unknown";
+    return this.#checker.typeToString(type, expression, ts.TypeFormatFlags.NoTruncation);
+  }
+}
+
+export function collectBuiltinCallRefinements(
+  program: ts.Program,
+  source: ts.SourceFile,
+  registry: BuiltinContractRegistry = builtinContractRegistry,
+): ResolvedCallSite[] {
+  const adapter = new TypeScriptFrontendAdapter(program, registry);
+  const results: ResolvedCallSite[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node)) {
+      const result = adapter.resolveCall(node);
+      if (result) results.push(result);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return results;
+}
+
+export interface DeclarationDriftDiagnostic {
+  library: string;
+  expected: string;
+  actual?: string;
+  message: string;
+}
+
+export function auditBuiltinDeclarationDrift(
+  program: ts.Program,
+  registry: BuiltinContractRegistry = builtinContractRegistry,
+): DeclarationDriftDiagnostic[] {
+  const diagnostics: DeclarationDriftDiagnostic[] = [];
+  for (const expected of registry.declarations) {
+    const source = program.getSourceFiles().find((file) => file.fileName.endsWith(`/${expected.library}`) || file.fileName.endsWith(`\\${expected.library}`));
+    const actual = source ? createHash("sha256").update(source.text).digest("hex") : undefined;
+    if (actual !== expected.sha256) diagnostics.push({
+      library: expected.library, expected: expected.sha256, actual,
+      message: actual ? `${expected.library} changed; builtin DOM classifications require review` : `${expected.library} was not loaded`,
+    });
+  }
+  return diagnostics;
+}

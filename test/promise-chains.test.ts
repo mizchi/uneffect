@@ -1,0 +1,140 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
+
+const source = `
+  function cleanup() {}
+  function make() {
+    const promise = new Promise<number>((resolve) => { resolve(1) })
+    return promise.then((value) => value + 1, () => -1).catch(() => 0).finally(cleanup)
+  }
+`;
+
+function run(program: string) {
+  const directory = mkdtempSync(join(tmpdir(), "uneffect-promise-chain-"));
+  const path = join(directory, "model.qnt");
+  writeFileSync(path, program);
+  return spawnSync("pnpm", ["exec", "quint", "run", path,
+    "--invariant=promiseSafe", "--max-steps=10", "--max-samples=300",
+    "--seed=0x123456789abcdef", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+}
+
+describe("Promise state and reaction chains", () => {
+  it("derives first-settlement-wins outcomes from inline executor control flow", () => {
+    const model = analyzePromiseChains("executor.ts", `
+      declare const flag: boolean
+      function fulfilledFirst() {
+        const promise = new Promise<number>((resolve, reject) => {
+          resolve(1)
+          reject(new Error("ignored"))
+        })
+        return promise.then(value => value)
+      }
+      function branched() {
+        const promise = new Promise<number>((resolve, reject) => {
+          if (flag) resolve(1)
+          else reject(new Error("no"))
+        })
+        return promise.then(value => value)
+      }
+      function thrownFirst() {
+        const promise = new Promise<number>((resolve) => {
+          throw new Error("boom")
+          resolve(1)
+        })
+        return promise.catch(() => 0)
+      }
+    `);
+    expect(model.executors.map(({ possibleSettlements, mayRemainPending }) => ({ possibleSettlements, mayRemainPending }))).toEqual([
+      { possibleSettlements: ["fulfilled"], mayRemainPending: false },
+      { possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: false },
+      { possibleSettlements: ["rejected"], mayRemainPending: false },
+    ]);
+  });
+
+  it("models resolving with a PromiseLike as assimilation", () => {
+    const model = analyzePromiseChains("assimilation.ts", `
+      declare const other: PromiseLike<number>
+      function assimilate() {
+        const promise = new Promise<number>((resolve) => resolve(other))
+        return promise.then(value => value)
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ possibleSettlements: ["assimilating"], mayRemainPending: false });
+    const quint = generatePromiseChainsQuint("assimilation", model);
+    expect(quint).toContain("settle_0_assimilating");
+    expect(quint).toContain("assimilate_0_fulfilled");
+    expect(quint).toContain("assimilate_0_rejected");
+  });
+
+  it("flattens PromiseLike values returned by reaction handlers", () => {
+    const model = analyzePromiseChains("flatten.ts", `
+      declare const source: Promise<number>
+      declare function next(value: number): PromiseLike<string>
+      function flatten() {
+        return source.then(next).catch(async () => "recovered").finally(async () => {})
+      }
+    `);
+    expect(model.chains[0].links.map((link) => link.handlerReturns)).toEqual([
+      ["promise-like"],
+      ["promise-like"],
+      ["promise-like"],
+    ]);
+    const quint = generatePromiseChainsQuint("flatten", model);
+    expect(quint).toContain("react_0_0_handle_assimilate");
+    expect(quint).toContain("react_0_1_recover_assimilate");
+    expect(quint).toContain("react_0_2_finally_assimilate_after_reject");
+    expect(quint).toContain("assimilate_0_2_preserve_reject");
+    const positive = run(quint);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+    const skipped = run(generatePromiseChainsQuint("flatten_skipped", model, { skipHandlerAssimilation: true }));
+    expect(skipped.status).not.toBe(0);
+    expect(skipped.stdout + skipped.stderr).toMatch(/violation|counterexample/i);
+  }, 20_000);
+
+  it("extracts builtin executors and then/catch/finally without spelling fallback", () => {
+    expect(analyzePromiseChains("chain.ts", source)).toMatchObject({
+      executors: [{ owner: "make", binding: "promise", synchronous: true, throwBecomesRejection: true }],
+      chains: [{ owner: "make", source: "promise", executor: 0, links: [
+        { kind: "then", handlers: [expect.any(String), expect.any(String)] }, { kind: "catch" }, { kind: "finally" },
+      ] }],
+    });
+    expect(analyzePromiseChains("shadow.ts", `
+      class Promise<T> { constructor(_f: unknown) {} then() { return this } }
+      function f() { return new Promise(() => {}).then() }
+    `)).toEqual({ executors: [], chains: [] });
+  });
+
+  it("distinguishes omitted handlers from handlers that may reject", () => {
+    const model = analyzePromiseChains("omitted.ts", `
+      declare const promise: Promise<number>
+      function chain() { return promise.then(undefined, () => 1).catch(undefined).finally(undefined) }
+    `);
+    const quint = generatePromiseChainsQuint("omitted", model);
+    expect(quint).toContain("handle_reject_ok");
+    expect(quint).toContain("propagate_reject");
+    expect(quint).not.toContain("throw_after_fulfill");
+  });
+
+  it("separates synchronous executor settlement from microtask reactions", () => {
+    const model = analyzePromiseChains("chain.ts", source);
+    const positive = run(generatePromiseChainsQuint("promise_chain", model));
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+    expect(positive.stdout + positive.stderr).toContain("No violation found");
+
+    const early = run(generatePromiseChainsQuint("early_reaction", model, { allowEarlyReaction: true }));
+    expect(early.status).not.toBe(0);
+    expect(early.stdout + early.stderr).toMatch(/violation|counterexample/i);
+
+    const brokenFinally = run(generatePromiseChainsQuint("broken_finally", model, { breakFinallyTransparency: true }));
+    expect(brokenFinally.status).not.toBe(0);
+    expect(brokenFinally.stdout + brokenFinally.stderr).toMatch(/violation|counterexample/i);
+
+    const doubleSettlement = run(generatePromiseChainsQuint("double_settlement", model, { allowDoubleSettlement: true }));
+    expect(doubleSettlement.status).not.toBe(0);
+    expect(doubleSettlement.stdout + doubleSettlement.stderr).toMatch(/violation|counterexample/i);
+  }, 20_000);
+});
