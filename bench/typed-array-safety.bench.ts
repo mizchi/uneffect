@@ -6,7 +6,7 @@ import { generateQuint } from "../src/spec-backends.js";
 import { lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
-import { createModelCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { createModelCounterexample, parseQuintItfCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -192,5 +192,20 @@ describe("typed-array static verification", () => {
       create: (state) => ({ value: state.value }), observe: (runtime) => ({ value: runtime.value }),
       actions: { increment: (runtime) => { runtime.value++; } }, invariants: { nonnegative: (runtime) => runtime.value >= 0 },
     });
+  }, { time: 500, iterations: 20 });
+
+  bench("parse a 100-step Quint MBT ITF counterexample", () => {
+    const states = Array.from({ length: 101 }, (_, index) => ({
+      "#meta": { index },
+      value: { "#bigint": String(index) },
+      ready: index > 0,
+      "mbt::actionTaken": index === 0 ? "init" : "increment",
+      "mbt::nondetPicks": {},
+    }));
+    parseQuintItfCounterexample(JSON.stringify({
+      "#meta": { format: "ITF", status: "violation" },
+      vars: ["value", "ready", "mbt::actionTaken", "mbt::nondetPicks"],
+      states,
+    }), "counter");
   }, { time: 500, iterations: 20 });
 });

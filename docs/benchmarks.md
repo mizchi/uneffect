@@ -106,3 +106,8 @@ Creating, hashing, cloning, and replaying a 100-step normalized model trace,
 including before/after observation comparison and one invariant per step,
 measured 0.4962 ms mean (1.90% relative margin of error). This benchmark uses
 an in-memory adapter and excludes model-checker startup and application I/O.
+
+Parsing and normalizing a 100-step Quint MBT ITF violation measured 0.2078 ms
+mean (0.75% relative margin of error). This includes JSON parsing, removal of
+ITF/MBT metadata, safe-bigint conversion, trace validation, and cloning; it
+excludes Quint startup and model exploration.

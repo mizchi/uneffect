@@ -79,6 +79,38 @@ export function createModelCounterexample<State extends object>(input: Omit<Mode
   return trace;
 }
 
+function normalizeItfValue(value: unknown): ModelValue {
+  if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") return value;
+  if (Array.isArray(value)) return value.map(normalizeItfValue);
+  if (typeof value !== "object") throw new Error(`unsupported ITF value: ${String(value)}`);
+  const record = value as Record<string, unknown>;
+  if (typeof record["#bigint"] === "string") {
+    const bigint = BigInt(record["#bigint"]);
+    const number = Number(bigint);
+    return Number.isSafeInteger(number) ? number : { "#bigint": bigint.toString() };
+  }
+  return Object.fromEntries(Object.entries(record).map(([name, item]) => [name, normalizeItfValue(item)]));
+}
+
+/** Parses Quint's `run --mbt --out-itf=...` violation artifact. */
+export function parseQuintItfCounterexample(text: string, modelHash: string): ModelCounterexample {
+  const document = JSON.parse(text) as { "#meta"?: { format?: string; status?: string }; states?: unknown[] };
+  if (document["#meta"]?.format !== "ITF") throw new Error("Quint counterexample is not an ITF document");
+  if (document["#meta"]?.status !== "violation") throw new Error(`Quint ITF status is not a violation: ${document["#meta"]?.status ?? "missing"}`);
+  if (!Array.isArray(document.states) || document.states.length === 0) throw new Error("Quint ITF counterexample has no states");
+  const states = document.states.map((raw, index): { state: ModelState; action?: string } => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error(`Quint ITF state ${index} is not an object`);
+    const record = raw as Record<string, unknown>, action = record["mbt::actionTaken"];
+    const state = Object.fromEntries(Object.entries(record).filter(([name]) => !name.startsWith("#") && !name.startsWith("mbt::")).map(([name, value]) => [name, normalizeItfValue(value)]));
+    return { state, ...(typeof action === "string" ? { action } : {}) };
+  });
+  const steps = states.slice(1).map((entry, index): ModelCounterexampleStep => {
+    if (!entry.action) throw new Error(`Quint ITF state ${index + 1} has no mbt::actionTaken; run Quint with --mbt`);
+    return { action: entry.action, before: states[index]!.state, after: entry.state };
+  });
+  return createModelCounterexample({ backend: "quint", modelHash, initialState: states[0]!.state, steps });
+}
+
 /** Replays a normalized model trace against an explicit implementation refinement adapter. */
 export async function replayModelCounterexample<State extends object, Runtime>(trace: ModelCounterexample<State>, adapter: ModelRefinementAdapter<Runtime, State>): Promise<ModelReplayResult<State>> {
   if (trace.schema !== "uneffect-model-counterexample/v1") throw new Error(`unsupported counterexample schema: ${(trace as { schema: string }).schema}`);

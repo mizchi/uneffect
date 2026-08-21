@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createModelCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { createModelCounterexample, parseQuintItfCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 
 interface LeaseState {
   realNow: number;
@@ -22,6 +22,39 @@ const afterTakeover: LeaseState = { ...initial, ownerEpoch: 2, ownerIsA: false }
 const afterPublish: LeaseState = { ...afterTakeover, residentEpochB: 2 };
 
 describe("model counterexample refinement replay", () => {
+  it("normalizes Quint MBT ITF output into actions and JSON-safe state", () => {
+    const trace = parseQuintItfCounterexample(JSON.stringify({
+      "#meta": { format: "ITF", status: "violation" },
+      vars: ["epoch", "ready", "mbt::actionTaken"],
+      states: [
+        { "#meta": { index: 0 }, epoch: { "#bigint": "0" }, ready: false, "mbt::actionTaken": "init" },
+        { "#meta": { index: 1 }, epoch: { "#bigint": "1" }, ready: true, "mbt::actionTaken": "advance" },
+      ],
+    }), "model-sha256");
+    expect(trace).toEqual({
+      schema: "uneffect-model-counterexample/v1", backend: "quint", modelHash: "model-sha256",
+      initialState: { epoch: 0, ready: false },
+      steps: [{ action: "advance", before: { epoch: 0, ready: false }, after: { epoch: 1, ready: true } }],
+    });
+  });
+
+  it("keeps unsafe ITF big integers tagged instead of losing precision", () => {
+    const trace = parseQuintItfCounterexample(JSON.stringify({
+      "#meta": { format: "ITF", status: "violation" },
+      states: [{ value: { "#bigint": "9007199254740993" }, "mbt::actionTaken": "init" }],
+    }), "model-sha256");
+    expect(trace.initialState).toEqual({ value: { "#bigint": "9007199254740993" } });
+  });
+
+  it("rejects successful and non-MBT ITF artifacts as counterexamples", () => {
+    expect(() => parseQuintItfCounterexample(JSON.stringify({
+      "#meta": { format: "ITF", status: "ok" }, states: [{}],
+    }), "model-sha256")).toThrow(/not a violation/);
+    expect(() => parseQuintItfCounterexample(JSON.stringify({
+      "#meta": { format: "ITF", status: "violation" }, states: [{}, { value: 1 }],
+    }), "model-sha256")).toThrow(/run Quint with --mbt/);
+  });
+
   it("replays a Node Lease counterexample against TypeScript and observes the same violation", async () => {
     const trace = createModelCounterexample({ backend: "quint", modelHash: "node-lease-broken", initialState: initial, steps: [
       { action: "takeoverB", before: initial, after: afterTakeover },
