@@ -10,8 +10,10 @@ export type PropertyBoundaryKind = "Int" | "Nat" | "U8" | "U32" | "I32";
 export type PropertyLiteral = string | number | boolean;
 export type PropertyTestDomain = PropertyBoundaryKind
   | { kind: "bounded-array"; element: "U8" | "U32"; maximum: number }
+  | { kind: "record"; fields: Record<string, PropertyBoundaryKind> }
   | { kind: "union"; members: Array<PropertyBoundaryKind | { kind: "literal"; value: PropertyLiteral }> };
-export type PropertyValue = PropertyLiteral | number[];
+export type PropertyRecord = { [name: string]: PropertyValue };
+export type PropertyValue = PropertyLiteral | number[] | PropertyRecord;
 
 export interface PropertyTestBoundary {
   fileName: string;
@@ -101,10 +103,16 @@ function scalarAccepts(domain: PropertyBoundaryKind, value: PropertyLiteral): bo
 }
 
 function domainAccepts(domain: PropertyTestDomain, value: PropertyValue): boolean {
-  if (typeof domain === "string") return !Array.isArray(value) && scalarAccepts(domain, value);
+  if (typeof domain === "string") return (typeof value === "string" || typeof value === "number" || typeof value === "boolean") && scalarAccepts(domain, value);
   if (domain.kind === "bounded-array") return Array.isArray(value) && value.length <= domain.maximum
     && value.every((entry) => scalarAccepts(domain.element, entry));
-  if (Array.isArray(value)) return false;
+  if (domain.kind === "record") return value !== null && typeof value === "object" && !Array.isArray(value)
+    && Object.keys(value).length === Object.keys(domain.fields).length
+    && Object.entries(domain.fields).every(([name, field]) => {
+      const entry = value[name];
+      return typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean" ? scalarAccepts(field, entry) : false;
+    });
+  if (typeof value === "object") return false;
   return domain.members.some((member) => typeof member === "string" ? scalarAccepts(member, value) : member.value === value);
 }
 
@@ -124,6 +132,12 @@ function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096, refine
     for (const member of domain.members) values.push(...(typeof member === "string" ? edgeValues[member] : [member.value]));
     return unique([...refinementValues.filter((value) => domainAccepts(domain, value)), ...values]);
   }
+  if (domain.kind === "record") {
+    const entries = Object.entries(domain.fields);
+    let values: PropertyRecord[] = [{}];
+    for (const [name, field] of entries) values = values.flatMap((record) => edgeValues[field].slice(0, 5).map((value) => ({ ...record, [name]: value }))).slice(0, 64);
+    return values;
+  }
   const sampledMaximum = Math.min(domain.maximum, arrayLengthCap);
   const lengths = [...new Set([0, Math.min(1, sampledMaximum), Math.min(2, sampledMaximum), sampledMaximum])];
   const edges = edgeValues[domain.element];
@@ -133,6 +147,13 @@ function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096, refine
 function shrinkValue(value: PropertyValue, domain: PropertyTestDomain): PropertyValue[] {
   if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : [];
   if (domain.kind === "union") return domain.members.flatMap((member) => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []);
+  if (domain.kind === "record") {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+    return Object.entries(domain.fields).flatMap(([name, field]) => {
+      const entry = value[name];
+      return typeof entry === "number" ? shrinkNumber(entry, field).map((candidate) => ({ ...value, [name]: candidate })) : [];
+    });
+  }
   if (!Array.isArray(value)) return [];
   const structural: number[][] = [];
   for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length));
@@ -147,9 +168,11 @@ function materialize(value: PropertyValue, domain: PropertyTestDomain): any {
 }
 
 function sampleSize(values: readonly PropertyValue[]): number {
-  return values.reduce<number>((total, value) => total + (Array.isArray(value)
+  const valueSize = (value: PropertyValue): number => Array.isArray(value)
     ? value.length + value.reduce((sum, entry) => sum + Math.abs(entry), 0)
-    : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value)), 0);
+    : value !== null && typeof value === "object" ? Object.values(value as PropertyRecord).reduce<number>((sum, entry) => sum + valueSize(entry), 0)
+    : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value);
+  return values.reduce<number>((total, value) => total + valueSize(value), 0);
 }
 
 function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[], refinementTuples: readonly (readonly PropertyValue[])[] = []): PropertyValue[][] {
@@ -220,6 +243,17 @@ function literalValue(type: ts.TypeNode): PropertyLiteral | undefined {
 function typeDomain(type: ts.TypeNode | undefined): PropertyTestDomain | undefined {
   if (!type) return undefined;
   if (ts.isParenthesizedTypeNode(type)) return typeDomain(type.type);
+  if (ts.isTypeLiteralNode(type)) {
+    const fields: Record<string, PropertyBoundaryKind> = {};
+    for (const member of type.members) {
+      if (!ts.isPropertySignature(member) || member.questionToken || !member.type
+        || (!ts.isIdentifier(member.name) && !ts.isStringLiteral(member.name))) return undefined;
+      const field = typeDomain(member.type);
+      if (typeof field !== "string") return undefined;
+      fields[member.name.text] = field;
+    }
+    return Object.keys(fields).length > 0 ? { kind: "record", fields } : undefined;
+  }
   if (ts.isUnionTypeNode(type)) {
     const members = type.types.map((member) => typeDomain(member) ?? (literalValue(member) === undefined ? undefined : { kind: "literal" as const, value: literalValue(member)! }));
     if (members.some((member) => member === undefined || typeof member === "object" && member.kind !== "literal")) return undefined;
@@ -259,7 +293,7 @@ function validateStructuredPropertyExpression(node: ts.Expression): void {
   if (ts.isIdentifier(node) || ts.isNumericLiteral(node) || node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return;
   if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression);
   if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand);
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "length") return;
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) return;
   if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) return;
   if (ts.isBinaryExpression(node) && [
     ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
@@ -384,11 +418,11 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `const refinementTuples = ${JSON.stringify(boundary.generatorTuples)} as const\n` +
     `const limits: Record<string, readonly number[]> = ${JSON.stringify(edgeValues)}\n` +
     `type Domain = typeof domains[number]\n` +
-    `function values(domain: Domain, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap(member => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
+    `function values(domain: Domain, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap(member => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; if (domain.kind === "record") { let out: any[] = [{}]; for (const [name, field] of Object.entries(domain.fields)) out = out.flatMap(record => limits[field as string]!.slice(0, 5).map(value => ({ ...record, [name]: value }))).slice(0, 64); return out } const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
     `function shrinkNumber(value: number, domain: string): number[] { const values: number[] = []; let current = value; while (Math.abs(current) > 1) { current = Math.trunc(current / 2); values.push(current) } values.push(0); return [...new Set(values)].filter(value => !["Nat", "U8", "U32"].includes(domain) || value >= 0) }\n` +
-    `function shrink(value: any, domain: Domain): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
+    `function shrink(value: any, domain: Domain): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); if (domain.kind === "record") return Object.entries(domain.fields).flatMap(([name, field]) => typeof value[name] === "number" ? shrinkNumber(value[name], field as string).map(candidate => ({ ...value, [name]: candidate })) : []); const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
     `function materialize(value: any, domain: Domain): any { if (typeof domain === "object" && domain.kind === "bounded-array") return domain.element === "U8" ? new Uint8Array(value) : new Uint32Array(value); return value }\n` +
-    `function sampleSize(values: readonly any[]): number { return values.reduce((total, value) => total + (Array.isArray(value) ? value.length + value.reduce((sum: number, entry: number) => sum + Math.abs(entry), 0) : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value)), 0) }\n` +
+    `function sampleSize(values: readonly any[]): number { const size = (value: any): number => Array.isArray(value) ? value.length + value.reduce((sum: number, entry: number) => sum + Math.abs(entry), 0) : value !== null && typeof value === "object" ? Object.values(value).reduce((sum: number, entry) => sum + size(entry), 0) : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value); return values.reduce((total, value) => total + size(value), 0) }\n` +
     `function random(seed: number) { let state = seed >>> 0; return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x100000000) }\n` +
     `function samples() { const out: any[][] = refinementTuples.map(row => [...row]); const limit = Math.max(${cases}, out.length); const visit = (at: number, row: any[]) => { if (out.length >= limit) return; if (at === domains.length) { if (!out.some(item => JSON.stringify(item) === JSON.stringify(row))) out.push(row); return } for (const value of values(domains[at]!, refinementValues[at])) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < limit) out.push(domains.map((domain, index) => { const candidates = values(domain, refinementValues[index]); return candidates[Math.floor(next() * candidates.length)]! })); return out }\n` +
     `const precondition = (${parameterNames.join(", ")}) => ${predicates}\n` +
@@ -457,20 +491,26 @@ function scalarDomainConstraint(name: string, domain: PropertyBoundaryKind): str
 }
 
 interface Z3ArrayLayout { name: string; maximum: number; element: "U8" | "U32" }
+interface Z3RecordLayout { name: string; fields: Readonly<Record<string, PropertyBoundaryKind>> }
 
-function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>): string {
-  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return structuredPropertyToSmt(node.expression, arrays);
+function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>): string {
+  if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return structuredPropertyToSmt(node.expression, arrays, records);
   if (ts.isIdentifier(node)) return node.text;
   if (ts.isNumericLiteral(node)) return node.text;
   if (node.kind === ts.SyntaxKind.TrueKeyword) return "true";
   if (node.kind === ts.SyntaxKind.FalseKeyword) return "false";
   if (ts.isPrefixUnaryExpression(node)) {
-    const operand = structuredPropertyToSmt(node.operand, arrays);
+    const operand = structuredPropertyToSmt(node.operand, arrays, records);
     if (node.operator === ts.SyntaxKind.ExclamationToken) return `(not ${operand})`;
     if (node.operator === ts.SyntaxKind.MinusToken) return `(- ${operand})`;
   }
   if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.name.text === "length" && arrays.has(node.expression.text)) {
     return `${node.expression.text}__length`;
+  }
+  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
+    const layout = records.get(node.expression.text);
+    if (!layout || !Object.hasOwn(layout.fields, node.name.text)) throw new Error(`unknown solver-backed record field ${node.getText()}`);
+    return `${layout.name}__${node.name.text}`;
   }
   if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) {
     const layout = arrays.get(node.expression.text), index = Number(node.argumentExpression.text);
@@ -483,7 +523,7 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
       [ts.SyntaxKind.LessThanToken, "<"], [ts.SyntaxKind.LessThanEqualsToken, "<="], [ts.SyntaxKind.GreaterThanToken, ">"], [ts.SyntaxKind.GreaterThanEqualsToken, ">="],
       [ts.SyntaxKind.EqualsEqualsToken, "="], [ts.SyntaxKind.EqualsEqualsEqualsToken, "="], [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
     ]).get(node.operatorToken.kind);
-    const left = structuredPropertyToSmt(node.left, arrays), right = structuredPropertyToSmt(node.right, arrays);
+    const left = structuredPropertyToSmt(node.left, arrays, records), right = structuredPropertyToSmt(node.right, arrays, records);
     if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) return `(not (= ${left} ${right}))`;
     if (operator) return `(${operator} ${left} ${right})`;
   }
@@ -511,31 +551,39 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
       if (names.some((name) => !name) || domains.some((domain) => !domain || typeof domain === "object" && domain.kind === "union")) continue;
       const layouts = new Map<string, Z3ArrayLayout>();
+      const records = new Map<string, Z3RecordLayout>();
       names.forEach((name, index) => {
         const domain = domains[index]!;
         if (typeof domain === "object" && domain.kind === "bounded-array") layouts.set(name, {
           name, element: domain.element, maximum: Math.min(domain.maximum, arrayCap(options.arrayLengthCap)),
         });
+        if (typeof domain === "object" && domain.kind === "record") records.set(name, { name, fields: domain.fields });
       });
       const declarations = names.flatMap((name, index) => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [`(declare-const ${name} Int)`];
-        const layout = layouts.get(name)!;
-        return [`(declare-const ${name}__length Int)`, ...Array.from({ length: layout.maximum }, (_, at) => `(declare-const ${name}__${at} Int)` )];
+        if (domain.kind === "bounded-array") {
+          const layout = layouts.get(name)!;
+          return [`(declare-const ${name}__length Int)`, ...Array.from({ length: layout.maximum }, (_, at) => `(declare-const ${name}__${at} Int)` )];
+        }
+        return domain.kind === "record" ? Object.keys(domain.fields).map((field) => `(declare-const ${name}__${field} Int)`) : [];
       });
       const assertions = [
-        ...requires.map((requirement) => structuredPropertyToSmt(propertyExpression(requirement), layouts)),
+        ...requires.map((requirement) => structuredPropertyToSmt(propertyExpression(requirement), layouts, records)),
         ...names.flatMap((name, index) => {
           const domain = domains[index]!;
           if (typeof domain === "string") return scalarDomainConstraint(name, domain);
-          const layout = layouts.get(name)!;
-          const upper = layout.element === "U8" ? 255 : 4_294_967_295;
-          return [
-            `(>= ${name}__length 0)`, `(<= ${name}__length ${layout.maximum})`,
-            ...Array.from({ length: layout.maximum }, (_, at) => `(>= ${name}__${at} 0)`),
-            ...Array.from({ length: layout.maximum }, (_, at) => `(<= ${name}__${at} ${upper})`),
-            ...Array.from({ length: layout.maximum }, (_, at) => `(=> (<= ${name}__length ${at}) (= ${name}__${at} 0))`),
-          ];
+          if (domain.kind === "bounded-array") {
+            const layout = layouts.get(name)!;
+            const upper = layout.element === "U8" ? 255 : 4_294_967_295;
+            return [
+              `(>= ${name}__length 0)`, `(<= ${name}__length ${layout.maximum})`,
+              ...Array.from({ length: layout.maximum }, (_, at) => `(>= ${name}__${at} 0)`),
+              ...Array.from({ length: layout.maximum }, (_, at) => `(<= ${name}__${at} ${upper})`),
+              ...Array.from({ length: layout.maximum }, (_, at) => `(=> (<= ${name}__length ${at}) (= ${name}__${at} 0))`),
+            ];
+          }
+          return domain.kind === "record" ? Object.entries(domain.fields).flatMap(([field, fieldDomain]) => scalarDomainConstraint(`${name}__${field}`, fieldDomain)) : [];
         }),
       ];
       const blocks: string[] = [];
@@ -550,20 +598,28 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         const tuple = names.map((name, index): PropertyValue | undefined => {
           const domain = domains[index]!;
           if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
-          const layout = layouts.get(name)!;
-          const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());
-          if (length === undefined || length < 0 || length > layout.maximum) return undefined;
-          const values = Array.from({ length }, (_, at) => z3Integer(model.eval(context.Int.const(`${name}__${at}`), true).toString()));
-          return values.some((value) => value === undefined) ? undefined : values as number[];
+          if (domain.kind === "bounded-array") {
+            const layout = layouts.get(name)!;
+            const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());
+            if (length === undefined || length < 0 || length > layout.maximum) return undefined;
+            const values = Array.from({ length }, (_, at) => z3Integer(model.eval(context.Int.const(`${name}__${at}`), true).toString()));
+            return values.some((value) => value === undefined) ? undefined : values as number[];
+          }
+          if (domain.kind !== "record") return undefined;
+          const entries = Object.keys(domain.fields).map((field) => [field, z3Integer(model.eval(context.Int.const(`${name}__${field}`), true).toString())] as const);
+          return entries.some(([, value]) => value === undefined) ? undefined : Object.fromEntries(entries) as PropertyRecord;
         });
         if (tuple.some((value) => value === undefined)) { terminal = "unknown"; break; }
         const values = tuple as PropertyValue[];
         tuples.push(values);
         const equalities = names.flatMap((name, index) => {
           const value = values[index]!;
-          if (!Array.isArray(value)) return [`(= ${name} ${value})`];
-          const layout = layouts.get(name)!;
-          return [`(= ${name}__length ${value.length})`, ...Array.from({ length: layout.maximum }, (_, at) => `(= ${name}__${at} ${value[at] ?? 0})`)];
+          if (typeof value !== "object") return [`(= ${name} ${value})`];
+          if (Array.isArray(value)) {
+            const layout = layouts.get(name)!;
+            return [`(= ${name}__length ${value.length})`, ...Array.from({ length: layout.maximum }, (_, at) => `(= ${name}__${at} ${value[at] ?? 0})`)];
+          }
+          return Object.entries(value).map(([field, entry]) => `(= ${name}__${field} ${entry})`);
         });
         blocks.push(`(not (and ${equalities.join(" ")}))`);
       }
@@ -573,8 +629,8 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       if (terminal === "unknown" || terminal === "unsat" && tuples.length === 0) solverDiagnostics.push({
         fileName, functionName: node.name.text, status: terminal,
         message: terminal === "unsat"
-          ? `requires has no ${layouts.size === 0 ? "scalar" : "supported structured"} model`
-          : `Z3 could not enumerate a ${layouts.size === 0 ? "scalar" : "supported structured"} model`,
+          ? `requires has no ${layouts.size + records.size === 0 ? "scalar" : "supported structured"} model`
+          : `Z3 could not enumerate a ${layouts.size + records.size === 0 ? "scalar" : "supported structured"} model`,
       });
     }
   }

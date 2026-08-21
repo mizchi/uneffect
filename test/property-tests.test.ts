@@ -182,6 +182,32 @@ describe("property-test generation", () => {
     expect(Array.isArray(bytes) && bytes.length === 2 && bytes[0]! + bytes[1]! === 300).toBe(true);
   });
 
+  it("derives solver-backed closed-record inputs", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "pixel.ts": `
+      type U8 = number
+      /* uneffect: requires pixel.red + pixel.green === 300 */
+      /* uneffect: ensures result === 300 */
+      export function intensity(pixel: { red: U8; green: U8 }): number { return pixel.red + pixel.green }
+    ` }, solverCases: 6 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThanOrEqual(2);
+    expect(tuples.every(([pixel]) => pixel !== null && typeof pixel === "object" && !Array.isArray(pixel)
+      && Number(pixel.red) + Number(pixel.green) === 300)).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+
+    const shrunk = await checkUneffectProperty({
+      functionName: "pixel-failure",
+      domains: [{ kind: "record", fields: { red: "U8", green: "U8" } }],
+      refinementTuples: tuples,
+      precondition: (pixel: { red: number; green: number }) => pixel.red + pixel.green === 300,
+      property: () => false,
+    });
+    expect(shrunk.status).toBe("counterexample");
+    const pixel = shrunk.counterexample?.arguments[0];
+    expect(pixel !== null && typeof pixel === "object" && !Array.isArray(pixel)
+      && Number(pixel.red) + Number(pixel.green) === 300).toBe(true);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number
