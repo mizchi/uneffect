@@ -89,7 +89,12 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         node.arguments.forEach((argument, index) => {
           const parameterIndex = ts.isIdentifier(argument) ? parameters.get(argument.text) : undefined;
           if (parameterIndex !== undefined) {
-            const timing = builtinTiming(node), previous = timings.get(parameterIndex);
+            const previous = timings.get(parameterIndex);
+            const timing = targetDeclaration === declaration
+              ? previous ?? "unknown"
+              : targetDeclaration
+                ? byId.get(stableId(targetDeclaration))?.effectParameters.find((item) => item.index === index)?.timing ?? "unknown"
+                : builtinTiming(node);
             const joined: InvocationTiming = previous === "unknown" || timing === "unknown" ? "unknown" : previous === "deferred" || timing === "deferred" ? "deferred" : "inline";
             timings.set(parameterIndex, joined);
             edges.push({ caller, kind: "callback-argument", unresolvedName: argument.getText(), timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });

@@ -90,3 +90,8 @@ one guarded action, and pairwise implication candidates. Its one-sample cold
 run measured 806.14 ms. This is acceptable for an explicit build command but
 not yet an editor latency target; context reuse and batched classification
 remain possible optimizations.
+
+A bounded-reachability fixture with three actions, one unreachable action, and
+four transition steps measured 327.73 ms mean over two samples. Runtime grows
+with the number of actions, state variables, and unroll depth; the configured
+depth is therefore part of both the diagnostic and the performance contract.

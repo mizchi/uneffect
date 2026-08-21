@@ -5,11 +5,13 @@ import { init as initZ3 } from "z3-solver";
 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
-    | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property";
+    | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
+    | "bounded-unreachable-action" | "deadlocked-initial-state" | "no-state-progress-from-init";
   name: string;
   message: string;
   relatedName?: string;
   backend?: "z3";
+  depth?: number;
 }
 
 const smtBinary: Record<string, string> = {
@@ -17,13 +19,13 @@ const smtBinary: Record<string, string> = {
   add: "+", subtract: "-", multiply: "*", divide: "div", modulo: "mod",
 };
 
-function temporalToSmt(expression: TemporalExpression): string {
-  if (expression.kind === "name") return expression.name;
+function temporalToSmt(expression: TemporalExpression, resolveName: (name: string) => string = (name) => name): string {
+  if (expression.kind === "name") return resolveName(expression.name);
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
-  if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand)})` : `(- ${temporalToSmt(expression.operand)})`;
-  if (expression.operator === "neq") return `(not (= ${temporalToSmt(expression.left)} ${temporalToSmt(expression.right)}))`;
-  return `(${smtBinary[expression.operator]} ${temporalToSmt(expression.left)} ${temporalToSmt(expression.right)})`;
+  if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand, resolveName)})` : `(- ${temporalToSmt(expression.operand, resolveName)})`;
+  if (expression.operator === "neq") return `(not (= ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)}))`;
+  return `(${smtBinary[expression.operator]} ${temporalToSmt(expression.left, resolveName)} ${temporalToSmt(expression.right, resolveName)})`;
 }
 
 let solverSequence = 0;
@@ -34,6 +36,62 @@ async function check(spec: TemporalSpec, assertions: readonly string[]): Promise
   const declarations = spec.states.map((state) => `(declare-const ${state.name} ${state.type === "int" ? "Int" : "Bool"})`);
   solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
   return String(await solver.check()) as "sat" | "unsat" | "unknown";
+}
+
+async function checkSmt(declarations: readonly string[], assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> {
+  const { Context } = await initZ3();
+  const context: any = new Context(`uneffect_spec_lint_${solverSequence++}`);
+  const solver = new context.Solver();
+  solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
+  return String(await solver.check()) as "sat" | "unsat" | "unknown";
+}
+
+/** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
+export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number } = {}): Promise<SpecLintDiagnostic[]> {
+  if (spec.states.length === 0 && spec.actions.length === 0) return [];
+  const maxSteps = options.maxSteps ?? 8;
+  if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
+  const at = (name: string, step: number) => `${name}__${step}`;
+  const declarations = Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${state.type === "int" ? "Int" : "Bool"})`)).flat();
+  const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0))})`);
+  const guard = (action: TemporalSpec["actions"][number], step: number) => action.guard ? temporalToSmt(action.guard.expressionAst, (name) => at(name, step)) : "true";
+  const actionTransition = (action: TemporalSpec["actions"][number], step: number): string => {
+    const assignments = new Map(action.assignments.map((assignment) => [assignment.target, assignment]));
+    const updates = spec.states.map((state) => {
+      const assignment = assignments.get(state.name);
+      const value = assignment ? temporalToSmt(assignment.expressionAst, (name) => at(name, step)) : at(state.name, step);
+      return `(= ${at(state.name, step + 1)} ${value})`;
+    });
+    return `(and ${guard(action, step)} ${updates.join(" ")})`;
+  };
+  const disjoin = (values: readonly string[]) => values.length === 0 ? "false" : values.length === 1 ? values[0]! : `(or ${values.join(" ")})`;
+  const step = (index: number) => disjoin(spec.actions.map((action) => actionTransition(action, index)));
+  const diagnostics: SpecLintDiagnostic[] = [];
+  const initStatus = await checkSmt(declarations, init);
+  const enabledStatus = await checkSmt(declarations, [...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
+  if (enabledStatus === "unsat" && initStatus === "sat") diagnostics.push({
+    code: "deadlocked-initial-state", name: "<init>", backend: "z3", depth: 0, message: "no action is enabled in any state satisfying init",
+  });
+  if (maxSteps >= 1 && enabledStatus === "sat") {
+    const changes = disjoin(spec.states.map((state) => `(not (= ${at(state.name, 1)} ${at(state.name, 0)}))`));
+    if (await checkSmt(declarations, [...init, step(0), changes]) === "unsat") diagnostics.push({
+      code: "no-state-progress-from-init", name: "<init>", backend: "z3", depth: 1,
+      message: "actions are enabled at init, but no enabled initial transition can change temporal state",
+    });
+  }
+  for (const action of spec.actions) {
+    const prefixes: string[] = [];
+    for (let depth = 0; depth <= maxSteps; depth++) {
+      const transitions = Array.from({ length: depth }, (_, index) => step(index));
+      prefixes.push(`(and ${[...transitions, guard(action, depth)].join(" ")})`);
+    }
+    const result = await checkSmt(declarations, [...init, disjoin(prefixes)]);
+    if (result === "unsat") diagnostics.push({
+      code: "bounded-unreachable-action", name: action.name, backend: "z3", depth: maxSteps,
+      message: `${action.name} is unreachable from init within ${maxSteps} transition steps; this is not an unbounded proof`,
+    });
+  }
+  return diagnostics;
 }
 
 /** Semantic lint over all typed states. It does not claim reachable-state or progress analysis. */
@@ -135,10 +193,11 @@ export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; di
 }
 
 /** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
-export async function lintSpecWithZ3(fileName: string, text: string): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
   const result = lintSpec(fileName, text);
+  const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, { maxSteps: options.reachabilitySteps ?? 8 });
   return {
     spec: result.spec,
-    diagnostics: [...result.diagnostics, ...await lintTemporalSpecWithZ3(result.spec.temporal)],
+    diagnostics: [...result.diagnostics, ...await lintTemporalSpecWithZ3(result.spec.temporal), ...reachability],
   };
 }

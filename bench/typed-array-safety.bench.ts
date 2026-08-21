@@ -3,7 +3,7 @@ import ts from "typescript";
 import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
-import { lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
@@ -126,6 +126,20 @@ describe("typed-array static verification", () => {
       temporal readyAfterPublish: ready || !ready
     */`).temporal;
     await lintTemporalSpecWithZ3(temporal);
+  }, { time: 500, iterations: 1 });
+
+  bench("bounded reachability lint for 3 actions over 4 steps", async () => {
+    const temporal = parseSpec("reachability.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = 1
+      action_when advance: phase === 0
+      action finish: phase' = 2
+      action_when finish: phase === 1
+      action never: phase' = 3
+      action_when never: phase === 99
+    */`).temporal;
+    await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
   }, { time: 500, iterations: 1 });
 
   bench("generate 16 scalar contract property tests", () => {

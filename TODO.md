@@ -100,7 +100,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Detect action guards that are unsatisfiable over all typed states.
   - [x] Detect exact duplicates and properties implied by an earlier property.
   - [ ] Detect actions unreachable from the transition system's initial states.
+    - [x] Report depth-labelled bounded unreachability by unrolling init and complete stuttering transitions in Z3.
+    - [ ] Prove unbounded unreachability with induction or a finite-state completeness bound.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
+    - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
+    - [ ] Detect later reachable deadlocks, property-specific vacuity, and progress failures beyond init.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

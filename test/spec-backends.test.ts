@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
-import { lintSpec, lintSpecWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
+import { lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 
 const source = `
   /*
@@ -206,5 +206,49 @@ describe("spec IR and generated verifier programs", () => {
       expect.objectContaining({ code: "no-op-action", name: "idle" }),
       expect.objectContaining({ code: "solver-tautology", name: "totalOrder", backend: "z3" }),
     ]));
+  });
+
+  it("distinguishes bounded transition reachability from globally satisfiable guards", async () => {
+    const temporal = parseSpec("reachability.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = 1
+      action_when advance: phase === 0
+      action finish: phase' = 2
+      action_when finish: phase === 1
+      action never: phase' = 3
+      action_when never: phase === 99
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "bounded-unreachable-action", name: "never", depth: 3 }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "advance" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "finish" }));
+  });
+
+  it("proves an initial deadlock without claiming unbounded reachability", async () => {
+    const temporal = parseSpec("deadlock.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = 1
+      action_when advance: phase > 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "deadlocked-initial-state", name: "<init>" }));
+  });
+
+  it("detects models whose enabled initial transitions cannot change state", async () => {
+    const temporal = parseSpec("stuttering.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action idle: phase' = phase
+      temporal fixed: phase === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 1 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({ code: "no-state-progress-from-init", name: "<init>" }));
+  });
+
+  it("does not treat a source file without a temporal model as a deadlocked model", async () => {
+    const result = await lintSpecWithZ3("plain.ts", `export function add(a: number, b: number) { return a + b }`);
+    expect(result.diagnostics).toEqual([]);
   });
 });

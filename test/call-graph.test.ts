@@ -70,4 +70,18 @@ describe("multi-file call graph and effect polymorphism", () => {
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
   });
+
+  it("does not degrade an inline callback when recursive calls forward it", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-recursive-callback-"));
+    const source = join(directory, "recursive.ts");
+    writeFileSync(source, `
+      export function visit(value: number, map: (value: number) => number): number {
+        return value > 0 ? map(value) : visit(1, map)
+      }
+      export function run() { return visit(0, (value) => value + 1) }
+    `);
+    const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
 });
