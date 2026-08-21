@@ -120,7 +120,28 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         return access.expression.getText(source) === "Symbol" && access.name.text === "iterator"
           && (resolvedSymbol(access.name)?.declarations?.some((item) => item.getSourceFile().isDeclarationFile) ?? false);
       });
-      if (iterator && ts.isMethodDeclaration(iterator) && iterator.body?.statements.some(ts.isThrowStatement)) return { branches: [], failure: "acquire" };
+      if (iterator && ts.isMethodDeclaration(iterator) && iterator.body) {
+        const containsThrow = (node: ts.Node): boolean => {
+          if (ts.isThrowStatement(node)) return true;
+          let found = false;
+          ts.forEachChild(node, (child) => { if (!found && !(child !== node && ts.isFunctionLike(child))) found = containsThrow(child); });
+          return found;
+        };
+        if (iterator.body.statements.some(containsThrow)) return { branches: [], failure: "acquire" };
+        const returned = iterator.body.statements.find((statement): statement is ts.ReturnStatement => ts.isReturnStatement(statement) && Boolean(statement.expression));
+        const iteratorObject = returned?.expression && ts.isObjectLiteralExpression(returned.expression) ? returned.expression : undefined;
+        const next = iteratorObject?.properties.find((item) => item.name?.getText(source) === "next");
+        if (next && ts.isGetAccessorDeclaration(next) && next.body && containsThrow(next.body)) return { branches: [], failure: "acquire" };
+        if (next && ts.isMethodDeclaration(next) && next.body) {
+          if (next.body.statements.some(containsThrow)) return { branches: [], failure: "step" };
+          const resultReturn = next.body.statements.find((statement): statement is ts.ReturnStatement => ts.isReturnStatement(statement) && Boolean(statement.expression));
+          const result = resultReturn?.expression && ts.isObjectLiteralExpression(resultReturn.expression) ? resultReturn.expression : undefined;
+          const failingResultGetter = result?.properties.some((item) => item.name && ["done", "value"].includes(item.name.getText(source))
+            && ts.isGetAccessorDeclaration(item) && item.body && containsThrow(item.body));
+          if (failingResultGetter) return { branches: [], failure: "step" };
+        }
+        return { branches: [] };
+      }
     }
     if (declaration && ts.isFunctionDeclaration(declaration) && declaration.asteriskToken && declaration.body) {
       const branches: ts.Expression[] = [];

@@ -644,4 +644,26 @@ describe("builtin async temporal patterns", () => {
     expect(step).not.toContain("fulfill_1_0");
     expect(run(quint, "asyncSafe").status).toBe(0);
   }, 20_000);
+
+  it("models iterator next and result getter failures", () => {
+    const model = analyzeAsyncPatterns("iterator-getters.ts", `
+      const nextGetter = {
+        [Symbol.iterator]() { return { get next(): never { throw new Error("next getter") } } }
+      }
+      const resultGetter = {
+        [Symbol.iterator]() { return { next() { return { get done(): never { throw new Error("done getter") }, value: 1 } } } }
+      }
+      async function load() {
+        try { await Promise.all(nextGetter) } catch {}
+        try { await Promise.race(resultGetter) } catch {}
+      }
+    `);
+    expect(model.combinators).toMatchObject([
+      { combinator: "all", staticIterable: true, iteratorFailure: "acquire", branches: [] },
+      { combinator: "race", staticIterable: true, iteratorFailure: "step", branches: [] },
+    ]);
+    const quint = generateAsyncPatternsQuint("iterator_getters", model);
+    expect(quint).toContain("action fail_iterator_0");
+    expect(quint).toContain("action fail_iterator_1");
+  });
 });

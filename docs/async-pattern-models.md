@@ -112,10 +112,16 @@ that intermediate state as settled. Unknown unions retain both the immediate
 value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
 thenable IR is not yet composed into each combinator branch. Conditional
-generator control flow, iterator result getters, imported or arbitrary custom
-iterables, dynamic spread cardinality, concrete `AggregateError` reasons, cancellation,
+generator control flow, imported or arbitrary custom iterables, dynamic spread
+cardinality, concrete `AggregateError` reasons, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.
+
+For direct local object iterables, a throwing `next` getter is an iterator
+acquisition failure. Throwing `done` or `value` getters on a directly returned
+iterator-result object are step failures. Both reject the combinator before any
+modeled branch settles; arbitrary/dynamic iterator implementations remain an
+unknown boundary rather than being assigned an invented finite cardinality.
 
 ## Verification ledger
 

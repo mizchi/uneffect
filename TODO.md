@@ -312,6 +312,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
   - [x] Model direct local standard-iterator acquisition failure and linear local-generator step failure before Promise reactions settle.
+  - [x] Model throwing local iterator `next` accessors as acquisition failure and throwing `done`/`value` result accessors as step failure.
   - [x] Flatten nested array-literal spreads with exact cardinality and element order.
   - [x] Preserve `AggregateError.errors` slot order independently of Promise rejection order.
   - [ ] Model conditional/imported custom iterables, iterator result getters, dynamic spread cardinality, and concrete aggregate rejection reasons.
