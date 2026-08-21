@@ -42,7 +42,7 @@
     "@informalsystems/quint": "^0.32.0",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.5",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@10.15.0"
 }

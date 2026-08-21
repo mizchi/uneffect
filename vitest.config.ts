@@ -2,6 +2,11 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
+    // Vitest 4 no longer excludes the compiled outDir in this project by
+    // default. The TypeScript sources are authoritative; testing dist as a
+    // second stale suite doubles solver load and can execute old schemas.
+    include: ["**/*.test.ts"],
+    exclude: ["dist/**", "node_modules/**"],
     // Several integration tests spawn Quint/Z3. Bounding workers avoids CPU
     // oversubscription turning the default 5s timeout into nondeterministic CI failures.
     maxWorkers: process.env.CI ? 2 : 4,

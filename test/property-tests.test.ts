@@ -93,7 +93,10 @@ describe("property-test generation", () => {
       const artifact = join(artifactDirectory, "positive.uneffect-counterexample.json");
       expect(JSON.parse(await readFile(artifact, "utf8"))).toMatchObject({ functionName: "positive", arguments: [1] });
       try { await execFileAsync("pnpm", ["vitest", "run", generatedName], { cwd: process.cwd() }); }
-      catch (cause) { expect(String((cause as { stdout?: string }).stdout)).toContain('"replayed":true'); }
+      catch (cause) {
+        const output = `${String((cause as { stdout?: string }).stdout)}\n${String((cause as { stderr?: string }).stderr)}`;
+        expect(output).toContain('"replayed":true');
+      }
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 20_000);
 
