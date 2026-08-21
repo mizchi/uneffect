@@ -154,33 +154,62 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
   const executorBySymbol = new Map<ts.Symbol, number>();
   const thenableBySymbol = new Map<ts.Symbol, number>();
   const pendingAdoptions: { executor: number; symbols: ts.Symbol[] }[] = [];
+  const thenablePattern = (
+    expression: ts.Expression,
+    seen = new Set<ts.Symbol>(),
+  ): Omit<PromiseThenablePattern, "owner" | "binding" | "span"> | undefined => {
+    const literal = ts.isObjectLiteralExpression(expression) ? expression : undefined;
+    const proxy = ts.isNewExpression(expression) && ts.isIdentifier(expression.expression) && expression.expression.text === "Proxy" && librarySymbol(checker, expression.expression);
+    const property = literal?.properties.find((item) => item.name?.getText(expression.getSourceFile()) === "then");
+    if (property && ts.isGetAccessorDeclaration(property) && property.body?.statements.length === 1 && ts.isThrowStatement(property.body.statements[0]!)) {
+      return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+    }
+    if (property && ts.isGetAccessorDeclaration(property)) {
+      return { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
+    }
+    const callback = property && ts.isMethodDeclaration(property) ? property
+      : property && ts.isPropertyAssignment(property) && (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) ? property.initializer
+        : undefined;
+    if (callback) {
+      const analyzed = analyzeExecutor(callback, checker, expression.getSourceFile());
+      return {
+        thenAccess: "callable", invokesUserCode: true,
+        capabilityEffects: ["InvokeUserCode"], provenance: "local",
+        possibleSettlements: analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
+        firstCallWins: true, mayRemainPending: analyzed.mayRemainPending,
+      };
+    }
+    if (proxy && checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then")) {
+      return { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
+    }
+    if (!ts.isCallExpression(expression)) return undefined;
+    const symbol = targetSymbol(checker, expression.expression);
+    if (!symbol || seen.has(symbol)) return undefined;
+    seen.add(symbol);
+    const declarations = symbol.declarations ?? [];
+    const returns = declarations.flatMap((declaration) => {
+      if (!ts.isFunctionLike(declaration) || !("body" in declaration) || !declaration.body) return [];
+      const body = declaration.body as ts.ConciseBody;
+      if (!ts.isBlock(body)) return [body];
+      return body.statements.flatMap((statement) =>
+        ts.isReturnStatement(statement) && statement.expression ? [statement.expression] : []);
+    });
+    const patterns = returns.map((returned) => thenablePattern(returned, seen)).filter((item): item is NonNullable<typeof item> => item !== undefined);
+    if (patterns.length === 0 || patterns.length !== returns.length) return undefined;
+    const thenAccess = patterns.every((item) => item.thenAccess === patterns[0]!.thenAccess) ? patterns[0]!.thenAccess : "dynamic";
+    return {
+      thenAccess,
+      invokesUserCode: true,
+      capabilityEffects: ["InvokeUserCode"],
+      provenance: "local",
+      possibleSettlements: [...new Set(patterns.flatMap((item) => item.possibleSettlements))],
+      firstCallWins: true,
+      mayRemainPending: patterns.some((item) => item.mayRemainPending),
+    };
+  };
   const collectThenables = (node: ts.Node): void => {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-      const literal = ts.isObjectLiteralExpression(node.initializer) ? node.initializer : undefined;
-      const proxy = ts.isNewExpression(node.initializer) && ts.isIdentifier(node.initializer.expression) && node.initializer.expression.text === "Proxy" && librarySymbol(checker, node.initializer.expression);
-      const property = literal?.properties.find((item) => item.name?.getText(source) === "then");
-      let pattern: Omit<PromiseThenablePattern, "owner" | "binding" | "span"> | undefined;
-      if (property && ts.isGetAccessorDeclaration(property) && property.body?.statements.length === 1 && ts.isThrowStatement(property.body.statements[0]!)) {
-        pattern = { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
-      } else if (property && ts.isGetAccessorDeclaration(property)) {
-        pattern = { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "local", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
-      } else {
-        const callback = property && ts.isMethodDeclaration(property) ? property
-          : property && ts.isPropertyAssignment(property) && (ts.isArrowFunction(property.initializer) || ts.isFunctionExpression(property.initializer)) ? property.initializer
-            : undefined;
-        if (callback) {
-          const analyzed = analyzeExecutor(callback, checker, source);
-          pattern = {
-            thenAccess: "callable", invokesUserCode: true,
-            capabilityEffects: ["InvokeUserCode"], provenance: "local",
-            possibleSettlements: analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
-            firstCallWins: true, mayRemainPending: analyzed.mayRemainPending,
-          };
-        }
-      }
-      if (!pattern && proxy && checker.getPropertyOfType(checker.getTypeAtLocation(node.initializer), "then")) {
-        pattern = { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
-      }
+      const pattern = thenablePattern(node.initializer);
       const symbol = pattern && targetSymbol(checker, node.name);
       if (pattern && symbol) {
         thenableBySymbol.set(symbol, thenables.length);

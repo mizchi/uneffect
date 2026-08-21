@@ -253,9 +253,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 ## P6 — Native integration and productization
 
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
-- [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Context Mapper output.
+- [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts.
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
-  - [ ] Consume and compare actual typescript-go/Corsa Context Mapper output instead of reference-adapter synthesized records.
+  - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
@@ -308,6 +308,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model self-resolution rejection, direct local throwing `then` getters, and direct local hostile thenables with first-call-wins settlement.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
   - [ ] Resolve returned or dynamically selected thenables, imported call results, nested thenable resolution, and concrete Proxy trap behavior.
+    - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.

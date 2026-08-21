@@ -110,6 +110,12 @@ this also works for named async callback arguments. Conditional wrappers do not
 inherit it, because consuming on only one path cannot satisfy a must-consume
 obligation.
 
+Thenable assimilation also resolves direct local factory calls when every
+explicit return is an analyzable object-literal thenable. Getter failure and
+first-call-wins settlement facts are retained at the receiving Promise. Mixed,
+implicit, imported-call, or dynamically selected returns remain conservative
+external user code rather than being reported as proven local behavior.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts

@@ -17,7 +17,7 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 - disposal protocol symbols as stable IDs with a `sync`/`async` role, and
   resource-to-protocol edges validated for existence and matching role.
 
-Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the boundary a Corsa Context Mapper supplies; Rust does not rediscover source spellings.
+Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; Rust does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
 reference side emits schema-v3 mapper records, the Rust
@@ -30,8 +30,18 @@ evidence provenance remains outside this semantic projection. The mapper
 records are currently produced by the TypeScript reference adapter, not by a
 linked typescript-go/Corsa build. The reference adapter proves that aliases of
 the standard symbols resolve through TypeChecker identity while same-spelled
-user properties do not become protocols. Actual Context Mapper emission from a
-linked typescript-go/Corsa build remains a later P6 slice.
+user properties do not become protocols.
+
+TypeScript Go's Content Mapper facility is deliberately not treated as this
+frontend API. Content Mappers run an external process for otherwise unsupported
+file extensions, return generated TypeScript plus source-span mappings, and do
+not expose the checker graph for ordinary `.ts` input. The intended native path
+is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
+type-text, property-name, and symbol facts from a pinned Corsa checker and sends
+them to Rust native rules. A schema-v3 exporter at that bridge remains the P6
+production integration task. Content Mappers may later project an Uneffect
+foreign file format, but are neither required nor sufficient for TypeScript
+semantic parity.
 
 ## TypeScript reference frontend
 

@@ -169,6 +169,32 @@ describe("Promise state and reaction chains", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("resolves a thenable returned by a local factory before assimilation", () => {
+    const model = analyzePromiseChains("returned-thenable.ts", `
+      function hostile() {
+        return { then(_resolve: (value: number) => void, reject: (reason: Error) => void) {
+          reject(new Error("factory rejection"))
+        } }
+      }
+      function run() {
+        const operation = hostile()
+        const result = new Promise<number>((resolve) => resolve(operation))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables).toContainEqual(expect.objectContaining({
+      binding: "operation",
+      provenance: "local",
+      thenAccess: "callable",
+      possibleSettlements: ["rejected"],
+      mayRemainPending: false,
+    }));
+    expect(model.executors.find((executor) => executor.binding === "result")).toMatchObject({ adoptedThenable: 0 });
+    const quint = generatePromiseChainsQuint("returned_thenable", model);
+    expect(quint).toContain("thenable_0_rejected");
+    expect(quint).not.toContain("thenable_0_fulfilled");
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {
