@@ -182,6 +182,21 @@ describe("property-test generation", () => {
     expect(Array.isArray(bytes) && bytes.length === 2 && bytes[0]! + bytes[1]! === 300).toBe(true);
   });
 
+  it("derives bounded-array inputs through a dynamic finite index", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "lookup.ts": `
+      type U8 = number
+      type BoundedUint8Array<N extends number> = Uint8Array
+      /* uneffect: requires bytes.length === 2 && index < bytes.length && bytes[index] === 255 */
+      /* uneffect: ensures result === 255 */
+      export function lookup(bytes: BoundedUint8Array<2>, index: U8): number { return bytes[index]! }
+    ` }, solverCases: 6 });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThanOrEqual(2);
+    expect(tuples.every(([bytes, index]) => Array.isArray(bytes) && typeof index === "number"
+      && index < bytes.length && bytes[index] === 255)).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("derives solver-backed closed-record inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "pixel.ts": `
       type U8 = number

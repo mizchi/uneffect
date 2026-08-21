@@ -294,7 +294,8 @@ function validateStructuredPropertyExpression(node: ts.Expression): void {
   if (ts.isParenthesizedExpression(node) || ts.isNonNullExpression(node)) return validateStructuredPropertyExpression(node.expression);
   if (ts.isPrefixUnaryExpression(node) && [ts.SyntaxKind.ExclamationToken, ts.SyntaxKind.MinusToken].includes(node.operator)) return validateStructuredPropertyExpression(node.operand);
   if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) return;
-  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) return;
+  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression
+    && (ts.isNumericLiteral(node.argumentExpression) || ts.isIdentifier(node.argumentExpression))) return;
   if (ts.isBinaryExpression(node) && [
     ts.SyntaxKind.PlusToken, ts.SyntaxKind.MinusToken, ts.SyntaxKind.AsteriskToken, ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken,
     ts.SyntaxKind.LessThanToken, ts.SyntaxKind.LessThanEqualsToken, ts.SyntaxKind.GreaterThanToken, ts.SyntaxKind.GreaterThanEqualsToken,
@@ -517,6 +518,14 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
     if (!layout || !Number.isSafeInteger(index) || index < 0 || index >= layout.maximum) throw new Error(`array index ${node.getText()} is outside the solver-backed finite layout`);
     return `${layout.name}__${index}`;
   }
+  if (ts.isElementAccessExpression(node) && ts.isIdentifier(node.expression) && node.argumentExpression) {
+    const layout = arrays.get(node.expression.text);
+    if (!layout || layout.maximum === 0) throw new Error(`dynamic array access ${node.getText()} has no finite solver-backed elements`);
+    const index = structuredPropertyToSmt(node.argumentExpression, arrays, records);
+    let selected = "-1";
+    for (let at = layout.maximum - 1; at >= 0; at--) selected = `(ite (= ${index} ${at}) ${layout.name}__${at} ${selected})`;
+    return selected;
+  }
   if (ts.isBinaryExpression(node)) {
     const operator = new Map<ts.SyntaxKind, string>([
       [ts.SyntaxKind.PlusToken, "+"], [ts.SyntaxKind.MinusToken, "-"], [ts.SyntaxKind.AsteriskToken, "*"], [ts.SyntaxKind.SlashToken, "div"], [ts.SyntaxKind.PercentToken, "mod"],
@@ -528,6 +537,20 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
     if (operator) return `(${operator} ${left} ${right})`;
   }
   throw new Error(`unsupported solver-backed property expression: ${node.getText()}`);
+}
+
+function structuredAccessBounds(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>): string[] {
+  const bounds: string[] = [];
+  const visit = (current: ts.Node): void => {
+    if (ts.isElementAccessExpression(current) && ts.isIdentifier(current.expression) && current.argumentExpression
+      && !ts.isNumericLiteral(current.argumentExpression) && arrays.has(current.expression.text)) {
+      const index = structuredPropertyToSmt(current.argumentExpression, arrays, records);
+      bounds.push(`(>= ${index} 0)`, `(< ${index} ${current.expression.text}__length)`);
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return bounds;
 }
 
 /** Enumerates numeric models for restricted nonlinear `requires` clauses, then emits ordinary standalone tests. */
@@ -559,6 +582,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         });
         if (typeof domain === "object" && domain.kind === "record") records.set(name, { name, fields: domain.fields });
       });
+      const requirementExpressions = requires.map(propertyExpression);
       const declarations = names.flatMap((name, index) => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [`(declare-const ${name} Int)`];
@@ -569,7 +593,8 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         return domain.kind === "record" ? Object.keys(domain.fields).map((field) => `(declare-const ${name}__${field} Int)`) : [];
       });
       const assertions = [
-        ...requires.map((requirement) => structuredPropertyToSmt(propertyExpression(requirement), layouts, records)),
+        ...requirementExpressions.map((requirement) => structuredPropertyToSmt(requirement, layouts, records)),
+        ...requirementExpressions.flatMap((requirement) => structuredAccessBounds(requirement, layouts, records)),
         ...names.flatMap((name, index) => {
           const domain = domains[index]!;
           if (typeof domain === "string") return scalarDomainConstraint(name, domain);

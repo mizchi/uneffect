@@ -55,9 +55,12 @@ the relation graph and runs valid correlated tuples before Cartesian samples.
 The opt-in asynchronous Z3 generator also enumerates a caller-bounded number of
 models for nonlinear scalar refinements, bounded U8/U32 arrays, and closed
 record type literals whose required fields use scalar machine domains. For arrays,
-the supported fragment includes `.length` and literal-index element reads; all
-modeled lengths and elements receive their machine-domain bounds. Dynamic
-indices, nested/optional records, Maps, and Sets remain unsupported. The generator injects
+the supported fragment includes `.length`, literal-index element reads, and
+dynamic scalar indices over the finite modeled capacity. Dynamic reads lower
+to finite SMT selection and add in-bounds generation constraints; the emitted
+test still rechecks the original JavaScript precondition. All modeled lengths
+and elements receive their machine-domain bounds. Nested/optional records,
+Maps, and Sets remain unsupported. The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the
