@@ -178,7 +178,7 @@ function tableReferenceName(expression: ts.Expression): string | undefined {
   return undefined;
 }
 
-function constantTableDeclaration(declaration: ts.VariableDeclaration, source: ts.SourceFile): { array: ts.ArrayLiteralExpression; domain: "u8" | "u32" } | undefined {
+function constantTableDeclaration(declaration: ts.VariableDeclaration, source: ts.SourceFile): { expression: ts.Expression; domain: "u8" | "u32" } | undefined {
   let expression = declaration.initializer;
   let contract = declaration.type?.getText(source);
   if (expression && ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
@@ -186,18 +186,18 @@ function constantTableDeclaration(declaration: ts.VariableDeclaration, source: t
     const domain = expression.expression.text === "u8Table" ? "u8" : "u32";
     let argument = expression.arguments[0];
     while (ts.isAsExpression(argument) || ts.isParenthesizedExpression(argument)) argument = argument.expression;
-    return ts.isArrayLiteralExpression(argument) ? { array: argument, domain } : undefined;
+    return ts.isArrayLiteralExpression(argument) || ts.isCallExpression(argument) ? { expression: argument, domain } : undefined;
   }
   if (expression && ts.isSatisfiesExpression(expression)) {
     contract = expression.type.getText(source);
     expression = expression.expression;
   }
   while (expression && (ts.isAsExpression(expression) || ts.isParenthesizedExpression(expression))) expression = expression.expression;
-  if (!expression || !ts.isArrayLiteralExpression(expression) || !contract) return undefined;
+  if (!expression || !contract || (!ts.isArrayLiteralExpression(expression) && !ts.isCallExpression(expression))) return undefined;
   const compact = contract.replace(/\s+/g, "");
   const match = /^(?:readonly(?:U8|U32)\[\]|ReadonlyArray<(?:U8|U32)>)$/.exec(compact);
   if (!match) return undefined;
-  return { array: expression, domain: compact.includes("U8") ? "u8" : "u32" };
+  return { expression, domain: compact.includes("U8") ? "u8" : "u32" };
 }
 
 function constantNumber(expression: ts.Expression, constants: ReadonlyMap<string, number>): number | undefined {
@@ -248,16 +248,38 @@ function collectConstantTables(source: ts.SourceFile, constants: ReadonlyMap<str
       if (!table) continue;
       const upper = table.domain === "u8" ? 255 : 0xffff_ffff;
       let length = 0, valid = true, unresolved = false;
-      for (const element of table.array.elements) {
-        if (ts.isSpreadElement(element)) {
-          const reference = tableReferenceName(element.expression), spread = reference ? tables.get(reference) : undefined;
-          if (!spread) { unresolved = true; break; }
-          length += spread.length;
-          valid &&= spread.valid && spread.domain === table.domain;
+      if (ts.isArrayLiteralExpression(table.expression)) {
+        for (const element of table.expression.elements) {
+          if (ts.isSpreadElement(element)) {
+            const reference = tableReferenceName(element.expression), spread = reference ? tables.get(reference) : undefined;
+            if (!spread) { unresolved = true; break; }
+            length += spread.length;
+            valid &&= spread.valid && spread.domain === table.domain;
+          } else {
+            const value = constantNumber(element, constants);
+            length++;
+            valid &&= value !== undefined && Number.isInteger(value) && value >= 0 && value <= upper;
+          }
+        }
+      } else {
+        const call = ts.isCallExpression(table.expression) ? table.expression : undefined;
+        const arrayFrom = call && ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
+          && call.expression.expression.text === "Array" && call.expression.name.text === "from";
+        const sourceArgument = call?.arguments[0], callback = call?.arguments[1];
+        const lengthProperty = sourceArgument && ts.isObjectLiteralExpression(sourceArgument)
+          ? sourceArgument.properties.find((property): property is ts.PropertyAssignment => ts.isPropertyAssignment(property) && property.name.getText(source) === "length") : undefined;
+        const generatedLength = lengthProperty ? constantNumber(lengthProperty.initializer, constants) : undefined;
+        const indexParameter = callback && ts.isArrowFunction(callback) && callback.parameters[1] && ts.isIdentifier(callback.parameters[1].name)
+          ? callback.parameters[1].name.text : undefined;
+        if (!arrayFrom || generatedLength === undefined || !Number.isSafeInteger(generatedLength) || generatedLength < 0 || generatedLength > 10_000
+          || !callback || !ts.isArrowFunction(callback) || !indexParameter || !ts.isExpression(callback.body)) {
+          unresolved = true;
         } else {
-          const value = constantNumber(element, constants);
-          length++;
-          valid &&= value !== undefined && Number.isInteger(value) && value >= 0 && value <= upper;
+          length = generatedLength;
+          for (let index = 0; index < length; index++) {
+            const value = constantNumber(callback.body, new Map(constants).set(indexParameter, index));
+            valid &&= value !== undefined && Number.isInteger(value) && value >= 0 && value <= upper;
+          }
         }
       }
       if (unresolved) continue;
@@ -643,8 +665,39 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {
-  if (!specifier.startsWith(".")) return undefined;
-  const base = posix.normalize(posix.join(posix.dirname(from), specifier));
+  let base: string;
+  if (specifier.startsWith(".")) {
+    base = posix.normalize(posix.join(posix.dirname(from), specifier));
+  } else {
+    const parts = specifier.split("/");
+    const packageName = specifier.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
+    const subpath = parts.slice(specifier.startsWith("@") ? 2 : 1).join("/");
+    const packageRoot = `/node_modules/${packageName}`;
+    const manifestText = files[`${packageRoot}/package.json`];
+    if (!manifestText) return undefined;
+    try {
+      const manifest = JSON.parse(manifestText) as { exports?: unknown; types?: unknown; main?: unknown };
+      const selectTarget = (value: unknown): string | undefined => {
+        if (typeof value === "string") return value;
+        if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+        const conditions = value as Record<string, unknown>;
+        for (const condition of ["types", "import", "default", "require"]) {
+          const selected = selectTarget(conditions[condition]);
+          if (selected) return selected;
+        }
+        return undefined;
+      };
+      const exports = manifest.exports;
+      const exportTarget = subpath
+        ? exports && typeof exports === "object" && !Array.isArray(exports) ? (exports as Record<string, unknown>)[`./${subpath}`] : undefined
+        : exports && typeof exports === "object" && !Array.isArray(exports) && Object.hasOwn(exports, ".") ? (exports as Record<string, unknown>)["."] : exports;
+      const target = selectTarget(exportTarget) ?? (!subpath ? selectTarget(manifest.types) ?? selectTarget(manifest.main) : undefined);
+      if (!target || !target.startsWith("./")) return undefined;
+      base = posix.normalize(posix.join(packageRoot, target));
+    } catch {
+      return undefined;
+    }
+  }
   const candidates = [base, base.replace(/\.js$/, ".ts"), `${base}.ts`, `${base}/index.ts`];
   return candidates.find((candidate) => Object.hasOwn(files, candidate));
 }

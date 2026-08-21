@@ -217,7 +217,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Propagate numeric builtin identity through reassignment-free multi-hop aliases, imports, parameters, and object properties.
 - [x] Add a reason-carrying function-level `trust typed-array` escape hatch whose obligations remain `trusted`, never `verified`.
 - [x] Add narrower obligation/statement-level typed-array trust and a unified trust-policy/audit report across currently trusted verification domains.
-- [ ] Support package exports and additional non-literal generated table initializers.
+- [x] Support package exports and bounded `Array.from({ length }, (_, index) => expr)` generated table initializers.
 - [x] Benchmark project-level import/re-export resolution against the single-file baseline before optimizing it.
 
 ## P5 — Evidence and optimization

@@ -353,6 +353,30 @@ describe("bounded Uint8Array safety", () => {
     ]));
   });
 
+  it("resolves constant tables through package exports", async () => {
+    const result = await verifyTypedArraySafetyInProgram({
+      "/node_modules/@fixtures/sha/package.json": JSON.stringify({
+        name: "@fixtures/sha",
+        exports: { ".": { types: "./dist/index.ts", default: "./dist/index.js" } },
+      }),
+      "/node_modules/@fixtures/sha/dist/index.ts": `export { SHA_K } from "./tables.js"`,
+      "/node_modules/@fixtures/sha/dist/tables.ts": `export const SHA_K = u32Table([0x428a2f98, 0x71374491] as const)`,
+      "/src/round.ts": `
+        import { SHA_K } from "@fixtures/sha"
+        import type { BoundedUint32Array, Nat } from "@mizchi/uneffect"
+        /* uneffect: requires round < SHA_K.length */
+        export function round(output: BoundedUint32Array<1>, round: Nat) {
+          output[0] = SHA_K[round]!
+        }
+      `,
+    });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.files["/src/round.ts"]?.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "round", kind: "constant-table-index", result: "verified" }),
+      expect.objectContaining({ functionName: "round", kind: "u32-write", result: "verified" }),
+    ]));
+  });
+
   it("composes generated constant tables from verified spreads", async () => {
     const result = await verifyTypedArraySafety("generated-table.ts", `
       import type { Nat, U32 } from "@mizchi/uneffect"
@@ -366,6 +390,22 @@ describe("bounded Uint8Array safety", () => {
     expect(result.obligations).toEqual(expect.arrayContaining([
       expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "ROUND elements are U32", result: "verified" }),
       expect.objectContaining({ functionName: "read", kind: "constant-table-index", goal: expect.stringContaining("< 5"), result: "verified" }),
+    ]));
+  });
+
+  it("evaluates bounded Array.from constant-table generators", async () => {
+    const result = await verifyTypedArraySafety("generated-array-from.ts", `
+      import type { Nat, U32 } from "@mizchi/uneffect"
+      const ROUNDS = 4
+      const ROUND = u32Table(Array.from({ length: ROUNDS }, (_, index) => index * 0x01010101))
+      const INVALID = u8Table(Array.from({ length: 2 }, (_, index) => index * 256))
+      /* uneffect: requires index < ROUND.length */
+      function read(index: Nat): U32 { return ROUND[index]! }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "ROUND elements are U32", result: "verified" }),
+      expect.objectContaining({ functionName: "<module>", kind: "constant-table-values", goal: "INVALID elements are U8", result: "counterexample" }),
+      expect.objectContaining({ functionName: "read", kind: "constant-table-index", result: "verified" }),
     ]));
   });
 
