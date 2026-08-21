@@ -8,7 +8,8 @@ import { createModelCounterexample, type ModelCounterexample, type ModelState } 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
-    | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock" | "no-state-progress-from-init";
+    | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
+    | "no-state-progress-from-init" | "bounded-no-state-progress";
   name: string;
   message: string;
   relatedName?: string;
@@ -177,6 +178,23 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       diagnostics.push({
         code: "bounded-reachable-deadlock", name: "<deadlock>", backend: "z3", depth,
         message: `a deadlocked state is reachable in ${depth} transition steps; this is a bounded counterexample`,
+      });
+      break;
+    }
+    for (let depth = 1; depth <= maxSteps; depth++) {
+      const transitions = Array.from({ length: depth }, (_, index) => step(index));
+      const enabled = disjoin(spec.actions.map((action) => guard(action, depth)));
+      const actionCannotChange = spec.actions.map((action) => {
+        const unchanged = action.assignments.map((assignment) =>
+          `(= ${temporalToSmt(assignment.expressionAst, (name) => at(name, depth))} ${at(assignment.target, depth)})`);
+        const stutters = unchanged.length === 0 ? "true" : unchanged.length === 1 ? unchanged[0]! : `(and ${unchanged.join(" ")})`;
+        return `(or (not ${guard(action, depth)}) ${stutters})`;
+      });
+      const status = await checkSmt(declarations, [...init, ...transitions, enabled, ...actionCannotChange]);
+      if (status !== "sat") continue;
+      diagnostics.push({
+        code: "bounded-no-state-progress", name: "<progress>", backend: "z3", depth,
+        message: `a state where actions are enabled but every enabled action stutters is reachable in ${depth} transition steps`,
       });
       break;
     }

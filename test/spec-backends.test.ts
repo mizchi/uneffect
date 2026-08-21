@@ -322,6 +322,21 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("finds a reachable state where every enabled action only stutters", async () => {
+    const temporal = parseSpec("later-stutter.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = 1
+      action_when advance: phase === 0
+      action idle: phase' = phase
+      action_when idle: phase === 1
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-no-state-progress", name: "<progress>", depth: 1,
+    }));
+  });
+
   it("detects models whose enabled initial transitions cannot change state", async () => {
     const temporal = parseSpec("stuttering.ts", `/* uneffect:
       state phase: int
