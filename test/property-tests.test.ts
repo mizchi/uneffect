@@ -88,4 +88,29 @@ describe("property-test generation", () => {
     });
     expect(largest).toBe(32);
   });
+
+  it("derives executable boundary candidates from conjunctive numeric refinements", () => {
+    const result = generateUneffectPropertyTests({ files: { "range.ts": `
+      type Int = number
+      /* uneffect: requires value >= 10 && value < 20 */
+      /* uneffect: ensures result >= 10 */
+      export function clamp(value: Int): Int { return value }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[10, 11, 18, 19]]);
+    expect(result.generatedFiles["range.uneffect.test.ts"]).toContain("const refinementValues = [[10,11,18,19]]");
+  });
+
+  it("uses refinement candidates before broad scalar edges", async () => {
+    const seen: number[] = [];
+    const result = await checkUneffectProperty({
+      functionName: "range",
+      domains: ["Int"],
+      refinementValues: [[10, 11, 18, 19]],
+      cases: 4,
+      precondition: (value) => value >= 10 && value < 20,
+      property: (value) => { seen.push(value); return true; },
+    });
+    expect(result).toMatchObject({ status: "passed", tested: 4 });
+    expect(seen).toEqual([10, 11, 18, 19]);
+  });
 });

@@ -76,6 +76,11 @@ generation only. A correctness integration test separately starts Vitest and
 executes a generated typed-array/union property; process startup dominates that
 path.
 
+Deriving boundary-adjacent candidates from conjunctive numeric refinements for
+16 scalar contracts measured 0.4370 ms mean (0.72% relative margin of error),
+about 0.027 ms per contract. This includes parsing each `requires` expression
+into the shared logic IR; it does not invoke a solver.
+
 These cases remain on the purely static path and do not invoke Z3. Solver
 benchmarks must be reported separately because initialization and individual
 proof queries have a different cost profile.

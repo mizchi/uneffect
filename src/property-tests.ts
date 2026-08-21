@@ -3,6 +3,7 @@ import { dirname, extname, posix } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { parseLogicExpression } from "./invariant-ir.js";
+import type { LogicExpression } from "./invariant-ir.js";
 
 export type PropertyBoundaryKind = "Int" | "Nat" | "U8" | "U32" | "I32";
 export type PropertyLiteral = string | number | boolean;
@@ -16,6 +17,7 @@ export interface PropertyTestBoundary {
   functionName: string;
   generators: PropertyTestDomain[];
   shrinkers: PropertyTestDomain[];
+  generatorHints: PropertyLiteral[][];
   requires: string[];
   ensures: string[];
 }
@@ -57,6 +59,7 @@ export interface CheckUneffectPropertyOptions {
   shrinking?: boolean;
   counterexamplePath?: string;
   arrayLengthCap?: number;
+  refinementValues?: readonly (readonly PropertyLiteral[])[];
 }
 
 export interface CheckUneffectPropertyResult {
@@ -80,6 +83,21 @@ function arrayCap(value: number | undefined): number {
   return cap;
 }
 
+function scalarAccepts(domain: PropertyBoundaryKind, value: PropertyLiteral): boolean {
+  if (typeof value !== "number" || !Number.isSafeInteger(value)) return false;
+  if (domain === "Nat") return value >= 0;
+  if (domain === "U8") return value >= 0 && value <= 0xff;
+  if (domain === "U32") return value >= 0 && value <= 0xffff_ffff;
+  if (domain === "I32") return value >= -0x8000_0000 && value <= 0x7fff_ffff;
+  return true;
+}
+
+function domainAccepts(domain: PropertyTestDomain, value: PropertyLiteral): boolean {
+  if (typeof domain === "string") return scalarAccepts(domain, value);
+  if (domain.kind === "bounded-array") return false;
+  return domain.members.some((member) => typeof member === "string" ? scalarAccepts(member, value) : member.value === value);
+}
+
 function shrinkNumber(value: number, domain: PropertyBoundaryKind): number[] {
   const values: number[] = [];
   let current = value;
@@ -88,12 +106,13 @@ function shrinkNumber(value: number, domain: PropertyBoundaryKind): number[] {
   return [...new Set(values)].filter((candidate) => domain !== "Nat" && domain !== "U8" && domain !== "U32" || candidate >= 0);
 }
 
-function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096): PropertyValue[] {
-  if (typeof domain === "string") return [...edgeValues[domain]];
+function domainValues(domain: PropertyTestDomain, arrayLengthCap = 4_096, refinementValues: readonly PropertyLiteral[] = []): PropertyValue[] {
+  const unique = (values: PropertyValue[]): PropertyValue[] => values.filter((value, index) => values.findIndex((other) => JSON.stringify(other) === JSON.stringify(value)) === index);
+  if (typeof domain === "string") return unique([...refinementValues.filter((value) => domainAccepts(domain, value)), ...edgeValues[domain]]);
   if (domain.kind === "union") {
     const values: PropertyValue[] = [];
     for (const member of domain.members) values.push(...(typeof member === "string" ? edgeValues[member] : [member.value]));
-    return values;
+    return unique([...refinementValues.filter((value) => domainAccepts(domain, value)), ...values]);
   }
   const sampledMaximum = Math.min(domain.maximum, arrayLengthCap);
   const lengths = [...new Set([0, Math.min(1, sampledMaximum), Math.min(2, sampledMaximum), sampledMaximum])];
@@ -117,18 +136,18 @@ function materialize(value: PropertyValue, domain: PropertyTestDomain): any {
   return value;
 }
 
-function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number): PropertyValue[][] {
+function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[]): PropertyValue[][] {
   const samples: PropertyValue[][] = [];
   const visit = (index: number, values: PropertyValue[]): void => {
     if (samples.length >= cases) return;
     if (index === domains.length) { samples.push(values); return; }
-    for (const value of domainValues(domains[index]!, arrayLengthCap)) visit(index + 1, [...values, value]);
+    for (const value of domainValues(domains[index]!, arrayLengthCap, refinementValues[index])) visit(index + 1, [...values, value]);
   };
   visit(0, []);
   let state = seed >>> 0;
   const random = (): number => ((state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0) / 0x1_0000_0000);
-  while (samples.length < cases) samples.push(domains.map((domain) => {
-    const values = domainValues(domain, arrayLengthCap);
+  while (samples.length < cases) samples.push(domains.map((domain, index) => {
+    const values = domainValues(domain, arrayLengthCap, refinementValues[index]);
     return values[Math.floor(random() * values.length)]!;
   }));
   return samples;
@@ -143,7 +162,7 @@ export async function checkUneffectProperty(options: CheckUneffectPropertyOption
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
     }
   }
-  const samples = [...(replay?.functionName === options.functionName ? [replay.arguments] : []), ...makeSamples(options.domains, options.cases ?? 100, seed, arrayCap(options.arrayLengthCap))];
+  const samples = [...(replay?.functionName === options.functionName ? [replay.arguments] : []), ...makeSamples(options.domains, options.cases ?? 100, seed, arrayCap(options.arrayLengthCap), options.refinementValues ?? [])];
   let tested = 0;
   for (const sample of samples) {
     const invoke = (values: PropertyValue[]) => values.map((value, index) => materialize(value, options.domains[index]!));
@@ -206,6 +225,34 @@ function importPath(sourceName: string, generatedFile: string): string {
 
 function validateExpression(expression: string): void { parseLogicExpression(expression); }
 
+function integerValue(expression: LogicExpression): number | undefined {
+  if (expression.kind === "integer") return Number(expression.value);
+  if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -Number(expression.operand.value);
+  return undefined;
+}
+
+function refinementHints(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[]): PropertyLiteral[][] {
+  const hints = parameters.map((): PropertyLiteral[] => []);
+  const addComparison = (expression: LogicExpression): void => {
+    if (expression.kind === "binary" && expression.operator === "and") { addComparison(expression.left); addComparison(expression.right); return; }
+    if (expression.kind !== "binary" || !["gte", "gt", "lte", "lt", "eq"].includes(expression.operator)) return;
+    let name: string | undefined, value: number | undefined, operator = expression.operator;
+    if (expression.left.kind === "variable") { name = expression.left.name; value = integerValue(expression.right); }
+    else if (expression.right.kind === "variable") {
+      name = expression.right.name; value = integerValue(expression.left);
+      operator = ({ gte: "lte", gt: "lt", lte: "gte", lt: "gt", eq: "eq" } as Record<string, string>)[operator]!;
+    }
+    if (name === undefined || value === undefined) return;
+    const index = parameters.indexOf(name), domain = domains[index];
+    if (index < 0 || typeof domain !== "string") return;
+    const candidates = operator === "gte" ? [value, value + 1] : operator === "gt" ? [value + 1, value + 2]
+      : operator === "lte" ? [value - 1, value] : operator === "lt" ? [value - 2, value - 1] : [value];
+    hints[index]!.push(...candidates.filter((candidate) => scalarAccepts(domain, candidate)));
+  };
+  for (const requirement of requires) addComparison(parseLogicExpression(requirement));
+  return hints.map((values) => [...new Set(values)].sort((left, right) => Number(left) - Number(right)));
+}
+
 function emitTest(boundary: InternalBoundary, sourceName: string, outputName: string, cases: number, seed: number, shrinking: boolean, arrayLengthCap: number): string {
   const parameterNames = boundary.parameters;
   const predicates = boundary.requires.length ? boundary.requires.map((value) => `(${value})`).join(" && ") : "true";
@@ -214,14 +261,15 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `import { expect, test } from "vitest"\n` +
     `import { ${boundary.functionName} } from ${JSON.stringify(importPath(sourceName, outputName))}\n\n` +
     `const domains = ${JSON.stringify(boundary.generators)} as const\n` +
+    `const refinementValues = ${JSON.stringify(boundary.generatorHints)} as const\n` +
     `const limits: Record<string, readonly number[]> = ${JSON.stringify(edgeValues)}\n` +
     `type Domain = typeof domains[number]\n` +
-    `function values(domain: Domain): any[] { if (typeof domain === "string") return [...limits[domain]!]; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" ? limits[member]! : [member.value]); const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
+    `function values(domain: Domain, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap(member => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
     `function shrinkNumber(value: number, domain: string): number[] { const values: number[] = []; let current = value; while (Math.abs(current) > 1) { current = Math.trunc(current / 2); values.push(current) } values.push(0); return [...new Set(values)].filter(value => !["Nat", "U8", "U32"].includes(domain) || value >= 0) }\n` +
     `function shrink(value: any, domain: Domain): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
     `function materialize(value: any, domain: Domain): any { if (typeof domain === "object" && domain.kind === "bounded-array") return domain.element === "U8" ? new Uint8Array(value) : new Uint32Array(value); return value }\n` +
     `function random(seed: number) { let state = seed >>> 0; return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x100000000) }\n` +
-    `function samples() { const out: any[][] = []; const visit = (at: number, row: any[]) => { if (at === domains.length) { out.push(row); return } for (const value of values(domains[at]!)) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < ${cases}) out.push(domains.map(domain => { const candidates = values(domain); return candidates[Math.floor(next() * candidates.length)]! })); return out.slice(0, Math.max(${cases}, out.length)) }\n` +
+    `function samples() { const out: any[][] = []; const visit = (at: number, row: any[]) => { if (at === domains.length) { out.push(row); return } for (const value of values(domains[at]!, refinementValues[at])) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < ${cases}) out.push(domains.map((domain, index) => { const candidates = values(domain, refinementValues[index]); return candidates[Math.floor(next() * candidates.length)]! })); return out.slice(0, Math.max(${cases}, out.length)) }\n` +
     `const precondition = (${parameterNames.join(", ")}) => ${predicates}\n` +
     `const property = (${parameterNames.join(", ")}) => { const result = ${boundary.functionName}(${parameterNames.join(", ")}); return ${postconditions} }\n\n` +
     `test(${JSON.stringify(`uneffect property: ${boundary.functionName}`)}, () => {\n` +
@@ -256,7 +304,9 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
       try { [...requires, ...ensures].forEach(validateExpression); } catch (cause) {
         diagnostics.push({ fileName, functionName: node.name.text, message: cause instanceof Error ? cause.message : String(cause) }); continue;
       }
-      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], parameters: node.parameters.map((parameter) => (parameter.name as ts.Identifier).text), requires, ensures };
+      const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
+      const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
+      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, parameters, requires, ensures };
       boundaries.push(boundary); fileBoundaries.push(boundary);
     }
     if (fileBoundaries.length > 0) {

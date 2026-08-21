@@ -106,6 +106,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
   - [x] Generate `BoundedUint8Array<N>`, `BoundedUint32Array<N>`, scalar/literal union values, and structure-aware array shrinkers.
   - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
+    - [x] Seed valid boundary-adjacent values from conjunctive integer comparisons (`>=`, `>`, `<=`, `<`, `===`), including reversed operands.
+    - [ ] Derive generators from disjunctions, dependent/multi-parameter constraints, arithmetic expressions, and solver models.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [ ] Replay model-checker counterexamples through TypeScript refinement adapters.

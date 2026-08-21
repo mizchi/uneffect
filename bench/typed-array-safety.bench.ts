@@ -148,4 +148,13 @@ describe("typed-array static verification", () => {
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/packets.ts": `import type { BoundedUint8Array, Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
+
+  bench("derive generator hints for 16 refined scalar contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires value >= ${index * 10} && value < ${index * 10 + 10} */
+      /* uneffect: ensures result >= ${index * 10} */
+      export function range${index}(value: Int): Int { return value }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/ranges.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
 });
