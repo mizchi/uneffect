@@ -47,9 +47,14 @@ literals use `v2`. Array generation is resource-bounded to 4096 elements by
 default and can be raised with `arrayLengthCap`; therefore a larger declared
 type maximum is not silently claimed as an exercised upper edge. Generator
 narrowing recognizes conjunctive integer comparisons and seeds values at and
-next to their boundaries before broad scalar edges. Disjunctions, dependent
-dependent multi-parameter constraints, nonlinear arithmetic refinements, solver-derived values, and
-model-checker-to-TypeScript replay remain unimplemented.
+next to their boundaries before broad scalar edges. Disjunctions and
+single-variable affine comparisons are normalized syntactically. For a single
+affine equality between scalar parameters, such as `y === x + 1`, the generator
+derives correlated tuples from the source parameter's boundary hints and runs
+them before the Cartesian samples. Multiple dependent relations, nonlinear
+arithmetic refinements, and solver-derived values remain unimplemented.
+Model-checker counterexamples can be replayed through explicit TypeScript
+refinement adapters; arbitrary application bindings are not inferred.
 
 The adoption KPI is measured over a checked-in controlled corpus. Its reported
 false-positive rate is not an estimate for arbitrary external TypeScript

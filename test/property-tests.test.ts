@@ -120,6 +120,17 @@ describe("property-test generation", () => {
     expect(result.boundaries[0]?.generatorHints).toEqual([[6, 7, 17, 18]]);
   });
 
+  it("derives correlated tuples from affine parameter equalities", () => {
+    const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
+      type Int = number
+      /* uneffect: requires x >= 10 && x < 12 && y === x + 1 */
+      /* uneffect: ensures result === y */
+      export function dependent(x: Int, y: Int): Int { return y }
+    ` } });
+    expect(result.boundaries[0]?.generatorTuples).toEqual([[10, 11], [11, 12]]);
+    expect(result.generatedFiles["dependent.uneffect.test.ts"]).toContain("const refinementTuples = [[10,11],[11,12]]");
+  });
+
   it("uses refinement candidates before broad scalar edges", async () => {
     const seen: number[] = [];
     const result = await checkUneffectProperty({
@@ -132,5 +143,19 @@ describe("property-test generation", () => {
     });
     expect(result).toMatchObject({ status: "passed", tested: 4 });
     expect(seen).toEqual([10, 11, 18, 19]);
+  });
+
+  it("uses correlated refinement tuples before the Cartesian product", async () => {
+    const seen: number[][] = [];
+    const result = await checkUneffectProperty({
+      functionName: "dependent",
+      domains: ["Int", "Int"],
+      refinementTuples: [[10, 11], [11, 12]],
+      cases: 2,
+      precondition: (x, y) => y === x + 1,
+      property: (x, y) => { seen.push([x, y]); return true; },
+    });
+    expect(result).toMatchObject({ status: "passed", tested: 2 });
+    expect(seen).toEqual([[10, 11], [11, 12]]);
   });
 });

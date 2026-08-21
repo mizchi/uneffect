@@ -84,8 +84,15 @@ into the shared logic IR; it does not invoke a solver.
 After adding disjunction traversal and single-variable affine normalization, a
 16-contract fixture with two affine branches per contract measured 0.8627 ms
 mean (1.43% relative margin of error), about 0.054 ms per contract. This remains
-syntactic boundary extraction; correlated parameters and nonlinear constraints
-still require a solver-backed generator.
+syntactic boundary extraction. A single affine equality between scalar
+parameters is also handled syntactically by deriving correlated tuples;
+multiple relations and nonlinear constraints still require a more general or
+solver-backed generator.
+
+The corresponding 16-function, two-parameter affine-equality fixture measured
+0.8213 ms mean (0.36% relative margin of error), about 0.051 ms per contract.
+This includes parsing, boundary hints, tuple derivation, and generated source;
+it does not execute the generated properties.
 
 These cases remain on the purely static path and do not invoke Z3. Solver
 benchmarks must be reported separately because initialization and individual

@@ -208,6 +208,15 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/branched.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("derive correlated affine tuples for 16 two-parameter contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires x >= ${index * 10} && x < ${index * 10 + 5} && y === x + 1 */
+      /* uneffect: ensures result === y */
+      export function dependent${index}(x: Int, y: Int): Int { return y }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/dependent.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

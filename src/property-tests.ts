@@ -18,6 +18,7 @@ export interface PropertyTestBoundary {
   generators: PropertyTestDomain[];
   shrinkers: PropertyTestDomain[];
   generatorHints: PropertyLiteral[][];
+  generatorTuples: PropertyLiteral[][];
   requires: string[];
   ensures: string[];
 }
@@ -60,6 +61,7 @@ export interface CheckUneffectPropertyOptions {
   counterexamplePath?: string;
   arrayLengthCap?: number;
   refinementValues?: readonly (readonly PropertyLiteral[])[];
+  refinementTuples?: readonly (readonly PropertyLiteral[])[];
 }
 
 export interface CheckUneffectPropertyResult {
@@ -136,17 +138,18 @@ function materialize(value: PropertyValue, domain: PropertyTestDomain): any {
   return value;
 }
 
-function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[]): PropertyValue[][] {
-  const samples: PropertyValue[][] = [];
+function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[], refinementTuples: readonly (readonly PropertyLiteral[])[] = []): PropertyValue[][] {
+  const samples: PropertyValue[][] = refinementTuples.filter((tuple) => tuple.length === domains.length && tuple.every((value, index) => domainAccepts(domains[index]!, value))).map((tuple) => [...tuple]);
+  const limit = Math.max(cases, samples.length);
   const visit = (index: number, values: PropertyValue[]): void => {
-    if (samples.length >= cases) return;
-    if (index === domains.length) { samples.push(values); return; }
+    if (samples.length >= limit) return;
+    if (index === domains.length) { if (!samples.some((sample) => JSON.stringify(sample) === JSON.stringify(values))) samples.push(values); return; }
     for (const value of domainValues(domains[index]!, arrayLengthCap, refinementValues[index])) visit(index + 1, [...values, value]);
   };
   visit(0, []);
   let state = seed >>> 0;
   const random = (): number => ((state = (Math.imul(state, 1_664_525) + 1_013_904_223) >>> 0) / 0x1_0000_0000);
-  while (samples.length < cases) samples.push(domains.map((domain, index) => {
+  while (samples.length < limit) samples.push(domains.map((domain, index) => {
     const values = domainValues(domain, arrayLengthCap, refinementValues[index]);
     return values[Math.floor(random() * values.length)]!;
   }));
@@ -162,7 +165,7 @@ export async function checkUneffectProperty(options: CheckUneffectPropertyOption
       if ((cause as NodeJS.ErrnoException).code !== "ENOENT") throw cause;
     }
   }
-  const samples = [...(replay?.functionName === options.functionName ? [replay.arguments] : []), ...makeSamples(options.domains, options.cases ?? 100, seed, arrayCap(options.arrayLengthCap), options.refinementValues ?? [])];
+  const samples = [...(replay?.functionName === options.functionName ? [replay.arguments] : []), ...makeSamples(options.domains, options.cases ?? 100, seed, arrayCap(options.arrayLengthCap), options.refinementValues ?? [], options.refinementTuples ?? [])];
   let tested = 0;
   for (const sample of samples) {
     const invoke = (values: PropertyValue[]) => values.map((value, index) => materialize(value, options.domains[index]!));
@@ -264,6 +267,39 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
   return hints.map((values) => [...new Set(values)].sort((left, right) => Number(left) - Number(right)));
 }
 
+function correlatedRefinementTuples(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[], hints: readonly (readonly PropertyLiteral[])[]): PropertyLiteral[][] {
+  if (domains.some((domain) => typeof domain !== "string")) return [];
+  const relations: Array<{ target: number; source: number; offset: number }> = [];
+  const visit = (expression: LogicExpression): void => {
+    if (expression.kind === "binary" && expression.operator === "and") { visit(expression.left); visit(expression.right); return; }
+    if (expression.kind !== "binary" || expression.operator !== "eq") return;
+    let targetName: string | undefined, source: { name: string; offset: number } | undefined;
+    if (expression.left.kind === "variable") { targetName = expression.left.name; source = affineVariable(expression.right); }
+    else if (expression.right.kind === "variable") { targetName = expression.right.name; source = affineVariable(expression.left); }
+    if (!targetName || !source || targetName === source.name) return;
+    const target = parameters.indexOf(targetName), sourceIndex = parameters.indexOf(source.name);
+    if (target >= 0 && sourceIndex >= 0) relations.push({ target, source: sourceIndex, offset: source.offset });
+  };
+  requires.map(parseLogicExpression).forEach(visit);
+  const tuples: PropertyLiteral[][] = [];
+  for (const relation of relations) {
+    const sourceDomain = domains[relation.source] as PropertyBoundaryKind, targetDomain = domains[relation.target] as PropertyBoundaryKind;
+    const sourceValues = hints[relation.source]?.length ? hints[relation.source]! : edgeValues[sourceDomain];
+    for (const sourceValue of sourceValues) {
+      if (typeof sourceValue !== "number") continue;
+      const targetValue = sourceValue + relation.offset;
+      if (!scalarAccepts(targetDomain, targetValue)) continue;
+      const tuple = domains.map((domain, index): PropertyLiteral => {
+        if (index === relation.source) return sourceValue;
+        if (index === relation.target) return targetValue;
+        return hints[index]?.[0] ?? edgeValues[domain as PropertyBoundaryKind][0]!;
+      });
+      if (!tuples.some((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple))) tuples.push(tuple);
+    }
+  }
+  return tuples;
+}
+
 function emitTest(boundary: InternalBoundary, sourceName: string, outputName: string, cases: number, seed: number, shrinking: boolean, arrayLengthCap: number): string {
   const parameterNames = boundary.parameters;
   const predicates = boundary.requires.length ? boundary.requires.map((value) => `(${value})`).join(" && ") : "true";
@@ -273,6 +309,7 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `import { ${boundary.functionName} } from ${JSON.stringify(importPath(sourceName, outputName))}\n\n` +
     `const domains = ${JSON.stringify(boundary.generators)} as const\n` +
     `const refinementValues = ${JSON.stringify(boundary.generatorHints)} as const\n` +
+    `const refinementTuples = ${JSON.stringify(boundary.generatorTuples)} as const\n` +
     `const limits: Record<string, readonly number[]> = ${JSON.stringify(edgeValues)}\n` +
     `type Domain = typeof domains[number]\n` +
     `function values(domain: Domain, refined: readonly any[] = []): any[] { if (typeof domain === "string") return [...new Set([...refined, ...limits[domain]!] as any[])]; if (domain.kind === "union") return [...new Set([...refined, ...domain.members.flatMap(member => typeof member === "string" ? limits[member]! : [member.value])] as any[])]; const maximum = Math.min(domain.maximum, ${arrayLengthCap}); const lengths = [...new Set([0, Math.min(1, maximum), Math.min(2, maximum), maximum])]; return lengths.map((length, offset) => Array.from({ length }, (_, index) => limits[domain.element]![(index + offset) % limits[domain.element]!.length]!)) }\n` +
@@ -280,7 +317,7 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `function shrink(value: any, domain: Domain): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
     `function materialize(value: any, domain: Domain): any { if (typeof domain === "object" && domain.kind === "bounded-array") return domain.element === "U8" ? new Uint8Array(value) : new Uint32Array(value); return value }\n` +
     `function random(seed: number) { let state = seed >>> 0; return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x100000000) }\n` +
-    `function samples() { const out: any[][] = []; const visit = (at: number, row: any[]) => { if (at === domains.length) { out.push(row); return } for (const value of values(domains[at]!, refinementValues[at])) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < ${cases}) out.push(domains.map((domain, index) => { const candidates = values(domain, refinementValues[index]); return candidates[Math.floor(next() * candidates.length)]! })); return out.slice(0, Math.max(${cases}, out.length)) }\n` +
+    `function samples() { const out: any[][] = refinementTuples.map(row => [...row]); const limit = Math.max(${cases}, out.length); const visit = (at: number, row: any[]) => { if (out.length >= limit) return; if (at === domains.length) { if (!out.some(item => JSON.stringify(item) === JSON.stringify(row))) out.push(row); return } for (const value of values(domains[at]!, refinementValues[at])) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < limit) out.push(domains.map((domain, index) => { const candidates = values(domain, refinementValues[index]); return candidates[Math.floor(next() * candidates.length)]! })); return out }\n` +
     `const precondition = (${parameterNames.join(", ")}) => ${predicates}\n` +
     `const property = (${parameterNames.join(", ")}) => { const result = ${boundary.functionName}(${parameterNames.join(", ")}); return ${postconditions} }\n\n` +
     `test(${JSON.stringify(`uneffect property: ${boundary.functionName}`)}, () => {\n` +
@@ -317,7 +354,8 @@ export function generateUneffectPropertyTests(options: GenerateUneffectPropertyT
       }
       const parameters = node.parameters.map((parameter) => (parameter.name as ts.Identifier).text);
       const generatorHints = refinementHints(requires, parameters, domains as PropertyTestDomain[]);
-      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, parameters, requires, ensures };
+      const generatorTuples = correlatedRefinementTuples(requires, parameters, domains as PropertyTestDomain[], generatorHints);
+      const boundary: InternalBoundary = { fileName, functionName: node.name.text, generators: domains as PropertyTestDomain[], shrinkers: domains as PropertyTestDomain[], generatorHints, generatorTuples, parameters, requires, ensures };
       boundaries.push(boundary); fileBoundaries.push(boundary);
     }
     if (fileBoundaries.length > 0) {
