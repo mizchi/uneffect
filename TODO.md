@@ -195,6 +195,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.
+  - [x] Provision the Z3 CLI and Java 21, and serialize Quint evaluator warm-up before parallel Vitest workers.
 
 ## P7 — Explicit resource management
 

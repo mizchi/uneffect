@@ -28,6 +28,10 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - run: pnpm install --frozen-lockfile
+      - name: Install Z3 CLI
+        run: sudo apt-get update && sudo apt-get install --yes z3
+      - name: Warm Quint evaluator cache without worker races
+        run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just check
       - run: just build
       - run: just package-check
@@ -42,6 +46,8 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - run: pnpm install --frozen-lockfile
+      - name: Install Z3 CLI
+        run: sudo apt-get update && sudo apt-get install --yes z3
       - run: just formal-z3
 
   quint-simulation:
@@ -54,6 +60,8 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b # v3
       - run: pnpm install --frozen-lockfile
+      - name: Warm Quint evaluator cache without worker races
+        run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-quint
 
   exhaustive:
