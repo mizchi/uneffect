@@ -170,8 +170,12 @@ Monotonic clocks only tick forward. Wall clocks can tick forward or roll back by
 their declared step while remaining non-negative. A skew declaration generates
 both a named invariant and guards on generated transitions, making the skew
 bound an explicit environment assumption rather than an accidental theorem.
-Variable-rate drift, nondeterministic jump magnitudes, and host-clock
-conformance remain unimplemented. The core `clock` directive continues to mean
+Finite variable rates use `monotonic_clock mono: 1..2` or
+`wall_clock wall: 1..3`; the domain expands each permitted rate into a distinct
+transition. `wall_clock_jump wall: 1..2` independently bounds rollback
+magnitudes. Ranges contain at most 32 positive integer values, keeping the
+generated transition system reviewable. Host-clock observation adapters and
+platform conformance remain unimplemented. The core `clock` directive continues to mean
 logical model time, not elapsed host time.
 
 ## Expressible patterns

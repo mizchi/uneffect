@@ -57,14 +57,18 @@ export class TemporalDomainRegistry {
 export function createPhysicalClockDomain(): TemporalSemanticDomain {
   return {
     name: "physical-clock",
-    directives: ["monotonic_clock", "wall_clock", "clock_skew"],
+    directives: ["monotonic_clock", "wall_clock", "wall_clock_jump", "clock_skew"],
     expand(source) {
       const parseClock = (directive: string) => extractAnnotations(source, directive).map((value) => {
-        const match = /^([A-Za-z_$][\w$]*)\s*:\s*([1-9]\d*)$/.exec(value);
-        if (!match) throw new Error(`${directive} requires name: positiveInteger`);
-        return { name: match[1]!, step: Number(match[2]) };
+        const match = /^([A-Za-z_$][\w$]*)\s*:\s*([1-9]\d*)(?:\.\.([1-9]\d*))?$/.exec(value);
+        if (!match) throw new Error(`${directive} requires name: positiveInteger or name: minimum..maximum`);
+        const minimum = Number(match[2]), maximum = Number(match[3] ?? match[2]);
+        if (maximum < minimum || maximum - minimum > 31) throw new Error(`${directive} range must be ascending and contain at most 32 values`);
+        return { name: match[1]!, step: minimum, steps: Array.from({ length: maximum - minimum + 1 }, (_, index) => minimum + index) };
       });
       const monotonic = parseClock("monotonic_clock"), wall = parseClock("wall_clock");
+      const jumps = new Map(parseClock("wall_clock_jump").map((item) => [item.name, item.steps]));
+      for (const name of jumps.keys()) if (!wall.some((item) => item.name === name)) throw new Error("wall_clock_jump must reference a wall_clock declared in the same physical-clock pack");
       const skews = extractAnnotations(source, "clock_skew").map((value) => {
         const match = /^([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*:\s*(\d+)$/.exec(value);
         if (!match) throw new Error("clock_skew requires wallClock, monotonicClock: nonNegativeBound");
@@ -80,10 +84,10 @@ export function createPhysicalClockDomain(): TemporalSemanticDomain {
         return terms.length ? terms.join(" && ") : undefined;
       };
       const actions: TemporalDomainActionSource[] = [
-        ...monotonic.map((item) => ({ name: `tick_${item.name}`, assignments: [`${item.name}' = ${item.name} + ${item.step}`], guard: guardFor(item.name, `${item.name} + ${item.step}`) })),
+        ...monotonic.flatMap((item) => item.steps.map((step) => ({ name: `tick_${item.name}${item.steps.length > 1 ? `_${step}` : ""}`, assignments: [`${item.name}' = ${item.name} + ${step}`], guard: guardFor(item.name, `${item.name} + ${step}`) }))),
         ...wall.flatMap((item) => [
-          { name: `tick_${item.name}`, assignments: [`${item.name}' = ${item.name} + ${item.step}`], guard: guardFor(item.name, `${item.name} + ${item.step}`) },
-          { name: `jump_back_${item.name}`, assignments: [`${item.name}' = ${item.name} - ${item.step}`], guard: [`${item.name} >= ${item.step}`, guardFor(item.name, `${item.name} - ${item.step}`)].filter(Boolean).join(" && ") },
+          ...item.steps.map((step) => ({ name: `tick_${item.name}${item.steps.length > 1 ? `_${step}` : ""}`, assignments: [`${item.name}' = ${item.name} + ${step}`], guard: guardFor(item.name, `${item.name} + ${step}`) })),
+          ...(jumps.get(item.name) ?? item.steps).map((step) => ({ name: `jump_back_${item.name}${(jumps.get(item.name) ?? item.steps).length > 1 ? `_${step}` : ""}`, assignments: [`${item.name}' = ${item.name} - ${step}`], guard: [`${item.name} >= ${step}`, guardFor(item.name, `${item.name} - ${step}`)].filter(Boolean).join(" && ") })),
         ]),
       ];
       const clocks = [...monotonic, ...wall];

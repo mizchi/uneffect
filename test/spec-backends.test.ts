@@ -84,6 +84,21 @@ describe("spec IR and generated verifier programs", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
   });
 
+  it("expands variable clock rates and bounded wall-clock jumps", () => {
+    const registry = createDefaultTemporalDomainRegistry().register(createPhysicalClockDomain());
+    const temporal = parseSpec("variable-physical-clock.ts", `/* uneffect:
+      monotonic_clock mono: 1..2
+      wall_clock wall: 1..3
+      wall_clock_jump wall: 1..2
+      clock_skew wall, mono: 3
+    */`, { temporalDomains: registry }).temporal;
+    expect(temporal.actions.map((action) => action.name)).toEqual(expect.arrayContaining([
+      "tick_mono_1", "tick_mono_2", "tick_wall_1", "tick_wall_2", "tick_wall_3", "jump_back_wall_1", "jump_back_wall_2",
+    ]));
+    expect(temporal.actions.find((action) => action.name === "jump_back_wall_2")?.assignments[0]?.expression).toBe("wall - 2");
+    expect(temporal.actions.find((action) => action.name === "jump_back_wall_2")?.guard?.expression).toContain("wall >= 2");
+  });
+
   it("parses and verifies finite Set state without flattening node identities", async () => {
     const temporal = parseSpec("sets.ts", `/* uneffect:
       state nodes: Set<int>
