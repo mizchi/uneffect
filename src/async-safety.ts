@@ -32,6 +32,12 @@ export interface ResourceBinding {
   catchesFailure: boolean;
   initializerMayFail: true;
   disposalFailureType: string;
+  disposalProtocol?: {
+    kind: "sync" | "async";
+    fileName: string;
+    start: number;
+    end: number;
+  };
   span: { start: number; end: number };
 }
 export type ResourceExit = "normal" | "return" | "throw" | "reject";
@@ -433,7 +439,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const asynchronous = (flags & ts.NodeFlags.AwaitUsing) === ts.NodeFlags.AwaitUsing;
           const protocol = disposableProperties(checker, declaration.initializer);
           const selectedProtocol = asynchronous ? protocol.asyncSymbol ?? protocol.syncSymbol : protocol.syncSymbol;
-          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol), span: { start: declaration.getStart(source), end: declaration.getEnd() } };
+          const protocolDeclaration = selectedProtocol?.declarations?.[0];
+          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
+            disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
+            span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
           if ((!asynchronous && !protocol.sync) || (asynchronous && !protocol.async && !protocol.sync)) diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, declaration.getStart(source)), kind: "invalid-disposable", severity: "error", message: `${declaration.name.text} does not provide the ${asynchronous ? "Symbol.asyncDispose or Symbol.dispose" : "Symbol.dispose"} protocol required by ${asynchronous ? "await using" : "using"}` });
         }

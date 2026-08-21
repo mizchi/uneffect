@@ -7,7 +7,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 3 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 4 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -62,6 +62,27 @@ describe("TypeScript/Corsa neutral projection parity", () => {
       error: { kind: "error", errorType: "FirstError", source: "dispose:first" },
       suppressed: { kind: "error", errorType: "SecondError", source: "dispose:second" },
     } });
+  });
+
+  it("carries disposal protocols by symbol identity instead of escaped spelling", async () => {
+    const result = await compareUneffectFrontends({ files: { "protocol.ts": `
+      interface Resource { [Symbol.dispose](): void }
+      declare function open(): Resource
+      const disposeAlias: typeof Symbol.dispose = Symbol.dispose
+      interface Aliased { [disposeAlias](): void }
+      declare function openAliased(): Aliased
+      const FakeSymbol = { dispose: "dispose" as const }
+      interface Fake { [FakeSymbol.dispose](): void }
+      declare function openFake(): Fake
+      export function run() { using first = open(); using second = openAliased() }
+      export function invalid() { using fake = openFake() }
+    ` } });
+    expect(result.equivalent).toBe(true);
+    expect(result.typescriptIr.protocolSymbols).toHaveLength(2);
+    const run = result.typescriptIr.resourceScopes.filter((item) => item.owner === "run");
+    expect(run.map((item) => item.protocolKind)).toEqual(["sync", "sync"]);
+    expect(run.every((item) => item.protocolSymbol !== null)).toBe(true);
+    expect(result.typescriptIr.resourceScopes.find((item) => item.owner === "invalid")?.protocolSymbol).toBeNull();
   });
 
   it("compares inferred effects, call edges, and ordered call events", async () => {

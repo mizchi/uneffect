@@ -6,13 +6,14 @@ import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from 
 
 export interface CompareUneffectFrontendsOptions { files: Record<string, string>; corsaSchemaVersion?: number }
 export interface NormalizedFrontendIr {
-  schemaVersion: 2;
+  schemaVersion: 3;
   functions: Array<{ name: string; effects: string[] }>;
   calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
   orderedEvents: Array<{ kind: "call"; caller: string; callee: string; start: number; end: number }>;
   promiseObservations: Array<{ owner: string; source: string; observation: string; catchesRejection: boolean; start: number; end: number }>;
   rejectionOwnership: Array<{ owner: string; binding: string; status: string; observations: string[]; start: number; end: number }>;
-  resourceScopes: Array<{ owner: string; binding: string; ownerAsync: boolean; asynchronous: boolean; acquisitionIndex: number; scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean; disposalFailureType: string; start: number; end: number }>;
+  protocolSymbols: Array<{ id: number; kind: "sync" | "async"; fileName: string; start: number; end: number }>;
+  resourceScopes: Array<{ owner: string; binding: string; ownerAsync: boolean; asynchronous: boolean; acquisitionIndex: number; scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean; disposalFailureType: string; protocolSymbol: number | null; protocolKind: "sync" | "async" | null; start: number; end: number }>;
   disposals: Array<{ owner: string; binding: string; order: number; asynchronous: boolean; scopeId: string; scopeDepth: number; disposalPoint: number; failureKind: string; failureType: string; catchesFailure: boolean; escapingFailure: string; exits: string[] }>;
   suppressedErrors: Array<{ owner: string; payload: ResourceError }>;
 }
@@ -65,6 +66,8 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
   }
   const idsByName = new Map(symbols.map((symbol) => [symbol.name as string, symbol.id as number]));
   const promiseObservations: unknown[] = [], rejectionOwnership: unknown[] = [], resourceScopes: unknown[] = [], disposals: unknown[] = [], suppressedErrors: unknown[] = [];
+  const protocolSymbols: Array<{ id: number; kind: "sync" | "async"; fileName: string; span: { start: number; end: number } }> = [];
+  const protocolIds = new Map<string, number>();
   for (const [fileName, text] of Object.entries(files)) {
     const async = analyzeAsyncSafety(fileName, text);
     for (const item of async.promises) {
@@ -79,9 +82,19 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
     }
     for (const item of async.resources) {
       const owner = idsByName.get(item.owner); if (!owner) continue;
+      let protocolSymbol: number | null = null;
+      if (item.disposalProtocol) {
+        const protocolSource = files[item.disposalProtocol.fileName];
+        const start = protocolSource === undefined ? item.disposalProtocol.start : byteOffset(protocolSource, item.disposalProtocol.start);
+        const end = protocolSource === undefined ? item.disposalProtocol.end : byteOffset(protocolSource, item.disposalProtocol.end);
+        const key = `${item.disposalProtocol.fileName}\0${start}\0${end}\0${item.disposalProtocol.kind}`;
+        protocolSymbol = protocolIds.get(key) ?? protocolSymbols.length + 1;
+        if (!protocolIds.has(key)) { protocolIds.set(key, protocolSymbol); protocolSymbols.push({ id: protocolSymbol, kind: item.disposalProtocol.kind, fileName: item.disposalProtocol.fileName, span: { start, end } }); }
+      }
       resourceScopes.push({ owner, binding: item.binding, ownerAsync: item.ownerAsync, asynchronous: item.asynchronous,
         acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: byteOffset(text, item.scopeEnd),
-        catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType,
+        catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol,
+        protocolKind: item.disposalProtocol?.kind ?? null,
         span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
     }
     for (const item of async.disposals) {
@@ -97,7 +110,7 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       if (payload) suppressedErrors.push({ owner, payload });
     }
   }
-  return { schemaVersion, fileId: 1, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  return { schemaVersion, fileId: 1, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
 }
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
@@ -109,7 +122,8 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     functions.push({ name: node.name.text, effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 2);
+  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 3);
+  const protocolSymbols = input.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
   const names = new Map(input.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
   const calls = input.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
   let changed = true;
@@ -129,13 +143,14 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     observations: item.observations, start: item.span.start, end: item.span.end }));
   const resourceScopes = input.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
     asynchronous: item.asynchronous, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
-    catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, start: item.span.start, end: item.span.end }));
+    catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol: item.protocolSymbol,
+    protocolKind: item.protocolKind, start: item.span.start, end: item.span.end }));
   const disposals = input.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
     asynchronous: item.asynchronous, scopeId: item.scopeId, scopeDepth: item.scopeDepth, disposalPoint: item.disposalPoint,
     failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
     escapingFailure: item.escapingFailure, exits: item.exits }));
   const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
-  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 2, functions, calls, orderedEvents, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 3, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], { input: JSON.stringify(input), encoding: "utf8", timeout: 30_000 });
   if (execution.error || execution.status !== 0) return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {

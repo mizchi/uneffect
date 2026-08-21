@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 2;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,6 +13,7 @@ pub struct CorsaFrontendFile {
     pub symbols: Vec<CorsaSymbol>,
     pub calls: Vec<CorsaCall>,
     pub trivia: Vec<CorsaTrivia>,
+    pub protocol_symbols: Vec<CorsaProtocolSymbol>,
     #[serde(default)]
     pub promise_observations: Vec<CorsaPromiseObservation>,
     #[serde(default)]
@@ -76,6 +77,22 @@ pub struct CorsaTrivia {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CorsaProtocolSymbol {
+    pub id: u64,
+    pub kind: CorsaDisposalProtocolKind,
+    pub file_name: String,
+    pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CorsaDisposalProtocolKind {
+    Sync,
+    Async,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CorsaPromiseObservation {
     pub owner: u64,
     pub source: String,
@@ -107,6 +124,8 @@ pub struct CorsaResourceScope {
     pub scope_end: u32,
     pub catches_failure: bool,
     pub disposal_failure_type: String,
+    pub protocol_symbol: Option<u64>,
+    pub protocol_kind: Option<CorsaDisposalProtocolKind>,
     pub span: SourceSpanDto,
 }
 
@@ -183,6 +202,7 @@ pub struct NativeFrontendProgram {
     pub compiler_revision: String,
     pub symbols: BTreeMap<u64, NativeSymbolSummary>,
     pub calls: Vec<CorsaCall>,
+    pub protocol_symbols: BTreeMap<u64, CorsaProtocolSymbol>,
     pub promise_observations: Vec<CorsaPromiseObservation>,
     pub rejection_ownership: Vec<CorsaRejectionOwnership>,
     pub resource_scopes: Vec<CorsaResourceScope>,
@@ -197,6 +217,7 @@ pub struct NormalizedFrontendProgram {
     pub functions: Vec<NormalizedFunction>,
     pub calls: Vec<NormalizedCall>,
     pub ordered_events: Vec<NormalizedCallEvent>,
+    pub protocol_symbols: Vec<NormalizedProtocolSymbol>,
     pub promise_observations: Vec<NormalizedPromiseObservation>,
     pub rejection_ownership: Vec<NormalizedRejectionOwnership>,
     pub resource_scopes: Vec<NormalizedResourceScope>,
@@ -225,6 +246,16 @@ pub struct NormalizedCallEvent {
     pub kind: &'static str,
     pub caller: String,
     pub callee: String,
+    pub start: u32,
+    pub end: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedProtocolSymbol {
+    pub id: u64,
+    pub kind: CorsaDisposalProtocolKind,
+    pub file_name: String,
     pub start: u32,
     pub end: u32,
 }
@@ -264,6 +295,8 @@ pub struct NormalizedResourceScope {
     pub scope_end: u32,
     pub catches_failure: bool,
     pub disposal_failure_type: String,
+    pub protocol_symbol: Option<u64>,
+    pub protocol_kind: Option<CorsaDisposalProtocolKind>,
     pub start: u32,
     pub end: u32,
 }
@@ -327,6 +360,17 @@ impl NativeFrontendProgram {
                 .collect(),
             calls,
             ordered_events,
+            protocol_symbols: self
+                .protocol_symbols
+                .values()
+                .map(|item| NormalizedProtocolSymbol {
+                    id: item.id,
+                    kind: item.kind,
+                    file_name: item.file_name.clone(),
+                    start: item.span.start,
+                    end: item.span.end,
+                })
+                .collect(),
             promise_observations: self
                 .promise_observations
                 .iter()
@@ -365,6 +409,8 @@ impl NativeFrontendProgram {
                     scope_end: item.scope_end,
                     catches_failure: item.catches_failure,
                     disposal_failure_type: item.disposal_failure_type.clone(),
+                    protocol_symbol: item.protocol_symbol,
+                    protocol_kind: item.protocol_kind,
                     start: item.span.start,
                     end: item.span.end,
                 })
@@ -507,6 +553,39 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
             }
         }
     }
+    let mut protocol_symbols = BTreeMap::new();
+    for protocol in file.protocol_symbols {
+        if protocol.span.start > protocol.span.end {
+            return Err(CorsaFrontendError(format!(
+                "invalid span for disposal protocol {}",
+                protocol.id
+            )));
+        }
+        if protocol_symbols.insert(protocol.id, protocol).is_some() {
+            return Err(CorsaFrontendError(
+                "duplicate disposal protocol symbol".into(),
+            ));
+        }
+    }
+    for resource in &file.resource_scopes {
+        match (resource.protocol_symbol, resource.protocol_kind) {
+            (Some(id), Some(kind))
+                if protocol_symbols
+                    .get(&id)
+                    .is_some_and(|symbol| symbol.kind == kind) => {}
+            (None, None) => {}
+            (Some(id), _) if !protocol_symbols.contains_key(&id) => {
+                return Err(CorsaFrontendError(format!(
+                    "resource references unknown disposal protocol symbol {id}"
+                )));
+            }
+            _ => {
+                return Err(CorsaFrontendError(
+                    "resource disposal protocol kind does not match its symbol".into(),
+                ));
+            }
+        }
+    }
     for owner in file
         .promise_observations
         .iter()
@@ -539,6 +618,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
         compiler_revision: file.compiler_revision,
         symbols,
         calls: file.calls,
+        protocol_symbols,
         promise_observations: file.promise_observations,
         rejection_ownership: file.rejection_ownership,
         resource_scopes: file.resource_scopes,

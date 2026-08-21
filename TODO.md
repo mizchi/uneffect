@@ -277,7 +277,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 ## P8 — Async/resource model hardening
 
-- [ ] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (TypeChecker complete; Corsa pending.)
+- [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v3 Corsa contract validates protocol-symbol edges; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.
   - [x] Cover typed aliases, interface inheritance, intersections, and generic constraints in the TypeChecker frontend.
 - [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model.

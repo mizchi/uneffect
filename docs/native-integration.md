@@ -4,7 +4,7 @@ Uneffect's implementation layer is replaceable; its frontend and proof contracts
 
 ## Corsa interchange
 
-The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v2 consumes:
+The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v3 consumes:
 
 - stable symbol IDs and declaration kinds (`function`, `method`, `arrow`, callback, overload),
 - TypeScript type text and selected overload signatures,
@@ -14,11 +14,13 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 - Promise observations and rejection-ownership records,
 - resource scopes and reverse-order synchronous/asynchronous disposal records,
 - exact nested resource failure payloads corresponding to `SuppressedError` chains.
+- disposal protocol symbols as stable IDs with a `sync`/`async` role, and
+  resource-to-protocol edges validated for existence and matching role.
 
 Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the boundary a Corsa Context Mapper supplies; Rust does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
-reference side emits schema-v2 mapper records, the Rust
+reference side emits schema-v3 mapper records, the Rust
 `uneffect-corsa-normalize` binary consumes them, and both sides are compared as
 the same normalized functions, transitive inferred effect sets, resolved local
 call edges, source-ordered call events, Promise ownership records, resource
@@ -26,8 +28,10 @@ scopes, disposal order, and nested resource failure payloads. UTF-16 offsets
 are converted to UTF-8 byte spans before crossing the schema. Frontend-specific
 evidence provenance remains outside this semantic projection. The mapper
 records are currently produced by the TypeScript reference adapter, not by a
-linked typescript-go/Corsa build; actual Context Mapper parity and native
-disposal-protocol symbol extraction remain later slices.
+linked typescript-go/Corsa build. The reference adapter proves that aliases of
+the standard symbols resolve through TypeChecker identity while same-spelled
+user properties do not become protocols. Actual Context Mapper emission from a
+linked typescript-go/Corsa build remains a later P6 slice.
 
 ## TypeScript reference frontend
 
