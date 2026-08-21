@@ -169,8 +169,10 @@ default, reports action unreachability with that explicit bound, proves initial
 deadlock, finds the shortest later reachable deadlock within the bound, and
 finds the shortest bounded reachable state where every enabled action stutters.
 It also proves when enabled initial transitions cannot change state. Bounded
-unreachability is not an unbounded proof. Property-specific vacuity and general
-liveness/fairness failures remain open.
+unreachability is not an unbounded proof. Bounded property-specific vacuity is
+reported when the invariant holds but none of its referenced state can change
+on a reachable transition. Unbounded vacuity and general liveness/fairness
+failures remain open.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
@@ -183,7 +185,7 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Parameterized/scoped capability lattice | Implemented in both lattices with target-aware path/env and normalized URL/host domains |
 | Shared SMT-LIB/direct-Z3 invariant obligations | Implemented prototype and executed with Z3 |
 | Z3-backed temporal semantic lint | Implemented for global validity/contradiction, init consistency, globally impossible guards, and duplicate/subsumed safety properties |
-| Bounded temporal reachability lint | Implemented with depth-labelled Z3 unrolling, definitive initial deadlock, shortest bounded later-deadlock and all-enabled-actions-stutter witnesses, and initial state-progress checks; unbounded reachability remains open |
+| Bounded temporal reachability lint | Implemented with depth-labelled Z3 unrolling, definitive initial deadlock, shortest bounded later-deadlock and all-enabled-actions-stutter witnesses, frozen-state property vacuity, and initial state-progress checks; unbounded reachability remains open |
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |

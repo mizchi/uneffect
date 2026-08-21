@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "no-state-progress-from-init" | "bounded-no-state-progress";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property";
   name: string;
   message: string;
   relatedName?: string;
@@ -198,6 +198,25 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       });
       break;
     }
+  }
+  if (initStatus === "sat" && maxSteps >= 1) for (const property of spec.properties) {
+    const references = [...referencedNames(property.expressionAst)].filter((name) => spec.states.some((state) => state.name === name));
+    if (references.length === 0) continue;
+    const violations = Array.from({ length: maxSteps + 1 }, (_, depth) => {
+      const transitions = Array.from({ length: depth }, (_, index) => step(index));
+      const violation = `(not ${temporalToSmt(property.expressionAst, (name) => at(name, depth))})`;
+      return `(and ${[...transitions, violation].join(" ")})`;
+    });
+    if (await checkSmt(declarations, [...init, disjoin(violations)]) !== "unsat") continue;
+    const relevantChanges = Array.from({ length: maxSteps }, (_, depth) => {
+      const transitions = Array.from({ length: depth + 1 }, (_, index) => step(index));
+      const changes = disjoin(references.map((name) => `(not (= ${at(name, depth + 1)} ${at(name, depth)}))`));
+      return `(and ${[...transitions, changes].join(" ")})`;
+    });
+    if (await checkSmt(declarations, [...init, disjoin(relevantChanges)]) === "unsat") diagnostics.push({
+      code: "bounded-vacuous-property", name: property.name, backend: "z3", depth: maxSteps,
+      message: `${property.name} holds within ${maxSteps} steps, but none of its referenced state can change on a reachable transition within that bound`,
+    });
   }
   for (const action of spec.actions) {
     const prefixes: string[] = [];

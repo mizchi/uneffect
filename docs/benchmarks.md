@@ -149,6 +149,12 @@ number of actions, state variables, and unroll depth; the configured depth is
 therefore part of both the diagnostic and the performance contract. Solver
 context/query reuse remains an obvious optimization target.
 
+A four-step bounded-vacuity fixture with one changing counter and one frozen
+property state took 905.34 ms in a one-sample run. It performs both bounded
+safety and referenced-state-change queries in addition to reachability lint.
+The sample count is insufficient for a stable distribution and reinforces the
+need to reuse solver contexts and prefix constraints.
+
 The first cross-module validator fixture constructs a TypeScript Program for
 four virtual files and composes one sink through a barrel alias and a class
 method. It measured 135.48 ms mean over five samples (2.01% relative margin of

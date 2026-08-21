@@ -337,6 +337,23 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("reports a bounded invariant that holds only because its referenced state is frozen", async () => {
+    const temporal = parseSpec("vacuous-property.ts", `/* uneffect:
+      state phase: int
+      state counter: int
+      init phase = 0
+      init counter = 0
+      action tick: counter' = counter + 1
+      temporal phaseFixed: phase === 0
+      temporal counterNonnegative: counter >= 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-vacuous-property", name: "phaseFixed", depth: 3,
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-vacuous-property", name: "counterNonnegative" }));
+  });
+
   it("detects models whose enabled initial transitions cannot change state", async () => {
     const temporal = parseSpec("stuttering.ts", `/* uneffect:
       state phase: int

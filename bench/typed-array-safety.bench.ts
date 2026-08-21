@@ -147,6 +147,18 @@ describe("typed-array static verification", () => {
     await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
   }, { time: 500, iterations: 1 });
 
+  bench("bounded vacuity lint for one frozen-state property", async () => {
+    const temporal = parseSpec("vacuity.ts", `/* uneffect:
+      state phase: int
+      state counter: int
+      init phase = 0
+      init counter = 0
+      action tick: counter' = counter + 1
+      temporal phaseFixed: phase === 0
+    */`).temporal;
+    await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
+  }, { time: 500, iterations: 1 });
+
   bench("extract a bounded 11-step Node Lease Z3 counterexample", async () => {
     const temporal = parseSpec("lease-counterexample.ts", `/* uneffect:
       clock realNow: 1
