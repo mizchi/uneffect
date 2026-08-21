@@ -574,32 +574,66 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     return symbol?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile()))
       ? expression.name.text as IntegerCast : undefined;
   };
-  const aliases = new Map<ts.Symbol, IntegerCast>();
-  const collectAliases = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node) && node.initializer) {
-      if (ts.isIdentifier(node.name)) {
-        const method = builtinMethod(node.initializer);
-        const symbol = symbolAt(node.name);
-        if (method && symbol) aliases.set(symbol, method);
-      } else if (ts.isObjectBindingPattern(node.name) && ts.isIdentifier(node.initializer)) {
-        const root = symbolAt(node.initializer);
-        const builtinRoot = root?.declarations?.some((declaration) => program.isSourceFileDefaultLibrary(declaration.getSourceFile())) ?? false;
-        if (builtinRoot) for (const element of node.name.elements) if (ts.isIdentifier(element.name)) {
-          const methodName = (element.propertyName ?? element.name).getText(source) as IntegerCast;
-          const symbol = symbolAt(element.name);
-          if (methods.has(methodName) && symbol) aliases.set(symbol, methodName);
+  const unwrap = (expression: ts.Expression): ts.Expression => ts.isParenthesizedExpression(expression)
+    || ts.isAsExpression(expression) || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
+    ? unwrap(expression.expression) : expression;
+  const isImmutableProperty = (declaration: ts.PropertyAssignment | ts.ShorthandPropertyAssignment): boolean => {
+    const object = declaration.parent;
+    return ts.isObjectLiteralExpression(object) && ts.isAsExpression(object.parent) && object.parent.type.getText() === "const";
+  };
+  const declarationInitializer = (declaration: ts.Declaration): ts.Expression | undefined => {
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isVariableDeclarationList(declaration.parent)
+      && (declaration.parent.flags & ts.NodeFlags.Const)) return declaration.initializer;
+    if (ts.isPropertyAssignment(declaration) && isImmutableProperty(declaration)) return declaration.initializer;
+    if (ts.isShorthandPropertyAssignment(declaration) && isImmutableProperty(declaration)) return declaration.name;
+    return undefined;
+  };
+  const resolveCast = (input: ts.Expression, seen = new Set<ts.Symbol>()): IntegerCast | undefined => {
+    const expression = unwrap(input);
+    const direct = builtinMethod(expression);
+    if (direct) return direct;
+    const lookup = ts.isPropertyAccessExpression(expression) ? expression.name : ts.isIdentifier(expression) ? expression : undefined;
+    const symbol = lookup ? symbolAt(lookup) : undefined;
+    if (!symbol || seen.has(symbol)) return undefined;
+    const nextSeen = new Set(seen).add(symbol);
+    const resolved = new Set<IntegerCast>();
+    for (const declaration of symbol.declarations ?? []) {
+      const initializer = declarationInitializer(declaration);
+      if (initializer) {
+        const method = resolveCast(initializer, nextSeen);
+        if (method) resolved.add(method);
+      }
+      if (ts.isBindingElement(declaration) && ts.isObjectBindingPattern(declaration.parent)
+        && ts.isVariableDeclaration(declaration.parent.parent) && declaration.parent.parent.initializer) {
+        const root = symbolAt(declaration.parent.parent.initializer);
+        const builtinRoot = root?.declarations?.some((item) => program.isSourceFileDefaultLibrary(item.getSourceFile())) ?? false;
+        const method = (declaration.propertyName ?? declaration.name).getText() as IntegerCast;
+        if (builtinRoot && methods.has(method)) resolved.add(method);
+      }
+      if (ts.isParameter(declaration) && ts.isFunctionLike(declaration.parent)) {
+        const owner = declaration.parent;
+        const index = owner.parameters.indexOf(declaration);
+        const calls: Array<IntegerCast | undefined> = [];
+        for (const file of program.getSourceFiles()) {
+          const findCalls = (node: ts.Node): void => {
+            if (ts.isCallExpression(node) && checker.getResolvedSignature(node)?.declaration === owner) {
+              const argument = node.arguments[index];
+              const method = argument ? resolveCast(argument, nextSeen) : undefined;
+              calls.push(method);
+            }
+            ts.forEachChild(node, findCalls);
+          };
+          findCalls(file);
         }
+        if (calls[0] !== undefined && calls.every((method) => method === calls[0])) resolved.add(calls[0]);
       }
     }
-    ts.forEachChild(node, collectAliases);
+    return resolved.size === 1 ? [...resolved][0] : undefined;
   };
-  collectAliases(source);
   const integerCasts = new Map<number, IntegerCast>();
   const visit = (node: ts.Node): void => {
     if (ts.isCallExpression(node)) {
-      const direct = builtinMethod(node.expression);
-      const alias = ts.isIdentifier(node.expression) ? aliases.get(symbolAt(node.expression)!) : undefined;
-      const method = direct ?? alias;
+      const method = resolveCast(node.expression);
       if (method) integerCasts.set(node.getStart(source), method);
     }
     ts.forEachChild(node, visit);

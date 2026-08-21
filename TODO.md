@@ -214,7 +214,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Reject fractional literals for machine-integer writes instead of checking bounds alone.
 - [x] Resolve direct numeric builtins through TypeChecker/lib.d.ts symbol identity and reject structurally compatible shadowed objects.
 - [x] Propagate numeric builtin identity through direct local aliases and object-binding destructuring.
-- [ ] Propagate numeric builtin identity through reassignment-free multi-hop aliases, imports, parameters, and object properties.
+- [x] Propagate numeric builtin identity through reassignment-free multi-hop aliases, imports, parameters, and object properties.
 - [x] Add a reason-carrying function-level `trust typed-array` escape hatch whose obligations remain `trusted`, never `verified`.
 - [x] Add narrower obligation/statement-level typed-array trust and a unified trust-policy/audit report across currently trusted verification domains.
 - [ ] Support package exports and additional non-literal generated table initializers.

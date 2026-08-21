@@ -134,4 +134,41 @@ describe("TypeChecker symbol adapter", () => {
     expect(result.obligations.filter((item) => item.functionName === "aliases" && item.kind === "u8-write")).toHaveLength(2);
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "shadowed", kind: "u8-write" }));
   });
+
+  it("propagates integer cast identity through immutable aliases, properties, imports, and parameters", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-math-propagation-"));
+    const helpers = join(directory, "helpers.ts");
+    const fileName = join(directory, "input.ts");
+    writeFileSync(helpers, `
+      export const importedFloor = Math.floor
+    `);
+    writeFileSync(fileName, `
+      import { importedFloor } from "./helpers.js"
+      type U8 = number
+      type BoundedUint8Array<N extends number> = Uint8Array
+      const first = Math.floor
+      const second = first
+      const casts = { truncate: Math.trunc } as const
+      function applyCast(output: BoundedUint8Array<1>, cast: (value: number) => number, value: U8) { output[0] = cast(value) }
+      function aliases(output: BoundedUint8Array<3>, value: U8) {
+        output[0] = second(value)
+        output[1] = casts.truncate(value)
+        output[2] = importedFloor(value)
+      }
+      applyCast(new Uint8Array(1), Math.ceil, 1)
+      let mutable = Math.floor
+      mutable = (value) => value + 0.5
+      function mutableAlias(output: BoundedUint8Array<1>, value: U8) { output[0] = mutable(value) }
+      const mutableObject = { cast: Math.floor }
+      mutableObject.cast = (value) => value + 0.5
+      function mutableProperty(output: BoundedUint8Array<1>, value: U8) { output[0] = mutableObject.cast(value) }
+    `);
+    const program = ts.createProgram([fileName, helpers], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const result = await verifyTypedArraySafetyInTypeScriptProgram(program, program.getSourceFile(fileName)!);
+    expect(result.obligations.filter((item) => item.functionName === "aliases" && item.kind === "u8-write")).toHaveLength(3);
+    expect(result.obligations.filter((item) => item.functionName === "aliases" && item.kind === "u8-write").every((item) => item.result === "verified")).toBe(true);
+    expect(result.obligations).toContainEqual(expect.objectContaining({ functionName: "applyCast", kind: "u8-write", result: "verified" }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "mutableAlias", kind: "u8-write" }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "mutableProperty", kind: "u8-write" }));
+  });
 });

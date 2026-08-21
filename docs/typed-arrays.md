@@ -199,10 +199,12 @@ Build integrations that already own a `ts.Program` should call
 only when the selected method symbol is declared by TypeScript's standard
 library, so a structurally compatible local object named `Math` is not trusted.
 The source-only API remains a lower-cost adoption path with conservative name
-checks. The TypeChecker path follows direct `const floor = Math.floor` aliases
-and `const { trunc } = Math` destructuring by local symbol identity. Multi-hop
-aliases, imported aliases, parameters, and stored object properties are not yet
-propagated.
+checks. The TypeChecker path follows direct and multi-hop `const` aliases,
+imported aliases, `const { trunc } = Math` destructuring, and properties of
+`as const` objects by symbol identity. A function parameter is specialized only
+when every resolved call site supplies the same builtin operation. Mutable
+bindings, writable object properties, unresolved calls, or mixed builtin
+arguments remain unproved rather than inheriting stale integer-cast evidence.
 
 ## Explicit trust escape hatch
 
