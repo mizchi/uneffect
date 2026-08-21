@@ -126,6 +126,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Enumerate required scalar fields of closed TypeScript record literals with Z3 and shrink them field-by-field or through satisfying tuples.
       - [x] Lower bounded-array dynamic scalar indices to finite SMT selection with explicit in-bounds generation constraints.
       - [ ] Extend solver-backed generation to nested records, Maps/Sets, and optional fields.
+        - [x] Recursively generate, constrain, reconstruct, and shrink closed nested records.
+        - [ ] Generate finite Maps/Sets and optional record fields.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

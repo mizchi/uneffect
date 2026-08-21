@@ -223,6 +223,41 @@ describe("property-test generation", () => {
       && Number(pixel.red) + Number(pixel.green) === 300).toBe(true);
   });
 
+  it("derives and shrinks solver-backed nested-record inputs", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "nested-pixel.ts": `
+      type U8 = number
+      /* uneffect: requires pixel.color.red + pixel.color.green === 300 && pixel.alpha === 255 */
+      /* uneffect: ensures result === 555 */
+      export function intensity(pixel: { color: { red: U8; green: U8 }; alpha: U8 }): number {
+        return pixel.color.red + pixel.color.green + pixel.alpha
+      }
+    ` }, solverCases: 6 });
+    const [domain] = result.boundaries[0]?.generators ?? [];
+    expect(domain).toEqual({ kind: "record", fields: {
+      color: { kind: "record", fields: { red: "U8", green: "U8" } }, alpha: "U8",
+    } });
+    const tuples = result.boundaries[0]?.generatorTuples ?? [];
+    expect(tuples.length).toBeGreaterThanOrEqual(2);
+    expect(tuples.every(([pixel]) => pixel !== null && typeof pixel === "object" && !Array.isArray(pixel)
+      && pixel.color !== null && typeof pixel.color === "object" && !Array.isArray(pixel.color)
+      && Number(pixel.color.red) + Number(pixel.color.green) === 300 && pixel.alpha === 255)).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+
+    const shrunk = await checkUneffectProperty({
+      functionName: "nested-pixel-failure",
+      domains: [domain!],
+      refinementTuples: tuples,
+      precondition: (pixel: { color: { red: number; green: number }; alpha: number }) =>
+        pixel.color.red + pixel.color.green === 300 && pixel.alpha === 255,
+      property: () => false,
+    });
+    expect(shrunk.status).toBe("counterexample");
+    const pixel = shrunk.counterexample?.arguments[0];
+    expect(pixel !== null && typeof pixel === "object" && !Array.isArray(pixel)
+      && pixel.color !== null && typeof pixel.color === "object" && !Array.isArray(pixel.color)
+      && Number(pixel.color.red) + Number(pixel.color.green) === 300 && pixel.alpha === 255).toBe(true);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number

@@ -59,8 +59,9 @@ the supported fragment includes `.length`, literal-index element reads, and
 dynamic scalar indices over the finite modeled capacity. Dynamic reads lower
 to finite SMT selection and add in-bounds generation constraints; the emitted
 test still rechecks the original JavaScript precondition. All modeled lengths
-and elements receive their machine-domain bounds. Nested/optional records,
-Maps, and Sets remain unsupported. The generator injects
+and elements receive their machine-domain bounds. Closed nested records are
+flattened into solver leaves and reconstructed as ordinary objects. Optional
+fields, Maps, and Sets remain unsupported. The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the
