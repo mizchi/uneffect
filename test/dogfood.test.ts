@@ -244,7 +244,8 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ kind: "abort-timeout", delay: 5_000, handle: "timeout" }),
     ]);
     expect(model.abortCompositions).toEqual([
-      expect.objectContaining({ handle: "signal", sources: ["externalSignal", "timeout"], sourceTimers: [undefined, 0] }),
+      expect.objectContaining({ handle: "deadline", sources: ["externalSignal", "timeout"], sourceTimers: [undefined, 0] }),
+      expect.objectContaining({ handle: "signal", sources: ["deadline", "shutdownSignal"], sourceCompositions: [0, undefined] }),
     ]);
     const quint = generateAsyncPatternsQuint("fetch_timeout", model);
     expect(quint).toContain("action fire_abort_timeout_0");
@@ -252,6 +253,8 @@ describe("Uneffect dogfood", () => {
     const web = generateWebEventLoopQuint("fetch_timeout_web", model);
     expect(web).toContain("action abort_0_from_external_0");
     expect(web).toContain("action abort_0_from_timer_0");
+    expect(web).toContain("action abort_1_from_composition_0");
+    expect(web).toContain("action abort_1_from_external_1");
 
     const missingTimer = source.replace("Timer | ", "");
     expect(analyzeEffects(fileName, missingTimer)).toContainEqual(expect.objectContaining({

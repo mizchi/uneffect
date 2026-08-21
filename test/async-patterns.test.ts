@@ -320,6 +320,27 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("propagates abort from one local AbortSignal.any composition into another", () => {
+    const model = analyzeAsyncPatterns("nested-abort-any.ts", `
+      function request(controller: AbortController) {
+        const deadline = AbortSignal.any([controller.signal, AbortSignal.timeout(25)])
+        const combined = AbortSignal.any([deadline, AbortSignal.timeout(50)])
+        return combined
+      }
+    `);
+    expect(model.abortCompositions).toMatchObject([
+      { handle: "deadline", sourceCompositions: [undefined, undefined], sourceTimers: [undefined, 0] },
+      { handle: "combined", sourceCompositions: [0, undefined], sourceTimers: [undefined, 1] },
+    ]);
+    const quint = generateWebEventLoopQuint("nested_abort_any", model);
+    expect(quint).toMatch(/action abort_1_from_composition_0[\s\S]*abort_0_aborted/);
+    expect(quint).toMatch(/action abort_1_from_composition_0[\s\S]*abort_1_reason_source' = 1/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    expect(run(generateWebEventLoopQuint("nested_abort_any_broken", model, {
+      allowEarlyAbortComposition: true,
+    }), "eventLoopSafe").status).not.toBe(0);
+  }, 20_000);
+
   it("orders eligible scheduler.postTask callbacks by static priority and FIFO", () => {
     const model = analyzeAsyncPatterns("scheduler-tasks.ts", `
       function background() {}

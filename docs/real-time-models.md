@@ -56,7 +56,12 @@ source index in Quint. Named and inline static `AbortSignal.timeout(...)`
 sources link to their concrete timer tasks without duplicate extraction, while
 inline `AbortSignal.abort(reason)` sources retain array order and initialize the
 composition from the first already-aborted entry.
-Dynamic iterables, nested dynamic compositions, and interprocedural signal
+Statically resolved local `AbortSignal.any` results can feed later compositions;
+the generated transition is enabled only after the source composition aborts,
+and the outer composition still retains its own source index as the reason
+identity. A negative-control generator can admit early propagation; the
+`abort_source_broken` safety term then produces a Quint counterexample. Dynamic
+iterables, imported compositions, and interprocedural signal
 aliases remain conservative gaps.
 
 Static `scheduler.postTask` calls lower to a distinct scheduler task queue with

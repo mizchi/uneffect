@@ -287,13 +287,14 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model static `AbortSignal.any` source order, already-aborted inputs, timeout/external sources, and first-reason-wins in Web Quint.
   - [x] Link inline `AbortSignal.timeout(...)` entries in static `AbortSignal.any` arrays to their concrete timer-source tasks.
   - [x] Preserve source order and reason text for inline pre-aborted `AbortSignal.abort(...)` entries in static `AbortSignal.any` arrays.
+  - [x] Propagate first-abort state through statically resolved local `AbortSignal.any` composition chains.
   - [x] Track direct timer-handle escape through opaque arguments, property storage, and return as optional external cancellation.
   - [x] Track timer-handle escape through direct array/object aggregates and inline returned closures.
   - [x] Resolve timer-handle aggregate and inline-closure escape through immutable local bindings.
   - [x] Preserve TypeScript-visible numeric browser and object-valued Node timer handle domains in async IR.
   - [x] Model static `scheduler.postTask` priority, FIFO, minimum delay, pre-abort, and Promise-returning task boundaries.
   - [x] Model top-level `scheduler.yield` at default priority and inline `postTask` continuations with inherited static priority and parent-time enqueue.
-  - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/interprocedural abort compositions, TaskSignal reprioritization, inherited `scheduler.yield` cancellation, and dynamically resolved parent callbacks.
+  - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/imported/interprocedural abort compositions, TaskSignal reprioritization, inherited `scheduler.yield` cancellation, and dynamically resolved parent callbacks.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
