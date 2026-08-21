@@ -497,6 +497,34 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(statement);
         return reassigned;
       };
+      const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
+        if (statement.caseBlock.clauses.some(ts.isDefaultClause)) return true;
+        const type = checker.getTypeAtLocation(statement.expression);
+        if (!type.isUnion()) return false;
+        const possible = new Set(type.types.map((item) => checker.typeToString(item)));
+        const covered = new Set(statement.caseBlock.clauses.flatMap((clause) =>
+          ts.isCaseClause(clause) ? [checker.typeToString(checker.getTypeAtLocation(clause.expression))] : []));
+        return possible.size > 0 && [...possible].every((item) => covered.has(item));
+      };
+      const executeSwitchPath = (clauses: readonly ts.CaseOrDefaultClause[], start: number, state: PathState): PathState[] => {
+        type SwitchState = { state: PathState; broken: boolean };
+        let states: SwitchState[] = [{ state: { ...state }, broken: false }];
+        for (const clause of clauses.slice(start)) for (const statement of clause.statements) {
+          states = states.flatMap((current): SwitchState[] => {
+            if (current.broken || current.state.terminated) return [current];
+            if (ts.isBreakStatement(statement)) return [{ state: current.state, broken: true }];
+            return executeStatement(statement, current.state).map((next) => ({ state: next, broken: false }));
+          });
+        }
+        return states.map(({ state: next }) => next);
+      };
+      const executeFinally = (block: ts.Block, state: PathState): PathState[] => {
+        const wasTerminated = state.terminated;
+        return executeStatements(block.statements, [{ ...state, terminated: false }]).map((next) => ({
+          ...next,
+          terminated: wasTerminated || next.terminated,
+        }));
+      };
       const executeStatement = (statement: ts.Statement, state: PathState): PathState[] => {
         if (state.terminated) return [state];
         if (ts.isBlock(statement)) return executeStatements(statement.statements, [state]);
@@ -506,6 +534,24 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const thenStates = executeStatement(statement.thenStatement, { ...before });
           const elseStates = statement.elseStatement ? executeStatement(statement.elseStatement, { ...before }) : [{ ...before }];
           return [...thenStates, ...elseStates];
+        }
+        if (ts.isSwitchStatement(statement)) {
+          const before = { ...state };
+          if (consumes(statement.expression) && before.active) before.pending = false;
+          const clauses = statement.caseBlock.clauses;
+          const entries = clauses.flatMap((_, index) => executeSwitchPath(clauses, index, before));
+          if (!switchIsExhaustive(statement)) entries.push({ ...before });
+          return entries;
+        }
+        if (ts.isTryStatement(statement)) {
+          const tryStates = executeStatement(statement.tryBlock, { ...state });
+          const catchStates = statement.catchClause
+            ? executeStatement(statement.catchClause.block, { ...state })
+            : [];
+          const completions = [...tryStates, ...catchStates];
+          return statement.finallyBlock
+            ? completions.flatMap((completion) => executeFinally(statement.finallyBlock!, completion))
+            : completions;
         }
         if (ts.isWhileStatement(statement) || ts.isForStatement(statement) || ts.isForInStatement(statement) || ts.isForOfStatement(statement)) {
           const zero = { ...state };

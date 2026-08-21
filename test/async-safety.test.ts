@@ -245,6 +245,62 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("requires Promise bindings to be observed across switch entry and fallthrough paths", () => {
+    const result = analyzeAsyncSafety("switch-promises.ts", `
+      declare function task(): Promise<number>
+      async function covered(kind: "await" | "catch") {
+        const pending = task()
+        switch (kind) {
+          case "await": await pending; break
+          case "catch": pending.catch(() => 0); break
+        }
+      }
+      async function missing(kind: "await" | "skip") {
+        const pending = task()
+        switch (kind) {
+          case "await": await pending; break
+          case "skip": break
+        }
+      }
+      async function fallthrough(kind: "observe" | "shared") {
+        const pending = task()
+        switch (kind) {
+          case "observe": console.log("before")
+          case "shared": await pending; break
+        }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "covered", status: "observed" },
+      { owner: "missing", status: "floating" },
+      { owner: "fallthrough", status: "observed" },
+    ]);
+  });
+
+  it("runs finally on normal, caught, and early-return Promise ownership paths", () => {
+    const result = analyzeAsyncSafety("finally-promises.ts", `
+      declare function task(): Promise<number>
+      declare function mayThrow(): void
+      async function finallyOwns(flag: boolean) {
+        const pending = task()
+        try { if (flag) return } finally { await pending }
+      }
+      async function catchGap() {
+        const pending = task()
+        try { mayThrow(); await pending } catch { console.log("ignored") }
+      }
+      async function bothOwn() {
+        const pending = task()
+        try { mayThrow(); await pending } catch { pending.catch(() => 0) }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "finallyOwns", status: "observed" },
+      { owner: "catchGap", status: "floating" },
+      { owner: "bothOwn", status: "observed" },
+    ]);
+  });
+
   it("connects awaited rejection to the nearest catch and leaves bare Promise calls uncaught", () => {
     const result = analyzeAsyncSafety("catch.ts", `
       declare function task(): Promise<number>

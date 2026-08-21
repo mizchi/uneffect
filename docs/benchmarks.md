@@ -213,3 +213,10 @@ resolution, ownership event collection, typed-array verification, and
 cross-domain invalidation. Program construction dominates; a compiler or Corsa
 integration should supply and reuse its existing semantic context rather than
 rebuilding one per file.
+
+Promise ownership analysis of the telemetry delivery dogfood fixture measured
+133.64 ms mean over five samples (5.80% relative margin of error). The fixture
+contains exhaustive literal-union `switch` paths, fallthrough-aware ownership,
+and an early-return `try`/`finally` cleanup path. This public convenience API
+constructs a fresh TypeScript Program for every call, so the result is a cold
+standalone-check cost rather than the expected incremental compiler-plugin cost.

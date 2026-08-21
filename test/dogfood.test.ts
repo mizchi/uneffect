@@ -2,6 +2,7 @@ import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeProgramEffects } from "../src/effects.js";
+import { analyzeAsyncSafety } from "../src/async-safety.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -129,5 +130,26 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ fileName, kind: "ownership" }),
       expect.objectContaining({ fileName, kind: "dataview-backing-bounds" }),
     ]));
+  });
+
+  it("checks telemetry Promise ownership across delivery modes and shutdown cleanup", () => {
+    const fileName = "examples/dogfood/telemetry-delivery.ts";
+    const source = readFileSync(fileName, "utf8");
+    const verified = analyzeAsyncSafety(fileName, source);
+    expect(verified.diagnostics).toEqual([]);
+    expect(verified.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "deliverTelemetry", status: "observed" },
+      { owner: "flushTelemetryBeforeExit", status: "observed" },
+    ]);
+
+    const broken = analyzeAsyncSafety(fileName, source.replace(
+      "delivery.catch(() => undefined);",
+      'console.warn("telemetry dropped");',
+    ));
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverTelemetry",
+      kind: "floating-promise",
+      message: expect.stringContaining("delivery"),
+    }));
   });
 });

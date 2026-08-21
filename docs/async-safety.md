@@ -167,15 +167,21 @@ analyzeAsyncSafety(fileName, source, { allowVoid: false })
 ```
 
 The binding analysis uses a deliberately restricted path-sensitive pass. An
-observation must occur on every `if`/`else` path. `while` and `for` loops retain
-their zero-iteration path, while `do` loops execute their body at least once.
-Reassigning an unresolved Promise records the previous ownership obligation as
-lost, even when the replacement value is later awaited.
+observation must occur on every `if`/`else` path. `switch` starts from every
+reachable case, preserves fallthrough, stops at direct `break`, and recognizes
+finite literal-union exhaustiveness. `try` and `catch` are alternative paths,
+while `finally` runs for normal and abrupt completion, including early return.
+`while` and `for` loops retain their zero-iteration path, while `do` loops
+execute their body at least once. Reassigning an unresolved Promise records the
+previous ownership obligation as lost, even when the replacement value is later
+awaited.
 
-This is not yet a general TypeScript control-flow graph. `switch`, exact
-`try`/`finally` sequencing, labeled `break`/`continue`, and complex loop joins
-need a fixed-point CFG analysis. Higher-order and conditional ownership
-contracts remain future work.
+This is not yet a general TypeScript control-flow graph. Conditional or labeled
+`break`/`continue`, throws proven impossible before a catch, and complex loop
+joins still need a fixed-point CFG analysis. The telemetry delivery dogfood
+fixture exercises exhaustive delivery modes and shutdown cleanup; removing the
+best-effort rejection handler is diagnosed. Higher-order and conditional
+ownership contracts remain conservative outside the documented forms.
 
 ## Explicit resource management
 

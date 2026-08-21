@@ -255,6 +255,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
   - [x] Add restricted path-sensitive must-observe analysis for `if` branches, Promise reassignment, zero-iteration `while`/`for` paths, and at-least-once `do` loops.
+  - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
   - [ ] Replace the restricted path walker with a CFG fixed point covering `switch`, `try`/`finally`, labeled control flow, and complex loop joins.
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
