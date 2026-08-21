@@ -242,8 +242,8 @@ describe("spec IR and generated verifier programs", () => {
       state epochs: Map<int, int>
       init epoch = 1
       init epochs = Map([[1, 0]])
-      action publish: epochs' = epochs.put(2, epoch)
-      temporal empty: !epochs.keys().contains(2)
+      action publish: epochs' = epochs.put(epoch, 1)
+      temporal empty: !epochs.keys().contains(epoch)
     */`).temporal;
     await expect(findTemporalCounterexampleWithZ3(dynamic, "empty", { maxSteps: 2 })).resolves.toEqual({ status: "unknown", depth: 0 });
     await expect(lintTemporalReachabilityWithZ3(dynamic, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
@@ -307,13 +307,13 @@ describe("spec IR and generated verifier programs", () => {
       init lease = { owners: Set(1), valid: true }
       temporal valid: lease.valid
     */`).temporal;
-    await expect(lintTemporalSpecWithZ3(nested)).resolves.toContainEqual(expect.objectContaining({
-      code: "unsupported-backend-domain", backend: "z3",
+    await expect(lintTemporalSpecWithZ3(nested)).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
     }));
-    await expect(findTemporalCounterexampleWithZ3(nested, "valid", { maxSteps: 1 })).resolves.toEqual({ status: "unknown", depth: 0 });
+    await expect(findTemporalCounterexampleWithZ3(nested, "valid", { maxSteps: 1 })).resolves.toEqual({ status: "safe-within-bound", depth: 1 });
   });
 
-  it("nests record values inside finite Maps", () => {
+  it("nests record values inside finite Maps", async () => {
     const temporal = parseSpec("nested-records.ts", `/* uneffect:
       state leases: Map<int, { epoch: int, valid: bool }>
       init leases = Map([[1, { epoch: 1, valid: true }], [2, { epoch: 0, valid: false }]])
@@ -329,6 +329,62 @@ describe("spec IR and generated verifier programs", () => {
     const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=validEpochs", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
     rmSync(directory, { recursive: true, force: true });
     expect(result.status, result.stdout + result.stderr).toBe(0);
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "validEpochs", { maxSteps: 2 })).resolves.toEqual({ status: "safe-within-bound", depth: 2 });
+    const broken = parseSpec("nested-records-broken.ts", `/* uneffect:
+      state leases: Map<int, { epoch: int, valid: bool }>
+      init leases = Map([[1, { epoch: 1, valid: true }]])
+      action corrupt: leases' = leases.put(2, { epoch: -1, valid: true })
+      temporal validEpochs: leases.values().forall(lease => !lease.valid || lease.epoch > 0)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "validEpochs", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { steps: [{ action: "corrupt", after: { leases: [[1, { epoch: 1, valid: true }], [2, { epoch: -1, valid: true }]] } }] },
+    });
+  });
+
+  it("reasons about Set fields inside records without flattening them", async () => {
+    const temporal = parseSpec("record-set-z3.ts", `/* uneffect:
+      state lease: { owners: Set<int>, valid: bool }
+      init lease = { owners: Set(1), valid: true }
+      action addOwner: lease' = { ...lease, owners: lease.owners.union(Set(2)) }
+      temporal ownersPositive: lease.owners.forall(owner => owner > 0)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "ownersPositive", { maxSteps: 2 })).resolves.toEqual({ status: "safe-within-bound", depth: 2 });
+    const broken = parseSpec("record-set-z3-broken.ts", `/* uneffect:
+      state lease: { owners: Set<int>, valid: bool }
+      init lease = { owners: Set(1), valid: true }
+      action addInvalid: lease' = { ...lease, owners: lease.owners.union(Set(-1)) }
+      temporal ownersPositive: lease.owners.forall(owner => owner > 0)
+    */`).temporal;
+    await expect(findTemporalCounterexampleWithZ3(broken, "ownersPositive", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { steps: [{ action: "addInvalid", after: { lease: { owners: [-1, 1], valid: true } } }] },
+    });
+
+    const recordSet = parseSpec("record-element-set-z3.ts", `/* uneffect:
+      state leases: Set<{ owner: int, valid: bool }>
+      init leases = Set({ owner: 1, valid: true })
+      temporal validOwners: leases.forall(lease => !lease.valid || lease.owner > 0)
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(recordSet)).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(recordSet, { maxSteps: 1 })).resolves.not.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(recordSet, "validOwners", { maxSteps: 1 })).resolves.toEqual({ status: "unknown", depth: 0 });
   });
   it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
     const temporal = parseSpec("counter.ts", `/* uneffect:

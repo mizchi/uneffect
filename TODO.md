@@ -151,7 +151,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Encode scalar-element Set state as Z3 boolean arrays for semantic lint, bounded reachability, and JSON-safe shortest counterexample extraction over the literal finite universe.
   - [x] Encode scalar-key/value Map state as a Z3 domain/value datatype for semantic lint, bounded reachability, and JSON-safe shortest counterexample extraction over the literal finite universe.
   - [x] Encode closed scalar-field records as canonical Z3 datatypes with field reads, immutable spread updates, and JSON-object counterexample extraction.
-  - [ ] Add the remaining general TLA+ TLC values and Z3 representations for nested collections.
+  - [x] Recursively compose Z3 Set, Map, and record sorts for nested semantic lint and bounded reachability; recursively extract counterexamples where every Set has scalar elements and every Map key comes from the literal finite universe.
+  - [ ] Add the remaining general TLA+ TLC values and upstream machine-readable trace forms.
 - [x] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
   - [x] Route protected logical-clock state/init/actions through a public directive registry and allow independently registered domain directives.
   - [x] Add an optional physical-clock pack that distinguishes protected monotonic ticks, rollback-capable wall clocks, and explicit transition-guarded skew assumptions.
