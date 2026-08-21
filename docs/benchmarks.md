@@ -118,3 +118,8 @@ four-sample run (13.03% relative margin of error). This includes repeated
 bounded solver checks, model extraction, hashing, and normalized trace
 validation; the sample is noisy and is an observation rather than a regression
 budget.
+
+Parsing 101 scalar TLC states and recovering 100 action names against one
+neutral-IR action measured 0.1698 ms mean (0.92% relative margin of error).
+This excludes TLC execution and applies only to the documented scalar trace
+fragment; candidate matching grows with both trace length and action count.

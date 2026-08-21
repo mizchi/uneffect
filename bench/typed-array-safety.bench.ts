@@ -6,7 +6,7 @@ import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
-import { createModelCounterexample, parseQuintItfCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -231,5 +231,16 @@ describe("typed-array static verification", () => {
       vars: ["value", "ready", "mbt::actionTaken", "mbt::nondetPicks"],
       states,
     }), "counter");
+  }, { time: 500, iterations: 20 });
+
+  bench("parse and recover a 100-step scalar TLC counterexample", () => {
+    const temporal = parseSpec("tlc-counter.ts", `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+      temporal belowHundred: value < 100
+    */`).temporal;
+    const states = Array.from({ length: 101 }, (_, index) => `State ${index + 1}: <${index === 0 ? "Initial predicate" : "q_step"}>\nvalue = ${index}`).join("\n");
+    parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, temporal, "counter");
   }, { time: 500, iterations: 20 });
 });

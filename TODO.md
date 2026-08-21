@@ -118,7 +118,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Define a versioned normalized model trace and replay explicit action/observation/invariant adapters with step-local mismatch artifacts.
     - [x] Parse Quint `run --mbt --out-itf` violation traces, including safe ITF big integers, into normalized traces automatically.
     - [x] Extract shortest bounded temporal-Z3 counterexamples with explicit action selectors into normalized traces automatically.
-    - [ ] Parse standalone TLC counterexample output into normalized traces automatically.
+    - [x] Parse standalone scalar TLC counterexample output and recover unambiguous actions from the neutral temporal IR into normalized traces automatically.
+    - [ ] Support collection-valued TLC states and upstream machine-readable TLC traces when Quint exposes them.
 - [x] Merge the direct Z3 checker and SMT-LIB generator onto one invariant IR.
 - [x] Lower simple assignments and branches to SSA proof obligations.
 - [x] Lower loop initialization, preservation, and exit obligations through the shared IR.

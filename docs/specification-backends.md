@@ -84,6 +84,13 @@ shortest trace at or below the configured bound, including concrete states and
 action names suitable for TypeScript refinement replay. `safe-within-bound`
 remains a bounded result; `unknown` is never promoted to safety.
 
+Standalone TLC output is normalized for the scalar temporal fragment by
+parsing its state sequence and matching each transition against the neutral
+action guards and updates. Ambiguous or unmatched transitions are hard errors.
+This is intentionally narrower than general TLA+ value parsing; sets, maps,
+records, and sequences remain pending together with collection-valued temporal
+state.
+
 Actions may have TypeScript-like guards with
 `action_when actionName: predicate`. This is sufficient for discrete logical
 clocks, deadlines, leases, periodic/sporadic releases, throttling, watchdogs,
