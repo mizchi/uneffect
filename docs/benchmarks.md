@@ -105,9 +105,12 @@ not yet an editor latency target; context reuse and batched classification
 remain possible optimizations.
 
 A bounded-reachability fixture with three actions, one unreachable action, and
-four transition steps measured 327.73 ms mean over two samples. Runtime grows
-with the number of actions, state variables, and unroll depth; the configured
-depth is therefore part of both the diagnostic and the performance contract.
+four transition steps measured 476.39 ms mean over two samples after
+shortest-reachable-deadlock queries were added (the two-sample relative margin
+was a noisy 37.07%). Runtime grows with the number of actions, state variables,
+and unroll depth; the configured depth is therefore part of both the diagnostic
+and the performance contract. Solver context/query reuse remains an obvious
+optimization target.
 
 The first cross-module validator fixture constructs a TypeScript Program for
 four virtual files and composes one sink through a barrel alias and a class

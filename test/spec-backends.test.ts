@@ -309,6 +309,19 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "deadlocked-initial-state", name: "<init>" }));
   });
 
+  it("finds the shortest reachable deadlock within the explicit bound", async () => {
+    const temporal = parseSpec("later-deadlock.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = phase + 1
+      action_when advance: phase < 2
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-reachable-deadlock", name: "<deadlock>", depth: 2,
+    }));
+  });
+
   it("detects models whose enabled initial transitions cannot change state", async () => {
     const temporal = parseSpec("stuttering.ts", `/* uneffect:
       state phase: int

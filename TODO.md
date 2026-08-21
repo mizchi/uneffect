@@ -104,7 +104,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [ ] Prove unbounded unreachability with induction or a finite-state completeness bound.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
-    - [ ] Detect later reachable deadlocks, property-specific vacuity, and progress failures beyond init.
+    - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
+    - [ ] Detect property-specific vacuity and progress failures beyond bounded deadlock reachability.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

@@ -8,7 +8,7 @@ import { createModelCounterexample, type ModelCounterexample, type ModelState } 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
-    | "bounded-unreachable-action" | "deadlocked-initial-state" | "no-state-progress-from-init";
+    | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock" | "no-state-progress-from-init";
   name: string;
   message: string;
   relatedName?: string;
@@ -167,6 +167,19 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       code: "no-state-progress-from-init", name: "<init>", backend: "z3", depth: 1,
       message: "actions are enabled at init, but no enabled initial transition can change temporal state",
     });
+  }
+  if (initStatus === "sat" && enabledStatus !== "unsat") {
+    for (let depth = 1; depth <= maxSteps; depth++) {
+      const transitions = Array.from({ length: depth }, (_, index) => step(index));
+      const noneEnabled = `(not ${disjoin(spec.actions.map((action) => guard(action, depth)))})`;
+      const status = await checkSmt(declarations, [...init, ...transitions, noneEnabled]);
+      if (status !== "sat") continue;
+      diagnostics.push({
+        code: "bounded-reachable-deadlock", name: "<deadlock>", backend: "z3", depth,
+        message: `a deadlocked state is reachable in ${depth} transition steps; this is a bounded counterexample`,
+      });
+      break;
+    }
   }
   for (const action of spec.actions) {
     const prefixes: string[] = [];
