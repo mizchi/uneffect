@@ -50,6 +50,11 @@ the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite
 cancellation, not fully symbolically executed.
 
+Direct timer registrations also retain a `handleKind` of `number`, `object`, or
+`unknown` from the resolved TypeScript return type. This distinguishes common
+DOM and Node handle representations in neutral IR without claiming that the
+current event-loop model implements Node phases or cross-host cancellation.
+
 ## Promise combinators
 
 An array literal lowers to one nondeterministic state per input and a join

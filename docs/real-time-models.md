@@ -92,7 +92,10 @@ as proof that cancellation occurred. Direct array/object aggregates are
 traversed, including through immutable local bindings, and an inline closure
 records the local handles it captures whether returned directly or through an
 immutable local binding. Computed properties, imported closure factories, and
-environment-specific Node/browser handle identity remain unknown. Promise
+environment-specific Node/browser event-loop phases remain unknown. For direct
+timer registrations, the IR preserves whether TypeScript exposes the handle as
+a `number`, an object, or an unresolved union; this is metadata, not yet a proof
+that a clear operation is valid across host boundaries. Promise
 reactions from a synchronously and
 definitely settled local executor are placed in the same checkpoint as
 `queueMicrotask`; running one reaction queues the next link before the

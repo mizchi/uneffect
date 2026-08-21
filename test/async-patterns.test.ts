@@ -182,6 +182,20 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("retains the TypeScript-visible Node and browser timer handle domains", () => {
+    const model = analyzeAsyncPatterns("timer-handle-domains.ts", `
+      function schedule() {
+        const timeout = setTimeout(() => {}, 10)
+        const frame = requestAnimationFrame(() => {})
+        return { timeout, frame }
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "timeout", handleKind: "object" },
+      { handle: "frame", handleKind: "number" },
+    ]);
+  });
+
   it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
     const model = analyzeAsyncPatterns("web-loop.ts", `
       function job() {}

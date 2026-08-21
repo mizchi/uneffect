@@ -12,6 +12,7 @@ export interface TimerPattern {
   queue: "timer" | "microtask" | "animation-frame" | "scheduler-task";
   enqueuedBy?: number;
   handle?: string;
+  handleKind?: "number" | "object" | "unknown";
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
@@ -164,6 +165,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const assignedBinding = (call: ts.CallExpression): string | undefined => ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name) ? call.parent.name.text
       : ts.isBinaryExpression(call.parent) && call.parent.right === call && call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(call.parent.left) ? call.parent.left.text
         : undefined;
+    const timerHandleKind = (call: ts.CallExpression): TimerPattern["handleKind"] => {
+      const type = checker.getTypeAtLocation(call);
+      const members = type.isUnion() ? type.types : [type];
+      if (members.every((member) => Boolean(member.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)))) return "number";
+      if (members.every((member) => Boolean(member.flags & ts.TypeFlags.Object))) return "object";
+      return "unknown";
+    };
     const resolveHandle = (name: string): string => {
       const seen = new Set<string>();
       let current = name;
@@ -284,6 +292,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             repeats: operation.repeats,
             queue: operation.queue,
             handle: declaration,
+            handleKind: timerHandleKind(node),
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           if (declaration) handleTargets.set(declaration, timerIndex);

@@ -288,9 +288,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Track direct timer-handle escape through opaque arguments, property storage, and return as optional external cancellation.
   - [x] Track timer-handle escape through direct array/object aggregates and inline returned closures.
   - [x] Resolve timer-handle aggregate and inline-closure escape through immutable local bindings.
+  - [x] Preserve TypeScript-visible numeric browser and object-valued Node timer handle domains in async IR.
   - [x] Model static `scheduler.postTask` priority, FIFO, minimum delay, pre-abort, and Promise-returning task boundaries.
   - [x] Model top-level `scheduler.yield` at default priority and inline `postTask` continuations with inherited static priority and parent-time enqueue.
-  - [ ] Track computed properties and imported closure factories, Node/browser handle differences, dynamic/interprocedural abort compositions, TaskSignal reprioritization, inherited `scheduler.yield` cancellation, and dynamically resolved parent callbacks.
+  - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/interprocedural abort compositions, TaskSignal reprioritization, inherited `scheduler.yield` cancellation, and dynamically resolved parent callbacks.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
