@@ -282,18 +282,40 @@ function correlatedRefinementTuples(requires: readonly string[], parameters: rea
   };
   requires.map(parseLogicExpression).forEach(visit);
   const tuples: PropertyLiteral[][] = [];
-  for (const relation of relations) {
-    const sourceDomain = domains[relation.source] as PropertyBoundaryKind, targetDomain = domains[relation.target] as PropertyBoundaryKind;
-    const sourceValues = hints[relation.source]?.length ? hints[relation.source]! : edgeValues[sourceDomain];
-    for (const sourceValue of sourceValues) {
-      if (typeof sourceValue !== "number") continue;
-      const targetValue = sourceValue + relation.offset;
-      if (!scalarAccepts(targetDomain, targetValue)) continue;
-      const tuple = domains.map((domain, index): PropertyLiteral => {
-        if (index === relation.source) return sourceValue;
-        if (index === relation.target) return targetValue;
-        return hints[index]?.[0] ?? edgeValues[domain as PropertyBoundaryKind][0]!;
-      });
+  const related = new Set(relations.flatMap((relation) => [relation.source, relation.target]));
+  const hintedSeeds = [...related].filter((index) => hints[index]?.length);
+  const seedIndices = hintedSeeds.length ? hintedSeeds : [...new Set(relations.map((relation) => relation.source))];
+  for (const seedIndex of seedIndices) {
+    const seedDomain = domains[seedIndex] as PropertyBoundaryKind;
+    const seedValues = hints[seedIndex]?.length ? hints[seedIndex]! : edgeValues[seedDomain];
+    for (const seedValue of seedValues) {
+      if (typeof seedValue !== "number") continue;
+      const assigned = new Map<number, number>([[seedIndex, seedValue]]);
+      let valid = true, changed = true;
+      while (changed && valid) {
+        changed = false;
+        for (const relation of relations) {
+          const source = assigned.get(relation.source), target = assigned.get(relation.target);
+          if (source !== undefined) {
+            const expected = source + relation.offset;
+            if (target !== undefined && target !== expected) { valid = false; break; }
+            if (target === undefined) { assigned.set(relation.target, expected); changed = true; }
+          } else if (target !== undefined) {
+            assigned.set(relation.source, target - relation.offset); changed = true;
+          }
+        }
+        if (!changed) {
+          const unresolved = relations.find((relation) => !assigned.has(relation.source) && !assigned.has(relation.target));
+          if (unresolved) {
+            const domain = domains[unresolved.source] as PropertyBoundaryKind;
+            assigned.set(unresolved.source, Number(hints[unresolved.source]?.[0] ?? edgeValues[domain][0]!));
+            changed = true;
+          }
+        }
+      }
+      const tuple = domains.map((domain, index): PropertyLiteral => assigned.get(index) ?? hints[index]?.[0] ?? edgeValues[domain as PropertyBoundaryKind][0]!);
+      if (!valid || !tuple.every((value, index) => domainAccepts(domains[index]!, value))) continue;
+      if (!relations.every((relation) => Number(tuple[relation.target]) === Number(tuple[relation.source]) + relation.offset)) continue;
       if (!tuples.some((candidate) => JSON.stringify(candidate) === JSON.stringify(tuple))) tuples.push(tuple);
     }
   }

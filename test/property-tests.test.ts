@@ -131,6 +131,16 @@ describe("property-test generation", () => {
     expect(result.generatedFiles["dependent.uneffect.test.ts"]).toContain("const refinementTuples = [[10,11],[11,12]]");
   });
 
+  it("composes a chain of affine parameter equalities", () => {
+    const result = generateUneffectPropertyTests({ files: { "chain.ts": `
+      type Int = number
+      /* uneffect: requires x >= 10 && x < 12 && y === x + 1 && z === y + 2 */
+      /* uneffect: ensures result === z */
+      export function chain(x: Int, y: Int, z: Int): Int { return z }
+    ` } });
+    expect(result.boundaries[0]?.generatorTuples).toEqual([[10, 11, 13], [11, 12, 14]]);
+  });
+
   it("uses refinement candidates before broad scalar edges", async () => {
     const seen: number[] = [];
     const result = await checkUneffectProperty({

@@ -84,15 +84,14 @@ into the shared logic IR; it does not invoke a solver.
 After adding disjunction traversal and single-variable affine normalization, a
 16-contract fixture with two affine branches per contract measured 0.8627 ms
 mean (1.43% relative margin of error), about 0.054 ms per contract. This remains
-syntactic boundary extraction. A single affine equality between scalar
-parameters is also handled syntactically by deriving correlated tuples;
-multiple relations and nonlinear constraints still require a more general or
-solver-backed generator.
+syntactic boundary extraction. Affine equality graphs between scalar parameters
+are also handled syntactically by propagating correlated tuples; nonlinear
+constraints still require a more general or solver-backed generator.
 
-The corresponding 16-function, two-parameter affine-equality fixture measured
-0.8213 ms mean (0.36% relative margin of error), about 0.051 ms per contract.
-This includes parsing, boundary hints, tuple derivation, and generated source;
-it does not execute the generated properties.
+The corresponding 16-function, three-parameter fixture with two chained affine
+equalities measured 1.2181 ms mean (0.35% relative margin of error), about
+0.076 ms per contract. This includes parsing, boundary hints, relation-graph
+propagation, and generated source; it does not execute the generated properties.
 
 An application adapter importing `pipe` from the pinned external Effect
 package and proving one affine `requires`/`ensures` contract with Z3 measured

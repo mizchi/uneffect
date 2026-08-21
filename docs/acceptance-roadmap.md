@@ -48,11 +48,12 @@ default and can be raised with `arrayLengthCap`; therefore a larger declared
 type maximum is not silently claimed as an exercised upper edge. Generator
 narrowing recognizes conjunctive integer comparisons and seeds values at and
 next to their boundaries before broad scalar edges. Disjunctions and
-single-variable affine comparisons are normalized syntactically. For a single
-affine equality between scalar parameters, such as `y === x + 1`, the generator
-derives correlated tuples from the source parameter's boundary hints and runs
-them before the Cartesian samples. Multiple dependent relations, nonlinear
-arithmetic refinements, and solver-derived values remain unimplemented.
+single-variable affine comparisons are normalized syntactically. For affine
+equalities between scalar parameters, such as
+`y === x + 1 && z === y + 2`, the generator propagates boundary hints through
+the relation graph and runs valid correlated tuples before Cartesian samples.
+Nonlinear arithmetic refinements and solver-derived values remain
+unimplemented.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 

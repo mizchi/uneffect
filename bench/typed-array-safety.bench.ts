@@ -209,11 +209,11 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/branched.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
-  bench("derive correlated affine tuples for 16 two-parameter contracts", () => {
+  bench("derive correlated affine tuples for 16 three-parameter contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
-      /* uneffect: requires x >= ${index * 10} && x < ${index * 10 + 5} && y === x + 1 */
-      /* uneffect: ensures result === y */
-      export function dependent${index}(x: Int, y: Int): Int { return y }
+      /* uneffect: requires x >= ${index * 10} && x < ${index * 10 + 5} && y === x + 1 && z === y + 2 */
+      /* uneffect: ensures result === z */
+      export function dependent${index}(x: Int, y: Int, z: Int): Int { return z }
     `).join("\n");
     generateUneffectPropertyTests({ files: { "src/dependent.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
