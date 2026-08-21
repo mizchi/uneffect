@@ -96,6 +96,12 @@ fall outside the literal observation universe. Sets of non-scalar elements use
 the full Z3 semantics for lint and reachability, but their counterexample
 enumeration remains explicit `unknown`.
 
+`Set.size()` remains available to Quint and runtime assertions, but is not
+silently approximated by the Z3 array encoding: an integer-indexed Boolean
+array can denote an infinite Set, so cardinality needs a separate finite-domain
+contract. Z3 semantic lint and reachability return an explicit unsupported
+diagnostic for such a model, and counterexample extraction returns `unknown`.
+
 Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
 TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
 `keys()`/`values()` views. Quint has no direct `values` builtin, so lowering uses

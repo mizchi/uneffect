@@ -259,6 +259,29 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
   return { int: [...integers].sort((a, b) => a - b), bool: [...booleans].sort((a, b) => Number(a) - Number(b)), complete };
 }
 
+function supportsZ3Expression(expression: TemporalExpression): boolean {
+  if (expression.kind === "method" && expression.name === "size") return false;
+  if (expression.kind === "unary") return supportsZ3Expression(expression.operand);
+  if (expression.kind === "binary") return supportsZ3Expression(expression.left) && supportsZ3Expression(expression.right);
+  if (expression.kind === "array") return expression.elements.every(supportsZ3Expression);
+  if (expression.kind === "record") {
+    if (expression.base && !supportsZ3Expression(expression.base)) return false;
+    return Object.values(expression.fields).every(supportsZ3Expression);
+  }
+  if (expression.kind === "field") return supportsZ3Expression(expression.receiver);
+  if (expression.kind === "lambda") return supportsZ3Expression(expression.body);
+  if (expression.kind === "call") return expression.arguments.every(supportsZ3Expression);
+  if (expression.kind === "method") return supportsZ3Expression(expression.receiver) && expression.arguments.every(supportsZ3Expression);
+  return true;
+}
+
+function supportsZ3SpecExpressions(spec: TemporalSpec): boolean {
+  for (const assignment of [...spec.init, ...spec.actions.flatMap((action) => action.assignments)]) if (!supportsZ3Expression(assignment.expressionAst)) return false;
+  for (const action of spec.actions) if (action.guard && !supportsZ3Expression(action.guard.expressionAst)) return false;
+  for (const property of spec.properties) if (!supportsZ3Expression(property.expressionAst)) return false;
+  return true;
+}
+
 function temporalToSmt(
   expression: TemporalExpression,
   resolveName: (name: string) => string = (name) => name,
@@ -460,6 +483,7 @@ export async function findTemporalCounterexampleWithZ3(
   if (!property) throw new Error(`unknown temporal property: ${propertyName}`);
   const maxSteps = options.maxSteps ?? 8;
   if (!Number.isSafeInteger(maxSteps) || maxSteps < 0) throw new Error(`maxSteps must be a non-negative safe integer, got ${maxSteps}`);
+  if (!supportsZ3SpecExpressions(spec)) return { status: "unknown", depth: 0 };
   if (spec.states.some((state) => !supportsZ3FiniteCollectionState(state.type))) return { status: "unknown", depth: 0 };
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
   const universe = finiteCollectionUniverse(spec);
@@ -521,7 +545,7 @@ export async function findTemporalCounterexampleWithZ3(
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
 export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
-  if (spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
+  if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
     message: "bounded Z3 reachability does not support this temporal domain; use Quint or a supported scalar/collection shape",
   }];
@@ -625,7 +649,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
 
 /** Semantic lint over all typed states. It does not claim reachable-state or progress analysis. */
 export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLintDiagnostic[]> {
-  if (spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
+  if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
     message: "Z3 semantic lint does not support this temporal domain; use Quint or a supported scalar/collection shape",
   }];

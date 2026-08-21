@@ -176,6 +176,22 @@ describe("spec IR and generated verifier programs", () => {
     });
   });
 
+  it("reports Set cardinality as an explicit Z3 non-proof instead of throwing", async () => {
+    const temporal = parseSpec("set-size-z3.ts", `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      action add: owners' = owners.union(Set(2))
+      temporal singleOwner: owners.size() <= 1
+    */`).temporal;
+    await expect(lintTemporalSpecWithZ3(temporal)).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain", backend: "z3",
+    }));
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 })).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-backend-domain", backend: "z3",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(temporal, "singleOwner", { maxSteps: 2 })).resolves.toEqual({ status: "unknown", depth: 0 });
+  });
+
   it("parses and verifies finite Map state with immutable updates", () => {
     const temporal = parseSpec("maps.ts", `/* uneffect:
       state epochs: Map<int, int>
