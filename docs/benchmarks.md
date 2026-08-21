@@ -123,3 +123,8 @@ Parsing 101 scalar TLC states and recovering 100 action names against one
 neutral-IR action measured 0.1698 ms mean (0.92% relative margin of error).
 This excludes TLC execution and applies only to the documented scalar trace
 fragment; candidate matching grows with both trace length and action count.
+
+Extracting annotations and generating a direct-reference adapter module with
+64 action bindings measured 0.1675 ms mean (1.15% relative margin of error).
+This includes TypeScript parsing and manifest validation, but excludes normal
+TypeScript checking of the generated module and implementation exports.

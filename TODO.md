@@ -114,7 +114,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [ ] Derive generators from disjunctions, dependent/multi-parameter constraints, arithmetic expressions, and solver models.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
-  - [ ] Replay model-checker counterexamples through TypeScript refinement adapters.
+  - [x] Replay model-checker counterexamples through TypeScript refinement adapters.
     - [x] Define a versioned normalized model trace and replay explicit action/observation/invariant adapters with step-local mismatch artifacts.
     - [x] Parse Quint `run --mbt --out-itf` violation traces, including safe ITF big integers, into normalized traces automatically.
     - [x] Extract shortest bounded temporal-Z3 counterexamples with explicit action selectors into normalized traces automatically.
@@ -134,9 +134,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Encode a bounded two-node Node Lease clock-skew model and lock both the vulnerable counterexample and skew-grace candidate with Quint tests.
 - [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening.
 - [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
-- [ ] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
+- [x] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
   - [x] Replay a Quint-produced Node Lease trace through a typed runtime adapter and reproduce `singleWriter` at the same step.
-  - [ ] Generate bindings from source annotations and connect them directly to backend-produced counterexamples.
+  - [x] Generate bindings from source annotations and connect them directly to backend-produced counterexamples.
 - [ ] Model delayed renewal completion, self-fencing, GC, CAS failure, crashes, and in-flight fenced writes in the Node Lease acceptance model.
 - [ ] Build the product model between callback temporal summaries and Web event-loop queue transitions; project verification currently checks the generated Web queue model independently.
 - [x] Define the initial restricted TypeScript-style temporal expression grammar independently of Quint syntax.

@@ -86,3 +86,18 @@ also produces a step-local mismatch. The same fixture now exercises the direct
 bounded-Z3 trace path. Scalar standalone TLC output is covered as well, but
 collection-valued TLC states are not. Uneffect does not yet generate adapters
 from source annotations.
+
+## Annotated implementation bindings
+
+The `refinement` directive attaches model roles to existing exported functions.
+`createAnnotatedRefinementAdapter` resolves the checked manifest against loaded
+module exports for test tooling, and `generateRefinementAdapterModule` emits a
+reviewable direct-reference module for build integration. The acceptance test
+parses one annotated source into temporal IR, asks Z3 for its shortest
+counterexample, builds the adapter from the same source annotations, and
+replays the violation through the implementation functions.
+
+These bindings are structural refinement plumbing, not a proof that the
+implementation refines the model. A successful replay confirms the selected
+counterexample only. Function bodies, source hashes, and generated module type
+checking must still participate in any proof-grade evidence policy.

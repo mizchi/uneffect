@@ -36,7 +36,8 @@ directive = effect_decl
           | ensures_decl
           | invariant_decl
           | returns_decl
-          | assert_decl ;
+          | assert_decl
+          | refinement_decl ;
 
 Function-summary temporal contracts add `temporal_requires`, `temporal_ensures`, `temporal_modifies`, `temporal_throws`, `temporal_rejects`, `temporal_suspends true`, and `temporal_cancellable true`. Once suspension introduced a concrete progress question, the grammar also gained `temporal_eventually name: predicate` and per-summary `temporal_fair weak|strong`. These lower to Quint `eventually` and weak/strong action fairness; they are still TypeScript-style source expressions rather than embedded Quint.
 
@@ -53,6 +54,10 @@ ensures_decl   = "ensures", expression ;
 invariant_decl = "invariant", expression ;
 returns_decl   = "returns", refinement_type ;
 assert_decl    = "assert", identifier, ":", schema ;
+refinement_decl = "refinement", identifier, "@", version,
+                  ( "create" | "observe"
+                  | "action", identifier
+                  | "invariant", identifier ) ;
 
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name
@@ -69,6 +74,33 @@ declare function tmpdir(): string
 ```
 
 Platform builtins carry equivalent refinements in the builtin semantic overlay rather than by editing their upstream declaration files.
+
+## Model refinement bindings
+
+Exported implementation functions can be bound to an abstract temporal model
+without wrapping their runtime calls:
+
+```ts
+/* uneffect: refinement lease@1 create */
+export function createLease(initial: LeaseState): LeaseRuntime { /* ... */ }
+
+/* uneffect: refinement lease@1 observe */
+export function observeLease(runtime: LeaseRuntime): LeaseState { /* ... */ }
+
+/* uneffect: refinement lease@1 action takeoverB */
+export function takeover(runtime: LeaseRuntime): void { /* ... */ }
+
+/* uneffect: refinement lease@1 invariant singleWriter */
+export function singleWriter(runtime: LeaseRuntime): boolean { /* ... */ }
+```
+
+`create` and `observe` are required exactly once. Action and invariant names
+must be unique. Targets must be exported function declarations; create,
+observe, and invariant functions take one argument, while actions may also take
+the normalized trace step. The extractor never evaluates annotation text.
+Build tooling can either resolve the manifest against already-loaded exports or
+emit a reviewable module containing direct namespace references. Normal
+TypeScript checking remains responsible for the concrete state/runtime types.
 
 `|` is the only union separator. Commas separate parameters inside a parameterized effect and are never accepted as top-level effect unions.
 

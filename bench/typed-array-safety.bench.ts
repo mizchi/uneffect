@@ -7,6 +7,7 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -242,5 +243,15 @@ describe("typed-array static verification", () => {
     */`).temporal;
     const states = Array.from({ length: 101 }, (_, index) => `State ${index + 1}: <${index === 0 ? "Initial predicate" : "q_step"}>\nvalue = ${index}`).join("\n");
     parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, temporal, "counter");
+  }, { time: 500, iterations: 20 });
+
+  bench("extract and generate a 64-action refinement adapter", () => {
+    const actions = Array.from({ length: 64 }, (_, index) => `/* uneffect: refinement machine@1 action action${index} */ export function action${index}(runtime: unknown) {}`).join("\n");
+    const source = `
+      /* uneffect: refinement machine@1 create */ export function create(initial: unknown) { return initial }
+      /* uneffect: refinement machine@1 observe */ export function observe(runtime: unknown) { return runtime }
+      ${actions}
+    `;
+    generateRefinementAdapterModule("machine.ts", source, "./machine.js", "machine");
   }, { time: 500, iterations: 20 });
 });

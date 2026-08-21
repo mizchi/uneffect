@@ -87,6 +87,8 @@ export { checkUneffectProperty, generateUneffectPropertyTests } from "./property
 export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
 export { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "./model-replay.js";
 export type { ModelCounterexample, ModelCounterexampleStep, ModelRefinementAdapter, ModelReplayResult, ModelScalar, ModelState, ModelValue, ReplayMismatch, ReplayViolation } from "./model-replay.js";
+export { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule } from "./refinement-bindings.js";
+export type { RefinementBinding, RefinementBindingManifest, RefinementBindingRole } from "./refinement-bindings.js";
 export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
 export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
