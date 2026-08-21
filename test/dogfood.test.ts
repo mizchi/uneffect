@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -241,11 +241,17 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source)).toEqual([]);
     const model = analyzeAsyncPatterns(fileName, source);
     expect(model.timers).toEqual([
-      expect.objectContaining({ kind: "abort-timeout", delay: 5_000, handle: "signal" }),
+      expect.objectContaining({ kind: "abort-timeout", delay: 5_000, handle: "timeout" }),
+    ]);
+    expect(model.abortCompositions).toEqual([
+      expect.objectContaining({ handle: "signal", sources: ["externalSignal", "timeout"], sourceTimers: [undefined, 0] }),
     ]);
     const quint = generateAsyncPatternsQuint("fetch_timeout", model);
     expect(quint).toContain("action fire_abort_timeout_0");
     expect(quint).toContain("timer_0_fires <= 1");
+    const web = generateWebEventLoopQuint("fetch_timeout_web", model);
+    expect(web).toContain("action abort_0_from_external_0");
+    expect(web).toContain("action abort_0_from_timer_0");
 
     const missingTimer = source.replace("Timer | ", "");
     expect(analyzeEffects(fileName, missingTimer)).toContainEqual(expect.objectContaining({

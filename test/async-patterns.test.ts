@@ -33,7 +33,7 @@ describe("builtin async temporal patterns", () => {
       function setTimeout() {}
       const Promise = { all() {} }
       function f() { setTimeout(f, 1); Promise.all([f()]) }
-    `)).toEqual({ timers: [], combinators: [], cancellations: [] });
+    `)).toEqual({ timers: [], combinators: [], cancellations: [], abortCompositions: [] });
     expect(() => generateAsyncPatternsQuint("dynamic", analyzeAsyncPatterns("dynamic.ts", `
       function schedule(delay: number) { setTimeout(() => {}, delay) }
     `))).toThrow(/static non-negative delay/);
@@ -169,6 +169,34 @@ describe("builtin async temporal patterns", () => {
     `))).toThrow(/exceeds Number\.MAX_SAFE_INTEGER/);
   }, 20_000);
 
+  it("composes AbortSignal.any with first-abort reason semantics", () => {
+    const model = analyzeAsyncPatterns("abort-any.ts", `
+      function request(controller: AbortController) {
+        const already = AbortSignal.abort(new Error("pre-aborted"))
+        const early = AbortSignal.any([already, AbortSignal.timeout(100)])
+        const timeout = AbortSignal.timeout(50)
+        const combined = AbortSignal.any([controller.signal, timeout])
+        return { early, combined }
+      }
+    `);
+    expect(model.abortCompositions).toEqual([
+      expect.objectContaining({ handle: "early", sources: ["already", "AbortSignal.timeout(100)"], initiallyAbortedSource: 0 }),
+      expect.objectContaining({ handle: "combined", sources: ["controller.signal", "timeout"], sourceTimers: [undefined, 1] }),
+    ]);
+    const quint = generateWebEventLoopQuint("abort_any", model);
+    expect(quint).toContain("abort_0_aborted' = true");
+    expect(quint).toContain("abort_0_reason_source' = 1");
+    expect(quint).toContain("action abort_1_from_timer_1");
+    expect(quint).toContain("action abort_1_from_external_0");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    expect(run(generateWebEventLoopQuint("abort_any_broken", model, { allowAbortReasonOverwrite: true }), "eventLoopSafe").status).not.toBe(0);
+
+    expect(analyzeAsyncPatterns("shadow-abort-any.ts", `
+      class AbortSignal { static any(_signals: unknown[]) { return {} } }
+      function request() { return AbortSignal.any([]) }
+    `).abortCompositions).toEqual([]);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}
@@ -258,9 +286,9 @@ describe("builtin async temporal patterns", () => {
       { owner: "load", combinator: "all", branches: ["a()", "b()"], staticIterable: true, awaited: true, catchesRejection: true },
       { owner: "empty", combinator: "all", branches: [], staticIterable: true, awaited: true, catchesRejection: false },
     ]);
-    expect(generateAsyncPatternsQuint("empty", { timers: [], cancellations: [], combinators: [model.combinators[1]!] }))
+    expect(generateAsyncPatternsQuint("empty", { timers: [], cancellations: [], abortCompositions: [], combinators: [model.combinators[1]!] }))
       .toContain("action fulfill_join_0");
-    expect(generateAsyncPatternsQuint("caught", { timers: [], cancellations: [], combinators: [model.combinators[0]!] }))
+    expect(generateAsyncPatternsQuint("caught", { timers: [], cancellations: [], abortCompositions: [], combinators: [model.combinators[0]!] }))
       .toContain("join_0_rejection_escapes' = false");
     expect(() => generateAsyncPatternsQuint("dynamic", analyzeAsyncPatterns("dynamic-all.ts", `
       async function load(items: Promise<number>[]) { return Promise.all(items) }
@@ -327,7 +355,7 @@ describe("builtin async temporal patterns", () => {
       { staticIterable: false },
     ]);
     const quint = generateAsyncPatternsQuint("iterable_elements", {
-      timers: [], cancellations: [], combinators: [model.combinators[0]!],
+      timers: [], cancellations: [], abortCompositions: [], combinators: [model.combinators[0]!],
     });
     expect(quint).toContain("action fulfill_0_0");
     expect(quint).not.toContain("action reject_0_0");
@@ -339,11 +367,11 @@ describe("builtin async temporal patterns", () => {
     const positive = run(quint, "asyncSafe");
     expect(positive.status, positive.stdout + positive.stderr).toBe(0);
     const spread = generateAsyncPatternsQuint("spread", {
-      timers: [], cancellations: [], combinators: [model.combinators[1]!],
+      timers: [], cancellations: [], abortCompositions: [], combinators: [model.combinators[1]!],
     });
     expect(spread).toContain("action assimilate_0_0");
     expect(() => generateAsyncPatternsQuint("dynamic_spread", {
-      timers: [], cancellations: [], combinators: [model.combinators[2]!],
+      timers: [], cancellations: [], abortCompositions: [], combinators: [model.combinators[2]!],
     })).toThrow(/requires a statically bounded iterable/);
   }, 20_000);
 

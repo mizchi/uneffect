@@ -238,11 +238,12 @@ one immediate cached value, one sparse `undefined` slot, and one thenable that
 must pass through assimilation. The high variance and fresh TypeScript Program
 construction make this a baseline observation, not an editor-latency budget.
 
-Analyzing the `AbortSignal.timeout` fetch dogfood fixture measured 154.15 ms
-mean over five cold samples (14.17% relative margin of error). The pass resolves
-the DOM builtin by declaration identity and extracts its active-time deadline;
-the benchmark excludes Quint execution and the high variance precludes using it
-as a regression threshold.
+Analyzing the fetch dogfood fixture with `AbortSignal.timeout` composed through
+`AbortSignal.any` measured 342.54 ms mean over five cold samples (5.66% relative
+margin of error). The pass resolves both DOM builtins by declaration identity,
+extracts the active-time deadline, and links the named timeout source into the
+first-abort composition. The benchmark excludes Quint execution and remains a
+cold TypeScript Program observation, not an editor-latency regression threshold.
 
 Auditing the telemetry packet fixture across its statement-scoped typed-array
 escape hatch, Console builtin, temporal summary, and owner/expiration policy

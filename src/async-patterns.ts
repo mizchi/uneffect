@@ -38,10 +38,21 @@ export interface TimerCancellation {
   span: { start: number; end: number };
 }
 
+export interface AbortCompositionPattern {
+  owner: string;
+  handle?: string;
+  sources: string[];
+  sourceTimers: (number | undefined)[];
+  sourceReasons: (string | undefined)[];
+  initiallyAbortedSource?: number;
+  span: { start: number; end: number };
+}
+
 export interface AsyncPatternModel {
   timers: TimerPattern[];
   combinators: PromiseCombinatorPattern[];
   cancellations: TimerCancellation[];
+  abortCompositions: AbortCompositionPattern[];
 }
 
 function functionName(node: ts.FunctionLikeDeclaration): string {
@@ -53,7 +64,7 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
 export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile): AsyncPatternModel {
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
-  const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [];
+  const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [];
   const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
     if (ts.isOmittedExpression(element)) return "value";
     const type = checker.getTypeAtLocation(element);
@@ -138,6 +149,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const ownerName = functionName(owner);
     const handleAliases = new Map<string, string>();
     const handleTargets = new Map<string, number>();
+    const abortSignalTargets = new Map<string, { timer?: number; alreadyAborted?: boolean; reason?: string }>();
+    const assignedBinding = (call: ts.CallExpression): string | undefined => ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name) ? call.parent.name.text
+      : ts.isBinaryExpression(call.parent) && call.parent.right === call && call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(call.parent.left) ? call.parent.left.text
+        : undefined;
     const resolveHandle = (name: string): string => {
       const seen = new Set<string>();
       let current = name;
@@ -172,6 +187,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         handleAliases.set(node.name.text, resolveHandle(node.initializer.text));
         const target = handleTargets.get(node.initializer.text);
         if (target !== undefined) handleTargets.set(node.name.text, target);
+        const signal = abortSignalTargets.get(node.initializer.text);
+        if (signal) abortSignalTargets.set(node.name.text, signal);
       } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
         handleAliases.delete(node.left.text);
         handleTargets.delete(node.left.text);
@@ -182,9 +199,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const callbackNode = node.arguments[operation.callbackArgument];
           const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
           const callback = callbackNode?.getText(source) ?? "<unknown>";
-          const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text
-            : ts.isBinaryExpression(node.parent) && node.parent.right === node && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.parent.left) ? node.parent.left.text
-              : undefined;
+          const declaration = assignedBinding(node);
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
@@ -213,6 +228,26 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             abortReason: "TimeoutError",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (declaration) abortSignalTargets.set(declaration, { timer: timers.length - 1, reason: "TimeoutError" });
+        } else if (operation?.kind === "abort-static") {
+          const declaration = assignedBinding(node);
+          if (declaration) abortSignalTargets.set(declaration, { alreadyAborted: true, reason: node.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError" });
+        } else if (operation?.kind === "abort-any") {
+          const declaration = assignedBinding(node);
+          const argument = node.arguments[operation.signalsArgument];
+          const elements = argument ? expandStaticArray(argument) : undefined;
+          if (elements && elements.every((element): element is ts.Expression => !ts.isOmittedExpression(element))) {
+            const targets = elements.map((element) => ts.isIdentifier(element) ? abortSignalTargets.get(element.text) : undefined);
+            abortCompositions.push({
+              owner: ownerName,
+              handle: declaration,
+              sources: elements.map((element) => element.getText(source)),
+              sourceTimers: targets.map((target) => target?.timer),
+              sourceReasons: targets.map((target) => target?.reason),
+              initiallyAbortedSource: targets.findIndex((target) => target?.alreadyAborted) < 0 ? undefined : targets.findIndex((target) => target?.alreadyAborted),
+              span: { start: node.getStart(source), end: node.getEnd() },
+            });
+          }
         } else if (operation?.kind === "timer-clear") {
           const handleNode = node.arguments[operation.handleArgument];
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
@@ -263,7 +298,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle);
     if (timer >= 0) cancellation.timer = timer;
   }
-  return { timers, combinators, cancellations };
+  return { timers, combinators, cancellations, abortCompositions };
 }
 
 export function analyzeAsyncPatterns(fileName: string, text: string): AsyncPatternModel {
@@ -385,7 +420,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 }
 
 /** Browser event-loop profile: one task, a draining microtask checkpoint, then an optional rendering opportunity. */
-export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean } = {}, promiseModel?: PromiseChainModel): string {
+export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean; allowAbortReasonOverwrite?: boolean } = {}, promiseModel?: PromiseChainModel): string {
   for (const timer of model.timers) {
     if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
@@ -393,6 +428,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const microtasks = model.timers.flatMap((timer, index) => timer.queue === "microtask" ? [index] : []);
   const frames = model.timers.flatMap((timer, index) => timer.queue === "animation-frame" ? [index] : []);
   const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
+  const abortCompositions = model.abortCompositions ?? [];
   const initiallyQueuedReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
@@ -405,6 +441,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var phase: int", "  var wrong_phase: bool", "  var fifo_broken: bool", "  var next_microtask_ticket: int"];
   model.timers.forEach((_, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
+  abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
   lines.push("", "  action init = all {", "    clock' = 0,", "    phase' = 1,", "    wrong_phase' = false,", "    fifo_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
@@ -412,6 +449,10 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
     lines.push(`    callback_${index}_pending' = ${!definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
     if (timer.queue === "microtask") lines.push(`    callback_${index}_ticket' = ${initialTicket.get(`callback:${index}`) ?? -1},`);
+  });
+  abortCompositions.forEach((composition, index) => {
+    const source = composition.initiallyAbortedSource;
+    lines.push(`    abort_${index}_aborted' = ${source !== undefined},`, `    abort_${index}_reason_source' = ${source === undefined ? 0 : source + 1},`, `    abort_${index}_reason_overwritten' = false,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => {
     chain.links.forEach((_, stage) => {
@@ -421,7 +462,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...promiseVariables];
+  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
@@ -479,7 +520,21 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     enqueueChildren(index, updates);
     action(timerAction("run", timer, index), [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...earlierDue], updates);
   });
+  abortCompositions.forEach((composition, compositionIndex) => {
+    composition.sources.forEach((_, sourceIndex) => {
+      const timer = composition.sourceTimers[sourceIndex];
+      const source = sourceIndex + 1;
+      const firstAbortGuard = options.allowAbortReasonOverwrite ? [] : [`not(abort_${compositionIndex}_aborted)`];
+      if (timer === undefined) action(`abort_${compositionIndex}_from_external_${sourceIndex}`, firstAbortGuard, new Map([
+        [`abort_${compositionIndex}_aborted`, "true"], [`abort_${compositionIndex}_reason_source`, String(source)], [`abort_${compositionIndex}_reason_overwritten`, `abort_${compositionIndex}_aborted`],
+      ]));
+      else action(`abort_${compositionIndex}_from_timer_${timer}`, [...firstAbortGuard, `callback_${timer}_fires > 0`], new Map([
+        [`abort_${compositionIndex}_aborted`, "true"], [`abort_${compositionIndex}_reason_source`, String(source)], [`abort_${compositionIndex}_reason_overwritten`, `abort_${compositionIndex}_aborted`],
+      ]));
+    });
+  });
   const oneShotSignals = model.timers.flatMap((timer, index) => timer.kind === "abort-timeout" ? [`callback_${index}_fires <= 1`] : []);
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)${oneShotSignals.map((term) => ` and ${term}`).join("")}`, "}", "");
+  const abortReasons = abortCompositions.map((composition, index) => `(not(abort_${index}_reason_overwritten) and ((not(abort_${index}_aborted) and abort_${index}_reason_source == 0) or (abort_${index}_aborted and abort_${index}_reason_source >= 1 and abort_${index}_reason_source <= ${composition.sources.length})))`);
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)${[...oneShotSignals, ...abortReasons].map((term) => ` and ${term}`).join("")}`, "}", "");
   return lines.join("\n");
 }

@@ -42,6 +42,19 @@ and contributes the `Timer` capability. Static delays outside
 [DOM timeout algorithm](https://dom.spec.whatwg.org/#dom-abortsignal-timeout)
 and [MDN active-time description](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/timeout_static).
 
+`AbortSignal.any([...])` is also resolved by declaration identity for a static
+array (including statically flattened array-literal spreads). The neutral IR
+retains source order, links named `AbortSignal.timeout` bindings to their timer
+tasks, and marks the first already-aborted `AbortSignal.abort` source. The Web
+model permits unknown controller sources to abort nondeterministically and
+known timeout sources only after their timer fires. Once aborted, the reason
+source cannot be overwritten; a deliberately broken lowering produces a Quint
+counterexample. This follows the [DOM dependent-signal algorithm](https://dom.spec.whatwg.org/#dom-abortsignal-any)
+and [MDN's first-abort behavior](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static).
+Reason values are retained as source text in IR but abstracted to a one-based
+source index in Quint. Dynamic iterables, inline timeout-to-composition linking,
+and interprocedural signal aliases remain conservative gaps.
+
 ```sh
 just spec-web-event-loop examples/async-patterns.ts
 ```
