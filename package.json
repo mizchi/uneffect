@@ -8,13 +8,19 @@
       "import": "./dist/src/index.js"
     }
   },
-  "files": ["dist/src", "README.md", "docs"],
-  "publishConfig": { "access": "public" },
+  "files": [
+    "dist/src",
+    "README.md",
+    "docs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
-    "uneffect": "./dist/src/cli.js",
-    "uneffect-instrument": "./dist/src/instrument-cli.js",
-    "uneffect-spec": "./dist/src/spec-cli.js",
-    "uneffect-evidence": "./dist/src/evidence-cli.js"
+    "uneffect": "dist/src/cli.js",
+    "uneffect-instrument": "dist/src/instrument-cli.js",
+    "uneffect-spec": "dist/src/spec-cli.js",
+    "uneffect-evidence": "dist/src/evidence-cli.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
