@@ -245,6 +245,35 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("propagates break and continue through loop fixed points", () => {
+    const result = analyzeAsyncSafety("loop-control-promises.ts", `
+      declare const flag: boolean
+      declare function task(): Promise<number>
+      async function broken() {
+        const pending = task()
+        do { if (flag) break; await pending } while (flag)
+      }
+      async function continued() {
+        const pending = task()
+        do { if (flag) continue; await pending } while (false)
+      }
+      async function labeled() {
+        const pending = task()
+        outer: do { do { break outer } while (flag); await pending } while (flag)
+      }
+      async function labeledThroughSwitch() {
+        const pending = task()
+        outer: do { switch (1) { case 1: break outer }; await pending } while (flag)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "broken", status: "floating" },
+      { owner: "continued", status: "floating" },
+      { owner: "labeled", status: "floating" },
+      { owner: "labeledThroughSwitch", status: "floating" },
+    ]);
+  });
+
   it("tracks rejection ownership from deferred Promise assignments and aliases", () => {
     const result = analyzeAsyncSafety("deferred-promises.ts", `
       declare const enabled: boolean

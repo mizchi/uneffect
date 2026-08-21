@@ -476,7 +476,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const uniqueGroups = [...new Set(bindingGroups.values())];
     for (const group of uniqueGroups) {
       const symbols = new Set([...bindingGroups].filter(([, value]) => value === group).map(([symbol]) => symbol));
-      type PathState = { active: boolean; pending: boolean; lost: boolean; terminated: boolean };
+      type PathState = { active: boolean; pending: boolean; lost: boolean; terminated: boolean; abrupt?: "break" | "continue"; label?: string };
       const referencesGroup = (expression: ts.Expression): boolean => ts.isIdentifier(expression) && symbols.has(checker.getSymbolAtLocation(expression)!);
       const consumes = (node: ts.Node): boolean => {
         let consumed = false;
@@ -540,7 +540,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         for (const clause of clauses.slice(start)) for (const statement of clause.statements) {
           states = states.flatMap((current): SwitchState[] => {
             if (current.broken || current.state.terminated) return [current];
-            if (ts.isBreakStatement(statement)) return [{ state: current.state, broken: true }];
+            if (ts.isBreakStatement(statement) && !statement.label) return [{ state: current.state, broken: true }];
             return executeStatement(statement, current.state).map((next) => ({ state: next, broken: false }));
           });
         }
@@ -548,13 +548,42 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const executeFinally = (block: ts.Block, state: PathState): PathState[] => {
         const wasTerminated = state.terminated;
-        return executeStatements(block.statements, [{ ...state, terminated: false }]).map((next) => ({
-          ...next,
-          terminated: wasTerminated || next.terminated,
+        const previousAbrupt = state.abrupt, previousLabel = state.label;
+        return executeStatements(block.statements, [{ ...state, terminated: false, abrupt: undefined, label: undefined }]).map((next) => next.terminated || next.abrupt ? next : ({
+          ...next, terminated: wasTerminated, abrupt: previousAbrupt, label: previousLabel,
         }));
       };
-      const executeStatement = (statement: ts.Statement, state: PathState): PathState[] => {
-        if (state.terminated) return [state];
+      const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.abrupt ?? ""}:${state.label ?? ""}`;
+      const uniqueStates = (states: PathState[]): PathState[] => [...new Map(states.map((state) => [stateKey(state), state])).values()];
+      const executeLoop = (statement: ts.IterationStatement, state: PathState, atLeastOnce: boolean, loopLabel?: string): PathState[] => {
+        const exits: PathState[] = atLeastOnce ? [] : [{ ...state }];
+        let frontier: PathState[] = [{ ...state }], visited = new Set<string>();
+        while (frontier.length) {
+          const nextFrontier: PathState[] = [];
+          for (const entry of frontier) {
+            const key = stateKey(entry); if (visited.has(key)) continue; visited.add(key);
+            for (const next of executeStatement(statement.statement, entry)) {
+              const matching = next.label === undefined || next.label === loopLabel;
+              if (next.abrupt === "break" && matching) { exits.push({ ...next, abrupt: undefined, label: undefined }); continue; }
+              if (next.abrupt === "continue" && matching) {
+                const continued = { ...next, abrupt: undefined, label: undefined };
+                exits.push(continued); nextFrontier.push(continued); continue;
+              }
+              if (next.abrupt || next.terminated) { exits.push(next); continue; }
+              exits.push(next); nextFrontier.push(next);
+            }
+          }
+          frontier = uniqueStates(nextFrontier);
+        }
+        return uniqueStates(exits);
+      };
+      const executeStatement = (statement: ts.Statement, state: PathState, loopLabel?: string): PathState[] => {
+        if (state.terminated || state.abrupt) return [state];
+        if (ts.isLabeledStatement(statement)) {
+          const label = statement.label.text;
+          const results = executeStatement(statement.statement, state, ts.isIterationStatement(statement.statement, false) ? label : undefined);
+          return results.map((next) => next.abrupt === "break" && next.label === label ? ({ ...next, abrupt: undefined, label: undefined }) : next);
+        }
         if (ts.isBlock(statement)) return executeStatements(statement.statements, [state]);
         if (ts.isIfStatement(statement)) {
           const before = { ...state };
@@ -581,12 +610,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             ? completions.flatMap((completion) => executeFinally(statement.finallyBlock!, completion))
             : completions;
         }
-        if (ts.isWhileStatement(statement) || ts.isForStatement(statement) || ts.isForInStatement(statement) || ts.isForOfStatement(statement)) {
-          const zero = { ...state };
-          const body = executeStatement(statement.statement, { ...state });
-          return [zero, ...body];
-        }
-        if (ts.isDoStatement(statement)) return executeStatement(statement.statement, { ...state });
+        if (ts.isWhileStatement(statement) || ts.isForStatement(statement) || ts.isForInStatement(statement) || ts.isForOfStatement(statement)) return executeLoop(statement, state, false, loopLabel);
+        if (ts.isDoStatement(statement)) return executeLoop(statement, state, true, loopLabel);
+        if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) return [{ ...state, abrupt: ts.isBreakStatement(statement) ? "break" : "continue", label: statement.label?.text }];
         const next = { ...state };
         const wasActive = next.active;
         if (activates(statement) && !next.active) { next.active = true; next.pending = true; }

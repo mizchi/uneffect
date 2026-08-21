@@ -188,15 +188,19 @@ reachable case, preserves fallthrough, stops at direct `break`, and recognizes
 finite literal-union exhaustiveness. `try` and `catch` are alternative paths,
 while `finally` runs for normal and abrupt completion, including early return.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
-execute their body at least once. Reassigning an unresolved Promise records the
+execute their body at least once. Loop bodies are iterated to a finite abstract
+state closure. Unlabeled and labeled `break`/`continue` propagate through nested
+blocks and loops, so statements skipped by an abrupt edge cannot falsely count
+as Promise observations. Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
 awaited. Initial assignment to an uninitialized `let` is activation rather than
 reassignment; assigning the same Promise to another local creates an alias and
 does not lose ownership.
 
-This is not yet a general TypeScript control-flow graph. Conditional or labeled
-`break`/`continue`, throws proven impossible before a catch, and complex loop
-joins still need a fixed-point CFG analysis. The telemetry delivery dogfood
+This is not yet a general TypeScript control-flow graph. Value-sensitive loop
+feasibility, throws proven impossible before a catch, and arbitrary graph joins
+outside the structured abstract interpreter still need a node-level CFG
+analysis. The telemetry delivery dogfood
 fixture exercises exhaustive delivery modes and shutdown cleanup; removing the
 best-effort rejection handler is diagnosed. Higher-order and conditional
 ownership contracts remain conservative outside the documented forms.
