@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import { parseBoundedUint32Array, parseBoundedUint8Array, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram } from "../src/index.js";
-import type { BoundedUint32Array, BoundedUint8Array, U32, U8 } from "../src/index.js";
+import { parseBoundedDataView, parseBoundedUint32Array, parseBoundedUint8Array, parseU32, parseU8, toU32, u32Table, u8Table, verifyTypedArraySafety, verifyTypedArraySafetyInProgram } from "../src/index.js";
+import type { BoundedDataView, BoundedUint32Array, BoundedUint8Array, U32, U8 } from "../src/index.js";
 
 describe("bounded Uint8Array safety", () => {
   it("provides optional runtime refinements", () => {
@@ -18,6 +18,9 @@ describe("bounded Uint8Array safety", () => {
     const words = parseBoundedUint32Array(new Uint32Array(64), 64);
     expectTypeOf(words).toEqualTypeOf<BoundedUint32Array<64>>();
     expect(() => parseBoundedUint32Array(new Uint32Array(65), 64)).toThrow();
+    const view = parseBoundedDataView(new DataView(new ArrayBuffer(4)), 4);
+    expectTypeOf(view).toEqualTypeOf<BoundedDataView<4>>();
+    expect(() => parseBoundedDataView(new DataView(new ArrayBuffer(5)), 4)).toThrow();
     expect(u8Table([0, 255] as const)).toEqual([0, 255]);
     expect(u32Table([0, 0xffff_ffff] as const)).toEqual([0, 0xffff_ffff]);
     expect(() => u8Table([256])).toThrow();
@@ -35,6 +38,32 @@ describe("bounded Uint8Array safety", () => {
       expect.objectContaining({ functionName: "compound", kind: "u8-write" }),
     ]));
     expect(result.obligations.filter((item) => item.functionName === "compound")).toHaveLength(2);
+  });
+
+  it("checks DataView byte offsets and rejects implicit value coercion", async () => {
+    const result = await verifyTypedArraySafety("data-view.ts", `
+      import type { BoundedDataView, Nat, U8, U32 } from "@mizchi/uneffect"
+      /* uneffect: requires offset <= 60 */
+      function safe(view: BoundedDataView<64>, offset: Nat, byte: U8, word: U32) {
+        view.setUint8(offset, byte)
+        view.setUint32(offset, word)
+      }
+      function unsafe(view: BoundedDataView<4>, offset: number) {
+        view.setUint8(offset, 256)
+        view.setUint32(1, -1)
+      }
+    `);
+    expect(result.obligations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "safe", kind: "dataview-bounds", result: "verified", goal: expect.stringContaining("+ 4 <= 64") }),
+      expect.objectContaining({ functionName: "safe", kind: "u8-write", result: "verified" }),
+      expect.objectContaining({ functionName: "safe", kind: "u32-write", result: "verified" }),
+    ]));
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "unsafe", kind: "dataview-bounds" }),
+      expect.objectContaining({ functionName: "unsafe", kind: "u8-write" }),
+      expect.objectContaining({ functionName: "unsafe", kind: "u32-write" }),
+    ]));
+    expectTypeOf<BoundedDataView<64>>().toMatchTypeOf<DataView>();
   });
 
   it("checks SHA-256 style shifts, masks, rotations, and u32 normalization", async () => {

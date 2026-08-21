@@ -187,3 +187,8 @@ Extracting annotations and generating a direct-reference adapter module with
 64 action bindings measured 0.1675 ms mean (1.15% relative margin of error).
 This includes TypeScript parsing and manifest validation, but excludes normal
 TypeScript checking of the generated module and implementation exports.
+
+Checking 64 direct `BoundedDataView<256>.setUint32` writes measured 0.4533 ms
+mean over 1,104 samples (0.23% relative margin of error). This exercises the
+source-level range checker and proof-obligation construction; it does not
+construct a TypeChecker Program or model backing-buffer aliasing.

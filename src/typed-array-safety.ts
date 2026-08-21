@@ -6,7 +6,7 @@ import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
 
 export interface TypedArrayObligation {
   functionName: string;
-  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
+  kind: "max-length" | "u8-write" | "u32-write" | "index-bounds" | "dataview-bounds" | "shift-count" | "bulk-copy-bounds" | "bulk-copy-values" | "constant-table-values" | "constant-table-index";
   result: "verified" | "trusted" | "counterexample" | "unknown";
   goal: string;
   trustReason?: string;
@@ -64,6 +64,12 @@ function boundedTypeMaximum(type: string, constants: ReadonlyMap<string, number>
   const match = /^BoundedUint(?:8|32)Array<\s*(\d+)\s*>$/.exec(type);
   if (match) return Number(match[1]);
   const query = /^BoundedUint(?:8|32)Array<\s*typeof\s+([A-Za-z_$][\w$]*)\s*>$/.exec(type);
+  return query ? constants.get(query[1]!) : undefined;
+}
+function boundedDataViewMaximum(type: string, constants: ReadonlyMap<string, number>): number | undefined {
+  const literal = /^BoundedDataView<\s*(\d+)\s*>$/.exec(type);
+  if (literal) return Number(literal[1]);
+  const query = /^BoundedDataView<\s*typeof\s+([A-Za-z_$][\w$]*)\s*>$/.exec(type);
   return query ? constants.get(query[1]!) : undefined;
 }
 function typedArrayElement(type: string): "u8" | "u32" | undefined {
@@ -332,6 +338,24 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       }
       if (ts.isBinaryExpression(current) && [ts.SyntaxKind.LessThanLessThanToken, ts.SyntaxKind.GreaterThanGreaterThanToken, ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken].includes(current.operatorToken.kind)) {
         candidates.push({ kind: "shift-count", goal: `${current.right.getText(source)} >= 0 && ${current.right.getText(source)} <= 31`, node: current.right, value: current.right, upper: 31 });
+      }
+      if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression)
+        && ts.isIdentifier(current.expression.expression) && ["setUint8", "setUint32"].includes(current.expression.name.text)
+        && current.arguments[0] && current.arguments[1]) {
+        const maximum = boundedDataViewMaximum(parameterTypes.get(current.expression.expression.text) ?? "", constants);
+        if (maximum !== undefined) {
+          const width = current.expression.name.text === "setUint8" ? 1 : 4;
+          const offset = current.arguments[0]!, value = current.arguments[1]!;
+          candidates.push({
+            kind: "dataview-bounds", goal: `${offset.getText(source)} >= 0 && ${offset.getText(source)} + ${width} <= ${maximum}`,
+            node: offset, value: offset, upper: maximum - width, requiresInteger: true,
+          });
+          const kind = current.expression.name.text === "setUint8" ? "u8-write" : "u32-write";
+          candidates.push({
+            kind, goal: `${value.getText(source)} >= 0 && ${value.getText(source)} <= ${kind === "u8-write" ? 255 : 0xffff_ffff}`,
+            node: value, value, upper: kind === "u8-write" ? 255 : 0xffff_ffff, requiresInteger: true,
+          });
+        }
       }
       if (ts.isCallExpression(current) && ts.isPropertyAccessExpression(current.expression) && current.expression.name.text === "set"
         && ts.isIdentifier(current.expression.expression) && current.arguments[0]) {

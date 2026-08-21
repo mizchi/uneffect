@@ -1,7 +1,7 @@
 # Typed array bounds
 
-Uneffect exposes `U8`, `U32`, `BoundedUint8Array<MaxLength>`, and
-`BoundedUint32Array<MaxLength>` as gradual TypeScript
+Uneffect exposes `U8`, `U32`, `BoundedUint8Array<MaxLength>`,
+`BoundedUint32Array<MaxLength>`, and `BoundedDataView<MaxBytes>` as gradual TypeScript
 refinements. `verifyTypedArraySafety` checks implementation sites rather than
 trusting JavaScript's coercion semantics:
 
@@ -23,11 +23,21 @@ Allocation produces `0 <= size <= MaxLength`; element assignment produces
 an unrestricted `number` does not. This intentionally rejects reliance on
 Uint8Array's modulo/truncation behavior.
 
-`parseU8` and `parseBoundedUint8Array` provide optional Valibot-backed runtime
-refinement at untyped boundaries. The current static slice handles direct
-construction, return, and indexed writes. DataView writes,
-ArrayBuffer byte-length/offset relations, resizable buffers, aliasing, and
-SharedArrayBuffer concurrency require separate obligations.
+`parseU8`, `parseBoundedUint8Array`, and `parseBoundedDataView` provide optional
+runtime refinement at untyped boundaries. DataView instance validation uses
+Valibot and its `byteLength` limit is checked synchronously without introducing
+an opaque user-callback boundary. Code which already has trusted branded values
+has no Uneffect runtime cost.
+
+The current DataView static slice recognizes direct
+`BoundedDataView<MaxBytes>.setUint8(offset, value)` and
+`.setUint32(offset, value)` calls. It proves `offset + width <= MaxBytes` and
+the corresponding `U8`/`U32` value domain from helper types and `requires`
+clauses. It intentionally rejects JavaScript's implicit numeric coercion as a
+proof. Constructors, aliases, the remaining DataView accessors, exact backing
+buffer byte offsets, resizable buffers, and SharedArrayBuffer concurrency are
+not yet modeled. Recognition currently depends on the visible helper-type
+spelling rather than TypeChecker symbol identity.
 
 TypedArray `.set(source, offset)` produces `bulk-copy-bounds`, requiring
 `offset >= 0` and `offset + source.length <= target.length`. Bounded source and

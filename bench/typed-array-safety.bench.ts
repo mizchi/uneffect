@@ -22,6 +22,9 @@ const inferredIntegerWrites = Array.from({ length: 256 }, (_, index) =>
 const aliasedIntegerWrites = Array.from({ length: 256 }, (_, index) =>
   `const value${index} = ${index % 2 === 0 ? "floorAlias" : "truncate"}(input); output[${index}] = value${index}`,
 ).join("\n");
+const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
+  `view.setUint32(${index * 4}, word)`,
+).join("\n");
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -89,6 +92,14 @@ describe("typed-array static verification", () => {
 
   bench("256 aliased integer casts with TypeChecker identity", async () => {
     await verifyTypedArraySafetyInTypeScriptProgram(typedIntegerProgram, typedIntegerSource);
+  }, { time: 500, iterations: 20 });
+
+  bench("64 bounded DataView writes", async () => {
+    await verifyTypedArraySafety("data-view.ts", `
+      type U32 = number
+      type BoundedDataView<N extends number> = DataView
+      function write(view: BoundedDataView<256>, word: U32) { ${boundedDataViewWrites} }
+    `);
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

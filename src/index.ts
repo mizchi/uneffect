@@ -40,6 +40,8 @@ declare const boundedUint8ArrayBrand: unique symbol;
 export type BoundedUint8Array<MaxLength extends number> = Uint8Array & { readonly [boundedUint8ArrayBrand]: MaxLength };
 declare const boundedUint32ArrayBrand: unique symbol;
 export type BoundedUint32Array<MaxLength extends number> = Uint32Array & { readonly [boundedUint32ArrayBrand]: MaxLength };
+declare const boundedDataViewBrand: unique symbol;
+export type BoundedDataView<MaxBytes extends number> = DataView & { readonly [boundedDataViewBrand]: MaxBytes };
 export function boundedUint8ArraySchema<MaxLength extends number>(maximum: MaxLength) {
   return v.pipe(
     v.instance(Uint8Array),
@@ -53,6 +55,11 @@ export function boundedUint32ArraySchema<MaxLength extends number>(maximum: MaxL
 }
 export const parseBoundedUint32Array = <MaxLength extends number>(input: unknown, maximum: MaxLength): BoundedUint32Array<MaxLength> =>
   v.parse(boundedUint32ArraySchema(maximum), input) as BoundedUint32Array<MaxLength>;
+export function parseBoundedDataView<MaxBytes extends number>(input: unknown, maximum: MaxBytes): BoundedDataView<MaxBytes> {
+  const value = v.parse(v.instance(DataView), input);
+  if (value.byteLength > maximum) throw new RangeError(`DataView byteLength must be at most ${maximum}`);
+  return value as BoundedDataView<MaxBytes>;
+}
 
 export const parseInt = (input: unknown): Int => v.parse(IntSchema, input);
 export const parseNat = (input: unknown): Nat => v.parse(NatSchema, input);
