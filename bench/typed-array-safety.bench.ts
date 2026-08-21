@@ -199,6 +199,15 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/ranges.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("derive branched affine hints for 16 scalar contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */
+      /* uneffect: ensures result >= ${index * 10 - 2} */
+      export function branched${index}(value: Int): Int { return value }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/branched.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

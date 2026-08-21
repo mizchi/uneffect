@@ -81,6 +81,12 @@ Deriving boundary-adjacent candidates from conjunctive numeric refinements for
 about 0.027 ms per contract. This includes parsing each `requires` expression
 into the shared logic IR; it does not invoke a solver.
 
+After adding disjunction traversal and single-variable affine normalization, a
+16-contract fixture with two affine branches per contract measured 0.8627 ms
+mean (1.43% relative margin of error), about 0.054 ms per contract. This remains
+syntactic boundary extraction; correlated parameters and nonlinear constraints
+still require a solver-backed generator.
+
 These cases remain on the purely static path and do not invoke Z3. Solver
 benchmarks must be reported separately because initialization and individual
 proof queries have a different cost profile.

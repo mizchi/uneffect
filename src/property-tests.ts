@@ -231,15 +231,26 @@ function integerValue(expression: LogicExpression): number | undefined {
   return undefined;
 }
 
+function affineVariable(expression: LogicExpression): { name: string; offset: number } | undefined {
+  if (expression.kind === "variable") return { name: expression.name, offset: 0 };
+  if (expression.kind !== "binary" || (expression.operator !== "add" && expression.operator !== "sub")) return undefined;
+  const left = affineVariable(expression.left), right = affineVariable(expression.right);
+  const leftConstant = integerValue(expression.left), rightConstant = integerValue(expression.right);
+  if (left && rightConstant !== undefined) return { name: left.name, offset: left.offset + (expression.operator === "add" ? rightConstant : -rightConstant) };
+  if (expression.operator === "add" && leftConstant !== undefined && right) return { name: right.name, offset: leftConstant + right.offset };
+  return undefined;
+}
+
 function refinementHints(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[]): PropertyLiteral[][] {
   const hints = parameters.map((): PropertyLiteral[] => []);
   const addComparison = (expression: LogicExpression): void => {
-    if (expression.kind === "binary" && expression.operator === "and") { addComparison(expression.left); addComparison(expression.right); return; }
+    if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) { addComparison(expression.left); addComparison(expression.right); return; }
     if (expression.kind !== "binary" || !["gte", "gt", "lte", "lt", "eq"].includes(expression.operator)) return;
     let name: string | undefined, value: number | undefined, operator = expression.operator;
-    if (expression.left.kind === "variable") { name = expression.left.name; value = integerValue(expression.right); }
-    else if (expression.right.kind === "variable") {
-      name = expression.right.name; value = integerValue(expression.left);
+    const left = affineVariable(expression.left), right = affineVariable(expression.right);
+    if (left) { name = left.name; const constant = integerValue(expression.right); value = constant === undefined ? undefined : constant - left.offset; }
+    else if (right) {
+      name = right.name; const constant = integerValue(expression.left); value = constant === undefined ? undefined : constant - right.offset;
       operator = ({ gte: "lte", gt: "lt", lte: "gte", lt: "gt", eq: "eq" } as Record<string, string>)[operator]!;
     }
     if (name === undefined || value === undefined) return;

@@ -111,7 +111,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Generate `BoundedUint8Array<N>`, `BoundedUint32Array<N>`, scalar/literal union values, and structure-aware array shrinkers.
   - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
     - [x] Seed valid boundary-adjacent values from conjunctive integer comparisons (`>=`, `>`, `<=`, `<`, `===`), including reversed operands.
-    - [ ] Derive generators from disjunctions, dependent/multi-parameter constraints, arithmetic expressions, and solver models.
+    - [x] Derive boundary unions from disjunctions and normalize single-variable affine arithmetic.
+    - [ ] Derive correlated generators from dependent/multi-parameter constraints, nonlinear arithmetic, and solver models.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

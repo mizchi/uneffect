@@ -100,6 +100,26 @@ describe("property-test generation", () => {
     expect(result.generatedFiles["range.uneffect.test.ts"]).toContain("const refinementValues = [[10,11,18,19]]");
   });
 
+  it("derives candidates from disjoint refinement branches", () => {
+    const result = generateUneffectPropertyTests({ files: { "disjoint.ts": `
+      type Int = number
+      /* uneffect: requires (value >= 10 && value < 12) || (value >= 20 && value < 22) */
+      /* uneffect: ensures result >= 10 */
+      export function choose(value: Int): Int { return value }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[10, 11, 20, 21]]);
+  });
+
+  it("normalizes single-variable affine refinement boundaries", () => {
+    const result = generateUneffectPropertyTests({ files: { "affine.ts": `
+      type Int = number
+      /* uneffect: requires value + 2 < 10 && 20 <= 3 + value */
+      /* uneffect: ensures result >= 17 */
+      export function affine(value: Int): Int { return value }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[6, 7, 17, 18]]);
+  });
+
   it("uses refinement candidates before broad scalar edges", async () => {
     const seen: number[] = [];
     const result = await checkUneffectProperty({

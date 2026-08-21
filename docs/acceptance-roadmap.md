@@ -48,7 +48,7 @@ default and can be raised with `arrayLengthCap`; therefore a larger declared
 type maximum is not silently claimed as an exercised upper edge. Generator
 narrowing recognizes conjunctive integer comparisons and seeds values at and
 next to their boundaries before broad scalar edges. Disjunctions, dependent
-multi-parameter constraints, arithmetic refinements, solver-derived values, and
+dependent multi-parameter constraints, nonlinear arithmetic refinements, solver-derived values, and
 model-checker-to-TypeScript replay remain unimplemented.
 
 The adoption KPI is measured over a checked-in controlled corpus. Its reported
