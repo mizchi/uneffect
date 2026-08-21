@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import type { TemporalExpression } from "./temporal-expressions.js";
+import type { TemporalSpec } from "./spec-ir.js";
 
 export type ModelScalar = null | boolean | number | string;
 export type ModelValue = ModelScalar | ModelValue[] | { [name: string]: ModelValue };
@@ -12,7 +14,7 @@ export interface ModelCounterexampleStep<State extends object = ModelState> {
 
 export interface ModelCounterexample<State extends object = ModelState> {
   schema: "uneffect-model-counterexample/v1";
-  backend: "quint" | "z3" | "manual";
+  backend: "quint" | "tlc" | "z3" | "manual";
   modelHash: string;
   initialState: State;
   steps: ModelCounterexampleStep<State>[];
@@ -109,6 +111,96 @@ export function parseQuintItfCounterexample(text: string, modelHash: string): Mo
     return { action: entry.action, before: states[index]!.state, after: entry.state };
   });
   return createModelCounterexample({ backend: "quint", modelHash, initialState: states[0]!.state, steps });
+}
+
+type TemporalScalarState = Record<string, number | boolean>;
+
+function evaluateTemporalExpression(expression: TemporalExpression, state: TemporalScalarState): number | boolean {
+  if (expression.kind === "name") {
+    const value = state[expression.name];
+    if (value === undefined) throw new Error(`missing temporal state value: ${expression.name}`);
+    return value;
+  }
+  if (expression.kind === "integer") return Number(expression.value);
+  if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "unary") {
+    const operand = evaluateTemporalExpression(expression.operand, state);
+    if (expression.operator === "not") return !operand;
+    return -Number(operand);
+  }
+  const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
+  switch (expression.operator) {
+    case "eq": return left === right;
+    case "neq": return left !== right;
+    case "and": return Boolean(left) && Boolean(right);
+    case "or": return Boolean(left) || Boolean(right);
+    case "lt": return Number(left) < Number(right);
+    case "lte": return Number(left) <= Number(right);
+    case "gt": return Number(left) > Number(right);
+    case "gte": return Number(left) >= Number(right);
+    case "add": return Number(left) + Number(right);
+    case "subtract": return Number(left) - Number(right);
+    case "multiply": return Number(left) * Number(right);
+    case "divide": {
+      if (Number(right) === 0) throw new Error("cannot evaluate temporal division by zero while recovering a TLC action");
+      return Math.trunc(Number(left) / Number(right));
+    }
+    case "modulo": {
+      if (Number(right) === 0) throw new Error("cannot evaluate temporal modulo by zero while recovering a TLC action");
+      return Number(left) % Number(right);
+    }
+  }
+}
+
+function parseTlcScalar(raw: string, type: "int" | "bool", name: string): number | boolean {
+  const value = raw.trim();
+  if (type === "bool") {
+    if (value === "TRUE") return true;
+    if (value === "FALSE") return false;
+    throw new Error(`TLC state ${name} is not a scalar boolean: ${value}`);
+  }
+  if (!/^-?\d+$/.test(value)) throw new Error(`TLC state ${name} is not a scalar integer: ${value}`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) throw new Error(`TLC state ${name} exceeds JavaScript's safe integer range: ${value}`);
+  return parsed;
+}
+
+function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, after: TemporalScalarState, step: number): string {
+  const candidates = spec.actions.filter((action) => {
+    if (action.guard && evaluateTemporalExpression(action.guard.expressionAst, before) !== true) return false;
+    const assignments = new Map(action.assignments.map((assignment) => [assignment.target, assignment]));
+    return spec.states.every((state) => {
+      const assignment = assignments.get(state.name);
+      const expected = assignment ? evaluateTemporalExpression(assignment.expressionAst, before) : before[state.name];
+      return expected === after[state.name];
+    });
+  });
+  if (candidates.length !== 1) {
+    const detail = candidates.length === 0 ? "no action matches" : `actions are ambiguous: ${candidates.map((action) => action.name).join(", ")}`;
+    throw new Error(`cannot recover TLC action at step ${step}: ${detail}`);
+  }
+  return candidates[0]!.name;
+}
+
+/** Parses TLC's scalar console trace and recovers action names from the neutral temporal IR. */
+export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHash: string): ModelCounterexample {
+  if (!/(?:Invariant.+violated|Temporal properties were violated)/i.test(text)) throw new Error("TLC output does not report a property violation");
+  const headers = [...text.matchAll(/^State\s+(\d+):\s*<[^\n]*>\s*$/gm)];
+  if (headers.length === 0) throw new Error("TLC counterexample has no states");
+  const states = headers.map((header, index): TemporalScalarState => {
+    const start = header.index! + header[0].length, end = headers[index + 1]?.index ?? text.length;
+    const block = text.slice(start, end);
+    const assignments = new Map([...block.matchAll(/^\/\\\s+([A-Za-z_$][\w$]*)\s*=\s*([^\n\r]+)$/gm)].map((match) => [match[1]!, match[2]!]));
+    return Object.fromEntries(spec.states.map((state) => {
+      const raw = assignments.get(state.name);
+      if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}`);
+      return [state.name, parseTlcScalar(raw, state.type, state.name)];
+    }));
+  });
+  const steps = states.slice(1).map((after, index): ModelCounterexampleStep => ({
+    action: recoverTemporalAction(spec, states[index]!, after, index + 1), before: states[index]!, after,
+  }));
+  return createModelCounterexample({ backend: "tlc", modelHash, initialState: states[0]!, steps });
 }
 
 /** Replays a normalized model trace against an explicit implementation refinement adapter. */

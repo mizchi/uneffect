@@ -1,12 +1,14 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { replayModelCounterexample } from "../src/model-replay.js";
+import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+
+const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
 
 const source = `
   /*
@@ -78,6 +80,29 @@ describe("spec IR and generated verifier programs", () => {
       status: "safe-within-bound", depth: 2,
     });
   });
+
+  it.runIf(hasJava)("normalizes an actual TLC counterexample when Java is available", () => {
+    const temporal = parseSpec("tlc-counter.ts", `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+      temporal belowTwo: value < 2
+    */`).temporal;
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-tlc-trace-"));
+    const path = join(directory, "counter.qnt");
+    const model = generateQuint("counter", temporal);
+    writeFileSync(path, model);
+    const result = spawnSync("pnpm", ["exec", "quint", "verify", path,
+      "--backend=tlc", "--invariant=belowTwo", "--verbosity=3"], { encoding: "utf8", timeout: 120_000 });
+    rmSync(directory, { recursive: true, force: true });
+    const output = result.stdout + result.stderr;
+    expect(result.status, output).not.toBe(0);
+    const trace = parseTlcCounterexample(output, temporal, "generated-counter");
+    expect(trace.steps).toEqual([
+      { action: "increment", before: { value: 0 }, after: { value: 1 } },
+      { action: "increment", before: { value: 1 }, after: { value: 2 } },
+    ]);
+  }, 125_000);
 
   it("classifies capability, invariant, and temporal specifications", () => {
     const spec = parseSpec("input.ts", source);

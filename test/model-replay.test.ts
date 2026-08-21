@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createModelCounterexample, parseQuintItfCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { parseSpec } from "../src/spec-ir.js";
 
 interface LeaseState {
   realNow: number;
@@ -22,6 +23,59 @@ const afterTakeover: LeaseState = { ...initial, ownerEpoch: 2, ownerIsA: false }
 const afterPublish: LeaseState = { ...afterTakeover, residentEpochB: 2 };
 
 describe("model counterexample refinement replay", () => {
+  it("normalizes a scalar TLC trace and recovers actions from the temporal IR", () => {
+    const spec = parseSpec("counter.ts", `/* uneffect:
+      state value: int
+      state ready: bool
+      init value = 0
+      init ready = false
+      action increment: value' = value + 1
+      action finish: ready' = true
+      action_when finish: value >= 2 && !ready
+      temporal unfinished: !ready
+    */`).temporal;
+    const trace = parseTlcCounterexample(`
+Error: Invariant q_inv is violated.
+State 1: <Initial predicate>
+/\\ value = 0
+/\\ ready = FALSE
+
+State 2: <q_step line 1, col 1 to line 1, col 1 of module counter>
+/\\ value = 1
+/\\ ready = FALSE
+
+State 3: <q_step line 1, col 1 to line 1, col 1 of module counter>
+/\\ value = 2
+/\\ ready = FALSE
+
+State 4: <q_step line 1, col 1 to line 1, col 1 of module counter>
+/\\ value = 2
+/\\ ready = TRUE
+`, spec, "tlc-model-sha256");
+    expect(trace).toMatchObject({
+      backend: "tlc", initialState: { value: 0, ready: false },
+      steps: [
+        { action: "increment", after: { value: 1, ready: false } },
+        { action: "increment", after: { value: 2, ready: false } },
+        { action: "finish", after: { value: 2, ready: true } },
+      ],
+    });
+  });
+
+  it("rejects non-violations and ambiguous TLC action recovery", () => {
+    const spec = parseSpec("ambiguous.ts", `/* uneffect:
+      state value: int
+      init value = 0
+      action first: value' = value + 1
+      action second: value' = value + 1
+      temporal zero: value === 0
+    */`).temporal;
+    const states = `State 1: <Initial predicate>\n/\\ value = 0\nState 2: <q_step>\n/\\ value = 1\n`;
+    expect(() => parseTlcCounterexample(states, spec, "model")).toThrow(/does not report a property violation/);
+    expect(() => parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, spec, "model"))
+      .toThrow(/actions are ambiguous: first, second/);
+  });
+
   it("normalizes Quint MBT ITF output into actions and JSON-safe state", () => {
     const trace = parseQuintItfCounterexample(JSON.stringify({
       "#meta": { format: "ITF", status: "violation" },
