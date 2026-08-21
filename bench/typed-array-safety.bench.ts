@@ -6,6 +6,7 @@ import { generateQuint } from "../src/spec-backends.js";
 import { lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
+import { createModelCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -182,4 +183,14 @@ describe("typed-array static verification", () => {
       "src/main.ts": `import { forwarded, Reporter } from "./barrel.js"; /* uneffect: validate Once */ export function main(flag: boolean) { if (flag) forwarded(); else new Reporter().report() }`,
     } });
   }, { time: 500, iterations: 5 });
+
+  bench("replay a 100-step normalized model trace", async () => {
+    const steps = Array.from({ length: 100 }, (_, index) => ({ action: "increment", before: { value: index }, after: { value: index + 1 } }));
+    const trace = createModelCounterexample({ backend: "manual", modelHash: "counter", initialState: { value: 0 }, steps });
+    await replayModelCounterexample(trace, {
+      schema: "uneffect-refinement-adapter/v1", name: "counter", version: "1",
+      create: (state) => ({ value: state.value }), observe: (runtime) => ({ value: runtime.value }),
+      actions: { increment: (runtime) => { runtime.value++; } }, invariants: { nonnegative: (runtime) => runtime.value >= 0 },
+    });
+  }, { time: 500, iterations: 20 });
 });

@@ -101,3 +101,8 @@ four virtual files and composes one sink through a barrel alias and a class
 method. It measured 135.48 ms mean over five samples (2.01% relative margin of
 error). Program construction and lib.d.ts checking dominate; build integrations
 should share the host Program instead of treating this as a per-function cost.
+
+Creating, hashing, cloning, and replaying a 100-step normalized model trace,
+including before/after observation comparison and one invariant per step,
+measured 0.4962 ms mean (1.90% relative margin of error). This benchmark uses
+an in-memory adapter and excludes model-checker startup and application I/O.

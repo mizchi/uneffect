@@ -20,6 +20,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Node Lease and proof-assistant gaps](./node-lease-and-proof-assistants.md): bounded clock-skew modeling and an honest Dafny/Rocq capability comparison.
 - [End-to-end acceptance roadmap](./acceptance-roadmap.md): enabled executable product goals and their remaining semantic limits.
 - [Custom validators](./custom-validators.md): proof-backed domain validators, call-cardinality specialization, and Generator composition.
+- [Model refinement replay](./model-replay.md): normalized counterexample traces and explicit TypeScript implementation adapters.
 - [Native integration](./native-integration.md): Corsa interchange, program call graphs, published contracts, and CI tiers.
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.
 

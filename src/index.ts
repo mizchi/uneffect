@@ -85,6 +85,8 @@ export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
 export { checkUneffectProperty, generateUneffectPropertyTests } from "./property-tests.js";
 export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
+export { createModelCounterexample, replayModelCounterexample } from "./model-replay.js";
+export type { ModelCounterexample, ModelCounterexampleStep, ModelRefinementAdapter, ModelReplayResult, ModelScalar, ModelState, ModelValue, ReplayMismatch, ReplayViolation } from "./model-replay.js";
 export { compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
 export type { AdoptionFixtureName, AdoptionReport, EffectImplementationComparison } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";

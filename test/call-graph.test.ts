@@ -84,4 +84,13 @@ describe("multi-file call graph and effect polymorphism", () => {
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
   });
+
+  it("classifies JSON.stringify replacers as synchronous inline callbacks", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-json-replacer-"));
+    const source = join(directory, "json.ts");
+    writeFileSync(source, `export function encode(value: unknown) { return JSON.stringify(value, (_key, item) => item) }`);
+    const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
 });
