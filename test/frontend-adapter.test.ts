@@ -91,6 +91,7 @@ describe("TypeChecker symbol adapter", () => {
         const foreign = { get then() { if (flag) throw new Error("getter"); return (resolve: (value: number) => void) => resolve(1) } }
         return new Promise<number>((resolve) => resolve(foreign))
       }
+      /* uneffect: effect InvokeUserCode */ async function collect(values: Iterable<Promise<number>>) { await Promise.all(values) }
       /* uneffect: effect InvokeUserCode */ function key(value: object, key: object) { return (value as any)[key as any] }
       /* uneffect: effect InvokeUserCode */ function coerce(value: object) { return value + "" }
     `);

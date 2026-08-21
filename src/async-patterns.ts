@@ -30,6 +30,8 @@ export interface PromiseCombinatorPattern {
   branches: string[];
   branchKinds: ("value" | "thenable" | "unknown")[];
   staticIterable: boolean;
+  iteratorKind: "array" | "local" | "dynamic";
+  iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
   aggregateErrorOrder?: number[];
   awaited: boolean;
@@ -475,7 +477,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable, iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
+          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable,
+            iteratorKind: array ? "array" : local ? "local" : "dynamic", iteratorEffects: array ? [] : ["InvokeUserCode"],
+            iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined, awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }
       ts.forEachChild(node, visit);

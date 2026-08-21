@@ -122,6 +122,11 @@ acquisition failure. Throwing `done` or `value` getters on a directly returned
 iterator-result object are step failures. Both reject the combinator before any
 modeled branch settles; arbitrary/dynamic iterator implementations remain an
 unknown boundary rather than being assigned an invented finite cardinality.
+The combinator IR distinguishes `array`, `local`, and `dynamic` iterator
+provenance. Direct recursively finite array literals have no iterator effect;
+local custom and dynamic/imported iterables carry `InvokeUserCode`. Effect
+checking therefore requires that authority even when temporal generation is
+refused because the iterable cardinality is not statically bounded.
 
 ## Verification ledger
 

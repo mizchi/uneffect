@@ -592,7 +592,7 @@ describe("builtin async temporal patterns", () => {
         staticIterable: true,
       },
       { branches: ["remote"], branchKinds: ["thenable"], staticIterable: true },
-      { staticIterable: false },
+      { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
     ]);
     const quint = generateAsyncPatternsQuint("iterable_elements", {
       timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[0]!],
