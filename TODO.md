@@ -282,8 +282,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.
   - [x] Resolve reassignment-free local timer-handle alias chains for direct cancellation.
+  - [x] Preserve versioned timer identity through direct handle reassignment and aliases captured before reassignment.
   - [x] Model `AbortSignal.timeout` as a static active-time deadline, one-shot timer-source task tagged with abstract `TimeoutError` semantics, and `Timer` capability.
-  - [ ] Track handle escape and reassignment, Node/browser handle differences, `AbortSignal.any`, and `scheduler.postTask`.
+  - [ ] Track handle escape, Node/browser handle differences, `AbortSignal.any`, and `scheduler.postTask`.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

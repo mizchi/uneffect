@@ -137,6 +137,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (!owner.body) return;
     const ownerName = functionName(owner);
     const handleAliases = new Map<string, string>();
+    const handleTargets = new Map<string, number>();
     const resolveHandle = (name: string): string => {
       const seen = new Set<string>();
       let current = name;
@@ -169,8 +170,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (node !== owner.body && ts.isFunctionLike(node)) return;
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)) {
         handleAliases.set(node.name.text, resolveHandle(node.initializer.text));
+        const target = handleTargets.get(node.initializer.text);
+        if (target !== undefined) handleTargets.set(node.name.text, target);
       } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
         handleAliases.delete(node.left.text);
+        handleTargets.delete(node.left.text);
       }
       if (ts.isCallExpression(node)) {
         const operation = adapter.resolveCall(node)?.operation;
@@ -178,7 +182,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const callbackNode = node.arguments[operation.callbackArgument];
           const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
           const callback = callbackNode?.getText(source) ?? "<unknown>";
-          const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
+          const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text
+            : ts.isBinaryExpression(node.parent) && node.parent.right === node && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.parent.left) ? node.parent.left.text
+              : undefined;
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
@@ -190,6 +196,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             handle: declaration,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (declaration) handleTargets.set(declaration, timerIndex);
           collectNestedMicrotasks(callbackNode, timerIndex);
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
@@ -216,7 +223,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isIfStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)
               || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isConditionalExpression(current)) definite = false;
           }
-          cancellations.push({ owner: ownerName, handle, definite, span: { start: node.getStart(source), end: node.getEnd() } });
+          cancellations.push({ owner: ownerName, handle, timer: handleNode && ts.isIdentifier(handleNode) ? handleTargets.get(handleNode.text) : undefined, definite, span: { start: node.getStart(source), end: node.getEnd() } });
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
           const array = iterable ? expandStaticArray(iterable) : undefined;
@@ -252,6 +259,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   };
   visit(source);
   for (const cancellation of cancellations) {
+    if (cancellation.timer !== undefined) continue;
     const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle);
     if (timer >= 0) cancellation.timer = timer;
   }

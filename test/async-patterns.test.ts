@@ -98,6 +98,24 @@ describe("builtin async temporal patterns", () => {
     expect(generateWebEventLoopQuint("timer_alias", model)).toContain("callback_0_pending' = false");
   });
 
+  it("keeps timer identity through aliases when the source binding is reassigned", () => {
+    const model = analyzeAsyncPatterns("timer-reassignment.ts", `
+      function job() {}
+      function schedule() {
+        let handle = setTimeout(job, 10)
+        const first = handle
+        handle = setTimeout(job, 20)
+        clearTimeout(first)
+        clearTimeout(handle)
+      }
+    `);
+    expect(model.timers.map((timer) => timer.handle)).toEqual(["handle", "handle"]);
+    expect(model.cancellations).toEqual([
+      expect.objectContaining({ handle: "handle", timer: 0, definite: true }),
+      expect.objectContaining({ handle: "handle", timer: 1, definite: true }),
+    ]);
+  });
+
   it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
     const model = analyzeAsyncPatterns("web-loop.ts", `
       function job() {}
