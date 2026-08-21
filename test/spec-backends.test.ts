@@ -666,6 +666,29 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "finish" }));
   });
 
+  it("upgrades an unreachable action only when one-step induction proves it", async () => {
+    const temporal = parseSpec("inductive-unreachable.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action advance: phase' = phase + 1
+      action_when advance: phase >= 0
+      action negative: phase' = 0
+      action_when negative: phase < 0
+      action distant: phase' = phase
+      action_when distant: phase === 99
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-action", name: "negative", backend: "z3", depth: 1,
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-action", name: "distant", backend: "z3", depth: 3,
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-action", name: "distant",
+    }));
+  });
+
   it("proves an initial deadlock without claiming unbounded reachability", async () => {
     const temporal = parseSpec("deadlock.ts", `/* uneffect:
       state phase: int

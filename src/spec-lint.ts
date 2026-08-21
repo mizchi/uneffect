@@ -9,6 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
+    | "inductively-unreachable-action"
     | "no-state-progress-from-init" | "bounded-no-state-progress" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
@@ -639,10 +640,19 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       prefixes.push(`(and ${[...transitions, guard(action, depth)].join(" ")})`);
     }
     const result = await checkSmt(declarations, [...init, disjoin(prefixes)]);
-    if (result === "unsat") diagnostics.push({
-      code: "bounded-unreachable-action", name: action.name, backend: "z3", depth: maxSteps,
-      message: `${action.name} is unreachable from init within ${maxSteps} transition steps; this is not an unbounded proof`,
-    });
+    if (result === "unsat") {
+      diagnostics.push({
+        code: "bounded-unreachable-action", name: action.name, backend: "z3", depth: maxSteps,
+        message: `${action.name} is unreachable from init within ${maxSteps} transition steps; this is not by itself an unbounded proof`,
+      });
+      if (maxSteps >= 1) {
+        const induction = await checkSmt(declarations, [`(not ${guard(action, 0)})`, step(0), guard(action, 1)]);
+        if (induction === "unsat") diagnostics.push({
+          code: "inductively-unreachable-action", name: action.name, backend: "z3", depth: 1,
+          message: `${action.name} is unreachable: init excludes its guard and one-step induction preserves that exclusion across every transition`,
+        });
+      }
+    }
   }
   return diagnostics;
 }

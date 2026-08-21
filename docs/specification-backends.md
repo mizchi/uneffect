@@ -143,6 +143,13 @@ shortest trace at or below the configured bound, including concrete states and
 action names suitable for TypeScript refinement replay. `safe-within-bound`
 remains a bounded result; `unknown` is never promoted to safety.
 
+Bounded action-unreachability remains depth-labelled. Uneffect additionally
+emits `inductively-unreachable-action` only when the action guard is excluded
+by init and `!guard && step => !guard'` is valid for every transition. This is
+an unbounded invariant proof. If that one-step induction fails, the bounded
+diagnostic is retained; Uneffect does not infer an unstated strengthening
+invariant or promote the result.
+
 Standalone TLC output is normalized for scalar values and the supported
 single- or multiline finite Set, scalar-key Map/function, and closed-record
 fragment. Each transition is matched against neutral action guards and updates;

@@ -101,7 +101,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Detect exact duplicates and properties implied by an earlier property.
   - [ ] Detect actions unreachable from the transition system's initial states.
     - [x] Report depth-labelled bounded unreachability by unrolling init and complete stuttering transitions in Z3.
-    - [ ] Prove unbounded unreachability with induction or a finite-state completeness bound.
+    - [x] Upgrade bounded-unreachable actions to an unbounded result when `!guard` is established at init and preserved by one-step induction across every transition.
+    - [ ] Discover or accept strengthening invariants for actions whose unreachability is not one-step inductive, or use a finite-state completeness bound.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
