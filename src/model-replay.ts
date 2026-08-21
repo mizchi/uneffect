@@ -245,14 +245,26 @@ function parseTlcAssignments(block: string): Map<string, string> {
     currentName = undefined;
     currentValue = [];
   };
+  const complete = (): boolean => {
+    const value = currentValue.join(" ").trim();
+    if (!value.startsWith("{") && !value.startsWith("[")) return value.length > 0;
+    let depth = 0;
+    for (const char of value) {
+      if (char === "{" || char === "[") depth++;
+      else if (char === "}" || char === "]") depth--;
+    }
+    return depth === 0;
+  };
   for (const line of block.split(/\r?\n/)) {
     const start = /^\s*(?:\/\\\s+)?([A-Za-z_$][\w$]*)\s*=\s*(.*)$/.exec(line);
     if (start) {
       flush();
       currentName = start[1]!;
       currentValue.push(start[2]!);
+      if (complete()) flush();
     } else if (currentName && line.trim()) {
       currentValue.push(line.trim());
+      if (complete()) flush();
     }
   }
   flush();

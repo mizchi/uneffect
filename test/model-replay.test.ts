@@ -51,6 +51,8 @@ State 3: <q_step line 1, col 1 to line 1, col 1 of module counter>
 State 4: <q_step line 1, col 1 to line 1, col 1 of module counter>
 /\\ value = 2
 /\\ ready = TRUE
+3 states generated, 3 distinct states found, 0 states left on queue.
+Finished in 00s [violation] Found an issue.
 `, spec, "tlc-model-sha256");
     expect(trace).toMatchObject({
       backend: "tlc", initialState: { value: 0, ready: false },
@@ -93,6 +95,8 @@ State 2: <q_step>
   owner |-> 2,
   valid |-> TRUE
 ]
+3 states generated, 3 distinct states found, 0 states left on queue.
+Finished in 00s [violation] Found an issue.
 `, spec, "collections-model");
     expect(trace).toMatchObject({
       initialState: { writers: [1], epochs: [[1, 1]], lease: { owner: 1, valid: true } },
