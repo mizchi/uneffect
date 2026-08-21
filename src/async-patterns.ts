@@ -108,13 +108,24 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(expression.operand)) return -Number(expression.operand.text);
     return undefined;
   };
+  const immutableInitializer = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
+    if (!ts.isIdentifier(expression)) return expression;
+    const symbol = resolvedSymbol(expression);
+    if (!symbol || seen.has(symbol)) return expression;
+    const declaration = symbol.valueDeclaration;
+    if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent)
+      || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return expression;
+    seen.add(symbol);
+    return immutableInitializer(declaration.initializer, seen);
+  };
   const rejectionReason = (expression: ts.Expression | ts.OmittedExpression): PromiseRejectionReason | null => {
     if (ts.isOmittedExpression(expression) || !ts.isCallExpression(expression) || !ts.isPropertyAccessExpression(expression.expression) || expression.expression.name.text !== "reject") return null;
     const symbol = resolvedSymbol(expression.expression.name);
     const standard = symbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
       && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "PromiseConstructor");
     if (!standard || !expression.arguments[0]) return null;
-    const argument = expression.arguments[0], literal = literalReason(argument);
+    const argument = immutableInitializer(expression.arguments[0]), literal = literalReason(argument);
     if (literal !== undefined) return { kind: "literal", value: literal };
     if (ts.isNewExpression(argument) && ts.isIdentifier(argument.expression)) {
       const message = argument.arguments?.[0] && literalReason(argument.arguments[0]);

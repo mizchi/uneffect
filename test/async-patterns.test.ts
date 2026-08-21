@@ -595,6 +595,22 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toContain('val join_0_aggregate_error_reason_2 = "unknown"');
   });
 
+  it("resolves immutable local Promise.any rejection reasons", () => {
+    const model = analyzeAsyncPatterns("aggregate-reason-aliases.ts", `
+      async function load() {
+        const code = "capacity"
+        const failure = new RangeError("too large")
+        try { await Promise.any([Promise.reject(code), Promise.reject(failure)]) } catch {}
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      aggregateErrorReasons: [
+        { kind: "literal", value: "capacity" },
+        { kind: "error", errorType: "RangeError", message: "too large" },
+      ],
+    });
+  });
+
   it("treats sparse holes as fulfilled undefined values and assimilates thenables", () => {
     const model = analyzeAsyncPatterns("iterable-elements.ts", `
       declare const remote: PromiseLike<number>

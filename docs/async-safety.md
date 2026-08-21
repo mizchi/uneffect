@@ -124,6 +124,11 @@ of a throw is recognized as a definite rejection during `then` lookup. Other
 Proxy handlers remain dynamic because property tests, `Reflect.get`, target
 forwarding, and arbitrary trap code can invoke user code or return any value.
 
+`Promise.any` aggregate-reason artifacts preserve direct literal and
+`new ErrorType(message)` inputs in iterable order. Immutable local `const`
+aliases are followed by symbol identity; mutable, imported, or computed reasons
+remain explicit `unknown` slots.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts
