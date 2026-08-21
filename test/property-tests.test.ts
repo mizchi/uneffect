@@ -152,6 +152,7 @@ describe("property-test generation", () => {
     expect(tuples.length).toBeGreaterThanOrEqual(2);
     expect(tuples.every(([x, y]) => Number(x) >= 0 && Number(y) >= 0 && Number(x) ** 2 + Number(y) ** 2 === 25)).toBe(true);
     expect(result.generatedFiles["circle.uneffect.test.ts"]).toContain(`const refinementTuples = ${JSON.stringify(tuples)}`);
+    expect(result.generatedFiles["circle.uneffect.test.ts"]).toContain("for (const joint of refinementTuples");
     expect(result.solverDiagnostics).toEqual([]);
   });
 
@@ -194,5 +195,20 @@ describe("property-test generation", () => {
     });
     expect(result).toMatchObject({ status: "passed", tested: 2 });
     expect(seen).toEqual([[10, 11], [11, 12]]);
+  });
+
+  it("shrinks dependent inputs jointly while preserving their precondition", async () => {
+    const result = await checkUneffectProperty({
+      functionName: "dependent-failure",
+      domains: ["Int", "Int"],
+      refinementTuples: [[100, 101], [10, 11], [1, 2]],
+      cases: 3,
+      precondition: (x, y) => y === x + 1,
+      property: () => false,
+    });
+    expect(result).toMatchObject({
+      status: "counterexample",
+      counterexample: { version: "uneffect-counterexample/v1", arguments: [1, 2] },
+    });
   });
 });

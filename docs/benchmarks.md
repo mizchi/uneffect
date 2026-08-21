@@ -100,6 +100,11 @@ model decoding, and generated source. `solverCases` is both a resource bound
 and a coverage limit; model enumeration does not claim exhaustive coverage of
 an infinite domain.
 
+Jointly shrinking across 64 already-derived correlated tuples measured
+0.0049 ms mean (2.30% relative margin of error). This measures in-memory tuple
+ordering, full-precondition rechecks, and a synchronous failing property; it
+does not include solver calls or user application cost.
+
 An application adapter importing `pipe` from the pinned external Effect
 package and proving one affine `requires`/`ensures` contract with Z3 measured
 52.7048 ms mean over ten samples (5.76% relative margin of error). This includes

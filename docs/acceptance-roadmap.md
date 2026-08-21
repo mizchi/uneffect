@@ -55,8 +55,11 @@ the relation graph and runs valid correlated tuples before Cartesian samples.
 The opt-in asynchronous Z3 generator also enumerates a caller-bounded number of
 integer models for nonlinear scalar refinements, injects those tuples before
 Cartesian samples, and reports an unsatisfiable precondition rather than
-pretending that it generated coverage. Structured/collection solver inputs and
-constraint-preserving shrinking remain unimplemented.
+pretending that it generated coverage. When a correlated candidate fails, the
+runner first compares known tuples by structural/numeric size and rechecks the
+whole precondition, allowing dependent values to shrink together before the
+ordinary coordinate shrink. It does not yet synthesize new solver-backed shrink
+candidates, and structured/collection solver inputs remain unimplemented.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 

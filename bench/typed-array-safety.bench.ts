@@ -4,7 +4,7 @@ import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArr
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
+import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
@@ -226,6 +226,14 @@ describe("typed-array static verification", () => {
       export function radius(x: Int, y: Int): Int { return x + y }
     ` }, solverCases: 8 });
   }, { time: 500, iterations: 1 });
+
+  bench("jointly shrink 64 correlated property tuples", async () => {
+    const refinementTuples = Array.from({ length: 64 }, (_, index) => [64 - index, 65 - index]);
+    await checkUneffectProperty({
+      functionName: "dependent", domains: ["Int", "Int"], refinementTuples, cases: 64,
+      precondition: (x, y) => y === x + 1, property: () => false,
+    });
+  }, { time: 500, iterations: 20 });
 
   bench("verify an affine contract through external Effect pipe", async () => {
     await verifyUneffectProject({ files: { "src/effect-adapter.ts": `

@@ -144,6 +144,12 @@ function materialize(value: PropertyValue, domain: PropertyTestDomain): any {
   return value;
 }
 
+function sampleSize(values: readonly PropertyValue[]): number {
+  return values.reduce<number>((total, value) => total + (Array.isArray(value)
+    ? value.length + value.reduce((sum, entry) => sum + Math.abs(entry), 0)
+    : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value)), 0);
+}
+
 function makeSamples(domains: readonly PropertyTestDomain[], cases: number, seed: number, arrayLengthCap: number, refinementValues: readonly (readonly PropertyLiteral[])[], refinementTuples: readonly (readonly PropertyLiteral[])[] = []): PropertyValue[][] {
   const samples: PropertyValue[][] = refinementTuples.filter((tuple) => tuple.length === domains.length && tuple.every((value, index) => domainAccepts(domains[index]!, value))).map((tuple) => [...tuple]);
   const limit = Math.max(cases, samples.length);
@@ -179,8 +185,13 @@ export async function checkUneffectProperty(options: CheckUneffectPropertyOption
     tested++;
     if (await options.property(...invoke(sample))) continue;
     const minimal = [...sample];
-    if (options.shrinking !== false) for (let index = 0; index < minimal.length; index++) {
-      for (const value of shrinkValue(minimal[index]!, options.domains[index]!)) {
+    if (options.shrinking !== false) {
+      const joint = (options.refinementTuples ?? []).map((tuple) => [...tuple] as PropertyValue[]).sort((left, right) => sampleSize(left) - sampleSize(right));
+      for (const candidate of joint) {
+        if (candidate.length !== minimal.length || sampleSize(candidate) >= sampleSize(minimal)) continue;
+        if (precondition(...invoke(candidate)) && !(await options.property(...invoke(candidate)))) minimal.splice(0, minimal.length, ...candidate);
+      }
+      for (let index = 0; index < minimal.length; index++) for (const value of shrinkValue(minimal[index]!, options.domains[index]!)) {
         const candidate = minimal.with(index, value);
         if (precondition(...invoke(candidate)) && !(await options.property(...invoke(candidate)))) minimal[index] = value;
       }
@@ -346,6 +357,7 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `function shrinkNumber(value: number, domain: string): number[] { const values: number[] = []; let current = value; while (Math.abs(current) > 1) { current = Math.trunc(current / 2); values.push(current) } values.push(0); return [...new Set(values)].filter(value => !["Nat", "U8", "U32"].includes(domain) || value >= 0) }\n` +
     `function shrink(value: any, domain: Domain): any[] { if (typeof domain === "string") return typeof value === "number" ? shrinkNumber(value, domain) : []; if (domain.kind === "union") return domain.members.flatMap(member => typeof member === "string" && typeof value === "number" ? shrinkNumber(value, member) : []); const structural: number[][] = []; for (let length = Math.floor(value.length / 2); length > 0; length = Math.floor(length / 2)) structural.push(value.slice(0, length)); if (value.length > 1) structural.push(value.slice(0, 1)); return [...structural, ...value.flatMap((entry: number, index: number) => shrinkNumber(entry, domain.element).map(candidate => value.with(index, candidate))), []] }\n` +
     `function materialize(value: any, domain: Domain): any { if (typeof domain === "object" && domain.kind === "bounded-array") return domain.element === "U8" ? new Uint8Array(value) : new Uint32Array(value); return value }\n` +
+    `function sampleSize(values: readonly any[]): number { return values.reduce((total, value) => total + (Array.isArray(value) ? value.length + value.reduce((sum: number, entry: number) => sum + Math.abs(entry), 0) : typeof value === "number" ? Math.abs(value) : typeof value === "string" ? value.length : Number(value)), 0) }\n` +
     `function random(seed: number) { let state = seed >>> 0; return () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 0x100000000) }\n` +
     `function samples() { const out: any[][] = refinementTuples.map(row => [...row]); const limit = Math.max(${cases}, out.length); const visit = (at: number, row: any[]) => { if (out.length >= limit) return; if (at === domains.length) { if (!out.some(item => JSON.stringify(item) === JSON.stringify(row))) out.push(row); return } for (const value of values(domains[at]!, refinementValues[at])) visit(at + 1, [...row, value]) }; visit(0, []); const next = random(${seed}); while (out.length < limit) out.push(domains.map((domain, index) => { const candidates = values(domain, refinementValues[index]); return candidates[Math.floor(next() * candidates.length)]! })); return out }\n` +
     `const precondition = (${parameterNames.join(", ")}) => ${predicates}\n` +
@@ -355,7 +367,7 @@ function emitTest(boundary: InternalBoundary, sourceName: string, outputName: st
     `    const invoke = (values: any[]) => values.map((value, index) => materialize(value, domains[index]!))\n` +
     `    if (!precondition(...invoke(candidate))) continue\n` +
     `    if (property(...invoke(candidate))) continue\n` +
-    (shrinking ? `    const minimal = [...candidate]; for (let index = 0; index < minimal.length; index++) for (const value of shrink(minimal[index]!, domains[index]!)) { const next = minimal.with(index, value); if (precondition(...invoke(next)) && !property(...invoke(next))) minimal[index] = value }\n` : `    const minimal = candidate\n`) +
+    (shrinking ? `    const minimal = [...candidate]; for (const joint of refinementTuples.map(row => [...row]).sort((left, right) => sampleSize(left) - sampleSize(right))) { if (sampleSize(joint) < sampleSize(minimal) && precondition(...invoke(joint)) && !property(...invoke(joint))) minimal.splice(0, minimal.length, ...joint) } for (let index = 0; index < minimal.length; index++) for (const value of shrink(minimal[index]!, domains[index]!)) { const next = minimal.with(index, value); if (precondition(...invoke(next)) && !property(...invoke(next))) minimal[index] = value }\n` : `    const minimal = candidate\n`) +
     `    expect.fail("Uneffect counterexample: " + JSON.stringify({ functionName: ${JSON.stringify(boundary.functionName)}, arguments: minimal }))\n` +
     `  }\n` +
     `})\n`;
