@@ -126,6 +126,11 @@ error). This includes TypeScript Program construction and TypeChecker symbol
 resolution; integrations should reuse an existing Program rather than paying
 that setup cost per file.
 
+Resolving a 64-link reassignment-free timer-handle alias chain measured
+137.97 ms mean over five samples, with a noisy 18.15% relative margin of error.
+As above, TypeScript Program construction dominates this standalone API path;
+the alias walk itself is linear in the chain length.
+
 The property-generator cases remain on the purely static path and do not invoke
 Z3. Solver benchmarks are reported separately because initialization and
 individual proof queries have a different cost profile.

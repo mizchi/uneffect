@@ -260,6 +260,11 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("named-callbacks.ts", `${callbacks}\nfunction schedule() { ${schedules} }`);
   }, { time: 500, iterations: 5 });
 
+  bench("resolve a 64-link timer handle alias chain", () => {
+    const aliases = Array.from({ length: 64 }, (_, index) => `const handle${index + 1} = handle${index}`).join(";");
+    analyzeAsyncPatterns("timer-aliases.ts", `function job() {}; function schedule() { const handle0 = setTimeout(job, 0); ${aliases}; clearTimeout(handle64) }`);
+  }, { time: 500, iterations: 5 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

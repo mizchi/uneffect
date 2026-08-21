@@ -38,7 +38,10 @@ just spec-web-event-loop examples/async-patterns.ts
 
 The generated `eventLoopSafe` invariant rejects a callback that executes in
 the wrong phase. Direct `cancelAnimationFrame` handles prevent the corresponding
-callback from becoming pending. Promise reactions from a synchronously and
+callback from becoming pending. Reassignment-free local identifier aliases of
+timer handles are normalized before matching a clear operation. Handle escape,
+reassignment, and environment-specific Node/browser handle identity remain
+unknown. Promise reactions from a synchronously and
 definitely settled local executor are placed in the same checkpoint as
 `queueMicrotask`; running one reaction queues the next link before the
 checkpoint may finish. External or possibly-pending Promise settlement is not

@@ -84,6 +84,20 @@ describe("builtin async temporal patterns", () => {
     expect(macroFirst.stdout + macroFirst.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
 
+  it("resolves reassignment-free timer handle aliases for cancellation", () => {
+    const model = analyzeAsyncPatterns("timer-alias.ts", `
+      function job() {}
+      function schedule() {
+        const handle = setTimeout(job, 10)
+        const alias = handle
+        const forwarded = alias
+        clearTimeout(forwarded)
+      }
+    `);
+    expect(model.cancellations).toContainEqual(expect.objectContaining({ handle: "handle", timer: 0, definite: true }));
+    expect(generateWebEventLoopQuint("timer_alias", model)).toContain("callback_0_pending' = false");
+  });
+
   it("models the web task, microtask checkpoint, animation frame, and paint phases", () => {
     const model = analyzeAsyncPatterns("web-loop.ts", `
       function job() {}

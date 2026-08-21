@@ -78,6 +78,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const visitFunction = (owner: ts.FunctionLikeDeclaration): void => {
     if (!owner.body) return;
     const ownerName = functionName(owner);
+    const handleAliases = new Map<string, string>();
+    const resolveHandle = (name: string): string => {
+      const seen = new Set<string>();
+      let current = name;
+      while (handleAliases.has(current) && !seen.has(current)) { seen.add(current); current = handleAliases.get(current)!; }
+      return current;
+    };
     const collectNestedMicrotasks = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callback = resolveCallback(callbackExpression);
       if (!callback || !callback.body || visited.has(callback)) return;
@@ -102,6 +109,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     };
     const visit = (node: ts.Node): void => {
       if (node !== owner.body && ts.isFunctionLike(node)) return;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)) {
+        handleAliases.set(node.name.text, resolveHandle(node.initializer.text));
+      } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
+        handleAliases.delete(node.left.text);
+      }
       if (ts.isCallExpression(node)) {
         const operation = adapter.resolveCall(node)?.operation;
         if (operation?.kind === "timer") {
@@ -122,7 +134,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           });
           collectNestedMicrotasks(callbackNode, timerIndex);
         } else if (operation?.kind === "timer-clear") {
-          const handle = node.arguments[operation.handleArgument]?.getText(source) ?? "<unknown>";
+          const handleNode = node.arguments[operation.handleArgument];
+          const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
           let current: ts.Node = node;
           let definite = true;
           while (current.parent && current.parent !== owner.body) {
