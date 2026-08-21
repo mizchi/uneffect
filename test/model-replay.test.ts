@@ -62,6 +62,35 @@ State 4: <q_step line 1, col 1 to line 1, col 1 of module counter>
     });
   });
 
+  it("normalizes finite Set, Map, and record TLC values and recovers collection actions", () => {
+    const spec = parseSpec("collections.ts", `/* uneffect:
+      state writers: Set<int>
+      state epochs: Map<int, int>
+      state lease: { owner: int, valid: bool }
+      init writers = Set(1)
+      init epochs = Map([[1, 1]])
+      init lease = { owner: 1, valid: true }
+      action publish: writers' = writers.union(Set(2)), epochs' = epochs.put(2, 1), lease' = { ...lease, owner: 2 }
+      temporal oneWriter: writers.size() <= 1
+    */`).temporal;
+    const trace = parseTlcCounterexample(`
+Error: Invariant q_inv is violated.
+State 1: <Initial predicate>
+/\\ writers = {1}
+/\\ epochs = [1 |-> 1]
+/\\ lease = [owner |-> 1, valid |-> TRUE]
+
+State 2: <q_step>
+/\\ writers = {2, 1}
+/\\ epochs = [2 |-> 1, 1 |-> 1]
+/\\ lease = [owner |-> 2, valid |-> TRUE]
+`, spec, "collections-model");
+    expect(trace).toMatchObject({
+      initialState: { writers: [1], epochs: [[1, 1]], lease: { owner: 1, valid: true } },
+      steps: [{ action: "publish", after: { writers: [1, 2], epochs: [[1, 1], [2, 1]], lease: { owner: 2, valid: true } } }],
+    });
+  });
+
   it("rejects non-violations and ambiguous TLC action recovery", () => {
     const spec = parseSpec("ambiguous.ts", `/* uneffect:
       state value: int

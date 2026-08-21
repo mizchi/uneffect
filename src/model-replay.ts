@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { TemporalExpression } from "./temporal-expressions.js";
+import type { TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import type { TemporalSpec } from "./spec-ir.js";
 
 export type ModelScalar = null | boolean | number | string;
@@ -113,9 +113,9 @@ export function parseQuintItfCounterexample(text: string, modelHash: string): Mo
   return createModelCounterexample({ backend: "quint", modelHash, initialState: states[0]!.state, steps });
 }
 
-type TemporalScalarState = Record<string, number | boolean>;
+type TemporalScalarState = ModelState;
 
-function evaluateTemporalExpression(expression: TemporalExpression, state: TemporalScalarState): number | boolean {
+function evaluateTemporalExpression(expression: TemporalExpression, state: TemporalScalarState): ModelValue {
   if (expression.kind === "name") {
     const value = state[expression.name];
     if (value === undefined) throw new Error(`missing temporal state value: ${expression.name}`);
@@ -123,12 +123,43 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
   }
   if (expression.kind === "integer") return Number(expression.value);
   if (expression.kind === "boolean") return expression.value;
+  if (expression.kind === "array") return expression.elements.map((item) => evaluateTemporalExpression(item, state));
+  if (expression.kind === "record") {
+    const base = expression.base ? evaluateTemporalExpression(expression.base, state) : {};
+    if (!base || typeof base !== "object" || Array.isArray(base)) throw new Error("temporal record spread did not evaluate to a record");
+    return { ...base, ...Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, evaluateTemporalExpression(value, state)])) };
+  }
+  if (expression.kind === "field") {
+    const receiver = evaluateTemporalExpression(expression.receiver, state);
+    if (!receiver || typeof receiver !== "object" || Array.isArray(receiver) || !(expression.name in receiver)) throw new Error(`missing temporal record field: ${expression.name}`);
+    return receiver[expression.name]!;
+  }
+  if (expression.kind === "call") {
+    if (expression.name === "Set") return [...new Map(expression.arguments.map((item) => evaluateTemporalExpression(item, state)).map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
+    const entries = evaluateTemporalExpression(expression.arguments[0]!, state) as ModelValue[];
+    return entries.map((entry) => entry as ModelValue[]).sort((a, b) => stable(a[0]).localeCompare(stable(b[0])));
+  }
+  if (expression.kind === "method") {
+    const receiver = evaluateTemporalExpression(expression.receiver, state) as ModelValue[];
+    if (expression.name === "put") {
+      const key = evaluateTemporalExpression(expression.arguments[0]!, state), value = evaluateTemporalExpression(expression.arguments[1]!, state);
+      return [...receiver.filter((entry) => !same((entry as ModelValue[])[0], key)), [key, value] as ModelValue].sort((a, b) => stable((a as ModelValue[])[0]).localeCompare(stable((b as ModelValue[])[0])));
+    }
+    if (expression.name === "keys") return receiver.map((entry) => (entry as ModelValue[])[0]!);
+    if (expression.name === "values") return [...new Map(receiver.map((entry) => (entry as ModelValue[])[1]!).map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
+    if (expression.name === "size") return receiver.length;
+    if (expression.name === "contains") return receiver.some((item) => same(item, evaluateTemporalExpression(expression.arguments[0]!, state)));
+    if (expression.name === "union") return [...new Map([...receiver, ...(evaluateTemporalExpression(expression.arguments[0]!, state) as ModelValue[])].map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
+    const predicate = expression.arguments[0]!;
+    if (predicate.kind !== "lambda") throw new Error("temporal forall requires a lambda");
+    return receiver.every((item) => evaluateTemporalExpression(predicate.body, { ...state, [predicate.parameter]: item }) === true);
+  }
   if (expression.kind === "unary") {
     const operand = evaluateTemporalExpression(expression.operand, state);
     if (expression.operator === "not") return !operand;
     return -Number(operand);
   }
-  if (expression.kind === "array" || expression.kind === "record" || expression.kind === "field" || expression.kind === "lambda" || expression.kind === "call" || expression.kind === "method") throw new Error("collection temporal expressions are not supported by scalar trace replay");
+  if (expression.kind === "lambda") throw new Error("temporal lambda cannot be evaluated outside a quantifier");
   const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
   switch (expression.operator) {
     case "eq": return left === right;
@@ -166,6 +197,46 @@ function parseTlcScalar(raw: string, type: "int" | "bool", name: string): number
   return parsed;
 }
 
+function splitTlcItems(source: string): string[] {
+  const items: string[] = [];
+  let start = 0, depth = 0;
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]!;
+    if (char === "{" || char === "[") depth++;
+    else if (char === "}" || char === "]") depth--;
+    else if (char === "," && depth === 0) { items.push(source.slice(start, index).trim()); start = index + 1; }
+  }
+  const tail = source.slice(start).trim();
+  if (tail) items.push(tail);
+  return items;
+}
+
+function parseTlcValue(raw: string, type: TemporalValueType, name: string): ModelValue {
+  if (typeof type === "string") return parseTlcScalar(raw, type, name);
+  const value = raw.trim();
+  if (type.kind === "set") {
+    if (!value.startsWith("{") || !value.endsWith("}")) throw new Error(`TLC state ${name} is not a finite Set: ${value}`);
+    if (type.element === "never") return [];
+    return splitTlcItems(value.slice(1, -1)).map((item) => parseTlcValue(item, type.element as TemporalValueType, name)).sort((a, b) => stable(a).localeCompare(stable(b)));
+  }
+  if (!value.startsWith("[") || !value.endsWith("]")) throw new Error(`TLC state ${name} is not a record/function value: ${value}`);
+  const entries = splitTlcItems(value.slice(1, -1)).map((item) => {
+    const separator = item.indexOf("|->");
+    if (separator < 0) throw new Error(`TLC state ${name} has an invalid mapping entry: ${item}`);
+    return [item.slice(0, separator).trim(), item.slice(separator + 3).trim()] as const;
+  });
+  if (type.kind === "record") {
+    return Object.fromEntries(entries.map(([field, item]) => {
+      const fieldType = type.fields[field];
+      if (!fieldType) throw new Error(`TLC state ${name} has unknown record field ${field}`);
+      return [field, parseTlcValue(item, fieldType, `${name}.${field}`)];
+    }));
+  }
+  if (type.value === "never") return [];
+  return entries.map(([key, item]) => [parseTlcScalar(key, type.key === "never" ? "int" : type.key, name), parseTlcValue(item, type.value as TemporalValueType, name)] as ModelValue)
+    .sort((a, b) => stable((a as ModelValue[])[0]).localeCompare(stable((b as ModelValue[])[0])));
+}
+
 function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, after: TemporalScalarState, step: number): string {
   const candidates = spec.actions.filter((action) => {
     if (action.guard && evaluateTemporalExpression(action.guard.expressionAst, before) !== true) return false;
@@ -173,7 +244,7 @@ function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, 
     return spec.states.every((state) => {
       const assignment = assignments.get(state.name);
       const expected = assignment ? evaluateTemporalExpression(assignment.expressionAst, before) : before[state.name];
-      return expected === after[state.name];
+      return same(expected, after[state.name]);
     });
   });
   if (candidates.length !== 1) {
@@ -183,9 +254,8 @@ function recoverTemporalAction(spec: TemporalSpec, before: TemporalScalarState, 
   return candidates[0]!.name;
 }
 
-/** Parses TLC's scalar console trace and recovers action names from the neutral temporal IR. */
+/** Parses TLC's console trace and recovers action names from the neutral temporal IR. */
 export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHash: string): ModelCounterexample {
-  if (spec.states.some((state) => typeof state.type !== "string")) throw new Error("collection-valued TLC trace replay is not implemented");
   if (!/(?:Invariant.+violated|Temporal properties were violated)/i.test(text)) throw new Error("TLC output does not report a property violation");
   const headers = [...text.matchAll(/^State\s+(\d+):\s*<[^\n]*>\s*$/gm)];
   if (headers.length === 0) throw new Error("TLC counterexample has no states");
@@ -196,7 +266,7 @@ export function parseTlcCounterexample(text: string, spec: TemporalSpec, modelHa
     return Object.fromEntries(spec.states.map((state) => {
       const raw = assignments.get(state.name);
       if (raw === undefined) throw new Error(`TLC state ${index + 1} is missing ${state.name}; parsed assignments: ${[...assignments.keys()].join(", ") || "<none>"}; block: ${JSON.stringify(block.trim())}`);
-      return [state.name, parseTlcScalar(raw, state.type as "int" | "bool", state.name)];
+      return [state.name, parseTlcValue(raw, state.type, state.name)];
     }));
   });
   const steps = states.slice(1).map((after, index): ModelCounterexampleStep => ({
