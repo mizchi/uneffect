@@ -81,6 +81,43 @@ describe("spec IR and generated verifier programs", () => {
     rmSync(directory, { recursive: true, force: true });
     expect(result.status, result.stdout + result.stderr).toBe(0);
   });
+
+  it("parses and verifies record state with field reads and immutable updates", () => {
+    const temporal = parseSpec("records.ts", `/* uneffect:
+      state lease: { owner: int, valid: bool }
+      init lease = { owner: 1, valid: true }
+      action transfer: lease' = { ...lease, owner: 2 }
+      temporal validOwner: !lease.valid || lease.owner > 0
+    */`).temporal;
+    expect(temporal.states[0]?.type).toEqual({ kind: "record", fields: { owner: "int", valid: "bool" } });
+    const quint = generateQuint("record_state", temporal);
+    expect(quint).toContain("var lease: { owner: int, valid: bool }");
+    expect(quint).toContain('lease\' = lease.with("owner", 2)');
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-record-state-"));
+    const path = join(directory, "record.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=validOwner", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
+
+  it("nests record values inside finite Maps", () => {
+    const temporal = parseSpec("nested-records.ts", `/* uneffect:
+      state leases: Map<int, { epoch: int, valid: bool }>
+      init leases = Map([[1, { epoch: 1, valid: true }], [2, { epoch: 0, valid: false }]])
+      action publish: leases' = leases.put(2, { epoch: 1, valid: true })
+      temporal validEpochs: leases.values().forall(lease => !lease.valid || lease.epoch > 0)
+    */`).temporal;
+    expect(temporal.states[0]?.type).toEqual({ kind: "map", key: "int", value: { kind: "record", fields: { epoch: "int", valid: "bool" } } });
+    const quint = generateQuint("nested_records", temporal);
+    expect(quint).toContain("var leases: int -> { epoch: int, valid: bool }");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-nested-records-"));
+    const path = join(directory, "nested.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=validEpochs", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+  });
   it("extracts the shortest bounded Z3 trace and replays its actions", async () => {
     const temporal = parseSpec("counter.ts", `/* uneffect:
       state value: int

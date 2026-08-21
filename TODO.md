@@ -145,7 +145,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Replace per-node writer-presence fields with a finite Set in a Node Lease positive/negative Quint model.
   - [x] Add scalar-key/value `Map<K, V>`, TypeScript `Map([[k, v]])`, immutable `put`, and finite `keys`/`values` views without exposing partial `get`.
   - [x] Replace per-node resident epoch fields with a finite Map in the Node Lease model.
-  - [ ] Add record state, nested collection types, collection-valued TLC replay, and a solver representation or finite expansion for Z3.
+  - [x] Add record state, field reads, immutable spread updates, and nested collection value types.
+  - [ ] Add collection-valued TLC replay and a solver representation or finite expansion for Z3.
 - [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
 - [x] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
   - [x] Replay a Quint-produced Node Lease trace through a typed runtime adapter and reproduce `singleWriter` at the same step.

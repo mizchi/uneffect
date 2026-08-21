@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations, type SourceSpan } from "./annotations.js";
 import { parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
-import { formatTemporalValueType, parseTemporalExpression, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
+import { formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import type { NumericDomain } from "./invariant-ir.js";
 
 export interface CapabilitySpec {
@@ -157,12 +157,12 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     ...clocks.map((clock): TemporalState => ({ name: clock.name, type: "int" })),
     ...extractAnnotations(text, "state").map((value): TemporalState => {
     const parsed = namedExpression(value, "state");
-    if (parsed.expression === "int" || parsed.expression === "bool") return { name: parsed.name, type: parsed.expression };
-    const set = /^Set<(int|bool)>$/.exec(parsed.expression);
-    if (set) return { name: parsed.name, type: { kind: "set", element: set[1] as "int" | "bool" } };
-    const map = /^Map<(int|bool),\s*(int|bool)>$/.exec(parsed.expression);
-    if (map) return { name: parsed.name, type: { kind: "map", key: map[1] as "int" | "bool", value: map[2] as "int" | "bool" } };
-    throw new Error(`unsupported state type: ${parsed.expression}`);
+    try {
+      return { name: parsed.name, type: parseTemporalValueType(parsed.expression) };
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`unsupported state type: ${parsed.expression}: ${message}`);
+    }
     }),
   ];
   const explicitInit = extractAnnotations(text, "init").map((value) => assignment(value, "init"));

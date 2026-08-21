@@ -19,9 +19,9 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(generateQuintExpression(expression)).toBe("epoch + 1 <= limit or ready");
   });
 
-  it("rejects calls, property access, and loose equality", () => {
+  it("rejects calls, untyped property access, and loose equality", () => {
     expect(() => parseTemporalExpression("check(value)")).toThrow(/unsupported temporal expression/);
-    expect(() => parseTemporalExpression("state.value === 1")).toThrow(/unsupported temporal expression/);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("state.value === 1"), new Map([["state", "int"]]))).toThrow(/field access requires a record/);
     expect(() => parseTemporalExpression("phase == 0")).toThrow(/strict equality/);
   });
 
@@ -72,5 +72,16 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(() => parseTemporalExpression("epochs.get(1)")).toThrow(/unsupported temporal method `get`/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([1, 2])"), new Map())).toThrow(/\[key, value\] pairs/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([[1, true], [2, 0]])"), new Map())).toThrow(/homogeneous key and value types/);
+  });
+
+  it("lowers typed records, field reads, and immutable spread updates", () => {
+    const recordType = { kind: "record", fields: { owner: "int", valid: "bool" } } as const;
+    const expression = parseTemporalExpression("({ ...lease, owner: 2 }).owner === 2 && lease.valid");
+    expect(typeCheckTemporalExpression(expression, new Map([ ["lease", recordType] ]))).toBe("bool");
+    expect(generateQuintExpression(expression)).toBe('lease.with("owner", 2).owner == 2 and lease.valid');
+    expect(generateRuntimeAssertionExpression(expression)).toBe("({ ...lease, owner: 2 }).owner === 2 && lease.valid");
+    const check = new Function("lease", `return ${generateRuntimeAssertionExpression(expression)}`);
+    expect(check({ owner: 1, valid: true })).toBe(true);
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("lease.missing"), new Map([ ["lease", recordType] ]))).toThrow(/unknown temporal record field `missing`/);
   });
 });

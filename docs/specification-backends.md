@@ -85,8 +85,8 @@ to optional JavaScript assertions (`Set`, `has`, and `Array.from(...).every`).
 Sets must be homogeneous and quantified predicates must be boolean. Collection
 state is currently a Quint/runtime feature: scalar-only Z3 lint and bounded
 counterexample extraction return an explicit unsupported/`unknown` result, and
-TLC scalar trace replay rejects it. Map, records, nested collections, and
-collection trace normalization remain unimplemented.
+TLC scalar trace replay rejects it. Collection trace normalization and Z3
+collection reasoning remain unimplemented.
 
 Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
 TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
@@ -95,6 +95,15 @@ TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
 the map's known domain. A general user-written partial `get` is intentionally
 not accepted yet. Runtime lowering constructs a fresh JavaScript `Map`, so
 assertion evaluation does not mutate application state.
+
+Closed TypeScript-style records are supported as state types and values, for
+example `{ owner: int, valid: bool }` and `{ ...lease, owner: 2 }`. Field reads
+remain ordinary `lease.owner` expressions. Quint lowering uses record literals,
+field access, and `.with("owner", value)`; runtime assertions use JavaScript
+object literals and spread. Record fields and Map values may themselves contain
+supported collection or record types. Record shapes are exact, optional fields
+and dynamic property access are rejected, and Z3/TLC still report these domains
+as unsupported rather than claiming a proof.
 
 For bounded safety exploration, the direct Z3 backend unrolls the same neutral
 actions, adds a solver-visible action selector per transition, and searches

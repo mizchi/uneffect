@@ -5,6 +5,8 @@ export type TemporalExpression =
   | { kind: "integer"; value: string }
   | { kind: "boolean"; value: boolean }
   | { kind: "array"; elements: TemporalExpression[] }
+  | { kind: "record"; base?: TemporalExpression; fields: Readonly<Record<string, TemporalExpression>> }
+  | { kind: "field"; receiver: TemporalExpression; name: string }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
   | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "forall" | "size" | "put" | "keys" | "values"; arguments: TemporalExpression[] }
@@ -17,22 +19,59 @@ export type TemporalBinaryOperator =
   | "add" | "subtract" | "multiply" | "divide" | "modulo";
 export type TemporalScalarType = "int" | "bool" | "never";
 export type TemporalValueType = "int" | "bool"
-  | { kind: "set"; element: TemporalScalarType }
-  | { kind: "map"; key: TemporalScalarType; value: TemporalScalarType };
+  | { kind: "set"; element: TemporalValueType | "never" }
+  | { kind: "map"; key: TemporalScalarType; value: TemporalValueType | "never" }
+  | { kind: "record"; fields: Readonly<Record<string, TemporalValueType>> };
 
 export function temporalTypesCompatible(left: TemporalValueType, right: TemporalValueType): boolean {
   if (typeof left === "string" || typeof right === "string") return left === right;
   if (left.kind !== right.kind) return false;
-  if (left.kind === "set" && right.kind === "set") return left.element === right.element || left.element === "never" || right.element === "never";
+  if (left.kind === "set" && right.kind === "set") return left.element === "never" || right.element === "never" || temporalTypesCompatible(left.element, right.element);
   if (left.kind === "map" && right.kind === "map") return (left.key === right.key || left.key === "never" || right.key === "never")
-    && (left.value === right.value || left.value === "never" || right.value === "never");
+    && (left.value === "never" || right.value === "never" || temporalTypesCompatible(left.value, right.value));
+  if (left.kind === "record" && right.kind === "record") {
+    const leftNames = Object.keys(left.fields), rightNames = Object.keys(right.fields);
+    return leftNames.length === rightNames.length && leftNames.every((name) => right.fields[name] && temporalTypesCompatible(left.fields[name]!, right.fields[name]!));
+  }
   return false;
 }
 
 export function formatTemporalValueType(type: TemporalValueType): string {
   if (typeof type === "string") return type;
-  if (type.kind === "set") return `Set[${type.element === "never" ? "int" : type.element}]`;
-  return `${type.key === "never" ? "int" : type.key} -> ${type.value === "never" ? "int" : type.value}`;
+  if (type.kind === "set") return `Set[${type.element === "never" ? "int" : formatTemporalValueType(type.element)}]`;
+  if (type.kind === "map") return `${type.key === "never" ? "int" : type.key} -> ${type.value === "never" ? "int" : formatTemporalValueType(type.value)}`;
+  return `{ ${Object.entries(type.fields).map(([name, field]) => `${name}: ${formatTemporalValueType(field)}`).join(", ")} }`;
+}
+
+export function parseTemporalValueType(source: string): TemporalValueType {
+  const file = ts.createSourceFile("temporal-type.ts", `type __Value = ${source}`, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const diagnostics = (file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
+  if (diagnostics.length > 0) throw new Error(`invalid temporal state type: ${source}`);
+  const statement = file.statements[0];
+  const convertType = (node: ts.TypeNode): TemporalValueType => {
+    if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+      if ((node.typeName.text === "int" || node.typeName.text === "bool") && !node.typeArguments?.length) return node.typeName.text;
+      if (node.typeName.text === "Set" && node.typeArguments?.length === 1) return { kind: "set", element: convertType(node.typeArguments[0]!) };
+      if (node.typeName.text === "Map" && node.typeArguments?.length === 2) {
+        const key = convertType(node.typeArguments[0]!), value = convertType(node.typeArguments[1]!);
+        if (key !== "int" && key !== "bool") throw new Error("temporal Map keys must be int or bool");
+        return { kind: "map", key, value };
+      }
+    }
+    if (ts.isTypeLiteralNode(node)) {
+      const fields: Record<string, TemporalValueType> = {};
+      for (const member of node.members) {
+        if (!ts.isPropertySignature(member) || !member.type || !member.name || !ts.isIdentifier(member.name) || member.questionToken) throw new Error("temporal records require named, required fields");
+        if (fields[member.name.text]) throw new Error(`duplicate temporal record field \`${member.name.text}\``);
+        fields[member.name.text] = convertType(member.type);
+      }
+      if (Object.keys(fields).length === 0) throw new Error("temporal records require at least one field");
+      return { kind: "record", fields };
+    }
+    throw new Error(`unsupported temporal state type: ${node.getText(file)}`);
+  };
+  if (!statement || !ts.isTypeAliasDeclaration(statement)) throw new Error(`unsupported temporal state type: ${source}`);
+  return convertType(statement.type);
 }
 
 export function typeCheckTemporalExpression(
@@ -47,6 +86,24 @@ export function typeCheckTemporalExpression(
   if (expression.kind === "integer") return "int";
   if (expression.kind === "boolean") return "bool";
   if (expression.kind === "array") throw new Error("temporal array literals are only valid inside Map entries");
+  if (expression.kind === "record") {
+    const base = expression.base ? typeCheckTemporalExpression(expression.base, symbols) : undefined;
+    if (base && (typeof base === "string" || base.kind !== "record")) throw new Error("temporal record spread requires a record");
+    const fields: Record<string, TemporalValueType> = base && typeof base !== "string" ? { ...base.fields } : {};
+    for (const [name, value] of Object.entries(expression.fields)) {
+      const type = typeCheckTemporalExpression(value, symbols);
+      if (base && fields[name] && !temporalTypesCompatible(fields[name]!, type)) throw new Error(`temporal record field \`${name}\` update changes its type`);
+      fields[name] = type;
+    }
+    return { kind: "record", fields };
+  }
+  if (expression.kind === "field") {
+    const receiver = typeCheckTemporalExpression(expression.receiver, symbols);
+    if (typeof receiver === "string" || receiver.kind !== "record") throw new Error("temporal field access requires a record");
+    const field = receiver.fields[expression.name];
+    if (!field) throw new Error(`unknown temporal record field \`${expression.name}\``);
+    return field;
+  }
   if (expression.kind === "lambda") throw new Error("temporal lambda is only valid as a finite quantifier predicate");
   if (expression.kind === "call") {
     if (expression.name === "Map") {
@@ -55,17 +112,18 @@ export function typeCheckTemporalExpression(
       const typed = pairs.map((pair) => {
         if (pair.kind !== "array" || pair.elements.length !== 2) throw new Error("temporal Map entries must be [key, value] pairs");
         const key = typeCheckTemporalExpression(pair.elements[0]!, symbols), value = typeCheckTemporalExpression(pair.elements[1]!, symbols);
-        if (typeof key !== "string" || typeof value !== "string") throw new Error("temporal Map keys and values must be scalar");
+        if (typeof key !== "string") throw new Error("temporal Map keys must be scalar");
         return { key, value };
       });
-      const key: TemporalScalarType = typed[0]?.key ?? "never", value: TemporalScalarType = typed[0]?.value ?? "never";
-      if (typed.some((pair) => pair.key !== key || pair.value !== value)) throw new Error("temporal Map requires homogeneous key and value types");
+      if (typed.length === 0) return { kind: "map", key: "never", value: "never" };
+      const key = typed[0]!.key, value = typed[0]!.value;
+      if (typed.some((pair) => pair.key !== key || !temporalTypesCompatible(pair.value, value))) throw new Error("temporal Map requires homogeneous key and value types");
       return { kind: "map", key, value };
     }
     const elements = expression.arguments.map((item) => typeCheckTemporalExpression(item, symbols));
-    if (elements.some((item) => typeof item !== "string")) throw new Error("temporal Set elements must be scalar values");
-    const element: TemporalScalarType = (elements[0] as "int" | "bool" | undefined) ?? "never";
-    if (elements.some((item) => item !== element)) throw new Error("temporal Set requires the same element type");
+    if (elements.length === 0) return { kind: "set", element: "never" };
+    const element = elements[0]!;
+    if (elements.some((item) => !temporalTypesCompatible(item, element))) throw new Error("temporal Set requires the same element type");
     return { kind: "set", element };
   }
   if (expression.kind === "method") {
@@ -78,7 +136,7 @@ export function typeCheckTemporalExpression(
       }
       if (expression.arguments.length !== 2) throw new Error("temporal put requires a key and value");
       const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols), value = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
-      if (typeof key !== "string" || typeof value !== "string" || (receiver.key !== "never" && receiver.key !== key) || (receiver.value !== "never" && receiver.value !== value)) throw new Error("temporal put key/value types must match the Map");
+      if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key) || (receiver.value !== "never" && !temporalTypesCompatible(receiver.value, value))) throw new Error("temporal put key/value types must match the Map");
       return receiver;
     }
     if (typeof receiver === "string" || receiver.kind !== "set") throw new Error(`temporal ${expression.name} requires a Set receiver`);
@@ -89,7 +147,7 @@ export function typeCheckTemporalExpression(
     if (expression.name === "contains") {
       if (expression.arguments.length !== 1) throw new Error("temporal contains requires one matching element");
       const element = typeCheckTemporalExpression(expression.arguments[0]!, symbols);
-      if (typeof element !== "string" || (receiver.element !== "never" && receiver.element !== element)) throw new Error("temporal contains requires one matching element");
+      if (receiver.element !== "never" && !temporalTypesCompatible(receiver.element, element)) throw new Error("temporal contains requires one matching element");
       return "bool";
     }
     if (expression.name === "union") {
@@ -138,6 +196,25 @@ function convert(node: ts.Expression): TemporalExpression {
     if (ts.isSpreadElement(element) || ts.isOmittedExpression(element)) throw new Error("temporal arrays do not support spread or holes");
     return convert(element);
   }) };
+  if (ts.isObjectLiteralExpression(node)) {
+    let base: TemporalExpression | undefined;
+    const fields: Record<string, TemporalExpression> = {};
+    for (const property of node.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        if (base) throw new Error("temporal records allow one leading spread");
+        if (Object.keys(fields).length > 0) throw new Error("temporal record spread must be first");
+        base = convert(property.expression);
+      } else if (ts.isPropertyAssignment(property) && ts.isIdentifier(property.name)) {
+        fields[property.name.text] = convert(property.initializer);
+      } else if (ts.isShorthandPropertyAssignment(property)) {
+        fields[property.name.text] = { kind: "name", name: property.name.text };
+      } else {
+        throw new Error("temporal records require identifier fields and ordinary values");
+      }
+    }
+    return { kind: "record", ...(base ? { base } : {}), fields };
+  }
+  if (ts.isPropertyAccessExpression(node)) return { kind: "field", receiver: convert(node.expression), name: node.name.text };
   if (ts.isArrowFunction(node) && node.parameters.length === 1 && ts.isIdentifier(node.parameters[0]!.name) && !ts.isBlock(node.body)) {
     return { kind: "lambda", parameter: node.parameters[0]!.name.text, body: convert(node.body) };
   }
@@ -208,6 +285,16 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
   if (expression.kind === "array") return `[${expression.elements.map((item) => emit(item, backend)).join(", ")}]`;
+  if (expression.kind === "record") {
+    const fields = Object.entries(expression.fields);
+    if (backend === "quint" && expression.base) return fields.reduce((value, [name, field]) => `${value}.with(${JSON.stringify(name)}, ${emit(field, backend)})`, emit(expression.base, backend));
+    const body = [...(expression.base ? [`...${emit(expression.base, backend)}`] : []), ...fields.map(([name, field]) => `${name}: ${emit(field, backend)}`)].join(", ");
+    return `{ ${body} }`;
+  }
+  if (expression.kind === "field") {
+    const receiver = emit(expression.receiver, backend, 100);
+    return `${backend === "runtime" && expression.receiver.kind === "record" ? `(${receiver})` : receiver}.${expression.name}`;
+  }
   if (expression.kind === "lambda") return `${expression.parameter} => ${emit(expression.body, backend)}`;
   if (expression.kind === "call") {
     if (expression.name === "Map") {
