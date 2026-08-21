@@ -277,6 +277,27 @@ describe("builtin async temporal patterns", () => {
     `).abortCompositions).toEqual([]);
   }, 20_000);
 
+  it("links an inline AbortSignal.timeout source into AbortSignal.any", () => {
+    const model = analyzeAsyncPatterns("inline-abort-timeout.ts", `
+      function request(controller: AbortController) {
+        return AbortSignal.any([controller.signal, AbortSignal.timeout(25)])
+      }
+    `);
+    expect(model.timers).toEqual([
+      expect.objectContaining({ kind: "abort-timeout", delay: 25, callback: "<abort>" }),
+    ]);
+    expect(model.abortCompositions).toEqual([
+      expect.objectContaining({
+        sources: ["controller.signal", "AbortSignal.timeout(25)"],
+        sourceTimers: [undefined, 0],
+        sourceReasons: [undefined, "TimeoutError"],
+      }),
+    ]);
+    const quint = generateWebEventLoopQuint("inline_abort_timeout", model);
+    expect(quint).toContain("action abort_0_from_timer_0");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("orders eligible scheduler.postTask callbacks by static priority and FIFO", () => {
     const model = analyzeAsyncPatterns("scheduler-tasks.ts", `
       function background() {}

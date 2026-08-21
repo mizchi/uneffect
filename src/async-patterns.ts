@@ -162,6 +162,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const handleAliases = new Map<string, string>();
     const handleTargets = new Map<string, number>();
     const abortSignalTargets = new Map<string, { timer?: number; alreadyAborted?: boolean; reason?: string }>();
+    const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
     const assignedBinding = (call: ts.CallExpression): string | undefined => ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name) ? call.parent.name.text
       : ts.isBinaryExpression(call.parent) && call.parent.right === call && call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(call.parent.left) ? call.parent.left.text
         : undefined;
@@ -171,6 +172,27 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (members.every((member) => Boolean(member.flags & (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral)))) return "number";
       if (members.every((member) => Boolean(member.flags & ts.TypeFlags.Object))) return "object";
       return "unknown";
+    };
+    const abortTarget = (expression: ts.Expression): { timer?: number; alreadyAborted?: boolean; reason?: string } | undefined => {
+      if (ts.isIdentifier(expression)) return abortSignalTargets.get(expression.text);
+      if (!ts.isCallExpression(expression) || adapter.resolveCall(expression)?.operation?.kind !== "abort-timeout") return undefined;
+      const existing = inlineAbortTimeoutTargets.get(expression);
+      if (existing !== undefined) return { timer: existing, reason: "TimeoutError" };
+      const delayNode = expression.arguments[0];
+      const timer = timers.length;
+      timers.push({
+        owner: ownerName,
+        callback: "<abort>",
+        delay: delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : undefined,
+        recursive: false,
+        repeats: false,
+        queue: "timer",
+        kind: "abort-timeout",
+        abortReason: "TimeoutError",
+        span: { start: expression.getStart(source), end: expression.getEnd() },
+      });
+      inlineAbortTimeoutTargets.set(expression, timer);
+      return { timer, reason: "TimeoutError" };
     };
     const resolveHandle = (name: string): string => {
       const seen = new Set<string>();
@@ -300,7 +322,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
-          timers.push({
+          const existing = inlineAbortTimeoutTargets.get(node);
+          const timer = existing ?? timers.length;
+          if (existing === undefined) timers.push({
             owner: ownerName,
             callback: "<abort>",
             delay: delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : undefined,
@@ -312,7 +336,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             abortReason: "TimeoutError",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
-          if (declaration) abortSignalTargets.set(declaration, { timer: timers.length - 1, reason: "TimeoutError" });
+          if (declaration) abortSignalTargets.set(declaration, { timer, reason: "TimeoutError" });
         } else if (operation?.kind === "abort-static") {
           const declaration = assignedBinding(node);
           if (declaration) abortSignalTargets.set(declaration, { alreadyAborted: true, reason: node.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError" });
@@ -321,7 +345,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const argument = node.arguments[operation.signalsArgument];
           const elements = argument ? expandStaticArray(argument) : undefined;
           if (elements && elements.every((element): element is ts.Expression => !ts.isOmittedExpression(element))) {
-            const targets = elements.map((element) => ts.isIdentifier(element) ? abortSignalTargets.get(element.text) : undefined);
+            const targets = elements.map(abortTarget);
             abortCompositions.push({
               owner: ownerName,
               handle: declaration,

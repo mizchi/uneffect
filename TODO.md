@@ -285,6 +285,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Preserve versioned timer identity through direct handle reassignment and aliases captured before reassignment.
   - [x] Model `AbortSignal.timeout` as a static active-time deadline, one-shot timer-source task tagged with abstract `TimeoutError` semantics, and `Timer` capability.
   - [x] Model static `AbortSignal.any` source order, already-aborted inputs, timeout/external sources, and first-reason-wins in Web Quint.
+  - [x] Link inline `AbortSignal.timeout(...)` entries in static `AbortSignal.any` arrays to their concrete timer-source tasks.
   - [x] Track direct timer-handle escape through opaque arguments, property storage, and return as optional external cancellation.
   - [x] Track timer-handle escape through direct array/object aggregates and inline returned closures.
   - [x] Resolve timer-handle aggregate and inline-closure escape through immutable local bindings.

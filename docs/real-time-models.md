@@ -52,8 +52,10 @@ source cannot be overwritten; a deliberately broken lowering produces a Quint
 counterexample. This follows the [DOM dependent-signal algorithm](https://dom.spec.whatwg.org/#dom-abortsignal-any)
 and [MDN's first-abort behavior](https://developer.mozilla.org/en-US/docs/Web/API/AbortSignal/any_static).
 Reason values are retained as source text in IR but abstracted to a one-based
-source index in Quint. Dynamic iterables, inline timeout-to-composition linking,
-and interprocedural signal aliases remain conservative gaps.
+source index in Quint. Named and inline static `AbortSignal.timeout(...)`
+sources link to their concrete timer tasks without duplicate extraction.
+Dynamic iterables, nested dynamic compositions, and interprocedural signal
+aliases remain conservative gaps.
 
 Static `scheduler.postTask` calls lower to a distinct scheduler task queue with
 `user-blocking`, `user-visible` (the default), or `background` priority and a
