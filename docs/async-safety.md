@@ -154,6 +154,10 @@ The assertion remains in gradual/runtime-checked builds. A matching Z3/Quint
 artifact lets a verified build remove the generated assertion and, once unused,
 its helper. The `consumeWhenActive` call itself is never removed by this proof.
 
+`buildVerifiedOwnership` composes analysis, instrumentation, Z3 execution, and
+safe elision. `uneffect-instrument --verify-ownership file.ts` exposes the same
+pipeline; `--ownership` stops before verification for runtime-checked builds.
+
 `void` is an explicit escape hatch, not proof that rejection is operationally
 handled. It is accepted by default for incremental adoption and can be rejected
 independently:
@@ -311,6 +315,13 @@ the unified module consumes its abstract fulfilled/rejected terminal boundary.
 A negative lowering can finish without cleanup, and the shared resource safety
 invariant rejects that execution.
 
+`controlStatements` retains each concrete catch and finally statement with its
+source span and lexical order. The unified lowering emits one transition per
+statement: caught rejection traverses the catch sequence, and both normal and
+recovered paths traverse the finally sequence before resource cleanup. This
+preserves ordering without pretending that arbitrary statement bodies have
+already been semantically interpreted.
+
 ```sh
 just spec-resource-quint examples/resources.ts
 ```
@@ -330,5 +341,6 @@ recursive `SuppressedError` payloads are retained in the analysis IR, while the
 Quint projection still uses an abstract completion state. The model records
 all exit kinds conservatively. Unified control edges connect Promise chains,
 await/catch, scope exits, and disposal failures. The initial single-function
-Quint lowering is implemented; exact statement sequencing for arbitrary nested
-catch/finally bodies remains outside this slice.
+Quint lowering and concrete catch/finally statement ordering are implemented;
+multiple awaited chains, arbitrary nested regions, and general control-flow
+joins remain outside this slice.

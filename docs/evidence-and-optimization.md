@@ -39,6 +39,28 @@ well. The original callee invocation remains in the output. Nested expression
 calls are currently rejected by this instrumentation slice because moving a
 guard evaluation across sibling expressions could change evaluation order.
 
+The one-shot verified build is available through the API and CLI:
+
+```ts
+const result = buildVerifiedOwnership(fileName, source)
+```
+
+```sh
+just instrument-ownership input.ts  # retain runtime checks
+just verified-ownership input.ts    # run Z3, elide matching proofs
+```
+
+The CLI flag is `--verify-ownership`. Backend failure and unresolved goals keep
+the runtime checks and report their count on stderr. The API also returns every
+artifact and unresolved obligation. `just verified-ownership` persists proof
+records in `.uneffect/ownership-evidence.json`; the equivalent explicit CLI is
+`--verify-ownership --ownership-evidence <cache.json>`. Matching proof-grade
+records are reused without invoking Z3. A previously verified record whose
+obligation or generated verifier program changed is reported as stale and is
+rechecked. Previous unknown/error results are retried but are not mislabeled as
+stale proof. Cache writes use an atomic replacement, and malformed caches are
+treated as empty, so cache damage can never authorize assertion elision.
+
 These prototypes establish the proof boundary, not a production compressor. A future Corsa/Oxc implementation may regenerate the rewrite layer while preserving the obligation contracts and artifact inputs.
 
 ## Dogfood gate

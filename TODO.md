@@ -117,6 +117,8 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 - [x] Evaluate property mangling separately under closed-world reflection and escape constraints.
 - [x] Gate generated ownership-assertion elision on matching proof-grade `ownership-evidence/v1`; never rewrite user-authored Promise control flow from ownership evidence alone.
 - [x] Add an end-to-end ownership instrumentation path: unresolved direct calls emit runtime assertions, matching Z3 evidence removes only generated checks and their unused helper.
+- [x] Add one-shot `--ownership` and `--verify-ownership` CLI modes with safe runtime fallback for unresolved or unavailable Z3 proofs.
+- [x] Persist ownership artifacts, reuse matching proofs across builds, and report stale evidence separately from first-time unknowns.
 
 ## P6 — Native integration and productization
 
@@ -145,7 +147,7 @@ This file is the implementation ledger. Work proceeds top to bottom within each 
 - [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model.
   - [x] Connect analyzed Promise-chain terminal states to await resume/rejection edges.
   - [x] Route disposal throw/rejection through catch and the async function's returned Promise in the shared IR.
-  - [ ] Preserve concrete catch/finally statement sequencing in the unified graph.
+  - [x] Preserve concrete catch/finally statement sequencing in the unified graph.
   - [x] Lower the single-function unified graph into one Quint transition module.
   - [ ] Generalize unified lowering to multiple awaited chains, nested scopes, and arbitrary control-flow joins.
 - [ ] Extend floating-Promise analysis from expression statements to binding ownership.

@@ -1,8 +1,9 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { analyzeAsyncSafety, type AsyncSafetyResult, type OwnershipGuardObligation } from "./async-safety.js";
-import { validateOwnershipEvidence, type OwnershipEvidenceArtifact } from "./evidence.js";
+import { validateOwnershipEvidence, verifyOwnershipObligationWithZ3, type OwnershipEvidenceArtifact } from "./evidence.js";
 import { applyOwnershipAssertionElision } from "./optimizer.js";
+import { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenceCache, type OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 
 export interface InstrumentDiagnostic {
   fileName: string;
@@ -20,6 +21,13 @@ export interface OwnershipAssertionInsertion { obligation: OwnershipGuardObligat
 export interface OwnershipInstrumentResult extends InstrumentResult {
   analysis: AsyncSafetyResult;
   assertions: OwnershipAssertionInsertion[];
+}
+export interface VerifiedOwnershipBuildResult extends InstrumentResult {
+  artifacts: OwnershipEvidenceArtifact[];
+  unresolved: OwnershipGuardObligation[];
+}
+export interface CachedVerifiedOwnershipBuildResult extends VerifiedOwnershipBuildResult {
+  cache: { reused: number; verified: number; stale: OwnershipEvidenceCacheEntry[] };
 }
 
 const namedSchemas: Record<string, string> = {
@@ -149,4 +157,48 @@ export function optimizeOwnershipAssertions(result: OwnershipInstrumentResult, a
   }
   if (code.startsWith(ownershipRuntime) && result.assertions.every((item) => !code.includes(item.assertion))) code = code.slice(ownershipRuntime.length);
   return { code, diagnostics: result.diagnostics };
+}
+
+/** Runs the deterministic ownership instrumentation, Z3 verification, and safe generated-check elision pipeline. */
+export function buildVerifiedOwnership(fileName: string, text: string): VerifiedOwnershipBuildResult {
+  const instrumented = instrumentOwnershipAssertions(fileName, text);
+  const artifacts = instrumented.assertions.map((item) => verifyOwnershipObligationWithZ3(item.obligation));
+  const optimized = optimizeOwnershipAssertions(instrumented, artifacts);
+  const unresolved = instrumented.assertions
+    .filter((item) => !artifacts.some((artifact) => validateOwnershipEvidence(artifact, item.obligation)))
+    .map((item) => item.obligation);
+  return { code: optimized.code, diagnostics: optimized.diagnostics, artifacts, unresolved };
+}
+
+/** Reuses only matching proof-grade evidence and atomically persists newly checked obligations. */
+export function buildVerifiedOwnershipCached(fileName: string, text: string, evidencePath: string): CachedVerifiedOwnershipBuildResult {
+  const instrumented = instrumentOwnershipAssertions(fileName, text);
+  const cache = readOwnershipEvidenceCache(evidencePath);
+  const artifacts: OwnershipEvidenceArtifact[] = [], stale: OwnershipEvidenceCacheEntry[] = [];
+  let reused = 0, verified = 0;
+  const updated = [...cache.entries];
+  const occurrences = new Map<string, number>();
+  for (const assertion of instrumented.assertions) {
+    const base = ownershipEvidenceKey(fileName, assertion.obligation);
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    const key = ownershipEvidenceKey(fileName, assertion.obligation, occurrence);
+    const candidates = cache.entries.filter((entry) => entry.key === key);
+    const matching = candidates.find((entry) => validateOwnershipEvidence(entry.artifact, assertion.obligation));
+    let artifact: OwnershipEvidenceArtifact;
+    if (matching) { artifact = matching.artifact; reused += 1; }
+    else {
+      stale.push(...candidates.filter((entry) => entry.artifact?.result === "verified" && entry.artifact.evidence === "verified"));
+      artifact = verifyOwnershipObligationWithZ3(assertion.obligation);
+      verified += 1;
+    }
+    artifacts.push(artifact);
+    const entry = { fileName, key, obligation: assertion.obligation, artifact };
+    const index = updated.findIndex((item) => item.key === key);
+    if (index < 0) updated.push(entry); else updated[index] = entry;
+  }
+  writeOwnershipEvidenceCache(evidencePath, { schema: "ownership-evidence-cache/v1", entries: updated });
+  const optimized = optimizeOwnershipAssertions(instrumented, artifacts);
+  const unresolved = instrumented.assertions.filter((item) => !artifacts.some((artifact) => validateOwnershipEvidence(artifact, item.obligation))).map((item) => item.obligation);
+  return { code: optimized.code, diagnostics: optimized.diagnostics, artifacts, unresolved, cache: { reused, verified, stale } };
 }

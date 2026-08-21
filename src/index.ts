@@ -28,8 +28,10 @@ export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgra
 export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus } from "./effects.js";
 export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, registerEffectSchema } from "./capabilities.js";
 export type { AtomDomain, CapabilityAtom, CapabilityComparisonOptions, CapabilityEffect, CapabilitySet, Effect, EffectSchema } from "./capabilities.js";
-export { instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";
-export type { OwnershipAssertionInsertion, OwnershipInstrumentResult } from "./instrument.js";
+export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";
+export type { CachedVerifiedOwnershipBuildResult, OwnershipAssertionInsertion, OwnershipInstrumentResult, VerifiedOwnershipBuildResult } from "./instrument.js";
+export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenceCache } from "./ownership-evidence-cache.js";
+export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
@@ -90,7 +92,7 @@ export type { AsyncPatternModel, PromiseCombinatorPattern, TimerCancellation, Ti
 export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
 export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern } from "./promise-chains.js";
 export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
-export type { AsyncControlEdge, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceBinding, ResourceDisposal, ResourceError, ResourceExit } from "./async-safety.js";
+export type { AsyncControlEdge, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceBinding, ResourceDisposal, ResourceError, ResourceExit } from "./async-safety.js";
 export { resolveDisposalProtocol } from "./disposal-symbols.js";
 export type { ResolvedDisposalProtocol } from "./disposal-symbols.js";
 export { buildProgramCallGraph, instantiateCallbackEffects } from "./call-graph.js";

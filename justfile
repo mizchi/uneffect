@@ -67,6 +67,12 @@ effect-demo:
 instrument-demo:
     pnpm tsx src/instrument-cli.ts examples/gradual.ts
 
+instrument-ownership file:
+    pnpm tsx src/instrument-cli.ts --ownership {{file}}
+
+verified-ownership file:
+    pnpm tsx src/instrument-cli.ts --verify-ownership --ownership-evidence .uneffect/ownership-evidence.json {{file}}
+
 evidence file:
     pnpm tsx src/evidence-cli.ts {{file}}
 

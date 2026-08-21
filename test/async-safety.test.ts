@@ -463,4 +463,26 @@ describe("async error and explicit resource safety", () => {
     expect(broken.status).not.toBe(0);
     expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
+
+  it("preserves concrete catch and finally statement order in the unified graph", () => {
+    const result = analyzeAsyncSafety("sequenced-finally.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try { await new Promise<string>((resolve) => resolve("ok")).then(value => value) }
+        catch (error) { note("caught"); note("recovered") }
+        finally { note("closing"); note("closed") }
+      }
+    `);
+    expect(result.controlStatements.map(({ region, source }) => ({ region, source }))).toEqual([
+      { region: "catch", source: 'note("caught");' },
+      { region: "catch", source: 'note("recovered")' },
+      { region: "finally", source: 'note("closing");' },
+      { region: "finally", source: 'note("closed")' },
+    ]);
+    const quint = generateUnifiedAsyncQuint("sequenced_finally", result, "run");
+    expect(quint.indexOf("action catch_statement_0")).toBeLessThan(quint.indexOf("action catch_statement_1"));
+    expect(quint.indexOf("action finally_statement_0")).toBeLessThan(quint.indexOf("action finally_statement_1"));
+    expect(quint).toContain("action await_resume_finally");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

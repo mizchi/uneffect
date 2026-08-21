@@ -66,8 +66,16 @@ export interface AsyncSafetyResult {
   disposals: ResourceDisposal[];
   promiseChains: PromiseChainModel;
   controlEdges: AsyncControlEdge[];
+  controlStatements: AsyncControlStatement[];
   ownershipObligations: OwnershipGuardObligation[];
   diagnostics: AsyncSafetyDiagnostic[];
+}
+export interface AsyncControlStatement {
+  owner: string;
+  region: "catch" | "finally";
+  order: number;
+  source: string;
+  span: { start: number; end: number };
 }
 export interface OwnershipGuardObligation {
   owner: string;
@@ -325,7 +333,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], ownershipObligations: OwnershipGuardObligation[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
@@ -527,6 +535,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     }
   };
   const visit = (node: ts.Node): void => {
+    if (ts.isTryStatement(node)) {
+      const owner = enclosingFunctionName(node);
+      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ owner, region: "catch", order, source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ owner, region: "finally", order, source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+    }
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
   };
@@ -554,7 +567,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, disposals, promiseChains, controlEdges, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, disposals, promiseChains, controlEdges, controlStatements, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
@@ -661,8 +674,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
   const awaited = result.promises.filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined);
+  const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
+  const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
-  const waitPc = resources.length, resumePc = waitPc + 1, catchPc = waitPc + 2, cleanupPc = waitPc + 3, completePc = cleanupPc + disposals.length;
+  const waitPc = resources.length, resumePc = waitPc + 1, catchPc = waitPc + 2;
+  const afterCatchPc = catchPc + catchStatements.length, finallyPc = afterCatchPc + 1;
+  const cleanupPc = finallyPc + finallyStatements.length, completePc = cleanupPc + disposals.length;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`));
@@ -687,8 +704,10 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${waitPc}`], rejectionUpdates);
   }
-  emit("await_resume_return", [`pc == ${resumePc}`], new Map([["pc", String(cleanupPc)]]));
-  emit("catch_return", [`pc == ${catchPc}`], new Map([["pc", String(cleanupPc)]]));
+  emit(finallyStatements.length ? "await_resume_finally" : "await_resume_return", [`pc == ${resumePc}`], new Map([["pc", String(finallyPc)]]));
+  catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
+  emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(finallyPc)]]));
+  finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));
   disposals.forEach((disposal, order) => {
     const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
     if (resourceIndex < 0) return;

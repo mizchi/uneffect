@@ -1,5 +1,8 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "../src/instrument.js";
+import { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "../src/instrument.js";
 import { verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 
 describe("runtime assertion instrumenter", () => {
@@ -59,5 +62,41 @@ describe("runtime assertion instrumenter", () => {
     expect(optimized.code).not.toContain(instrumented.assertions[0]!.assertion);
     expect(optimized.code).not.toContain("function uneffectAssertOwnership");
     expect(optimized.code).toContain("consume(");
+    const verifiedBuild = buildVerifiedOwnership("ownership.ts", source);
+    expect(verifiedBuild.artifacts).toHaveLength(1);
+    expect(verifiedBuild.artifacts[0]).toMatchObject({ backend: "z3", result: "verified", evidence: "verified" });
+    expect(verifiedBuild.unresolved).toEqual([]);
+    expect(verifiedBuild.code).not.toContain("uneffectAssertOwnership");
+    expect(verifiedBuild.code).toContain("consume(");
+  });
+
+  it("persists and reuses matching ownership evidence while reporting stale entries", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cache-test-"));
+    const evidencePath = join(directory, "ownership.json");
+    const source = (last: string) => `
+      declare function task(): Promise<void>
+      /* uneffect: consumes_rejection_when 13: b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && ${last} */
+      declare function consume(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean, value: Promise<void>): void
+      /* uneffect: requires b0 && b1 && b2 && b3 && b4 && b5 && b6 && b7 && b8 && b9 && b10 && b11 && b12 */
+      async function run(b0: boolean, b1: boolean, b2: boolean, b3: boolean, b4: boolean, b5: boolean, b6: boolean, b7: boolean, b8: boolean, b9: boolean, b10: boolean, b11: boolean, b12: boolean) {
+        consume(b0, b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, task())
+      }
+    `;
+    try {
+      const first = buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
+      expect(first.cache).toMatchObject({ reused: 0, verified: 1, stale: [] });
+      expect(JSON.parse(readFileSync(evidencePath, "utf8"))).toMatchObject({ schema: "ownership-evidence-cache/v1", entries: [expect.any(Object)] });
+
+      const second = buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
+      expect(second.cache).toMatchObject({ reused: 1, verified: 0, stale: [] });
+
+      const changed = buildVerifiedOwnershipCached("ownership.ts", source("!b12"), evidencePath);
+      expect(changed.cache.reused).toBe(0);
+      expect(changed.cache.stale).toHaveLength(1);
+      expect(changed.unresolved).toHaveLength(1);
+      expect(changed.code).toContain("uneffectAssertOwnership");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
