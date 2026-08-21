@@ -70,7 +70,7 @@ State 4: <q_step line 1, col 1 to line 1, col 1 of module counter>
       action second: value' = value + 1
       temporal zero: value === 0
     */`).temporal;
-    const states = `State 1: <Initial predicate>\n/\\ value = 0\nState 2: <q_step>\n/\\ value = 1\n`;
+    const states = `State 1: <Initial predicate>\nvalue = 0\nState 2: <q_step>\nvalue = 1\n`;
     expect(() => parseTlcCounterexample(states, spec, "model")).toThrow(/does not report a property violation/);
     expect(() => parseTlcCounterexample(`Error: Invariant q_inv is violated.\n${states}`, spec, "model"))
       .toThrow(/actions are ambiguous: first, second/);
