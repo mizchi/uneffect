@@ -55,6 +55,18 @@ Reason values are retained as source text in IR but abstracted to a one-based
 source index in Quint. Dynamic iterables, inline timeout-to-composition linking,
 and interprocedural signal aliases remain conservative gaps.
 
+Static `scheduler.postTask` calls lower to a distinct scheduler task queue with
+`user-blocking`, `user-visible` (the default), or `background` priority and a
+minimum static delay. Among eligible scheduler tasks, higher priority runs
+first and equal priority preserves registration FIFO. A pre-aborted named
+signal prevents initial enqueue. Priority ordering relative to other HTML task
+sources is intentionally unconstrained because the scheduling specification
+leaves that UA-dependent. A `TaskSignal` without an explicit immutable priority,
+dynamic options, and later priority changes are rejected rather than silently
+treated as `user-visible`. The returned Promise remains subject to the normal
+rejection-ownership analysis. See the [Prioritized Task Scheduling specification](https://wicg.github.io/scheduling-apis/)
+and [MDN `postTask`](https://developer.mozilla.org/en-US/docs/Web/API/Scheduler/postTask).
+
 ```sh
 just spec-web-event-loop examples/async-patterns.ts
 ```

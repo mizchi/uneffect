@@ -21,4 +21,11 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),
     ]));
   });
+
+  it("registers prioritized scheduler tasks by builtin symbol identity", () => {
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+      symbol: { module: "lib.dom", export: "Scheduler#postTask" },
+      operation: { kind: "scheduler-post-task", callbackArgument: 0, optionsArgument: 1 },
+    }));
+  });
 });

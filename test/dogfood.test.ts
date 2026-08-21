@@ -258,4 +258,22 @@ describe("Uneffect dogfood", () => {
       functionName: "fetchDashboard", kind: "missing", effect: "Timer",
     }));
   });
+
+  it("checks a prioritized dashboard scheduler boundary", () => {
+    const fileName = "examples/dogfood/scheduler-priority.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-visible", callback: "() => \"render\"" },
+      { kind: "scheduler-post-task", priority: "background", callback: "() => \"prefetch\"" },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_priority", model);
+    expect(quint).toMatch(/action run_scheduler_task_1[\s\S]*callback_0_pending and callback_0_due <= clock/);
+    const wrongBoundary = source.replace("effect Timer", "effect Console");
+    expect(analyzeEffects(fileName, wrongBoundary)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "scheduleDashboardWork", kind: "missing", effect: "Timer" }),
+      expect.objectContaining({ functionName: "scheduleDashboardWork", kind: "unused", effect: "Console" }),
+    ]));
+  });
 });

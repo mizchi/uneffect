@@ -220,6 +220,39 @@ describe("builtin async temporal patterns", () => {
     `).abortCompositions).toEqual([]);
   }, 20_000);
 
+  it("orders eligible scheduler.postTask callbacks by static priority and FIFO", () => {
+    const model = analyzeAsyncPatterns("scheduler-tasks.ts", `
+      function background() {}
+      function visibleA() {}
+      function visibleB() {}
+      function blocking() {}
+      function schedule() {
+        const cancelled = AbortSignal.abort("cancelled")
+        scheduler.postTask(background, { priority: "background" })
+        scheduler.postTask(visibleA)
+        scheduler.postTask(visibleB, { priority: "user-visible" })
+        scheduler.postTask(blocking, { priority: "user-blocking", delay: 5 })
+        scheduler.postTask(() => {}, { signal: cancelled })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", callback: "background", queue: "scheduler-task", priority: "background", delay: 0 },
+      { kind: "scheduler-post-task", callback: "visibleA", queue: "scheduler-task", priority: "user-visible", delay: 0 },
+      { kind: "scheduler-post-task", callback: "visibleB", queue: "scheduler-task", priority: "user-visible", delay: 0 },
+      { kind: "scheduler-post-task", callback: "blocking", queue: "scheduler-task", priority: "user-blocking", delay: 5 },
+      { kind: "scheduler-post-task", queue: "scheduler-task", priority: "user-visible", delay: 0, initiallyCancelled: true },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_tasks", model);
+    expect(quint).toContain("action run_scheduler_task_1");
+    expect(quint).toMatch(/action run_scheduler_task_2[\s\S]*not\(\(callback_1_pending and callback_1_due <= clock\)/);
+    expect(quint).toMatch(/action run_scheduler_task_0[\s\S]*callback_1_pending and callback_1_due <= clock/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+    expect(run(generateWebEventLoopQuint("scheduler_tasks_broken", model, { allowWrongSchedulerPriority: true }), "eventLoopSafe").status).not.toBe(0);
+    expect(() => generateWebEventLoopQuint("dynamic_scheduler", analyzeAsyncPatterns("dynamic-scheduler.ts", `
+      function schedule(signal: TaskSignal) { scheduler.postTask(() => {}, { signal }) }
+    `))).toThrow(/requires a static priority/);
+  }, 20_000);
+
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `
       function job() {}

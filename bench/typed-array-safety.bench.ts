@@ -348,6 +348,10 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("timer-escapes.ts", `declare function register(value: unknown): void; function schedule() { ${schedules} }`);
   }, { time: 500, iterations: 5 });
 
+  bench("analyze prioritized scheduler dogfood", () => {
+    analyzeAsyncPatterns("examples/dogfood/scheduler-priority.ts", readFileSync("examples/dogfood/scheduler-priority.ts", "utf8"));
+  }, { time: 500, iterations: 5 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

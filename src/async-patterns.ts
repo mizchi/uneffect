@@ -9,11 +9,13 @@ export interface TimerPattern {
   delay?: number;
   recursive: boolean;
   repeats: boolean;
-  queue: "timer" | "microtask" | "animation-frame";
+  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task";
   enqueuedBy?: number;
   handle?: string;
-  kind?: "abort-timeout";
+  kind?: "abort-timeout" | "scheduler-post-task";
   abortReason?: "TimeoutError";
+  priority?: "user-blocking" | "user-visible" | "background";
+  initiallyCancelled?: boolean;
   span: { start: number; end: number };
 }
 
@@ -145,7 +147,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
     if (ts.isCallExpression(node)) {
       const operation = adapter.resolveCall(node)?.operation;
-      if (operation?.kind === "timer") {
+      if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") {
         const callback = resolveCallback(node.arguments[operation.callbackArgument]);
         if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
       }
@@ -266,6 +268,41 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               span: { start: node.getStart(source), end: node.getEnd() },
             });
           }
+        } else if (operation?.kind === "scheduler-post-task") {
+          const callbackNode = node.arguments[operation.callbackArgument];
+          const optionsNode = node.arguments[operation.optionsArgument];
+          const optionsObject = optionsNode && ts.isObjectLiteralExpression(optionsNode) ? optionsNode : undefined;
+          const option = (name: string): ts.Expression | undefined => optionsObject?.properties.flatMap((property) => {
+            if (ts.isPropertyAssignment(property) && property.name.getText(source).replaceAll(/["']/g, "") === name) return [property.initializer];
+            if (ts.isShorthandPropertyAssignment(property) && property.name.text === name) return [property.name];
+            return [];
+          })[0];
+          const priorityNode = option("priority");
+          const signalNode = option("signal");
+          const signalSymbol = signalNode && ts.isIdentifier(signalNode) ? resolvedSymbol(signalNode) : undefined;
+          const signalType = signalNode ? signalSymbol?.valueDeclaration
+            ? checker.getTypeOfSymbolAtLocation(signalSymbol, signalSymbol.valueDeclaration)
+            : checker.getTypeAtLocation(signalNode) : undefined;
+          const signalSetsPriority = Boolean(!priorityNode && signalType && checker.getPropertyOfType(signalType, "priority"));
+          const priority = priorityNode && ts.isStringLiteralLike(priorityNode)
+            && (priorityNode.text === "user-blocking" || priorityNode.text === "user-visible" || priorityNode.text === "background") ? priorityNode.text : priorityNode || signalSetsPriority ? undefined : "user-visible";
+          const delayNode = option("delay");
+          const delay = delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : delayNode ? undefined : 0;
+          const signal = signalNode && ts.isIdentifier(signalNode) ? abortSignalTargets.get(signalNode.text) : undefined;
+          const timerIndex = timers.length;
+          timers.push({
+            owner: ownerName,
+            callback: callbackNode?.getText(source) ?? "<unknown>",
+            delay,
+            recursive: false,
+            repeats: false,
+            queue: "scheduler-task",
+            kind: "scheduler-post-task",
+            priority,
+            initiallyCancelled: signal?.alreadyAborted,
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+          collectNestedMicrotasks(callbackNode, timerIndex);
         } else if (operation?.kind === "timer-clear") {
           const handleNode = node.arguments[operation.handleArgument];
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
@@ -305,7 +342,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (ts.isFunctionLike(node) && "body" in node && node.body) {
       const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
       const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
-      const scheduledCallback = Boolean(parentCall && operation?.kind === "timer" && parentCall.arguments[operation.callbackArgument] === node);
+      const scheduledCallback = Boolean(parentCall && (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node);
       if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }
     ts.forEachChild(node, visit);
@@ -330,6 +367,7 @@ export function analyzeAsyncPatterns(fileName: string, text: string): AsyncPatte
 function safe(name: string): string { return name.replace(/[^A-Za-z0-9_]/g, "_"); }
 function timerAction(kind: "fire" | "run", timer: TimerPattern, index: number): string {
   if (timer.kind === "abort-timeout") return kind === "fire" ? `fire_abort_timeout_${index}` : `run_abort_timeout_task_${index}`;
+  if (timer.kind === "scheduler-post-task") return kind === "fire" ? `fire_scheduler_task_${index}` : `run_scheduler_task_${index}`;
   return kind === "fire" ? `fire_timer_${index}` : `run_timer_task_${index}`;
 }
 
@@ -337,6 +375,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   for (const timer of model.timers) {
     if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: timer model requires a static non-negative delay`);
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
+    if (timer.kind === "scheduler-post-task" && timer.priority === undefined) throw new Error(`${timer.owner}: scheduler.postTask model requires a static priority`);
   }
   for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires a statically bounded iterable`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int"];
@@ -351,7 +390,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   });
   lines.push("", "  action init = all {", "    clock' = 0,");
   model.timers.forEach((timer, index) => {
-    const cancelled = model.cancellations.some((item) => item.timer === index && item.definite);
+    const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
     lines.push(`    timer_${index}_scheduled' = ${!cancelled},`, `    timer_${index}_cancelled' = ${cancelled},`, `    timer_${index}_due' = ${timer.delay},`, `    timer_${index}_early' = false,`, `    timer_${index}_after_cancel' = false,`, `    timer_${index}_macro_first' = false,`, `    timer_${index}_fires' = 0,`);
   });
   model.combinators.forEach((join, index) => { join.branches.forEach((_, branch) => lines.push(`    join_${index}_branch_${branch}' = 0,`)); lines.push(`    join_${index}_result' = 0,`, `    join_${index}_iterator_failed' = false,`, `    join_${index}_rejection_escapes' = false,`); });
@@ -438,14 +477,16 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 }
 
 /** Browser event-loop profile: one task, a draining microtask checkpoint, then an optional rendering opportunity. */
-export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean; allowAbortReasonOverwrite?: boolean } = {}, promiseModel?: PromiseChainModel): string {
+export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatternModel, options: { allowWrongPhase?: boolean; allowOutOfOrderMicrotasks?: boolean; allowAbortReasonOverwrite?: boolean; allowWrongSchedulerPriority?: boolean } = {}, promiseModel?: PromiseChainModel): string {
   for (const timer of model.timers) {
     if (timer.delay === undefined || timer.delay < 0) throw new Error(`${timer.owner}: web event-loop model requires a static non-negative delay`);
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
+    if (timer.kind === "scheduler-post-task" && timer.priority === undefined) throw new Error(`${timer.owner}: scheduler.postTask model requires a static priority`);
   }
   const microtasks = model.timers.flatMap((timer, index) => timer.queue === "microtask" ? [index] : []);
   const frames = model.timers.flatMap((timer, index) => timer.queue === "animation-frame" ? [index] : []);
   const timers = model.timers.flatMap((timer, index) => timer.queue === "timer" ? [index] : []);
+  const schedulerTasks = model.timers.flatMap((timer, index) => timer.queue === "scheduler-task" ? [index] : []);
   const abortCompositions = model.abortCompositions ?? [];
   const initiallyQueuedReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
@@ -457,15 +498,15 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) => initiallyQueuedReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
   ].sort((left, right) => left.span - right.span);
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
-  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var phase: int", "  var wrong_phase: bool", "  var fifo_broken: bool", "  var next_microtask_ticket: int"];
+  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var phase: int", "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var next_microtask_ticket: int"];
   model.timers.forEach((_, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
   abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
-  lines.push("", "  action init = all {", "    clock' = 0,", "    phase' = 1,", "    wrong_phase' = false,", "    fifo_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
+  lines.push("", "  action init = all {", "    clock' = 0,", "    phase' = 1,", "    wrong_phase' = false,", "    fifo_broken' = false,", "    scheduler_priority_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
   model.timers.forEach((timer, index) => {
     const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
-    lines.push(`    callback_${index}_pending' = ${!definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    lines.push(`    callback_${index}_pending' = ${!timer.initiallyCancelled && !definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
     if (timer.queue === "microtask") lines.push(`    callback_${index}_ticket' = ${initialTicket.get(`callback:${index}`) ?? -1},`);
   });
   abortCompositions.forEach((composition, index) => {
@@ -480,7 +521,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
+  const variables = ["clock", "phase", "wrong_phase", "fifo_broken", "scheduler_priority_broken", "next_microtask_ticket", ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
@@ -529,6 +570,20 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   action("skip_rendering_opportunity", phaseGuard(2), new Map([["phase", "0"], ["wrong_phase", "phase != 2"]]));
   action("advance_clock", phaseGuard(0), new Map([["clock", "clock + 1"], ["wrong_phase", "phase != 0"]]));
   action("idle_turn", phaseGuard(0), new Map([["phase", "1"], ["wrong_phase", "phase != 0"]]));
+  const priorityRank = (timer: TimerPattern): number => timer.priority === "user-blocking" ? 2 : timer.priority === "background" ? 0 : 1;
+  schedulerTasks.forEach((index) => {
+    const timer = model.timers[index]!;
+    const rank = priorityRank(timer);
+    const outranking = schedulerTasks.flatMap((other) => {
+      if (other === index) return [];
+      const otherRank = priorityRank(model.timers[other]!);
+      return otherRank > rank || (otherRank === rank && other < index) ? [`(callback_${other}_pending and callback_${other}_due <= clock)`] : [];
+    });
+    const violation = outranking.join(" or ") || "false";
+    action(`run_scheduler_task_${index}`, [...phaseGuard(0), `callback_${index}_pending`, `clock >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`])], new Map([
+      ["phase", "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", "phase != 0"], ["scheduler_priority_broken", violation],
+    ]));
+  });
   timers.forEach((index, order) => {
     const timer = model.timers[index]!;
     const earlierDue = timers.slice(0, order).map((earlier) => `not(callback_${earlier}_pending) or callback_${earlier}_due > clock`);
@@ -556,6 +611,6 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   const oneShotSignals = model.timers.flatMap((timer, index) => timer.kind === "abort-timeout" ? [`callback_${index}_fires <= 1`] : []);
   const abortReasons = abortCompositions.map((composition, index) => `(not(abort_${index}_reason_overwritten) and ((not(abort_${index}_aborted) and abort_${index}_reason_source == 0) or (abort_${index}_aborted and abort_${index}_reason_source >= 1 and abort_${index}_reason_source <= ${composition.sources.length})))`);
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken)${[...oneShotSignals, ...abortReasons].map((term) => ` and ${term}`).join("")}`, "}", "");
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", `  val eventLoopSafe = not(wrong_phase) and not(fifo_broken) and not(scheduler_priority_broken)${[...oneShotSignals, ...abortReasons].map((term) => ` and ${term}`).join("")}`, "}", "");
   return lines.join("\n");
 }
