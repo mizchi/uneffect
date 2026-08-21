@@ -137,8 +137,10 @@ export { extractLocatedAnnotations, validateUneffectAnnotations } from "./annota
 export { generateQuint, generateSmtLib } from "./spec-backends.js";
 export { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
 export type { TemporalCall, TemporalComposition, TemporalFunctionSummary } from "./temporal-compose.js";
-export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, typeCheckTemporalExpression } from "./temporal-expressions.js";
+export { generateQuintExpression, generateRuntimeAssertionExpression, generateRuntimeAssertionStatement, parseTemporalExpression, parseTemporalValueType, typeCheckTemporalExpression } from "./temporal-expressions.js";
 export type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
+export { createDefaultTemporalDomainRegistry, createLogicalClockDomain, TemporalDomainRegistry } from "./temporal-domains.js";
+export type { TemporalDomainActionSource, TemporalDomainExpansion, TemporalSemanticDomain } from "./temporal-domains.js";
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, findBuiltinContract } from "./builtin-contracts.js";

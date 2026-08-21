@@ -159,6 +159,14 @@ action. Strong fairness is available with `strong`: weak fairness requires an
 action that remains continuously enabled to occur, while strong fairness also
 covers actions enabled infinitely often.
 
+The logical-clock directive is implemented through the public temporal
+semantic-domain registry. Applications can register additional directive packs
+that expand into typed state, init constraints, generated actions, and protected
+state ownership without adding parser conditionals. Registration does not make
+a domain trustworthy by itself: its generated transition relation is still the
+model being checked. A physical wall/monotonic clock and skew pack remains
+planned; `clock` continues to mean logical model time, not elapsed host time.
+
 ## Expressible patterns
 
 | Pattern | Current encoding | Meaningful claim |

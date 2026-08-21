@@ -148,6 +148,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add record state, field reads, immutable spread updates, and nested collection value types.
   - [ ] Add collection-valued TLC replay and a solver representation or finite expansion for Z3.
 - [ ] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
+  - [x] Route protected logical-clock state/init/actions through a public directive registry and allow independently registered domain directives.
+  - [ ] Add an optional physical-clock pack that distinguishes monotonic and wall clocks and makes drift/skew/jump assumptions explicit.
 - [x] Bind abstract model state/actions to TypeScript observations/calls and replay generated counterexamples against implementation adapters.
   - [x] Replay a Quint-produced Node Lease trace through a typed runtime adapter and reproduce `singleWriter` at the same step.
   - [x] Generate bindings from source annotations and connect them directly to backend-produced counterexamples.

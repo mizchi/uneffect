@@ -48,7 +48,7 @@ function uneffectPayloadLines(text: string, baseOffset: number): PayloadLine[][]
 /** Extracts directive payloads together with absolute UTF-16 source offsets. */
 export function extractLocatedAnnotations(
   text: string,
-  directive: UneffectDirective,
+  directive: UneffectDirective | string,
   baseOffset = 0,
 ): LocatedAnnotation[] {
   const values: LocatedAnnotation[] = [];
@@ -78,7 +78,8 @@ const directives = new Set<UneffectDirective>([
   "consumes_rejection_when", "consumes_callback_rejection_when",
 ]);
 
-export function validateUneffectAnnotations(text: string, baseOffset = 0): AnnotationDiagnostic[] {
+export function validateUneffectAnnotations(text: string, baseOffset = 0, additionalDirectives: Iterable<string> = []): AnnotationDiagnostic[] {
+  const accepted = new Set<string>([...directives, ...additionalDirectives]);
   const diagnostics: AnnotationDiagnostic[] = [];
   for (const lines of uneffectPayloadLines(text, baseOffset)) for (const line of lines) {
     const candidate = line.cleaned.trim();
@@ -87,7 +88,7 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0): Annot
     const directive = match[1]!;
     const leading = line.cleaned.indexOf(candidate);
     const span = { start: line.start + leading, end: line.start + leading + candidate.length };
-    if (!directives.has(directive as UneffectDirective)) {
+    if (!accepted.has(directive)) {
       diagnostics.push({
         kind: "unknown-directive", directive, span,
         message: `unknown Uneffect directive \`${directive}\``,
@@ -103,6 +104,6 @@ export function validateUneffectAnnotations(text: string, baseOffset = 0): Annot
 }
 
 /** Extracts Uneffect's comment DSL without participating in JSDoc tag semantics. */
-export function extractAnnotations(text: string, directive: UneffectDirective): string[] {
+export function extractAnnotations(text: string, directive: UneffectDirective | string): string[] {
   return extractLocatedAnnotations(text, directive).map((item) => item.value);
 }

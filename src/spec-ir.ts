@@ -2,6 +2,7 @@ import ts from "typescript";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations, type SourceSpan } from "./annotations.js";
 import { parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
+import { createDefaultTemporalDomainRegistry, type TemporalDomainRegistry } from "./temporal-domains.js";
 import type { NumericDomain } from "./invariant-ir.js";
 
 export interface CapabilitySpec {
@@ -88,9 +89,10 @@ function assignment(input: string, kind: string): TemporalAssignment {
   return { target: match[1]!, expression, expressionAst: parseTemporalExpression(expression) };
 }
 
-export function parseSpec(fileName: string, text: string, options: { temporalSymbols?: ReadonlyMap<string, TemporalValueType> } = {}): ParsedSpec {
+export function parseSpec(fileName: string, text: string, options: { temporalSymbols?: ReadonlyMap<string, TemporalValueType>; temporalDomains?: TemporalDomainRegistry } = {}): ParsedSpec {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const annotationError = validateUneffectAnnotations(text)[0];
+  const temporalDomains = options.temporalDomains ?? createDefaultTemporalDomainRegistry();
+  const annotationError = validateUneffectAnnotations(text, 0, temporalDomains.directives())[0];
   if (annotationError) {
     const position = source.getLineAndCharacterOfPosition(annotationError.span.start);
     throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: ${annotationError.message}`);
@@ -148,13 +150,10 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     }
   }
 
-  const clocks = extractAnnotations(text, "clock").map((value): TemporalClock => {
-    const parsed = namedExpression(value, "clock");
-    if (!/^[1-9]\d*$/.test(parsed.expression)) throw new Error(`clock \`${parsed.name}\` granularity must be a positive integer`);
-    return { name: parsed.name, granularity: Number(parsed.expression) };
-  });
+  const domainExpansion = temporalDomains.expand(text);
+  const clocks = [...(domainExpansion.clocks ?? [])];
   const states = [
-    ...clocks.map((clock): TemporalState => ({ name: clock.name, type: "int" })),
+    ...(domainExpansion.states ?? []),
     ...extractAnnotations(text, "state").map((value): TemporalState => {
     const parsed = namedExpression(value, "state");
     try {
@@ -166,11 +165,11 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     }),
   ];
   const explicitInit = extractAnnotations(text, "init").map((value) => assignment(value, "init"));
-  for (const clock of clocks) if (explicitInit.some((item) => item.target === clock.name)) {
-    throw new Error(`clock \`${clock.name}\` has an implicit zero init`);
+  for (const [name, messages] of Object.entries(domainExpansion.protectedStates ?? {})) if (explicitInit.some((item) => item.target === name)) {
+    throw new Error(messages.explicitInit);
   }
   const init = [
-    ...clocks.map((clock) => assignment(`${clock.name} = 0`, "clock init")),
+    ...(domainExpansion.init ?? []).map((item) => assignment(item, "temporal domain init")),
     ...explicitInit,
   ];
   const explicitActions = extractAnnotations(text, "action").map((value): TemporalAction => {
@@ -180,13 +179,13 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
       assignments: splitTopLevel(parsed.expression, ",").map((item) => assignment(item, "action")),
     };
   });
-  for (const clock of clocks) for (const action of explicitActions) if (action.assignments.some((item) => item.target === clock.name)) {
-    throw new Error(`only generated action \`tick_${clock.name}\` may update clock \`${clock.name}\``);
+  for (const [name, messages] of Object.entries(domainExpansion.protectedStates ?? {})) for (const action of explicitActions) if (action.assignments.some((item) => item.target === name)) {
+    throw new Error(messages.explicitAssignment);
   }
   const actions: TemporalAction[] = [
-    ...clocks.map((clock): TemporalAction => ({
-      name: `tick_${clock.name}`,
-      assignments: [assignment(`${clock.name}' = ${clock.name} + ${clock.granularity}`, "clock tick")],
+    ...(domainExpansion.actions ?? []).map((action): TemporalAction => ({
+      name: action.name,
+      assignments: action.assignments.map((item) => assignment(item, "temporal domain action")),
     })),
     ...explicitActions,
   ];

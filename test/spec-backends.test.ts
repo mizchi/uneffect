@@ -7,6 +7,8 @@ import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { extractAnnotations } from "../src/annotations.js";
+import { createDefaultTemporalDomainRegistry } from "../src/temporal-domains.js";
 
 const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
 
@@ -34,6 +36,34 @@ const source = `
 `;
 
 describe("spec IR and generated verifier programs", () => {
+  it("expands registered temporal semantic domains without core parser conditionals", () => {
+    const registry = createDefaultTemporalDomainRegistry().register({
+      name: "queue-depth",
+      directives: ["queue_depth"],
+      expand(source) {
+        const names = extractAnnotations(source, "queue_depth");
+        return {
+          states: names.map((name) => ({ name, type: "int" as const })),
+          init: names.map((name) => `${name} = 0`),
+          actions: names.map((name) => ({ name: `enqueue_${name}`, assignments: [`${name}' = ${name} + 1`] })),
+          protectedStates: Object.fromEntries(names.map((name) => [name, {
+            explicitInit: `queue depth \`${name}\` owns its init`,
+            explicitAssignment: `queue depth \`${name}\` owns its transitions`,
+          }])),
+        };
+      },
+    });
+    const temporal = parseSpec("domain.ts", `/* uneffect:
+      queue_depth pending
+      temporal nonNegative: pending >= 0
+    */`, { temporalDomains: registry }).temporal;
+    expect(temporal.states).toEqual([{ name: "pending", type: "int" }]);
+    expect(temporal.init[0]?.expression).toBe("0");
+    expect(temporal.actions[0]?.name).toBe("enqueue_pending");
+    expect(generateQuint("domain", temporal)).toContain("pending' = pending + 1");
+    expect(() => registry.register({ name: "duplicate", directives: ["queue_depth"], expand: () => ({}) })).toThrow(/already owned/);
+  });
+
   it("parses and verifies finite Set state without flattening node identities", async () => {
     const temporal = parseSpec("sets.ts", `/* uneffect:
       state nodes: Set<int>
