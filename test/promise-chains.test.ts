@@ -70,6 +70,39 @@ describe("Promise state and reaction chains", () => {
     expect(quint).toContain("assimilate_0_rejected");
   });
 
+  it("links executor assimilation to an analyzed Promise instead of inventing either outcome", () => {
+    const model = analyzePromiseChains("linked-assimilation.ts", `
+      function linked() {
+        const source = new Promise<number>((_resolve, reject) => reject(new Error("no")))
+        source.then(value => value)
+        const adopted = new Promise<number>((resolve) => resolve(source))
+        return adopted.then(value => value)
+      }
+    `);
+    expect(model.executors[1]).toMatchObject({ adoptedExecutor: 0 });
+    const quint = generatePromiseChainsQuint("linked_executor", model);
+    expect(quint).toContain("assimilate_1_from_0_rejected");
+    expect(quint).not.toContain("assimilate_1_fulfilled");
+    expect(quint).not.toContain("assimilate_1_rejected");
+  });
+
+  it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
+    const model = analyzePromiseChains("linked-handler.ts", `
+      function linked() {
+        const root = new Promise<number>((resolve) => resolve(1))
+        const result = root.then(() => source).catch(() => 0)
+        const source = new Promise<number>((_resolve, reject) => reject(new Error("no")))
+        source.then(value => value)
+        return result
+      }
+    `);
+    expect(model.chains[0].links[0]).toMatchObject({ handlerExecutors: [1] });
+    const quint = generatePromiseChainsQuint("linked_handler", model);
+    expect(quint).toContain("assimilate_0_0_from_1_rejected");
+    expect(quint).not.toContain("assimilate_0_0_fulfilled");
+    expect(quint).not.toContain("assimilate_0_0_rejected");
+  });
+
   it("flattens PromiseLike values returned by reaction handlers", () => {
     const model = analyzePromiseChains("flatten.ts", `
       declare const source: Promise<number>

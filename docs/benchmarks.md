@@ -220,3 +220,10 @@ contains exhaustive literal-union `switch` paths, fallthrough-aware ownership,
 and an early-return `try`/`finally` cleanup path. This public convenience API
 constructs a fresh TypeScript Program for every call, so the result is a cold
 standalone-check cost rather than the expected incremental compiler-plugin cost.
+
+Symbol-linked Promise assimilation for the legacy adapter dogfood fixture
+measured 152.51 ms mean over five cold samples (8.70% relative margin of error).
+The analyzer constructs a TypeScript Program, performs a two-pass executor and
+reaction scan, and connects the outer resolver to the inner operation. As with
+the ownership benchmark, Program construction dominates and the small sample is
+an observation rather than a regression threshold.

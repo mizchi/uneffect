@@ -15,11 +15,13 @@ export interface PromiseExecutorPattern {
   throwBecomesRejection: true;
   events: PromiseExecutorEvent[];
   possibleSettlements: PromiseExecutorSettlement[];
+  adoptedExecutor?: number;
+  adoptedExecutors?: number[];
   mayRemainPending: boolean;
   span: { start: number; end: number };
 }
 export type PromiseHandlerReturn = "absent" | "value" | "promise-like" | "unknown";
-export interface PromiseReactionPattern { kind: PromiseReactionKind; handlers: string[]; handlerReturns: PromiseHandlerReturn[]; span: { start: number; end: number } }
+export interface PromiseReactionPattern { kind: PromiseReactionKind; handlers: string[]; handlerReturns: PromiseHandlerReturn[]; handlerExecutors?: (number | undefined)[]; span: { start: number; end: number } }
 export interface PromiseChainPattern { owner: string; source: string; executor?: number; links: PromiseReactionPattern[]; span: { start: number; end: number } }
 export interface PromiseChainModel { executors: PromiseExecutorPattern[]; chains: PromiseChainPattern[] }
 
@@ -62,15 +64,16 @@ function analyzeExecutor(
   callback: ts.Expression | undefined,
   checker: ts.TypeChecker,
   source: ts.SourceFile,
-): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> {
+): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> & { adoptedSymbols: ts.Symbol[] } {
   if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) {
-    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true };
+    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, adoptedSymbols: [] };
   }
   const resolveParameter = callback.parameters[0]?.name;
   const rejectParameter = callback.parameters[1]?.name;
   const resolveName = resolveParameter && ts.isIdentifier(resolveParameter) ? resolveParameter.text : undefined;
   const rejectName = rejectParameter && ts.isIdentifier(rejectParameter) ? rejectParameter.text : undefined;
   const events: PromiseExecutorEvent[] = [];
+  const adoptedSymbols: ts.Symbol[] = [];
   const unique = (paths: ExecutorPath[]): ExecutorPath[] => [...new Set(paths)];
   const expressionSettlement = (expression: ts.Expression): PromiseExecutorEvent | undefined => {
     if (!ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression)) return undefined;
@@ -81,6 +84,8 @@ function analyzeExecutor(
       const argument = expression.arguments[0];
       const promiseLike = argument && checker.getPropertyOfType(checker.getTypeAtLocation(argument), "then");
       settlement = promiseLike ? "assimilating" : "fulfilled";
+      const adopted = argument && promiseLike ? targetSymbol(checker, argument) : undefined;
+      if (adopted) adoptedSymbols.push(adopted);
     }
     return { kind: name === resolveName ? "resolve" : "reject", settlement, span: { start: expression.getStart(source), end: expression.getEnd() } };
   };
@@ -119,12 +124,22 @@ function analyzeExecutor(
     events,
     possibleSettlements: paths.filter((path): path is PromiseExecutorSettlement => path !== "open"),
     mayRemainPending: paths.includes("open"),
+    adoptedSymbols,
   };
+}
+
+function returnedExpressions(handler: ts.Expression): ts.Expression[] {
+  if (!ts.isArrowFunction(handler) && !ts.isFunctionExpression(handler)) return [];
+  if (!ts.isBlock(handler.body)) return [handler.body];
+  return handler.body.statements.flatMap((statement) =>
+    ts.isReturnStatement(statement) && statement.expression ? [statement.expression] : []);
 }
 
 export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.SourceFile): PromiseChainModel {
   const checker = program.getTypeChecker(), executors: PromiseExecutorPattern[] = [], chains: PromiseChainPattern[] = [];
-  const visitFunction = (owner: ts.FunctionLikeDeclaration): void => {
+  const executorBySymbol = new Map<ts.Symbol, number>();
+  const pendingAdoptions: { executor: number; symbols: ts.Symbol[] }[] = [];
+  const visitFunctionExecutors = (owner: ts.FunctionLikeDeclaration): void => {
     if (!owner.body) return;
     const name = ownerName(owner);
     const visit = (node: ts.Node): void => {
@@ -132,8 +147,25 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise" && librarySymbol(checker, node.expression)) {
         const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
         const callback = node.arguments?.[0];
-        executors.push({ owner: name, binding, callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...analyzeExecutor(callback, checker, source), span: { start: node.getStart(source), end: node.getEnd() } });
+        const analyzed = analyzeExecutor(callback, checker, source);
+        const index = executors.length;
+        const { adoptedSymbols, ...publicAnalysis } = analyzed;
+        executors.push({ owner: name, binding, callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
+        if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+          const symbol = targetSymbol(checker, node.parent.name);
+          if (symbol) executorBySymbol.set(symbol, index);
+        }
+        pendingAdoptions.push({ executor: index, symbols: adoptedSymbols });
       }
+      ts.forEachChild(node, visit);
+    };
+    visit(owner.body);
+  };
+  const visitFunctionChains = (owner: ts.FunctionLikeDeclaration): void => {
+    if (!owner.body) return;
+    const name = ownerName(owner);
+    const visit = (node: ts.Node): void => {
+      if (node !== owner.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node) && reactionKind(node, checker)) {
         const isInner = ts.isPropertyAccessExpression(node.parent) && node.parent.expression === node && ts.isCallExpression(node.parent.parent);
         if (!isInner) {
@@ -142,10 +174,19 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           while (ts.isCallExpression(current)) {
             const kind = reactionKind(current, checker);
             if (!kind || !ts.isPropertyAccessExpression(current.expression)) break;
+            const handlerExecutors = current.arguments.map((argument) => {
+              const candidates = [...new Set(returnedExpressions(argument).flatMap((returned) => {
+                const symbol = targetSymbol(checker, returned);
+                const executor = symbol && executorBySymbol.get(symbol);
+                return executor === undefined ? [] : [executor];
+              }))];
+              return candidates.length === 1 ? candidates[0] : undefined;
+            });
             links.unshift({
               kind,
               handlers: current.arguments.map((argument) => argument.getText(source)),
               handlerReturns: current.arguments.map((argument) => handlerReturn(argument, checker)),
+              handlerExecutors,
               span: { start: current.getStart(source), end: current.getEnd() },
             });
             current = current.expression.expression;
@@ -160,10 +201,23 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     visit(owner.body);
   };
   const visit = (node: ts.Node): void => {
-    if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
+    if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunctionExecutors(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
   };
   visit(source);
+  for (const pending of pendingAdoptions) {
+    const adopted = [...new Set(pending.symbols.flatMap((symbol) => {
+      const executor = executorBySymbol.get(symbol);
+      return executor === undefined ? [] : [executor];
+    }))];
+    if (adopted.length) executors[pending.executor]!.adoptedExecutors = adopted;
+    if (adopted.length === 1) executors[pending.executor]!.adoptedExecutor = adopted[0];
+  }
+  const visitChains = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunctionChains(node as ts.FunctionLikeDeclaration);
+    ts.forEachChild(node, visitChains);
+  };
+  visitChains(source);
   return { executors, chains };
 }
 
@@ -189,6 +243,21 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     vars.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
+  const chainForExecutor = (executor: number): number | undefined => {
+    const index = model.chains.findIndex((chain) => chain.executor === executor);
+    return index < 0 ? undefined : index;
+  };
+  const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string): void => {
+    const adoptedChain = adoptedExecutor === undefined ? undefined : chainForExecutor(adoptedExecutor);
+    if (adoptedChain === undefined) {
+      action(`${name}_fulfilled`, [`${state} == 3`], new Map([[state, fulfilled]]));
+      action(`${name}_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
+      return;
+    }
+    const adoptedRoot = `chain_${adoptedChain}_state_0`;
+    action(`${name}_from_${adoptedChain}_fulfilled`, [`${state} == 3`, `${adoptedRoot} == 1`], new Map([[state, fulfilled]]));
+    action(`${name}_from_${adoptedChain}_rejected`, [`${state} == 3`, `${adoptedRoot} == 2`], new Map([[state, rejected]]));
+  };
   model.chains.forEach((chain, chainIndex) => {
     const root = `chain_${chainIndex}_state_0`;
     const settlements: readonly PromiseExecutorSettlement[] = chain.executor === undefined
@@ -198,8 +267,7 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     if (settlements.includes("rejected")) action(`settle_${chainIndex}_rejected`, [`${root} == 0`], new Map([[root, "2"]]));
     if (settlements.includes("assimilating")) {
       action(`settle_${chainIndex}_assimilating`, [`${root} == 0`], new Map([[root, "3"]]));
-      action(`assimilate_${chainIndex}_fulfilled`, [`${root} == 3`], new Map([[root, "1"]]));
-      action(`assimilate_${chainIndex}_rejected`, [`${root} == 3`], new Map([[root, "2"]]));
+      emitAdoption(`assimilate_${chainIndex}`, root, chain.executor === undefined ? undefined : model.executors[chain.executor]?.adoptedExecutor, "1", "2");
     }
     if (options.allowDoubleSettlement) action(`settle_${chainIndex}_again`, [`${root} == 1`], new Map([[root, "2"], [`chain_${chainIndex}_double_settlement`, "true"]]));
     chain.links.forEach((link, stage) => {
@@ -240,8 +308,12 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
         } else { emit("preserve_fulfill", 1, 1); emit("preserve_reject", 2, 2); }
       }
       if (link.handlerReturns.some((result) => result === "promise-like" || result === "unknown")) {
-        action(`assimilate_${chainIndex}_${stage}_fulfilled`, [`${output} == 3`], new Map([[output, "1"]]));
-        action(`assimilate_${chainIndex}_${stage}_rejected`, [`${output} == 3`], new Map([[output, "2"]]));
+        const assimilatingHandlers = link.handlerReturns.flatMap((result, index) =>
+          result === "promise-like" || result === "unknown" ? [{ result, executor: link.handlerExecutors?.[index] }] : []);
+        const linkedHandlers = [...new Set(assimilatingHandlers.flatMap(({ result, executor }) =>
+          result === "promise-like" && executor !== undefined ? [executor] : []))];
+        const fullyLinked = assimilatingHandlers.length > 0 && assimilatingHandlers.every(({ result, executor }) => result === "promise-like" && executor !== undefined);
+        emitAdoption(`assimilate_${chainIndex}_${stage}`, output, fullyLinked && linkedHandlers.length === 1 ? linkedHandlers[0] : undefined, "1", "2");
         if (link.kind === "finally") action(`assimilate_${chainIndex}_${stage}_preserve_reject`, [`${output} == 4`], new Map([[output, "2"]]));
         if (options.skipHandlerAssimilation) action(`react_${chainIndex}_${stage}_flatten_broken`, [`${input} != 0`, `${output} == 0`], new Map([[output, "1"], [`chain_${chainIndex}_flatten_broken`, "true"]]));
       }

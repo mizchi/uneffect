@@ -3,6 +3,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
+import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -151,5 +152,18 @@ describe("Uneffect dogfood", () => {
       kind: "floating-promise",
       message: expect.stringContaining("delivery"),
     }));
+  });
+
+  it("links a wrapped legacy Promise to the operation it adopts", () => {
+    const fileName = "examples/dogfood/promise-adapter.ts";
+    const source = readFileSync(fileName, "utf8");
+    const model = analyzePromiseChains(fileName, source);
+    expect(model.executors).toEqual([
+      expect.objectContaining({ binding: "operation", possibleSettlements: ["rejected"] }),
+      expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedExecutor: 0 }),
+    ]);
+    const quint = generatePromiseChainsQuint("legacy_adapter", model);
+    expect(quint).toContain("assimilate_1_from_0_rejected");
+    expect(quint).not.toContain("assimilate_1_fulfilled");
   });
 });

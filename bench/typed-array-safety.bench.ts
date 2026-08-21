@@ -12,6 +12,7 @@ import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns } from "../src/async-patterns.js";
 import { analyzeAsyncSafety } from "../src/async-safety.js";
+import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -30,6 +31,7 @@ const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
 const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts", import.meta.url), "utf8");
 const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/worker-codec-transfer.ts", import.meta.url), "utf8");
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
+const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -117,6 +119,10 @@ describe("typed-array static verification", () => {
 
   bench("check telemetry Promise ownership across switch and finally", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", telemetryDeliverySource);
+  }, { time: 500, iterations: 5 });
+
+  bench("link Promise adapter assimilation by symbol", () => {
+    analyzePromiseChains("promise-adapter.ts", promiseAdapterSource);
   }, { time: 500, iterations: 5 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

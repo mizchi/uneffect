@@ -42,6 +42,14 @@ Resolving with a statically PromiseLike value enters `Assimilating`, not
 `Fulfilled`. Separate transitions then adopt fulfillment or rejection before
 reactions become enabled.
 
+When a direct resolver argument is a local Promise constructor binding that is
+also analyzed, the executor records that target by TypeChecker symbol identity.
+The generated transition is then guarded by the target chain's actual root
+state: a known rejected operation cannot nondeterministically fulfill an outer
+adapter. The same link is retained for a direct Promise binding returned by an
+inline arrow or direct-return function handler. Forward declarations work
+because executor discovery precedes reaction discovery.
+
 ## Reactions
 
 - `then`: handles fulfillment; rejection propagates when no rejection handler
@@ -70,13 +78,14 @@ violations.
 
 ## Current boundary
 
-The model currently abstracts values and rejection reasons. Assimilation
-adopts either terminal state, but it does not yet model reading a thenable's
-`then` property, invoking that user code, misbehaving thenables, or
-self-resolution cycles. Handler returns are flattened at the state level, but
-the adopted Promise is not yet linked to another analyzed chain. The model also
-does not cover handler capability effects or handled/unhandled rejection
-timing. Loops,
+The model currently abstracts values and rejection reasons. Unknown or
+ambiguous adoption targets still admit either terminal state. It does not yet
+model reading a thenable's `then` property, invoking that user code,
+misbehaving thenables, or self-resolution cycles. Links currently require a
+direct local constructor binding and at least one analyzed reaction chain for
+the adopted executor; aliases, parameters, object properties, and named
+handler summaries remain conservative. The model also does not cover handler
+capability effects or handled/unhandled rejection timing. Loops,
 `switch`, `try`/`finally`, aliases of resolver parameters, and resolver calls
 through helper functions are outside the executor path-analysis subset and
 remain conservative gaps rather than proved behavior.

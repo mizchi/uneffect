@@ -270,7 +270,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add CI provisioning for the Java runtime required by Quint's TLC/Apalache verification backend.
 - [ ] Refine thenable assimilation.
   - [ ] Model throwing `then` getters, proxy/getter `InvokeUserCode`, hostile multiple settlement, and self-resolution rejection.
-  - [ ] Link an adopted Promise to another analyzed Promise chain instead of only nondeterministic terminal adoption.
+  - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [ ] Model iterator acquisition/step failure, custom iterables, thenable elements, sparse arrays, and ordered `AggregateError.errors`.
 - [ ] Extend timer/event-loop ownership.
