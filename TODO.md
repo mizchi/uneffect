@@ -127,7 +127,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Lower bounded-array dynamic scalar indices to finite SMT selection with explicit in-bounds generation constraints.
       - [ ] Extend solver-backed generation to nested records, Maps/Sets, and optional fields.
         - [x] Recursively generate, constrain, reconstruct, and shrink closed nested records.
-        - [ ] Generate finite Maps/Sets and optional record fields.
+        - [x] Generate scalar optional record fields with explicit SMT presence bits and omission-first shrinking.
+        - [ ] Generate finite Maps/Sets and nested optional fields.
 - [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.

@@ -60,8 +60,10 @@ dynamic scalar indices over the finite modeled capacity. Dynamic reads lower
 to finite SMT selection and add in-bounds generation constraints; the emitted
 test still rechecks the original JavaScript precondition. All modeled lengths
 and elements receive their machine-domain bounds. Closed nested records are
-flattened into solver leaves and reconstructed as ordinary objects. Optional
-fields, Maps, and Sets remain unsupported. The generator injects
+flattened into solver leaves and reconstructed as ordinary objects. Scalar
+optional fields use separate SMT presence bits, so absence is not conflated
+with a zero value, and shrinking can omit them. Nested optional fields, Maps,
+and Sets remain unsupported. The generator injects
 satisfying tuples before Cartesian samples and reports an unsatisfiable
 precondition rather than pretending that it generated coverage. When a correlated candidate fails, the
 runner first compares known tuples by structural/numeric size and rechecks the

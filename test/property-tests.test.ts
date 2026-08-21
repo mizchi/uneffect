@@ -258,6 +258,23 @@ describe("property-test generation", () => {
       && Number(pixel.color.red) + Number(pixel.color.green) === 300 && pixel.alpha === 255).toBe(true);
   });
 
+  it("distinguishes absent optional fields from present zero values", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "optional.ts": `
+      type U8 = number
+      /* uneffect: requires config.limit === undefined || config.limit >= 10 */
+      /* uneffect: ensures result >= 0 */
+      export function limit(config: { limit?: U8 }): number { return config.limit ?? 0 }
+    ` }, solverCases: 8 });
+    expect(result.boundaries[0]?.generators).toEqual([
+      { kind: "record", fields: { limit: "U8" }, optional: ["limit"] },
+    ]);
+    const values = (result.boundaries[0]?.generatorTuples ?? []).map(([value]) => value);
+    expect(values).toContainEqual({});
+    expect(values.some((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && Object.hasOwn(value, "limit") && Number(value.limit) >= 10)).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("reports an unsatisfiable property precondition instead of inventing inputs", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "empty.ts": `
       type Int = number
