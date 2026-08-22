@@ -407,3 +407,11 @@ analysis (20 cold samples and 583 warm samples). The warm increase includes
 per-call parsing and finite propositional discharge because conditional
 declarations cannot reuse an unconditional summary; it remains below one
 millisecond in this fixture.
+
+Routing both enabled and disabled registration through a direct adapter wrapper
+measured 142.44 ms cold, 97.09 ms for Program construction, and 1.204 ms for
+warm analysis (20 cold samples and 416 warm samples). This is the first retry
+fixture result above one millisecond on the warm path. The current
+context-sensitive implementation re-walks a wrapper when boolean facts differ;
+a reusable symbolic guarded summary is the next optimization target rather
+than hiding this cost behind the unconditional cache.

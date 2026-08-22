@@ -526,6 +526,9 @@ already unsafe across lexical disposal, `true` and unknown guards report an
 escape; only a guard proved false by literal/type facts or an enclosing
 `requires` precondition is discharged. Conditional declarations are evaluated
 per call and deliberately excluded from the unconditional signature cache.
+For direct wrappers, literal/type facts and caller preconditions are renamed to
+the wrapper's boolean parameters and propagated into nested retention calls.
+Calls without such facts retain the conservative may-retain summary.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

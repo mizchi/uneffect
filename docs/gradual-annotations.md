@@ -238,3 +238,5 @@ when the guard is true or unresolved, and discharged only when `!enabled` is
 proved from literal/type facts or a `requires` precondition. The guard is parsed
 by the same restricted TypeScript expression IR used by logical contracts, so
 it remains available for optional runtime assertion generation.
+Direct wrappers preserve boolean parameter facts while their bodies are
+analyzed, including facts mapped from a caller's `requires` precondition.

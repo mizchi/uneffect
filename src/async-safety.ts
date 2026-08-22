@@ -277,20 +277,40 @@ function resourceRetentionParameters(
   call: ts.CallExpression | ts.NewExpression,
   cache: Map<ts.SignatureDeclaration, ReadonlySet<number>>,
   seen = new Set<ts.SignatureDeclaration>(),
+  contextFacts: readonly string[] = [],
 ): Set<number> {
   const declaration = checker.getResolvedSignature(call)?.declaration;
   if (!declaration || declaration.kind === ts.SyntaxKind.JSDocSignature) return new Set();
   const signature = declaration as ts.SignatureDeclaration;
+  const invocationFacts: string[] = [];
+  let caller: ts.Node | undefined = call.parent;
+  while (caller && !ts.isFunctionLike(caller)) caller = caller.parent;
+  const callerFacts = caller && ts.isFunctionLike(caller)
+    ? extractAnnotations(caller.getSourceFile().text.slice(caller.getFullStart(), caller.getStart(caller.getSourceFile())), "requires")
+    : [];
+  signature.parameters.forEach((parameter, index) => {
+    const argument = call.arguments?.[index];
+    if (!argument || !ts.isIdentifier(parameter.name)) return;
+    const type = checker.typeToString(checker.getTypeAtLocation(argument));
+    if (argument.kind === ts.SyntaxKind.TrueKeyword || type === "true") invocationFacts.push(parameter.name.text);
+    if (argument.kind === ts.SyntaxKind.FalseKeyword || type === "false") invocationFacts.push(`!(${parameter.name.text})`);
+    if (callerFacts.length > 0) {
+      if (proveBooleanImplication(callerFacts, argument.getText())) invocationFacts.push(parameter.name.text);
+      if (proveBooleanImplication(callerFacts, `!(${argument.getText()})`)) invocationFacts.push(`!(${parameter.name.text})`);
+    }
+  });
+  const effectiveFacts = [...contextFacts, ...invocationFacts];
   const signatureSource = signature.getSourceFile(), signatureStart = signature.getFullStart();
   const hasConditionalRetention = extractLocatedAnnotations(
     signatureSource.text.slice(signatureStart, signature.getStart(signatureSource)), "retains_resource_when", signatureStart,
   ).length > 0;
-  const cached = hasConditionalRetention ? undefined : cache.get(signature);
+  const contextDependent = hasConditionalRetention || effectiveFacts.length > 0;
+  const cached = contextDependent ? undefined : cache.get(signature);
   if (cached) return new Set(cached);
   const retained = parseIndexedOwnershipContract(signature, "retains_resource").indices;
-  for (const index of conditionalOwnershipParameters(checker, signature, call, "retains_resource_when").indices) retained.add(index);
+  for (const index of conditionalOwnershipParameters(checker, signature, call, "retains_resource_when", effectiveFacts).indices) retained.add(index);
   if (!("body" in signature) || !signature.body) {
-    if (!hasConditionalRetention) cache.set(signature, retained);
+    if (!contextDependent) cache.set(signature, retained);
     return retained;
   }
   if (seen.has(signature)) return retained;
@@ -312,7 +332,7 @@ function resourceRetentionParameters(
   };
   const visit = (node: ts.Node): void => {
     if (node !== signature.body && ts.isFunctionLike(node)) return;
-    if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, cache, nextSeen)) {
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, cache, nextSeen, effectiveFacts)) {
       const argument = node.arguments?.[nestedIndex];
       if (!argument) continue;
       const parameterIndex = parameterOrigin(argument);
@@ -321,18 +341,18 @@ function resourceRetentionParameters(
     ts.forEachChild(node, visit);
   };
   visit(signature.body);
-  if (!hasConditionalRetention) cache.set(signature, retained);
+  if (!contextDependent) cache.set(signature, retained);
   return retained;
 }
 
 type ConditionalOwnershipDirective = "consumes_rejection_when" | "consumes_callback_rejection_when" | "retains_resource_when";
-function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): { assumptions: string[]; goal: string; verified: boolean } {
+function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string, additionalFacts: readonly string[] = []): { assumptions: string[]; goal: string; verified: boolean } {
   let instantiated = guardSource;
   declaration.parameters.forEach((parameter, index) => {
     if (!ts.isIdentifier(parameter.name) || !call.arguments?.[index]) return;
     instantiated = instantiated.replace(new RegExp(`\\b${parameter.name.text}\\b`, "g"), `(${call.arguments[index]!.getText()})`);
   });
-  const facts: string[] = [];
+  const facts: string[] = [...additionalFacts];
   call.arguments?.forEach((argument) => {
     const text = argument.getText();
     const type = checker.typeToString(checker.getTypeAtLocation(argument));
@@ -347,11 +367,11 @@ function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression
   }
   return { assumptions: facts, goal: instantiated, verified: proveBooleanImplication(facts, instantiated) };
 }
-function guardProvenTrue(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): boolean {
-  return ownershipGuardEvidence(checker, call, declaration, guardSource).verified;
+function guardProvenTrue(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string, additionalFacts: readonly string[] = []): boolean {
+  return ownershipGuardEvidence(checker, call, declaration, guardSource, additionalFacts).verified;
 }
-function guardProvenFalse(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): boolean {
-  return ownershipGuardEvidence(checker, call, declaration, `!(${guardSource})`).verified;
+function guardProvenFalse(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string, additionalFacts: readonly string[] = []): boolean {
+  return ownershipGuardEvidence(checker, call, declaration, `!(${guardSource})`, additionalFacts).verified;
 }
 
 function conditionalOwnershipParameters(
@@ -359,6 +379,7 @@ function conditionalOwnershipParameters(
   declaration: ts.SignatureDeclaration,
   call: ts.CallExpression | ts.NewExpression | undefined,
   directive: ConditionalOwnershipDirective,
+  additionalFacts: readonly string[] = [],
 ): IndexedOwnershipContract {
   const source = declaration.getSourceFile();
   const start = declaration.getFullStart();
@@ -387,8 +408,8 @@ function conditionalOwnershipParameters(
         const missing = [...names].find((name) => !parameters.has(name));
         if (missing) errors.push({ position: annotation.span.start, message: `${directive} guard ${missing} is not a parameter` });
         else if (call && checker && (directive === "retains_resource_when"
-          ? !guardProvenFalse(checker, call, declaration, match[2]!)
-          : guardProvenTrue(checker, call, declaration, match[2]!))) indices.add(target);
+          ? !guardProvenFalse(checker, call, declaration, match[2]!, additionalFacts)
+          : guardProvenTrue(checker, call, declaration, match[2]!, additionalFacts))) indices.add(target);
       } catch {
         errors.push({ position: annotation.span.start, message: `${directive} has an invalid boolean guard` });
       }

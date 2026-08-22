@@ -10,6 +10,9 @@ declare function openAttempt(): Attempt;
 declare function registerAttempt(attempt: Attempt): void;
 /* uneffect: retains_resource_when 0: enabled */
 declare function maybeRegisterAttempt(attempt: Attempt, enabled: boolean): void;
+function maybeRegisterRetryAttempt(attempt: Attempt, enabled: boolean): void {
+  maybeRegisterAttempt(attempt, enabled);
+}
 function registerRetryAttempt(attempt: Attempt): void {
   const queuedAttempt = attempt;
   registerAttempt(queuedAttempt);
@@ -58,10 +61,10 @@ export async function brokenQueuedAttempt(): Promise<void> {
 
 export async function brokenConditionalAttempt(): Promise<void> {
   await using attempt = openAttempt();
-  maybeRegisterAttempt(attempt, true);
+  maybeRegisterRetryAttempt(attempt, true);
 }
 
 export async function safeDisabledAttempt(): Promise<void> {
   await using attempt = openAttempt();
-  maybeRegisterAttempt(attempt, false);
+  maybeRegisterRetryAttempt(attempt, false);
 }
