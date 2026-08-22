@@ -220,9 +220,12 @@ straight-line action bodies are also checked against the model assignments:
 literal calls to `record` are locally specialized, including the computed
 outcome-field write. Create/observe and invariant-body equivalence remain
 outside the action proof. The adjacent single-return invariant function is now
-also checked by exact normalized scalar-AST equivalence. Create/observe
-correctness and solver-proven equivalence of differently shaped predicates
-remain outside this proof.
+also checked by exact normalized scalar-AST equivalence. Create and observe are
+additionally checked as independent identity field projections: the transparent
+local-class `Object.assign` construction and destructured observation preserve
+all five model state fields. General abstraction relations, runtime validation
+of hostile object inputs, and solver-proven equivalence of differently shaped
+predicates remain unsupported.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

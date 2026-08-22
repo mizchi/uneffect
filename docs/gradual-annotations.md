@@ -135,6 +135,21 @@ reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still
 outside point-state invariant binding.
 
+`validateRefinementStateProjection` checks both adapter endpoints. It accepts
+an identity return, an object literal with an identity spread or explicit
+runtime-field projection, and an observe-side `const` object destructuring
+followed by such a return. Create may use
+`Object.assign(new LocalRuntime(), initial)` only when the local class has no
+heritage clause, explicit constructor, or accessors, so inherited or setter
+transformations cannot masquerade as identity. Every temporal state field must
+map to its same-named source field independently at both endpoints; compensating
+renames between create and observe are rejected. Same-named globals are never
+treated as model state. Arbitrary factories, nested shapes, computed dynamic
+keys, defaults, and non-identity abstraction functions remain unsupported.
+The proof assumes the annotated TypeScript parameter contract at the gradual
+boundary; it does not establish runtime object conformance against hostile
+Proxy/getter inputs.
+
 `|` is the only union separator. Commas separate parameters inside a parameterized effect and are never accepted as top-level effect unions.
 
 ## Attachment

@@ -124,9 +124,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
       - [x] Prove direct scalar action assignments, increments, stuttering, and one-level literal-specialized local class methods against temporal assignments.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
+      - [x] Prove supported create/observe adapters preserve every model state field by name, including transparent local-class construction and destructured observation.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
         - [ ] Extend action-body refinement beyond the current straight-line scalar fragment to branches, loops, multi-write sequencing, collections, imported/interprocedural calls, and guards.
         - [ ] Extend invariant-body refinement beyond exact scalar AST equivalence to local constants, helpers, collections, and solver-proven logical equivalence.
+        - [ ] Extend create/observe refinement beyond identity field projections to explicit abstraction relations, nested records/collections, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

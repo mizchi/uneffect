@@ -48,6 +48,12 @@ Adding exact scalar invariant-body comparison to the same benchmark measured
 preceding run and should be treated as measurement noise, not an optimization;
 the benchmark now includes coverage, five action bodies, and one invariant body.
 
+Adding create/observe identity-projection checks measured 0.5575 ms mean over
+897 samples (0.42% RME). This complete scalar-refinement benchmark includes
+parsing, binding coverage, five actions, one invariant, transparent local-class
+construction, and destructured observation; it does not include a TypeChecker
+or runtime validation of the adapter input objects.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

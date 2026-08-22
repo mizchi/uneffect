@@ -65,6 +65,19 @@ export interface RefinementInvariantDiagnostic {
   message: string;
 }
 
+export type RefinementStateProjectionDiagnosticCode = "unsupported-create-body" | "unsupported-observe-body" | "create-state-mismatch" | "observe-state-mismatch";
+
+export interface RefinementStateProjectionDiagnostic {
+  code: RefinementStateProjectionDiagnosticCode;
+  adapterName: string;
+  role: "create" | "observe";
+  exportName: string;
+  field?: string;
+  expected?: string;
+  actual?: string;
+  message: string;
+}
+
 function parseBinding(value: string, exportName: string, span: { start: number; end: number }): RefinementBinding {
   const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s+(create|observe|action\s+([A-Za-z_$][\w$]*)|invariant\s+([A-Za-z_$][\w$]*))$/.exec(value);
   if (!match) throw new Error(`invalid refinement binding on ${exportName}: ${value}`);
@@ -198,7 +211,7 @@ function normalizeRefinementExpression(
   if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
   if (ts.isIdentifier(node)) {
     const replacement = substitutions.get(node.text);
-    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames) : stateNames.has(node.text) ? { kind: "name", name: node.text } : undefined;
+    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames) : undefined;
   }
   const field = refinementFieldName(node, receiver, substitutions);
   if (field && stateNames.has(field)) return { kind: "name", name: field };
@@ -354,6 +367,103 @@ export function validateRefinementInvariantBodies(
   for (const [modelName, exportName] of Object.entries(manifest.invariants)) {
     if (modelProperties.has(modelName)) continue;
     diagnostics.push({ code: "unknown-invariant-binding", adapterName, modelName, exportName, message: `invariant refinement ${exportName} refers to unknown temporal property ${modelName}` });
+  }
+  return diagnostics;
+}
+
+/** Proves that create and observe each preserve every model state field by name. */
+export function validateRefinementStateProjection(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementStateProjectionDiagnostic[] {
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const stateNames = new Set(spec.states.map(({ name }) => name));
+  const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
+
+  const extract = (implementation: ts.FunctionDeclaration, role: "create" | "observe"): Map<string, TemporalExpression> | undefined => {
+    const parameter = implementation.parameters[0];
+    const receiver = parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : undefined;
+    if (!receiver || !implementation.body || implementation.body.statements.length === 0) return undefined;
+    const aliases = new Map<string, string>();
+    const statements = [...implementation.body.statements];
+    const returned = statements.pop();
+    if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
+    for (const statement of statements) {
+      if (role !== "observe" || !ts.isVariableStatement(statement)
+        || (statement.declarationList.flags & ts.NodeFlags.Const) === 0 || statement.declarationList.declarations.length !== 1) return undefined;
+      const declaration = statement.declarationList.declarations[0];
+      if (!declaration?.initializer || !ts.isIdentifier(declaration.initializer) || declaration.initializer.text !== receiver || !ts.isObjectBindingPattern(declaration.name)) return undefined;
+      for (const element of declaration.name.elements) {
+        if (element.dotDotDotToken || !ts.isIdentifier(element.name)) return undefined;
+        const field = element.propertyName && ts.isIdentifier(element.propertyName) ? element.propertyName.text : element.name.text;
+        if (!stateNames.has(field)) return undefined;
+        aliases.set(element.name.text, field);
+      }
+    }
+    const expression = returned.expression;
+    if (ts.isIdentifier(expression) && expression.text === receiver) return identity();
+    if (role === "create" && ts.isCallExpression(expression)
+      && ts.isPropertyAccessExpression(expression.expression)
+      && ts.isIdentifier(expression.expression.expression) && expression.expression.expression.text === "Object"
+      && expression.expression.name.text === "assign" && expression.arguments.length === 2
+      && ts.isNewExpression(expression.arguments[0]!) && ts.isIdentifier(expression.arguments[0]!.expression)
+      && ts.isIdentifier(expression.arguments[1]!) && expression.arguments[1]!.text === receiver) {
+      const runtimeClass = classes.get(expression.arguments[0]!.expression.text);
+      const transparentConstruction = runtimeClass && !runtimeClass.heritageClauses?.length
+        && runtimeClass.members.every((member) => !ts.isConstructorDeclaration(member) && !ts.isGetAccessorDeclaration(member) && !ts.isSetAccessorDeclaration(member));
+      if (!transparentConstruction) return undefined;
+      return identity();
+    }
+    if (!ts.isObjectLiteralExpression(expression)) return undefined;
+    const projection = new Map<string, TemporalExpression>();
+    for (const property of expression.properties) {
+      if (ts.isSpreadAssignment(property)) {
+        if (!ts.isIdentifier(property.expression) || property.expression.text !== receiver) return undefined;
+        for (const [name, value] of identity()) projection.set(name, value);
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(property)) {
+        const field = aliases.get(property.name.text);
+        if (!field || !stateNames.has(property.name.text)) return undefined;
+        projection.set(property.name.text, { kind: "name", name: field });
+        continue;
+      }
+      if (!ts.isPropertyAssignment(property)) return undefined;
+      const field = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+      if (!field || !stateNames.has(field)) return undefined;
+      const alias = ts.isIdentifier(property.initializer) ? aliases.get(property.initializer.text) : undefined;
+      const value = alias
+        ? { kind: "name", name: alias } as TemporalExpression
+        : normalizeRefinementExpression(property.initializer, receiver, new Map(), stateNames);
+      if (!value) return undefined;
+      projection.set(field, value);
+    }
+    return projection;
+  };
+
+  const diagnostics: RefinementStateProjectionDiagnostic[] = [];
+  for (const role of ["create", "observe"] as const) {
+    const exportName = manifest[role];
+    const implementation = functions.get(exportName);
+    const projection = implementation ? extract(implementation, role) : undefined;
+    if (!projection) {
+      diagnostics.push({ code: `unsupported-${role}-body`, adapterName, role, exportName, message: `${exportName} is outside the supported state-projection fragment` });
+      continue;
+    }
+    for (const { name } of spec.states) {
+      const actual = projection.get(name);
+      if (actual?.kind === "name" && actual.name === name) continue;
+      diagnostics.push({
+        code: `${role}-state-mismatch`, adapterName, role, exportName, field: name, expected: name,
+        actual: actual ? formatRefinementExpression(actual) : "<missing>",
+        message: `${exportName} projects ${name} as ${actual ? formatRefinementExpression(actual) : "<missing>"}, expected ${name}`,
+      });
+    }
   }
   return diagnostics;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -196,6 +196,73 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unsupported-invariant-body", modelName: "strictZero", exportName: "strictZero" }),
       expect.objectContaining({ code: "missing-invariant-binding", modelName: "missing" }),
       expect.objectContaining({ code: "unknown-invariant-binding", modelName: "stale", exportName: "stale" }),
+    ]);
+  });
+
+  it("proves create/observe state projection and reports transformed or swapped fields", () => {
+    const model = `/* uneffect:
+      state left: int
+      state right: int
+      init left = 0
+      init right = 0
+    */`;
+    const safe = `${model}
+      interface State { left: number; right: number }
+      class Runtime { left = 0; right = 0 }
+      /* uneffect: refinement pair@1 create */ export function createPair(initial: State) { return Object.assign(new Runtime(), initial) }
+      /* uneffect: refinement pair@1 observe */ export function observePair(runtime: Runtime) { const { left, right } = runtime; return { left, right } }
+    `;
+    expect(validateRefinementStateProjection("safe.ts", safe, "pair", parseSpec("safe.ts", safe).temporal)).toEqual([]);
+
+    const broken = `${model}
+      interface State { left: number; right: number }
+      /* uneffect: refinement pair@1 create */ export function createPair(initial: State) { return { ...initial, left: initial.left + 1 } }
+      /* uneffect: refinement pair@1 observe */ export function observePair(runtime: State) { return { left: runtime.right, right: runtime.right } }
+    `;
+    expect(validateRefinementStateProjection("broken.ts", broken, "pair", parseSpec("broken.ts", broken).temporal)).toEqual([
+      expect.objectContaining({ code: "create-state-mismatch", field: "left", expected: "left", actual: "left + 1" }),
+      expect.objectContaining({ code: "observe-state-mismatch", field: "left", expected: "left", actual: "right" }),
+    ]);
+  });
+
+  it("does not accept arbitrary create or observe calls as a state projection", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * init value = 0
+       */
+      interface State { value: number }
+      declare function factory(value: State): State
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: State) { return factory(initial) }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: State) { return factory(runtime) }
+    `;
+    expect(validateRefinementStateProjection("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-create-body", exportName: "createCounter" }),
+      expect.objectContaining({ code: "unsupported-observe-body", exportName: "observeCounter" }),
+    ]);
+  });
+
+  it("does not confuse same-named globals with model state fields", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * init value = 0
+       * action increment: value' = value + 1
+       * temporal nonNegative: value >= 0
+       */
+      const value = 0
+      interface Runtime { value: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.value = value + 1 }
+      /* uneffect: refinement counter@1 invariant nonNegative */ export function nonNegative(_runtime: Runtime) { return value >= 0 }
+    `;
+    const temporal = parseSpec("counter.ts", source).temporal;
+    expect(validateRefinementActionBodies("counter.ts", source, "counter", temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+    ]);
+    expect(validateRefinementInvariantBodies("counter.ts", source, "counter", temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-invariant-body", modelName: "nonNegative" }),
     ]);
   });
 });
