@@ -9,7 +9,7 @@ export type TemporalExpression =
   | { kind: "field"; receiver: TemporalExpression; name: string }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
-  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "size" | "put" | "remove" | "keys" | "values"; arguments: TemporalExpression[] }
+  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "size" | "put" | "remove" | "get" | "keys" | "values"; arguments: TemporalExpression[] }
   | { kind: "conditional"; condition: TemporalExpression; whenTrue: TemporalExpression; whenFalse: TemporalExpression }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
@@ -35,6 +35,33 @@ export function temporalTypesCompatible(left: TemporalValueType, right: Temporal
     return leftNames.length === rightNames.length && leftNames.every((name) => right.fields[name] && temporalTypesCompatible(left.fields[name]!, right.fields[name]!));
   }
   return false;
+}
+
+/** Rejects partial Map.get uses unless the same conjunction proves key membership. */
+export function assertGuardedTemporalMapGets(expression: TemporalExpression, externalGuard?: TemporalExpression): void {
+  const conjuncts = (value: TemporalExpression): TemporalExpression[] =>
+    value.kind === "binary" && value.operator === "and" ? [...conjuncts(value.left), ...conjuncts(value.right)] : [value];
+  const guards = [...conjuncts(expression), ...(externalGuard ? conjuncts(externalGuard) : [])];
+  const same = (left: TemporalExpression, right: TemporalExpression): boolean => JSON.stringify(left) === JSON.stringify(right);
+  const guarded = (receiver: TemporalExpression, key: TemporalExpression): boolean => guards.some((candidate) =>
+    candidate.kind === "method" && candidate.name === "contains" && candidate.arguments.length === 1
+    && candidate.receiver.kind === "method" && candidate.receiver.name === "keys" && candidate.receiver.arguments.length === 0
+    && same(candidate.receiver.receiver, receiver) && same(candidate.arguments[0]!, key));
+  const visit = (value: TemporalExpression): void => {
+    if (value.kind === "method" && value.name === "get" && !guarded(value.receiver, value.arguments[0]!)) {
+      throw new Error("temporal Map.get requires a conjunctive map.keys().contains(key) guard");
+    }
+    if (value.kind === "unary") visit(value.operand);
+    else if (value.kind === "binary") { visit(value.left); visit(value.right); }
+    else if (value.kind === "conditional") { visit(value.condition); visit(value.whenTrue); visit(value.whenFalse); }
+    else if (value.kind === "array") value.elements.forEach(visit);
+    else if (value.kind === "record") { if (value.base) visit(value.base); Object.values(value.fields).forEach(visit); }
+    else if (value.kind === "field") visit(value.receiver);
+    else if (value.kind === "lambda") visit(value.body);
+    else if (value.kind === "call") value.arguments.forEach(visit);
+    else if (value.kind === "method") { visit(value.receiver); value.arguments.forEach(visit); }
+  };
+  visit(expression);
 }
 
 export function formatTemporalValueType(type: TemporalValueType): string {
@@ -129,17 +156,17 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "method") {
     const receiver = typeCheckTemporalExpression(expression.receiver, symbols);
-    if (expression.name === "put" || expression.name === "remove" || expression.name === "keys" || expression.name === "values") {
+    if (expression.name === "put" || expression.name === "remove" || expression.name === "get" || expression.name === "keys" || expression.name === "values") {
       if (typeof receiver === "string" || receiver.kind !== "map") throw new Error(`temporal ${expression.name} requires a Map receiver`);
       if (expression.name === "keys" || expression.name === "values") {
         if (expression.arguments.length !== 0) throw new Error(`temporal ${expression.name} does not accept arguments`);
         return { kind: "set", element: expression.name === "keys" ? receiver.key : receiver.value };
       }
-      if (expression.name === "remove") {
-        if (expression.arguments.length !== 1) throw new Error("temporal remove requires one matching key");
+      if (expression.name === "remove" || expression.name === "get") {
+        if (expression.arguments.length !== 1) throw new Error(`temporal ${expression.name} requires one matching key`);
         const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols);
-        if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key)) throw new Error("temporal remove key type must match the Map");
-        return receiver;
+        if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key)) throw new Error(`temporal ${expression.name} key type must match the Map`);
+        return expression.name === "get" ? receiver.value === "never" ? "int" : receiver.value : receiver;
       }
       if (expression.arguments.length !== 2) throw new Error("temporal put requires a key and value");
       const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols), value = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
@@ -236,7 +263,7 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isCallExpression(node)) {
     if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
     if (ts.isPropertyAccessExpression(node.expression)) {
-      if (!["contains", "union", "exclude", "forall", "size", "put", "remove", "keys", "values"].includes(node.expression.name.text)) {
+      if (!["contains", "union", "exclude", "forall", "size", "put", "remove", "get", "keys", "values"].includes(node.expression.name.text)) {
         throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
       }
       return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: node.arguments.map(convert) };
@@ -328,6 +355,7 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
     if (backend === "quint") return `${receiver}.${expression.name}(${expression.arguments.map((item) => emit(item, backend)).join(", ")})`;
     if (expression.name === "put") return `new Map([...${receiver}, [${emit(expression.arguments[0]!, backend)}, ${emit(expression.arguments[1]!, backend)}]])`;
     if (expression.name === "remove") return `new Map([...${receiver}].filter(([_uneffect_key]) => _uneffect_key !== ${emit(expression.arguments[0]!, backend)}))`;
+    if (expression.name === "get") return `${receiver}.get(${emit(expression.arguments[0]!, backend)})`;
     if (expression.name === "keys") return `new Set(${receiver}.keys())`;
     if (expression.name === "values") return `new Set(${receiver}.values())`;
     if (expression.name === "size") return `${receiver}.size`;

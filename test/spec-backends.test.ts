@@ -213,18 +213,27 @@ describe("spec IR and generated verifier programs", () => {
       init epochs = Map([[1, 1], [2, 0]])
       action publish: epochs' = epochs.put(2, 1)
       temporal nonNegative: epochs.values().forall(epoch => epoch >= 0)
+      temporal firstEpoch: epochs.keys().contains(1) && epochs.get(1) === 1
     */`).temporal;
     expect(temporal.states).toEqual([{ name: "epochs", type: { kind: "map", key: "int", value: "int" } }]);
     const quint = generateQuint("finite_maps", temporal);
     expect(quint).toContain("var epochs: int -> int");
     expect(quint).toContain("epochs' = epochs.put(2, 1)");
     expect(quint).toContain("epochs.keys().map(_uneffect_key => epochs.get(_uneffect_key)).forall(epoch => epoch >= 0)");
+    expect(quint).toContain("epochs.keys().contains(1) and epochs.get(1) == 1");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-finite-maps-"));
     const path = join(directory, "maps.qnt");
     writeFileSync(path, quint);
     const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=nonNegative", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
-    rmSync(directory, { recursive: true, force: true });
     expect(result.status, result.stdout + result.stderr).toBe(0);
+    const getResult = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=firstEpoch", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(getResult.status, getResult.stdout + getResult.stderr).toBe(0);
+    expect(() => parseSpec("unguarded-map-get.ts", `/* uneffect:
+      state epochs: Map<int, int>
+      init epochs = Map([[1, 1]])
+      temporal unsafeLookup: epochs.get(1) === 1
+    */`)).toThrow(/Map\.get requires a conjunctive .*keys\(\)\.contains\(key\) guard/);
   });
 
   it("semantically checks scalar Map keys and values with Z3", async () => {
@@ -260,12 +269,16 @@ describe("spec IR and generated verifier programs", () => {
       action enable: flags' = flags.put(true, true)
       temporal booleanValues: flags.values().forall(flag => flag || !flag)
       temporal bothKeys: flags.keys().contains(false) && flags.keys().contains(true)
+      temporal enabledValue: flags.keys().contains(true) && flags.get(true) === true
     */`).temporal;
     await expect(lintTemporalSpecWithZ3(flags)).resolves.toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "solver-tautology", name: "booleanValues" }),
     ]));
     await expect(findTemporalCounterexampleWithZ3(flags, "bothKeys", { maxSteps: 2 })).resolves.toEqual({
       status: "safe-within-bound", depth: 2,
+    });
+    await expect(findTemporalCounterexampleWithZ3(flags, "enabledValue", { maxSteps: 2 })).resolves.toMatchObject({
+      status: "counterexample", depth: 0,
     });
 
     const dynamic = parseSpec("dynamic-map-z3.ts", `/* uneffect:

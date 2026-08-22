@@ -378,6 +378,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
     const receiver = z3TemporalType(expression.receiver, symbols);
     if (typeof receiver !== "string" && receiver.kind === "map") {
       if (expression.name === "put" || expression.name === "remove") return receiver;
+      if (expression.name === "get") return receiver.value === "never" ? "int" : receiver.value;
       if (expression.name === "keys") return { kind: "set", element: receiver.key };
       if (expression.name === "values") return { kind: "set", element: receiver.value };
     }
@@ -415,7 +416,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
         else complete = false;
       }
     }
-    if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove")) {
+    if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove" || expression.name === "get")) {
       const key = literal(expression.arguments[0]!);
       if (typeof key === "number") integers.add(key);
       else if (typeof key === "boolean") booleans.add(key);
@@ -530,6 +531,10 @@ function temporalToSmt(
       if (expression.name === "remove") {
         const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
         return `(${names.constructor} (store (${names.domain} ${receiver}) ${key} false) (store (${names.values} ${receiver}) ${key} ${defaultSmtValue(mapType.value)}))`;
+      }
+      if (expression.name === "get") {
+        const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
+        return `(select (${names.values} ${receiver}) ${key})`;
       }
       if (expression.name === "keys") return `(${names.domain} ${receiver})`;
       if (expression.name === "values") {

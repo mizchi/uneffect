@@ -106,15 +106,21 @@ Scalar `Map<int | bool, int | bool>` state is also supported through ordinary
 TypeScript construction (`Map([[key, value]])`), immutable `put`, and finite
 `keys()`/`values()` views. Quint has no direct `values` builtin, so lowering uses
 `map.keys().map(key => map.get(key))`; this keeps every generated `get` inside
-the map's known domain. A general user-written partial `get` is intentionally
-not accepted yet. Runtime lowering constructs a fresh JavaScript `Map`, so
+the map's known domain. User-written `map.get(key)` is accepted only when the
+same conjunction contains the structurally matching
+`map.keys().contains(key)` guard. An unguarded lookup is a specification error,
+not an `undefined` value silently coerced into the declared Map value type.
+Action assignments may instead establish the same guard in `action_when`.
+Replay throws if a supposedly guarded key is absent. Runtime lowering constructs a fresh JavaScript `Map`, so
 assertion evaluation does not mutate application state.
 
 Z3 represents each Map type as a datatype containing a Boolean domain
 array and a separate total value array. This prevents the value at an absent
 key from leaking into `keys()` or `values()`. `put` updates both arrays,
 `keys()` projects the domain, and `values()` is the existential image of the
-value array over present keys. Semantic lint and bounded reachability use that
+value array over present keys. A guarded `get` selects the value array; the
+required domain guard prevents its canonical absent-key value from becoming
+observable. Semantic lint and bounded reachability use that
 full meaning, including recursively supported collection or record values.
 Counterexample extraction observes literal keys, recursively evaluates values,
 and emits stable JSON entry arrays such as `[[1, 0], [2, -1]]`. A state-derived

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertGuardedTemporalMapGets,
   generateQuintExpression,
   generateRuntimeAssertionExpression,
   generateRuntimeAssertionStatement,
@@ -90,8 +91,14 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(generateRuntimeAssertionExpression(mapExpression)).toBe("new Map([...epochs].filter(([_uneffect_key]) => _uneffect_key !== 2))");
   });
 
-  it("rejects malformed or heterogeneous Maps and keeps partial lookup outside the DSL", () => {
-    expect(() => parseTemporalExpression("epochs.get(1)")).toThrow(/unsupported temporal method `get`/);
+  it("accepts typed guarded Map lookup and rejects unguarded partial lookup", () => {
+    const mapType = { kind: "map", key: "int", value: "int" } as const;
+    const guarded = parseTemporalExpression("epochs.keys().contains(1) && epochs.get(1) === 2");
+    expect(typeCheckTemporalExpression(guarded, new Map([["epochs", mapType]]))).toBe("bool");
+    expect(() => assertGuardedTemporalMapGets(guarded)).not.toThrow();
+    expect(() => assertGuardedTemporalMapGets(parseTemporalExpression("epochs.get(1) === 2"))).toThrow(/Map\.get requires a conjunctive/);
+    expect(generateQuintExpression(guarded)).toBe("epochs.keys().contains(1) and epochs.get(1) == 2");
+    expect(generateRuntimeAssertionExpression(guarded)).toBe("new Set(epochs.keys()).has(1) && epochs.get(1) === 2");
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([1, 2])"), new Map())).toThrow(/\[key, value\] pairs/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([[1, true], [2, 0]])"), new Map())).toThrow(/homogeneous key and value types/);
   });

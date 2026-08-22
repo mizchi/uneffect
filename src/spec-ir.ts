@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations, type SourceSpan } from "./annotations.js";
 import { parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
-import { formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
+import { assertGuardedTemporalMapGets, formatTemporalValueType, parseTemporalExpression, parseTemporalValueType, temporalTypesCompatible, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { createDefaultTemporalDomainRegistry, type TemporalDomainRegistry } from "./temporal-domains.js";
 import type { NumericDomain } from "./invariant-ir.js";
 
@@ -235,17 +235,25 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     const actual = typeCheckTemporalExpression(item.expressionAst, symbols);
     if (!temporalTypesCompatible(actual, target)) throw new Error(`temporal ${kind} assigns ${formatTemporalValueType(actual)} to ${formatTemporalValueType(target)} state \`${item.target}\``);
   };
-  for (const item of init) checkAssignment(item, "init");
-  for (const action of actions) for (const item of action.assignments) checkAssignment(item, "action");
-  for (const action of actions) if (action.guard && typeCheckTemporalExpression(action.guard.expressionAst, symbols) !== "bool") {
-    throw new Error(`action guard \`${action.name}\` must be boolean`);
+  for (const item of init) { checkAssignment(item, "init"); assertGuardedTemporalMapGets(item.expressionAst); }
+  for (const action of actions) for (const item of action.assignments) {
+    checkAssignment(item, "action");
+    assertGuardedTemporalMapGets(item.expressionAst, action.guard?.expressionAst);
+  }
+  for (const action of actions) if (action.guard) {
+    assertGuardedTemporalMapGets(action.guard.expressionAst);
+    if (typeCheckTemporalExpression(action.guard.expressionAst, symbols) !== "bool") throw new Error(`action guard \`${action.name}\` must be boolean`);
   }
   for (const property of properties) {
+    assertGuardedTemporalMapGets(property.expressionAst);
     if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") {
       throw new Error(`temporal property \`${property.name}\` must be boolean`);
     }
   }
-  for (const property of liveness) if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") throw new Error(`temporal liveness property \`${property.name}\` must be boolean`);
+  for (const property of liveness) {
+    assertGuardedTemporalMapGets(property.expressionAst);
+    if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") throw new Error(`temporal liveness property \`${property.name}\` must be boolean`);
+  }
 
   return { fileName, capabilities, invariants, temporal: { stutteringPolicy: "explicit-unchanged", clocks, states, init, actions, properties, liveness } };
 }

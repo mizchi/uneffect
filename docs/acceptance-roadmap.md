@@ -107,7 +107,9 @@ boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared
 temporal action, and native `Set.has`/`Map.has` must match the corresponding
 membership invariants. Map membership uses the backend-neutral canonical form
-`map.keys().contains(key)`. Changing either observed member produces an
+`map.keys().contains(key)`. A guarded native `Map.get` also proves the stored
+epoch value; changing the expected value produces a mismatch, while an
+unguarded temporal lookup is rejected as a partial operation. Changing either observed member produces an
 `invariant-expression-mismatch`. Z3 mismatch discharge consumes the retained
 normalized AST rather than reparsing the runtime-oriented diagnostic text, so
 collection spellings such as JavaScript `.has` cannot crash the verifier.

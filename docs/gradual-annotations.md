@@ -215,6 +215,9 @@ property normalize to temporal `set.contains(value)` and `set.size()`.
 In the Program-backed path, a builtin `Map.has(key)` receiver is distinguished
 by TypeChecker symbol identity and normalizes to the explicit temporal form
 `map.keys().contains(key)`.
+Builtin `Map.get(key)` normalizes to temporal `map.get(key)`. The temporal
+property must conjunctively establish `map.keys().contains(key)` first; this
+keeps JavaScript's possibly-`undefined` lookup outside the proved value domain.
 Receiver identity is established by the separately required Program-backed
 create/observe shape check; this predicate pass proves the expression mapping,
 not every builtin symbol identity in isolation. Mutable aliases, ambiguous lexical call

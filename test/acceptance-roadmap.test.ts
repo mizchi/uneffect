@@ -365,6 +365,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1)
       temporal ownerPresent: owners.contains(1)
       temporal epochRegistered: epochs.keys().contains(1)
+      temporal initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1
     */
       interface Runtime { owners: Set<number>; epochs: Map<number, number> }
       /* uneffect: refinement lease@1 create */
@@ -377,6 +378,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       export function ownerPresent(runtime: Runtime) { return runtime.owners.has(1) }
       /* uneffect: refinement lease@1 invariant epochRegistered */
       export function epochRegistered(runtime: Runtime) { return runtime.epochs.has(1) }
+      /* uneffect: refinement lease@1 invariant initialEpoch */
+      export function initialEpoch(runtime: Runtime) { return runtime.epochs.has(1) && runtime.epochs.get(1) === 1 }
     `;
     try {
       writeFileSync(fileName, source);
@@ -397,6 +400,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenMapProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenMapProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "epochRegistered" }),
+      );
+      const brokenValue = source.replace("runtime.epochs.get(1) === 1", "runtime.epochs.get(1) === 2");
+      writeFileSync(fileName, brokenValue);
+      const brokenValueProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenValueProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "initialEpoch" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

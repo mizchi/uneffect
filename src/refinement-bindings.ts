@@ -202,6 +202,20 @@ function sameRefinementExpression(left: TemporalExpression, right: TemporalExpre
   return refinementExpressionKey(left) === refinementExpressionKey(right);
 }
 
+function builtinCollectionKind(checker: ts.TypeChecker | undefined, node: ts.Expression): "Set" | "Map" | undefined {
+  if (!checker) return undefined;
+  const visit = (type: ts.Type, seen: ReadonlySet<ts.Type> = new Set()): "Set" | "Map" | undefined => {
+    if (seen.has(type)) return undefined;
+    const symbol = type.getSymbol() ?? type.aliasSymbol;
+    const name = symbol?.getName();
+    if ((name === "Set" || name === "Map")
+      && (symbol?.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile)) return name;
+    const constraint = checker.getBaseConstraintOfType(type);
+    return constraint && constraint !== type ? visit(constraint, new Set([...seen, type])) : undefined;
+  };
+  return visit(checker.getTypeAtLocation(node));
+}
+
 function refinementFieldPath(
   target: ts.Expression,
   receiver: string,
@@ -312,15 +326,18 @@ function normalizeRefinementExpression(
     const collection = normalizeRefinementExpression(node.expression.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
     const argument = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
     if (collection && argument) {
-      const type = checker?.getTypeAtLocation(node.expression.expression);
-      const symbol = type?.getSymbol() ?? type?.aliasSymbol;
-      const builtinMap = symbol?.getName() === "Map"
-        && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
-      const membershipReceiver: TemporalExpression = builtinMap
+      const membershipReceiver: TemporalExpression = builtinCollectionKind(checker, node.expression.expression) === "Map"
         ? { kind: "method", receiver: collection, name: "keys", arguments: [] }
         : collection;
       return { kind: "method", receiver: membershipReceiver, name: "contains", arguments: [argument] };
     }
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === "get" && node.arguments.length === 1
+    && builtinCollectionKind(checker, node.expression.expression) === "Map") {
+    const collection = normalizeRefinementExpression(node.expression.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+    const argument = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+    if (collection && argument) return { kind: "method", receiver: collection, name: "get", arguments: [argument] };
   }
   if (ts.isCallExpression(node) && (ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression))) {
     const name = ts.isIdentifier(node.expression) ? node.expression.text : node.expression.getText();
