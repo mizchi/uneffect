@@ -166,6 +166,11 @@ integer sign boundaries around zero and boolean polarity. Every generated
 candidate is subjected to the same init/preservation proof before use. This is
 useful for counters and epochs but is not relational, affine/polyhedral, or
 collection invariant synthesis.
+Pairwise integer equality and ordering templates are available through the
+separate `synthesizeRelationalStrengtheningProperties` option and
+`--synthesize-relational-strengthening`. They are isolated because candidate
+count grows quadratically with integer state count. Offset relations,
+polyhedra, and collection relations remain unsupported.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
@@ -263,6 +268,7 @@ just spec-lint examples/spec.ts
 pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
 pnpm uneffect-spec lint examples/spec.ts --discover-strengthening
 pnpm uneffect-spec lint examples/spec.ts --synthesize-strengthening
+pnpm uneffect-spec lint examples/spec.ts --synthesize-relational-strengthening
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In

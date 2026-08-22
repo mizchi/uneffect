@@ -109,6 +109,20 @@ function synthesizedStrengtheningProperties(spec: TemporalSpec): TemporalSpec["p
   });
 }
 
+function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
+  const integers = spec.states.filter((state) => state.type === "int");
+  const expressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => [
+    `${left.name} === ${right.name}`,
+    `${left.name} <= ${right.name}`,
+    `${left.name} >= ${right.name}`,
+  ]));
+  return expressions.map((expression) => ({
+    name: `<synth:${expression}>`,
+    expression,
+    expressionAst: parseTemporalExpression(expression),
+  }));
+}
+
 type MapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool"; value: TemporalValueType };
 type RecordType = Extract<TemporalValueType, { kind: "record" }>;
 type ScalarMapType = MapType & { value: "int" | "bool" };
@@ -590,7 +604,7 @@ export async function findTemporalCounterexampleWithZ3(
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
-export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean } = {}): Promise<SpecLintDiagnostic[]> {
+export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean; synthesizeRelationalStrengtheningProperties?: boolean } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
   if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
@@ -622,7 +636,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const initStatus = await checkSmt(declarations, init);
   const strengthening: TemporalSpec["properties"] = [];
   const explicitStrengthening = new Set(options.strengtheningProperties ?? []);
-  const synthesized = options.synthesizeStrengtheningProperties ? synthesizedStrengtheningProperties(spec) : [];
+  const synthesized = [
+    ...(options.synthesizeStrengtheningProperties ? synthesizedStrengtheningProperties(spec) : []),
+    ...(options.synthesizeRelationalStrengtheningProperties ? synthesizedRelationalStrengtheningProperties(spec) : []),
+  ];
   const synthesizedByName = new Map(synthesized.map((property) => [property.name, property]));
   const strengtheningNames = new Set([
     ...explicitStrengthening,
@@ -886,13 +903,14 @@ export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; di
 }
 
 /** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
-export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean; synthesizeRelationalStrengtheningProperties?: boolean } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
   const result = lintSpec(fileName, text);
   const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, {
     maxSteps: options.reachabilitySteps ?? 8,
     strengtheningProperties: options.strengtheningProperties,
     discoverStrengtheningProperties: options.discoverStrengtheningProperties,
     synthesizeStrengtheningProperties: options.synthesizeStrengtheningProperties,
+    synthesizeRelationalStrengtheningProperties: options.synthesizeRelationalStrengtheningProperties,
   });
   return {
     spec: result.spec,
