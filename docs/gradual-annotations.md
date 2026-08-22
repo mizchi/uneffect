@@ -153,8 +153,9 @@ resolves to a function declaration; ordinary object methods do not qualify.
 The first helper argument must
 be the current runtime receiver; remaining scalar arguments are snapshotted
 symbolically at the call site. The Program path also follows chains of
-reassignment-free `const` identifier aliases to a direct helper declaration.
-Namespace-property aliases, mutable aliases, recursion, methods, higher-order values, and dynamic dispatch remain
+reassignment-free `const` aliases to a direct helper declaration, including a
+namespace selection such as `const operation = Operations.revoke`. Mutable
+aliases, recursion, methods, higher-order values, and dynamic dispatch remain
 explicit non-proofs. Every model state is compared, so an extra runtime
 write is rejected as well as a missing or different write. A terminal void
 `return` and a terminal `return helper(runtime, ...)` are composed in root,

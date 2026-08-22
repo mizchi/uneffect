@@ -354,8 +354,8 @@ function validateRefinementActionBodiesInSource(
       && ts.isVariableDeclarationList(declaration.parent)
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
       && !!declaration.initializer
-      && ts.isIdentifier(declaration.initializer));
-    return alias?.initializer && ts.isIdentifier(alias.initializer)
+      && (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer)));
+    return alias?.initializer && (ts.isIdentifier(alias.initializer) || ts.isPropertyAccessExpression(alias.initializer))
       ? resolveFunction(alias.initializer, new Set([...seen, symbol]))
       : undefined;
   };

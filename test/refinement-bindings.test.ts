@@ -444,6 +444,21 @@ describe("annotated refinement bindings", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementActionBodiesInProgram(namespaceProgram, mainFile, "authority", spec)).toEqual([]);
+      const namespaceAliasSource = namespaceSource
+        .replace("interface Runtime", "const namespacedOperation = OwnerOperations.addOwner\n      interface Runtime")
+        .replace("OwnerOperations.addOwner(runtime, 2)", "namespacedOperation(runtime, 2)");
+      writeFileSync(mainFile, namespaceAliasSource);
+      const namespaceAliasProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(namespaceAliasProgram, mainFile, "authority", spec)).toEqual([]);
+      writeFileSync(mainFile, namespaceAliasSource.replace("const namespacedOperation", "let namespacedOperation"));
+      const mutableNamespaceAliasProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(mutableNamespaceAliasProgram, mainFile, "authority", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "addOwner",
+      }));
       writeFileSync(mainFile, source);
       writeFileSync(mainFile, source.replace("const ownerOperation", "let ownerOperation"));
       const mutableAliasProgram = ts.createProgram([mainFile, helperFile], {

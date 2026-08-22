@@ -2,6 +2,7 @@ import { revokeOwner } from "./lease-authority-operations.js";
 import * as LeaseAuthorityOperations from "./lease-authority-operations.js";
 
 const revokeOwnerOperation = revokeOwner;
+const revokeNamespacedOwnerOperation = LeaseAuthorityOperations.revokeOwner;
 
 /* uneffect:
   state authority: { owners: Set<int>, epochs: Map<int, int> }
@@ -70,5 +71,5 @@ export function revokeImportedLeaseOwner(runtime: LeaseAuthorityRuntime): void {
 
 /* uneffect: refinement leaseAuthority@1 action revokeNamespacedOwner */
 export function revokeNamespacedLeaseOwner(runtime: LeaseAuthorityRuntime): void {
-  LeaseAuthorityOperations.revokeOwner(runtime, 1);
+  revokeNamespacedOwnerOperation(runtime, 1);
 }
