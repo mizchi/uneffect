@@ -460,7 +460,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       );
       writeFileSync(fileName, statementCallback);
       const statementCallbackProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
-      await expect(validateInvariants(statementCallbackProgram, fileName, "lease", spec)).resolves.toContainEqual(
+      await expect(validateInvariants(statementCallbackProgram, fileName, "lease", spec)).resolves.toEqual([]);
+      const mutableCallback = statementCallback.replace("const epoch = lease.epoch", "let epoch = lease.epoch");
+      writeFileSync(fileName, mutableCallback);
+      const mutableCallbackProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(mutableCallbackProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "unsupported-invariant-body", modelName: "validLeases" }),
       );
     } finally {

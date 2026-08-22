@@ -126,7 +126,9 @@ The lease table itself is a record-valued
 `Map<number, { epoch: number, valid: boolean }>`. A native `values()` iterator
 with a single-return callback block proves
 `!lease.valid || lease.epoch > 0`; weakening the field comparison fails, while
-adding callback-local statements remains an explicit unsupported non-proof.
+an immutable callback-local alias for `lease.epoch` preserves the proof.
+Changing that alias declaration from `const` to `let` remains an explicit
+unsupported non-proof.
 
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,

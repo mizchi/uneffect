@@ -362,18 +362,28 @@ function normalizeRefinementExpression(
       && isDeclarationFileSymbol(checker, from.expression.name, "from")
       && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
       && ts.isIdentifier(callback.parameters[0]!.name)) {
-      const callbackExpression = ts.isBlock(callback.body)
-        ? callback.body.statements.length === 1 && ts.isReturnStatement(callback.body.statements[0]!)
-          ? callback.body.statements[0]!.expression
-          : undefined
-        : callback.body;
-      if (!callbackExpression) return undefined;
       const collection = normalizeRefinementExpression(from.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
       const supportedCollection = builtinCollectionKind(checker, from.arguments[0]!) === "Set"
         || collection?.kind === "method" && (collection.name === "keys" || collection.name === "values");
       const parameter = callback.parameters[0]!.name.text;
       const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
-      const body = normalizeRefinementExpression(callbackExpression, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
+      const callbackSubstitutions = new Map(substitutions);
+      let callbackExpression: ts.Expression | undefined;
+      if (ts.isBlock(callback.body)) {
+        const statements = [...callback.body.statements];
+        const returned = statements.pop();
+        if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
+        for (const statement of statements) {
+          if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+          for (const declaration of statement.declarationList.declarations) {
+            if (!ts.isIdentifier(declaration.name) || !declaration.initializer
+              || !normalizeRefinementExpression(declaration.initializer, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)) return undefined;
+            callbackSubstitutions.set(declaration.name.text, declaration.initializer);
+          }
+        }
+        callbackExpression = returned.expression;
+      } else callbackExpression = callback.body;
+      const body = normalizeRefinementExpression(callbackExpression, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
       if (collection && supportedCollection && body) return {
         kind: "method", receiver: collection, name: "forall",
         arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],

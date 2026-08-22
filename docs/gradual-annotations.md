@@ -229,8 +229,11 @@ real bound temporal name, so a subset check such as
 element may be a closed record, and field predicates such as
 `lease => !lease.valid || lease.epoch > 0` retain their field structure.
 Expression callbacks and blocks containing exactly one expression-bearing
-`return` are accepted. Callback-local declarations, multiple statements, and
-abrupt control flow remain unsupported.
+`return` are accepted. A callback block may precede that return with
+reassignment-free `const` declarations; their initializers are normalized in
+declaration order and may refer to the bound element or earlier constants.
+`let`/`var`, mutation, non-declaration statements, and abrupt control flow
+remain unsupported.
 The
 syntax-only API and custom/shadowed `Array.from`, `keys`, `values`, or `every` methods remain
 unsupported rather than being trusted by spelling.
