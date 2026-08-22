@@ -1379,4 +1379,30 @@ describe("async error and explicit resource safety", () => {
     expect(quint).not.toContain(`action skip_handler_await_${tick.promiseChain}`);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("acquires and disposes an await-using resource inside each handler loop iteration", () => {
+    const result = analyzeAsyncSafety("handler-loop-resource.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function run(enabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("enter catch")).then(() => { throw new Error("enter catch") })
+        } catch (error) {
+          while (enabled) {
+            await using resource = open()
+            await Promise.resolve("tick").then(value => value)
+          }
+        }
+      }
+    `);
+    const quint = generateUnifiedAsyncQuint("handler_loop_resource", result, "run");
+    const acquirePc = /action acquire_resource = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    const rejectTarget = /action promise_\d+_reject_caught = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const repeatTarget = /action catch_loop_0_repeat = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    expect(acquirePc).toBe(rejectTarget);
+    expect(repeatTarget).toBe(acquirePc);
+    expect(quint).toContain("action dispose_start_resource_handler_loop");
+    expect(quint).toContain("action dispose_resume_resource_handler_loop");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

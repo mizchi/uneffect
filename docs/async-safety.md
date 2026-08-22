@@ -463,11 +463,16 @@ validates every path plus the primary-path correspondence.
 Zero-iteration `while`, `for`, `for..in`, and `for..of` handler bodies share a
 stable loop-entry choice. The one-step abstraction retains a skipped path and
 normalizes body `break`/`continue` to normal loop completion; `while (true)`
-omits the skipped path and `do..while` executes once. This is not yet a loop
+omits the skipped path and `do..while` executes once.
 Awaited handler loops additionally receive explicit repeat and exit states, so
 the control graph covers arbitrary finite repetition of their awaited chains.
-This is not a data-state fixed point: loop-carried values and repeated
-resource acquisition/disposal instances remain outside the unified lowering.
+Lexical `using` and `await using` declarations in those loops are handler
+events: each abstract iteration acquires the resource and completes disposal
+before repeat or exit, resetting the finite acquired/disposed state for the
+next iteration. This proves cleanup ordering when the resource cannot escape
+its lexical iteration. This is not a data-state fixed point: loop-carried
+values, distinct dynamic resource-generation identities, and escaping aliases
+remain outside the unified lowering.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

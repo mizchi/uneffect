@@ -310,7 +310,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Correlate one-step zero-iteration handler loop bodies and preserve conditional break/continue completion paths.
     - [x] Propagate labeled `break`/`continue` through nested loops to the owning loop without inner-loop discharge.
     - [x] Add repeat/exit states for awaited catch/finally loops, giving arbitrary finite repetition in the control graph.
-    - [ ] Add loop-carried data invariants, repeated resource acquisition/disposal instances, and general CFG joins.
+    - [x] Re-acquire and dispose lexical `using` / `await using` resources within each modeled handler-loop iteration.
+    - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

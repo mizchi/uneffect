@@ -967,14 +967,34 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     .map((observation, index) => ({ observation, index }))
     .filter(({ observation }) => observation.span.start >= statement.span.start && observation.span.end <= statement.span.end)
     .map(({ index }) => index);
+  const resourcesInStatement = (statement: AsyncControlStatement): number[] => resources
+    .map((resource, index) => ({ resource, index }))
+    .filter(({ resource }) => resource.span.start >= statement.span.start && resource.span.end <= statement.span.end)
+    .map(({ index }) => index);
+  const handlerStatements = [...catchStatements, ...finallyStatements];
   const handlerAwaitIndexes = new Set([...catchStatements, ...finallyStatements].flatMap((statement) => {
     return awaitsInStatement(statement);
   }));
+  const handlerResourceIndexes = new Set(handlerStatements.flatMap(resourcesInStatement));
+  const handlerDisposalIndexes = new Set(disposals.flatMap((disposal, index) => {
+    const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
+    return handlerResourceIndexes.has(resourceIndex) ? [index] : [];
+  }));
+  const eventsInStatement = (statement: AsyncControlStatement): NormalEvent[] => [
+    ...resourcesInStatement(statement).map((index): NormalEvent => ({ kind: "acquire", index, position: resources[index]!.span.start })),
+    ...awaitsInStatement(statement).map((index): NormalEvent => ({ kind: "await", index, position: awaited[index]!.span.start })),
+    ...[...handlerDisposalIndexes].flatMap((index): NormalEvent[] => {
+      const disposal = disposals[index]!;
+      return disposal.disposalPoint >= statement.span.start && disposal.disposalPoint <= statement.span.end
+        ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
+        : [];
+    }),
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, await: 1, dispose: 2 }[left.kind] - { acquire: 0, await: 1, dispose: 2 }[right.kind]));
   const normalEvents: NormalEvent[] = [
-    ...resources.map((resource, index): NormalEvent => ({ kind: "acquire", index, position: resource.span.start })),
+    ...resources.flatMap((resource, index): NormalEvent[] => handlerResourceIndexes.has(index) ? [] : [{ kind: "acquire", index, position: resource.span.start }]),
     ...awaited.flatMap((observation, index): NormalEvent[] => handlerAwaitIndexes.has(index) ? [] : [{ kind: "await", index, position: observation.span.start }]),
     ...disposals.flatMap((disposal, index): NormalEvent[] =>
-      awaited.some((observation) => observation.span.start > disposal.disposalPoint)
+      !handlerDisposalIndexes.has(index) && awaited.some((observation) => observation.span.start > disposal.disposalPoint)
         ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
         : []),
   ].sort((left, right) => left.position - right.position || ({ acquire: 0, await: 1, dispose: 2 }[left.kind] - { acquire: 0, await: 1, dispose: 2 }[right.kind]));
@@ -991,18 +1011,20 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const catchLayout = regionCatch.map((statement) => {
       const pc = nextPc;
       const awaitIndexes = awaitsInStatement(statement);
-      nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
-      const loopDecisionPc = statement.loop && awaitIndexes.length > 0 ? nextPc++ : undefined;
-      return { statement, pc, awaitIndexes, loopDecisionPc };
+      const events = eventsInStatement(statement).map((event) => { const eventPc = nextPc; nextPc += event.kind === "await" ? 2 : 1; return { event, pc: eventPc }; });
+      if (events.length === 0) nextPc++;
+      const loopDecisionPc = statement.loop && events.length > 0 ? nextPc++ : undefined;
+      return { statement, pc, awaitIndexes, events, loopDecisionPc };
     });
     const afterCatchPc = nextPc++;
     const finallyPc = nextPc;
     const finallyLayout = regionFinally.map((statement) => {
       const pc = nextPc;
       const awaitIndexes = awaitsInStatement(statement);
-      nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
-      const loopDecisionPc = statement.loop && awaitIndexes.length > 0 ? nextPc++ : undefined;
-      return { statement, pc, awaitIndexes, loopDecisionPc };
+      const events = eventsInStatement(statement).map((event) => { const eventPc = nextPc; nextPc += event.kind === "await" ? 2 : 1; return { event, pc: eventPc }; });
+      if (events.length === 0) nextPc++;
+      const loopDecisionPc = statement.loop && events.length > 0 ? nextPc++ : undefined;
+      return { statement, pc, awaitIndexes, events, loopDecisionPc };
     });
     return { region, catchPc, catchLayout, afterCatchPc, finallyPc, finallyLayout };
   });
@@ -1143,14 +1165,25 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
     const finalEntry = layout.finallyLayout.length ? layout.finallyPc : exceptionalTarget(layout.region);
     const afterRegion = continuationPc(layout.region.fullSpan.end);
-    layout.catchLayout.forEach(({ statement, pc, awaitIndexes, loopDecisionPc }, index) => {
+    layout.catchLayout.forEach(({ statement, pc, awaitIndexes, events, loopDecisionPc }, index) => {
       const next = layout.catchLayout[index + 1]?.pc ?? layout.afterCatchPc;
-      if (awaitIndexes.length > 0) {
-        awaitIndexes.forEach((awaitIndex, awaitOrder) => {
-          const awaitPc = pc + awaitOrder * 2;
+      if (events.length > 0) {
+        events.forEach(({ event, pc: eventPc }, eventOrder) => {
+          const eventNext = events[eventOrder + 1]?.pc ?? loopDecisionPc ?? next;
+          if (event.kind === "acquire") {
+            const resource = resources[event.index]!;
+            const guards = [`pc == ${eventPc}`, ...conditionPathGuards(resource.controlPaths)];
+            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"]]));
+            emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(finalEntry)], ["completion", "1"]]));
+            return;
+          }
+          if (event.kind === "dispose") {
+            emitDisposal(event.index, eventPc, eventNext, "_handler_loop", finalEntry);
+            return;
+          }
+          const awaitIndex = event.index;
           const completion = completionForAwait(statement, awaitIndex, awaitIndexes);
-          const awaitNext = awaitOrder + 1 < awaitIndexes.length ? awaitPc + 2 : loopDecisionPc !== undefined && completion === "normal" ? loopDecisionPc : next;
-          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, completion, finalEntry);
+          emitHandlerAwait("catch", awaited[awaitIndex]!, eventPc, eventNext, completion, finalEntry);
         });
         if (loopDecisionPc !== undefined) {
           const repeatGuards = [`pc == ${loopDecisionPc}`];
@@ -1170,19 +1203,30 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     });
     const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
     emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
-    layout.finallyLayout.forEach(({ statement, pc, awaitIndexes, loopDecisionPc }, index) => {
+    layout.finallyLayout.forEach(({ statement, pc, awaitIndexes, events, loopDecisionPc }, index) => {
       const following = layout.finallyLayout[index + 1]?.pc;
       const next = following ?? `if (completion == 0) ${afterRegion} else ${exceptionalTarget(layout.region)}`;
-      if (awaitIndexes.length > 0) {
-        awaitIndexes.forEach((awaitIndex, awaitOrder) => {
-          const awaitPc = pc + awaitOrder * 2;
-          const isLastAwait = awaitOrder + 1 === awaitIndexes.length;
+      if (events.length > 0) {
+        events.forEach(({ event, pc: eventPc }, eventOrder) => {
+          const eventNext = events[eventOrder + 1]?.pc ?? loopDecisionPc ?? following ?? afterRegion;
+          if (event.kind === "acquire") {
+            const resource = resources[event.index]!;
+            const guards = [`pc == ${eventPc}`, ...conditionPathGuards(resource.controlPaths)];
+            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"]]));
+            emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(exceptionalTarget(layout.region))], ["completion", "1"]]));
+            return;
+          }
+          if (event.kind === "dispose") {
+            emitDisposal(event.index, eventPc, eventNext, "_handler_loop", exceptionalTarget(layout.region));
+            return;
+          }
+          const awaitIndex = event.index;
+          const isLastAwait = !events.slice(eventOrder + 1).some(({ event: later }) => later.kind === "await");
           const completion = completionForAwait(statement, awaitIndex, awaitIndexes);
-          const awaitNext = isLastAwait ? loopDecisionPc ?? following ?? afterRegion : awaitPc + 2;
           const chain = awaited[awaitIndex]!.promiseChain!;
-          const pendingCompletion = isLastAwait && loopDecisionPc === undefined && following === undefined && completion === "normal";
-          emitHandlerAwait("finally", awaited[awaitIndex]!, awaitPc, awaitNext, completion, exceptionalTarget(layout.region), pendingCompletion ? ["completion == 0"] : []);
-          if (pendingCompletion) emit(`finally_await_${chain}_resume_abrupt`, [`pc == ${awaitPc + 1}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
+          const pendingCompletion = isLastAwait && eventOrder === events.length - 1 && loopDecisionPc === undefined && following === undefined && completion === "normal";
+          emitHandlerAwait("finally", awaited[awaitIndex]!, eventPc, eventNext, completion, exceptionalTarget(layout.region), pendingCompletion ? ["completion == 0"] : []);
+          if (pendingCompletion) emit(`finally_await_${chain}_resume_abrupt`, [`pc == ${eventPc + 1}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
         });
         if (loopDecisionPc !== undefined) {
           const repeatGuards = [`pc == ${loopDecisionPc}`];
