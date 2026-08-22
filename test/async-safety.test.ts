@@ -784,4 +784,75 @@ describe("async error and explicit resource safety", () => {
     expect(catchTarget).not.toBe(outerAwait);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("executes an awaited catch statement only after caught rejection", () => {
+    const result = analyzeAsyncSafety("catch-await.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("fail") })
+        } catch (error) {
+          await Promise.resolve("recover").then(value => value)
+          note("caught")
+        }
+        await Promise.resolve("outer").then(value => value)
+      }
+    `);
+    const tried = result.promises.find((item) => item.source.includes('"try"') && item.promiseChain !== undefined)!;
+    const recovered = result.promises.find((item) => item.source.includes('"recover"') && item.promiseChain !== undefined)!;
+    const quint = generateUnifiedAsyncQuint("catch_await", result, "run");
+    const caughtTarget = new RegExp(`action promise_${tried.promiseChain}_reject_caught = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const recoverEntry = new RegExp(`action promise_${recovered.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(caughtTarget).toBe(recoverEntry);
+    expect(quint).not.toContain(`action skip_await_${recovered.promiseChain}`);
+    expect(quint.indexOf(`action promise_${tried.promiseChain}_reject_caught`)).toBeLessThan(quint.indexOf(`action promise_${recovered.promiseChain}_fulfill`));
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("runs an awaited finally statement before the following outer await", () => {
+    const result = analyzeAsyncSafety("finally-await.ts", `
+      async function run() {
+        try {
+          await Promise.resolve("try").then(value => value)
+        } finally {
+          await Promise.resolve("finally").then(value => value)
+        }
+        await Promise.resolve("outer").then(value => value)
+      }
+    `);
+    const tried = result.promises.find((item) => item.source.includes('"try"'))!;
+    const finalized = result.promises.find((item) => item.source.includes('"finally"'))!;
+    const outer = result.promises.find((item) => item.source.includes('"outer"'))!;
+    const quint = generateUnifiedAsyncQuint("finally_await", result, "run");
+    const tryResumeTarget = new RegExp(`action await_${tried.promiseChain}_resume_next = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const finallyEntry = new RegExp(`action promise_${finalized.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    const finallyResumeTarget = new RegExp(`action finally_await_${finalized.promiseChain}_resume = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const outerEntry = new RegExp(`action promise_${outer.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(tryResumeTarget).toBe(finallyEntry);
+    expect(finallyResumeTarget).toBe(outerEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("routes return-await fulfillment and rejection through awaited finally", () => {
+    const result = analyzeAsyncSafety("return-await-finally.ts", `
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("fail") })
+        } catch (error) {
+          return await Promise.resolve("recover").then(value => value)
+        } finally {
+          await Promise.resolve("close").then(value => value)
+        }
+      }
+    `);
+    const recovered = result.promises.find((item) => item.source.includes('"recover"'))!;
+    const closed = result.promises.find((item) => item.source.includes('"close"'))!;
+    const quint = generateUnifiedAsyncQuint("return_await_finally", result, "run");
+    const recoverResume = new RegExp(`action catch_await_${recovered.promiseChain}_resume = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const recoverReject = new RegExp(`action promise_${recovered.promiseChain}_reject_escapes = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const finallyEntry = new RegExp(`action promise_${closed.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(recoverResume).toBe(finallyEntry);
+    expect(recoverReject).toBe(finallyEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });
