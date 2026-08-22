@@ -230,16 +230,19 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0]!)
           ? statement.statements[0]!.expression : undefined;
       };
+      const propertyParameter = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.parameters[1]?.name : undefined;
+      const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
+      const selectsThen = (condition: ts.Expression): boolean => {
+        if (!ts.isBinaryExpression(condition) || condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
+        const matches = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
+          && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
+        return matches(condition.left, condition.right) || matches(condition.right, condition.left);
+      };
       let returned = trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
+      if (returned && ts.isConditionalExpression(returned) && selectsThen(returned.condition)) returned = returned.whenTrue;
       if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
         const branch = trapBody.statements[0]!, condition = branch.expression;
-        const propertyParameter = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.parameters[1]?.name : undefined;
-        const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
-        if (ts.isBinaryExpression(condition) && condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {
-          const selectsThen = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
-            && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
-          if (selectsThen(condition.left, condition.right) || selectsThen(condition.right, condition.left)) returned = returnedExpression(branch.thenStatement);
-        }
+        if (selectsThen(condition)) returned = returnedExpression(branch.thenStatement);
       }
       if (returned && (ts.isArrowFunction(returned) || ts.isFunctionExpression(returned))) {
         const analyzed = analyzeExecutor(returned, checker, expression.getSourceFile());

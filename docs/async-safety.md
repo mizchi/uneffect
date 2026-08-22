@@ -137,6 +137,10 @@ For a direct standard `Proxy`, an object-literal `get` trap consisting solely
 of a throw is recognized as a definite rejection during `then` lookup. Other
 Proxy handlers remain dynamic because property tests, `Reflect.get`, target
 forwarding, and arbitrary trap code can invoke user code or return any value.
+The exact forwarding forms `if (property === "then") return callback; return
+fallback` and `return property === "then" ? callback : fallback` select the
+concrete callback because Promise assimilation requests that literal property.
+Selectors for any other property and compound conditions remain dynamic.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

@@ -418,6 +418,40 @@ describe("Promise state and reaction chains", () => {
     expect(model.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
       provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
     });
+
+    const conditional = analyzePromiseChains("proxy-conditional-forwarded-then.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(target, property, receiver) {
+            return property === "then"
+              ? (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+              : Reflect.get(target, property, receiver)
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(conditional.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const wrongSelector = analyzePromiseChains("proxy-wrong-selector.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(target, property, receiver) {
+            return property === "valueOf"
+              ? (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+              : Reflect.get(target, property, receiver)
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(wrongSelector.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
   });
 
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
