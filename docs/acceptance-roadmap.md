@@ -117,6 +117,11 @@ The same adapter proves the authority subset
 `Array.from(owners).every(owner => allowedOwners.has(owner))` against temporal
 `owners.forall(owner => allowedOwners.contains(owner))`. Replacing the bound
 member with a constant is a negative control and fails refinement.
+Map iterator refinements are exercised in the same lease: native
+`Array.from(epochs.values()).every(epoch => epoch >= 0)` maps to the temporal
+value-view quantifier, while `Array.from(epochs.keys()).every(...)` maps to the
+key-view quantifier. Tightening the implementation predicate to `epoch > 0`
+fails against the declared nonnegative invariant.
 
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,

@@ -218,12 +218,15 @@ by TypeChecker symbol identity and normalizes to the explicit temporal form
 Builtin `Map.get(key)` normalizes to temporal `map.get(key)`. The temporal
 property must conjunctively establish `map.keys().contains(key)` first; this
 keeps JavaScript's possibly-`undefined` lookup outside the proved value domain.
-The Program-backed path also recognizes the exact builtin pattern
-`Array.from(set).every(value => predicate)` when `set` is a builtin `Set` and
-normalizes it to `set.forall(value => predicate)`. The callback parameter is a
+The Program-backed path also recognizes the exact builtin patterns
+`Array.from(set).every(value => predicate)` and
+`Array.from(map.keys() | map.values()).every(value => predicate)`. The source
+must be a builtin `Set` or a TypeChecker-identified builtin `Map` iterator.
+They normalize to the corresponding temporal finite view followed by
+`forall(value => predicate)`. The callback parameter is a
 real bound temporal name, so a subset check such as
 `allowed.has(value)` cannot be confused with a constant member check. The
-syntax-only API and custom/shadowed `Array.from` or `every` methods remain
+syntax-only API and custom/shadowed `Array.from`, `keys`, `values`, or `every` methods remain
 unsupported rather than being trusted by spelling.
 Receiver identity is established by the separately required Program-backed
 create/observe shape check; this predicate pass proves the expression mapping,

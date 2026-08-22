@@ -369,6 +369,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       temporal ownerPresent: owners.contains(1)
       temporal epochRegistered: epochs.keys().contains(1)
       temporal initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1
+      temporal epochsNonNegative: epochs.values().forall(epoch => epoch >= 0)
+      temporal epochKeysKnown: epochs.keys().forall(owner => owner === 1 || owner === 2)
       temporal ownersAllowed: owners.forall(owner => allowedOwners.contains(owner))
     */
       interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number> }
@@ -384,6 +386,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       export function epochRegistered(runtime: Runtime) { return runtime.epochs.has(1) }
       /* uneffect: refinement lease@1 invariant initialEpoch */
       export function initialEpoch(runtime: Runtime) { return runtime.epochs.has(1) && runtime.epochs.get(1) === 1 }
+      /* uneffect: refinement lease@1 invariant epochsNonNegative */
+      export function epochsNonNegative(runtime: Runtime) { return Array.from(runtime.epochs.values()).every(epoch => epoch >= 0) }
+      /* uneffect: refinement lease@1 invariant epochKeysKnown */
+      export function epochKeysKnown(runtime: Runtime) { return Array.from(runtime.epochs.keys()).every(owner => owner === 1 || owner === 2) }
       /* uneffect: refinement lease@1 invariant ownersAllowed */
       export function ownersAllowed(runtime: Runtime) { return Array.from(runtime.owners).every(owner => runtime.allowedOwners.has(owner)) }
     `;
@@ -421,6 +427,15 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenAuthorityProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenAuthorityProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "ownersAllowed" }),
+      );
+      const brokenValues = source.replace(
+        "Array.from(runtime.epochs.values()).every(epoch => epoch >= 0)",
+        "Array.from(runtime.epochs.values()).every(epoch => epoch > 0)",
+      );
+      writeFileSync(fileName, brokenValues);
+      const brokenValuesProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenValuesProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "epochsNonNegative" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

@@ -344,6 +344,14 @@ function normalizeRefinementExpression(
     return { kind: "record", ...(base ? { base } : {}), fields };
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && (node.expression.name.text === "keys" || node.expression.name.text === "values")
+    && node.arguments.length === 0
+    && builtinCollectionKind(checker, node.expression.expression) === "Map"
+    && isDeclarationFileSymbol(checker, node.expression.name, node.expression.name.text)) {
+    const collection = normalizeRefinementExpression(node.expression.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+    if (collection) return { kind: "method", receiver: collection, name: node.expression.name.text, arguments: [] };
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
     && node.expression.name.text === "every" && node.arguments.length === 1
     && isDeclarationFileSymbol(checker, node.expression.name, "every")) {
     const from = node.expression.expression;
@@ -352,14 +360,15 @@ function normalizeRefinementExpression(
       && ts.isIdentifier(from.expression.expression) && from.expression.expression.text === "Array"
       && from.expression.name.text === "from" && from.arguments.length === 1
       && isDeclarationFileSymbol(checker, from.expression.name, "from")
-      && builtinCollectionKind(checker, from.arguments[0]!) === "Set"
       && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
       && ts.isIdentifier(callback.parameters[0]!.name) && !ts.isBlock(callback.body)) {
       const collection = normalizeRefinementExpression(from.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+      const supportedCollection = builtinCollectionKind(checker, from.arguments[0]!) === "Set"
+        || collection?.kind === "method" && (collection.name === "keys" || collection.name === "values");
       const parameter = callback.parameters[0]!.name.text;
       const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
       const body = normalizeRefinementExpression(callback.body, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
-      if (collection && body) return {
+      if (collection && supportedCollection && body) return {
         kind: "method", receiver: collection, name: "forall",
         arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
       };
