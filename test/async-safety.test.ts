@@ -674,4 +674,30 @@ describe("async error and explicit resource safety", () => {
     expect(quint.indexOf("action dispose_inner_scope_exit")).toBeLessThan(quint.indexOf(`action promise_${awaited.promiseChain}_fulfill`));
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("routes nested scope disposal rejection through its catch before an outer await", () => {
+    const result = analyzeAsyncSafety("caught-scope-disposal.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      declare function note(value: string): void
+      async function run() {
+        try {
+          await using inner = open()
+          await Promise.resolve("inside").then(value => value)
+        } catch (error) {
+          note("caught")
+        }
+        await Promise.resolve("outside").then(value => value)
+      }
+    `);
+    const quint = generateUnifiedAsyncQuint("caught_scope_disposal", result, "run");
+    const rejectionTarget = /action dispose_reject_inner_scope_exit = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const catchEntry = /action catch_statement_0 = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    const catchContinuation = /action catch_return = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const outerAwaitEntry = new RegExp(`action promise_${result.promises.filter((item) => item.owner === "run" && item.observation === "await")[1]!.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(rejectionTarget).toBeDefined();
+    expect(rejectionTarget).toBe(catchEntry);
+    expect(catchContinuation).toBe(outerAwaitEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

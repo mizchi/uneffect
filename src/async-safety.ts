@@ -840,7 +840,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   });
   preAwaitDisposalPcs.forEach(({ disposalIndex, pc }, index) => {
     const next = preAwaitDisposalPcs[index + 1]?.pc ?? awaitLayout[0]!.wait;
-    emitDisposal(disposalIndex, pc, next, "_scope_exit", cleanupPc);
+    emitDisposal(disposalIndex, pc, next, "_scope_exit", disposals[disposalIndex]!.catchesFailure ? catchPc : cleanupPc);
   });
   awaited.forEach((observation, awaitIndex) => {
     const chain = observation.promiseChain!;
@@ -857,11 +857,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     emit(resumeName, [`pc == ${resumePc}`], new Map([["pc", String(disposalPcs[0]?.pc ?? nextAfterAwait)]]));
     disposalPcs.forEach(({ disposalIndex, pc }, index) => {
       const next = disposalPcs[index + 1]?.pc ?? nextAfterAwait;
-      emitDisposal(disposalIndex, pc, next, "_scope_exit", cleanupPc);
+      emitDisposal(disposalIndex, pc, next, "_scope_exit", disposals[disposalIndex]!.catchesFailure ? catchPc : cleanupPc);
     });
   });
   catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
-  emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(finallyPc)]]));
+  const catchEnd = catchStatements.reduce((end, statement) => Math.max(end, statement.span.end), -1);
+  const continuationAwait = finallyStatements.length === 0 && catchEnd >= 0
+    ? awaited.findIndex((observation) => observation.span.start > catchEnd)
+    : -1;
+  const catchContinuationPc = continuationAwait >= 0 ? awaitLayout[continuationAwait]!.wait : finallyPc;
+  emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(catchContinuationPc)]]));
   finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));
   disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
   emit("finish_fulfilled", [`pc == ${completePc}`, "completion == 0"], new Map([["pc", "-2"]]));
