@@ -126,7 +126,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reuse proven pairwise integer relations for frozen-state vacuity promotion.
     - [x] Reuse proven initial-difference affine templates for frozen-state vacuity promotion.
     - [x] Reuse proven same-shaped collection equality templates for frozen-state vacuity promotion.
-    - [ ] Synthesize general affine/polyhedral/subset/quantified collection invariants and support general liveness/fairness properties beyond explicit stutter cycles.
+    - [x] Find bounded reachable lassos violating `temporal_eventually`, enforcing weak and strong action fairness on the loop before reporting an unbounded witness.
+    - [ ] Synthesize general affine/polyhedral/subset/quantified collection invariants and support nested/general temporal formulas beyond `eventually`.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

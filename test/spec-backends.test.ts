@@ -931,6 +931,46 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("finds liveness lassos and respects weak action fairness", async () => {
+    const model = (fair: boolean) => parseSpec("liveness-lasso.ts", `/* uneffect:
+      state done: bool
+      init done = false
+      action idle: done' = done
+      action finish: done' = true
+      action_when finish: !done
+      ${fair ? "action_fair finish: weak" : ""}
+      temporal_eventually completes: done
+    */`).temporal;
+    const unfair = await lintTemporalReachabilityWithZ3(model(false), { maxSteps: 2 });
+    expect(unfair).toContainEqual(expect.objectContaining({
+      code: "reachable-liveness-cycle", name: "completes", depth: 1, loopStart: 0,
+    }));
+    const fair = await lintTemporalReachabilityWithZ3(model(true), { maxSteps: 2 });
+    expect(fair).not.toContainEqual(expect.objectContaining({
+      code: "reachable-liveness-cycle", name: "completes",
+    }));
+  });
+
+  it("distinguishes strong fairness from intermittent weak fairness", async () => {
+    const model = (fairness: "weak" | "strong") => parseSpec("strong-fairness-lasso.ts", `/* uneffect:
+      state ready: bool
+      state done: bool
+      init ready = false
+      init done = false
+      action toggle: ready' = !ready
+      action finish: done' = true
+      action_when finish: ready
+      action_fair finish: ${fairness}
+      temporal_eventually completes: done
+    */`).temporal;
+    await expect(lintTemporalReachabilityWithZ3(model("weak"), { maxSteps: 3 })).resolves.toContainEqual(
+      expect.objectContaining({ code: "reachable-liveness-cycle", name: "completes", depth: 2, loopStart: 0 }),
+    );
+    await expect(lintTemporalReachabilityWithZ3(model("strong"), { maxSteps: 3 })).resolves.not.toContainEqual(
+      expect.objectContaining({ code: "reachable-liveness-cycle", name: "completes" }),
+    );
+  });
+
   it("reports a bounded invariant that holds only because its referenced state is frozen", async () => {
     const temporal = parseSpec("vacuous-property.ts", `/* uneffect:
       state phase: int

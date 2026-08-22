@@ -297,6 +297,14 @@ reported when the invariant holds but none of its referenced state can change
 on a reachable transition. Unbounded vacuity and general liveness/fairness
 failures remain open.
 
+Z3 reachability also searches for bounded reachable lassos for each
+`temporal_eventually` property. A diagnostic is emitted only when the property
+is false across the prefix and loop, the loop returns to an identical complete
+state, and every declared weak/strong action-fairness obligation is satisfied.
+The returned `depth` and `loopStart` describe an infinite counterexample
+witness. Failure to find a lasso within the requested depth is not a liveness
+proof; nested or more general temporal formulas remain delegated to Quint/TLC.
+
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
 ## Epistemic status

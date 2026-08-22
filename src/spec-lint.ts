@@ -10,12 +10,13 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
   backend?: "z3";
   depth?: number;
+  loopStart?: number;
 }
 
 function smtBinaryOperator(operator: Exclude<Extract<TemporalExpression, { kind: "binary" }>["operator"], "neq">): string {
@@ -641,6 +642,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const declarations = [
     ...z3TypeDeclarations(spec.states.map((state) => state.type)),
     ...Array.from({ length: Math.max(maxSteps, 1) + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat(),
+    ...Array.from({ length: Math.max(maxSteps, 1) }, (_, step) => `(declare-const __uneffect_action_${step} Int)`),
   ];
   const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0), symbols, symbols.get(assignment.target))})`);
   const guard = (action: TemporalSpec["actions"][number], step: number) => action.guard ? temporalToSmt(action.guard.expressionAst, (name) => at(name, step), symbols) : "true";
@@ -655,6 +657,8 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   };
   const disjoin = (values: readonly string[]) => values.length === 0 ? "false" : values.length === 1 ? values[0]! : `(or ${values.join(" ")})`;
   const step = (index: number) => disjoin(spec.actions.map((action) => actionTransition(action, index)));
+  const selectedStep = (index: number) => disjoin(spec.actions.map((action, actionIndex) =>
+    `(and (= __uneffect_action_${index} ${actionIndex}) ${actionTransition(action, index)})`));
   const diagnostics: SpecLintDiagnostic[] = [];
   const completenessDepth = finiteStateCompletenessDepth(spec);
   const initStatus = await checkSmt(declarations, init);
@@ -736,6 +740,29 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         code: "reachable-stutter-cycle", name: "<liveness>", backend: "z3", depth,
         message: `the reachable stuttering state yields an infinite no-progress execution; a stronger fairness or progress specification must rule it out`,
       });
+      break;
+    }
+  }
+  if (initStatus === "sat" && spec.actions.length > 0 && spec.liveness.length > 0) for (const property of spec.liveness) {
+    let found = false;
+    for (let depth = 1; depth <= maxSteps && !found; depth++) for (let loopStart = 0; loopStart < depth; loopStart++) {
+      const transitions = Array.from({ length: depth }, (_, index) => selectedStep(index));
+      const loop = spec.states.map((state) => `(= ${at(state.name, depth)} ${at(state.name, loopStart)})`);
+      const neverReached = Array.from({ length: depth }, (_, index) =>
+        `(not ${temporalToSmt(property.expressionAst, (name) => at(name, index), symbols)})`);
+      const fairness = spec.actions.flatMap((action, actionIndex) => {
+        if (!action.fairness) return [];
+        const enabled = Array.from({ length: depth - loopStart }, (_, offset) => guard(action, loopStart + offset));
+        const occurs = Array.from({ length: depth - loopStart }, (_, offset) => `(= __uneffect_action_${loopStart + offset} ${actionIndex})`);
+        const premise = action.fairness === "weak" ? `(and ${enabled.join(" ")})` : `(or ${enabled.join(" ")})`;
+        return [`(or (not ${premise}) (or ${occurs.join(" ")}))`];
+      });
+      if (await checkSmt(declarations, [...init, ...transitions, ...loop, ...neverReached, ...fairness]) !== "sat") continue;
+      diagnostics.push({
+        code: "reachable-liveness-cycle", name: property.name, backend: "z3", depth, loopStart,
+        message: `${property.name} is false along a reachable lasso of length ${depth} with loop start ${loopStart}, while all declared action fairness constraints hold`,
+      });
+      found = true;
       break;
     }
   }
