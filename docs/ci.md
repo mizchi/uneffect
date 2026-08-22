@@ -31,6 +31,15 @@ official release assets with SHA-256 verification. JavaScript actions are
 pinned by full commit SHA. Superseded runs on the same ref are cancelled so a
 stale solver-heavy run cannot block evidence for the current commit.
 
+Vitest schedules solver-bearing test files serially in both local full checks
+and individual CI jobs; only the manifest-checked verifier-free `fast` tier
+uses file parallelism. Z3's process-local WASM heap can approach 2 GiB; concurrent
+solver-heavy files have produced missing candidates and an Emscripten heap
+growth abort. `pnpm test` and `pnpm check` additionally launch each capability
+tier in a separate Vitest process, releasing the WASM heap between tiers.
+GitHub still runs the independent capability-tier jobs in parallel, so this
+isolation bounds memory without collapsing CI-level parallelism.
+
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds
 including TypeScript checking and all Rust tests. Solver tiers still execute

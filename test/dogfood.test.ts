@@ -21,6 +21,15 @@ describe("Uneffect dogfood", () => {
     expect(quint).toMatch(/action acquire_attempt = all \{[\s\S]*?generation_0' = generation_0 \+ 1,/);
     expect(quint).toMatch(/action dispose_resume_attempt_handler_loop = all \{[\s\S]*?disposed_generation_0' = generation_0,/);
     expect(quint).toContain("disposed_generation_0 == generation_0");
+
+    const brokenFile = "examples/dogfood/retry-attempt-escape.ts";
+    const broken = analyzeAsyncSafety(brokenFile, readFileSync(brokenFile, "utf8"));
+    expect(broken.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "brokenRetry", resource: "attempt", alias: "lastAttempt",
+    }));
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
+    }));
   });
 
   it("derives executable aligned shard boundaries from a realistic contract", () => {

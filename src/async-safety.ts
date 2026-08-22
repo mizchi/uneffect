@@ -66,11 +66,18 @@ export interface ResourceDisposal {
   escapingFailure: "none" | "throw" | "reject";
   exits: ResourceExit[];
 }
+export interface ResourceAliasEscape {
+  owner: string;
+  resource: string;
+  alias: string;
+  assignmentSpan: { start: number; end: number };
+  useSpan: { start: number; end: number };
+}
 export interface AsyncSafetyDiagnostic {
   fileName: string;
   functionName: string;
   line: number;
-  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract";
+  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "disposed-resource-use";
   severity: "error";
   message: string;
 }
@@ -79,6 +86,7 @@ export interface AsyncSafetyResult {
   promises: PromiseObservation[];
   promiseBindings: PromiseBinding[];
   resources: ResourceBinding[];
+  resourceAliases: ResourceAliasEscape[];
   disposals: ResourceDisposal[];
   promiseChains: PromiseChainModel;
   controlEdges: AsyncControlEdge[];
@@ -393,7 +401,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
@@ -429,7 +437,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   validateOwnershipContracts(source);
   const visitFunction = (ownerNode: ts.FunctionLikeDeclaration): void => {
     if (!ownerNode.body) return;
-    const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [];
+    const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [], resourceSymbols = new Map<ts.Symbol, ResourceBinding>();
     const controlPaths = (node: ts.Node): AsyncControlCondition[][] => {
       let paths: AsyncControlCondition[][] = [[]];
       let child = node;
@@ -533,6 +541,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
+          const resourceSymbol = checker.getSymbolAtLocation(declaration.name);
+          if (resourceSymbol) resourceSymbols.set(resourceSymbol, resource);
           if ((!asynchronous && !protocol.sync) || (asynchronous && !protocol.async && !protocol.sync)) diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, declaration.getStart(source)), kind: "invalid-disposable", severity: "error", message: `${declaration.name.text} does not provide the ${asynchronous ? "Symbol.asyncDispose or Symbol.dispose" : "Symbol.dispose"} protocol required by ${asynchronous ? "await using" : "using"}` });
         }
       }
@@ -562,6 +572,34 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.forEachChild(node, visit);
     };
     visit(ownerNode.body);
+    const escapedAliases = new Map<ts.Symbol, { resource: ResourceBinding; alias: string; assignmentSpan: { start: number; end: number } }>();
+    const collectResourceAliases = (node: ts.Node): void => {
+      if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left) && ts.isIdentifier(node.right)) {
+        const resource = resourceSymbols.get(checker.getSymbolAtLocation(node.right)!);
+        const aliasSymbol = checker.getSymbolAtLocation(node.left);
+        if (resource && aliasSymbol) escapedAliases.set(aliasSymbol, { resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+      }
+      ts.forEachChild(node, collectResourceAliases);
+    };
+    collectResourceAliases(ownerNode.body);
+    const reportedAliasUses = new Set<ts.Symbol>();
+    const collectDisposedAliasUses = (node: ts.Node): void => {
+      if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
+      if (ts.isIdentifier(node)) {
+        const symbol = checker.getSymbolAtLocation(node), escaped = symbol && escapedAliases.get(symbol);
+        const writeOnly = ts.isBinaryExpression(node.parent) && node.parent.left === node && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
+        const declarationName = ts.isVariableDeclaration(node.parent) && node.parent.name === node;
+        if (symbol && escaped && writeOnly && node.parent.getStart(source) !== escaped.assignmentSpan.start && node.getStart(source) >= escaped.resource.scopeEnd) escapedAliases.delete(symbol);
+        if (symbol && escaped && !reportedAliasUses.has(symbol) && !writeOnly && !declarationName && node.getStart(source) >= escaped.resource.scopeEnd) {
+          const alias: ResourceAliasEscape = { owner, resource: escaped.resource.binding, alias: escaped.alias, assignmentSpan: escaped.assignmentSpan, useSpan: { start: node.getStart(source), end: node.getEnd() } };
+          resourceAliases.push(alias); reportedAliasUses.add(symbol);
+          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
+        }
+      }
+      ts.forEachChild(node, collectDisposedAliasUses);
+    };
+    collectDisposedAliasUses(ownerNode.body);
     const uniqueGroups = [...new Set(bindingGroups.values())];
     for (const group of uniqueGroups) {
       const symbols = new Set([...bindingGroups].filter(([, value]) => value === group).map(([symbol]) => symbol));
@@ -846,7 +884,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {

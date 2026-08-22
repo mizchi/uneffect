@@ -479,6 +479,14 @@ It proves cleanup ordering when the resource cannot escape its lexical
 iteration. This is not a data-state fixed point: loop-carried values and
 escaping aliases that retain an older generation remain outside the unified
 lowering.
+
+The TypeChecker frontend separately recognizes a direct assignment from a
+`using`/`await using` binding into another local symbol. If that alias is read
+after the resource's lexical scope ends, it emits `disposed-resource-use` and
+retains the resource/alias assignment and use spans in `resourceAliases`.
+A direct reassignment before the later read kills this narrow alias fact.
+Property/array escapes, aliases passed through calls, branch-sensitive kills,
+and transitive alias chains are not yet claimed as covered.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

@@ -28,4 +28,13 @@ describe("CI test tier manifest", () => {
       if (/spawnSync\(\s*["']pnpm["'][\s\S]*?["']quint["']/.test(source)) expect(["quint", "integration"], `${file} directly executes Quint`).toContain(tier);
     }
   });
+
+  it("keeps solver-heavy test files serial to bound Z3 WASM memory", () => {
+    const config = readFileSync(join(process.cwd(), "vitest.config.ts"), "utf8");
+    expect(config).toContain('fileParallelism: requestedTier === "fast"');
+    const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
+    expect(packageJson.scripts.check).toContain("tsx ci/run-test-tiers.ts");
+    const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
+    expect(runner).toContain('["fast", "z3", "quint", "integration"]');
+  });
 });

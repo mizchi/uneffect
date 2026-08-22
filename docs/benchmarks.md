@@ -50,6 +50,11 @@ generation-safe `await using` cleanup to unified Quint measured 123.12 ms mean
 over 20 samples (1.04% RME). This includes TypeScript program construction,
 Promise/resource analysis, and model emission, but not Quint execution.
 
+Analyzing the broken retry-attempt dogfood and detecting its direct
+post-disposal alias use measured 125.06 ms mean over 20 samples (2.30% RME).
+This includes TypeScript program construction and the complete async analysis,
+not only the alias scan.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

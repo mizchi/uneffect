@@ -1412,4 +1412,47 @@ describe("async error and explicit resource safety", () => {
     expect(stale).toContain("action skip_stale_disposed_resource_handler_loop");
     expect(run(stale).status).not.toBe(0);
   }, 10_000);
+
+  it("rejects direct aliases of a using resource used after its lexical scope", () => {
+    const result = analyzeAsyncSafety("escaping-resource-alias.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken(enabled: boolean) {
+        let escaped: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          escaped = resource
+          await Promise.resolve()
+        }
+        escaped?.send()
+      }
+      async function safe() {
+        await using resource = open()
+        resource.send()
+        await Promise.resolve()
+      }
+      async function cleared() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+          await Promise.resolve()
+        }
+        alias = undefined
+        alias?.send()
+      }
+    `);
+    expect(result.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "broken", resource: "resource", alias: "escaped",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "broken", kind: "disposed-resource-use", severity: "error",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safe", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "cleared", kind: "disposed-resource-use",
+    }));
+  });
 });

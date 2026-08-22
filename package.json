@@ -24,9 +24,9 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run",
+    "test": "tsx ci/run-test-tiers.ts",
     "bench": "vitest bench --run",
-    "check": "tsc -p tsconfig.json --noEmit && vitest run",
+    "check": "tsc -p tsconfig.json --noEmit && tsx ci/run-test-tiers.ts",
     "prepack": "pnpm build"
   },
   "engines": {
