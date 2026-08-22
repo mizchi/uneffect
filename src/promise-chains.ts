@@ -225,6 +225,18 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
         return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
       }
+      const returned = trapBody?.statements.length === 1 && ts.isReturnStatement(trapBody.statements[0]!)
+        ? trapBody.statements[0]!.expression : undefined;
+      if (returned && (ts.isArrowFunction(returned) || ts.isFunctionExpression(returned))) {
+        const analyzed = analyzeExecutor(returned, checker, expression.getSourceFile());
+        const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
+        return {
+          thenAccess: "callable", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy",
+          possibleSettlements: nestedAssimilation ? ["fulfilled", "rejected"]
+            : analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
+          firstCallWins: true, mayRemainPending: analyzed.mayRemainPending || nestedAssimilation,
+        };
+      }
       return { thenAccess: "dynamic", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true };
     }
     if (!ts.isCallExpression(expression)) return undefined;

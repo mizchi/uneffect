@@ -347,7 +347,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Refine thenable assimilation.
   - [x] Model self-resolution rejection, direct local throwing `then` getters, and direct local hostile thenables with first-call-wins settlement.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
-  - [ ] Resolve exact general computed selections, recursive thenable cycles, and general concrete Proxy trap behavior.
+  - [ ] Resolve exact general computed selections, recursive thenable cycles, and conditional/forwarding Proxy trap behavior.
     - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
     - [x] Preserve imported `PromiseLike` call results as conservative external assimilation nodes using their call-site type and span.
     - [x] Preserve arbitrary typed dynamic selections conservatively, and link direct conditional branches exactly by local thenable symbol identity.
@@ -356,6 +356,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Link external and forward local nested symbols, replacing forward placeholders in place when the initializer is analyzed.
     - [x] Register inline nested thenable literals as anonymous nodes and recursively link their exact settlement behavior.
     - [x] Recognize a direct standard `Proxy` with an object-literal `get` trap whose only statement throws; conditional and forwarded traps remain dynamic.
+    - [x] Analyze a direct Proxy `get` trap whose sole return is a concrete arrow/function then callback.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
