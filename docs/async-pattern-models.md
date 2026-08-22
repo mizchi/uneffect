@@ -152,6 +152,14 @@ through `const` alias chains. A plain `const` array remains dynamic because
 `const` does not make its elements immutable. Casts through `any` can still
 violate TypeScript readonly guarantees and remain an explicit gradual-safety
 escape hatch.
+Direct construction of the builtin `Set` from one of these finite arrays is
+also bounded. The projection preserves insertion order and removes only
+duplicates whose identity is statically provable: repeated primitive literals
+and repeated references to the same TypeScript symbol. It deliberately keeps
+separate object literals and call expressions separate, because proving their
+runtime identity would require a stronger alias analysis. Shadowed or imported
+`Set` constructors and Sets received from mutable state remain dynamic and
+retain `InvokeUserCode`.
 Direct conditional expressions are also bounded when both alternatives are
 finite arrays. The IR retains the source alternatives for each slot and joins
 differing value/thenable classifications to `unknown`, so both immediate
@@ -203,7 +211,7 @@ acquisition failure. Throwing `done` or `value` getters on a directly returned
 iterator-result object are step failures. Both reject the combinator before any
 modeled branch settles; arbitrary/dynamic iterator implementations remain an
 unknown boundary rather than being assigned an invented finite cardinality.
-The combinator IR distinguishes `array`, `local`, and `dynamic` iterator
+The combinator IR distinguishes `array`, `set`, `local`, and `dynamic` iterator
 provenance. Direct recursively finite array literals have no iterator effect;
 local custom and dynamic/imported iterables carry `InvokeUserCode`. Effect
 checking therefore requires that authority even when temporal generation is

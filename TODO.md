@@ -466,6 +466,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Make `Promise.any` aggregate rejection cardinality depend on the selected finite conditional-array branch.
     - [x] Preserve literal `Promise.reject` and direct `new Error` reasons in `Promise.any` input order and emit stable Quint artifact constants.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
+    - [x] Bound direct builtin `Set` construction over a static array, preserving insertion order and only removing statically provable duplicate identities while leaving custom or mutable Sets dynamic.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.

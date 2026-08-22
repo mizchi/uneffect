@@ -813,6 +813,7 @@ describe("builtin async temporal patterns", () => {
         await Promise.all([...dynamic])
         await Promise.all([0, ...alias, 3])
         await Promise.all([...mutable])
+        await Promise.all(new Set([remote, remote, Promise.resolve(2)]))
       }
     `);
     expect(model.combinators).toMatchObject([
@@ -825,6 +826,7 @@ describe("builtin async temporal patterns", () => {
       { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
       { branches: ["0", "remote", "2", "3"], branchKinds: ["value", "thenable", "value", "value"], staticIterable: true },
       { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
+      { branches: ["remote", "Promise.resolve(2)"], branchKinds: ["thenable", "thenable"], staticIterable: true, iteratorKind: "set", iteratorEffects: [] },
     ]);
     const quint = generateAsyncPatternsQuint("iterable_elements", {
       timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[0]!],
@@ -915,6 +917,54 @@ describe("builtin async temporal patterns", () => {
     expect(step).not.toContain("fulfill_1_0");
     expect(run(quint, "asyncSafe").status).toBe(0);
   }, 20_000);
+
+  it("bounds direct builtin Set iterables without collapsing distinct object identities", () => {
+    const model = analyzeAsyncPatterns("set-iterable.ts", `
+      declare const remote: PromiseLike<number>
+      function load() {
+        Promise.all(new Set([remote, remote, 1, 1, {}, {}]))
+        Promise.race(new Set())
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      branches: ["remote", "1", "{}", "{}"],
+      branchKinds: ["thenable", "value", "value", "value"],
+      staticIterable: true,
+      iteratorKind: "set",
+      iteratorEffects: [],
+    });
+    expect(model.combinators[1]).toMatchObject({ branches: [], staticIterable: true, iteratorKind: "set", iteratorEffects: [] });
+
+    const shadowed = analyzeAsyncPatterns("shadowed-set-iterable.ts", `
+      class Set<T> {
+        constructor(private values: T[]) {}
+        *[Symbol.iterator]() { yield* this.values }
+      }
+      declare const remote: PromiseLike<number>
+      function load() { Promise.all(new Set([remote])) }
+    `);
+    expect(shadowed.combinators[0]).toMatchObject({
+      staticIterable: false,
+      iteratorKind: "dynamic",
+      iteratorEffects: ["InvokeUserCode"],
+    });
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-custom-set-"));
+    try {
+      const declaration = join(directory, "custom-set.d.ts"), main = join(directory, "main.ts");
+      writeFileSync(declaration, `export class Set<T> implements Iterable<T> { constructor(values: T[]); [Symbol.iterator](): Iterator<T> }`);
+      writeFileSync(main, `import { Set } from "./custom-set.js"; declare const remote: PromiseLike<number>; function load() { Promise.all(new Set([remote])) }`);
+      const program = ts.createProgram([main, declaration], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!).combinators[0]).toMatchObject({
+        staticIterable: false,
+        iteratorKind: "dynamic",
+        iteratorEffects: ["InvokeUserCode"],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 
   it("models iterator next and result getter failures", () => {
     const model = analyzeAsyncPatterns("iterator-getters.ts", `

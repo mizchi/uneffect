@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { basename, dirname } from "node:path";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 import type { PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
@@ -37,7 +38,7 @@ export interface PromiseCombinatorPattern {
   branchAlternatives?: string[][];
   branchPresence?: ("always" | "when-true" | "when-false")[];
   staticIterable: boolean;
-  iteratorKind: "array" | "local" | "dynamic";
+  iteratorKind: "array" | "set" | "local" | "dynamic";
   iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
   aggregateErrorOrder?: number[];
@@ -97,6 +98,7 @@ function functionName(node: ts.FunctionLikeDeclaration): string {
 export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.SourceFile): AsyncPatternModel {
   const adapter = new TypeScriptFrontendAdapter(program);
   const checker = program.getTypeChecker();
+  const defaultLibDirectory = dirname(ts.getDefaultLibFilePath(program.getCompilerOptions()));
   const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [], timerEscapes: TimerHandleEscape[] = [];
   const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
     if (ts.isOmittedExpression(element)) return "value";
@@ -184,6 +186,37 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
     }
     return expanded;
+  };
+  const expandStaticSet = (expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined => {
+    while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+    if (!ts.isNewExpression(expression) || !ts.isIdentifier(expression.expression) || expression.expression.text !== "Set"
+      || (expression.arguments?.length ?? 0) > 1
+      || !(resolvedSymbol(expression.expression)?.declarations?.some((declaration) => {
+        const declarationFile = declaration.getSourceFile();
+        return declarationFile.isDeclarationFile
+          && dirname(declarationFile.fileName) === defaultLibDirectory
+          && /^lib\..*\.d\.ts$/.test(basename(declarationFile.fileName));
+      }) ?? false)) return undefined;
+    const entries = expression.arguments?.[0] ? expandStaticArray(expression.arguments[0]) : [];
+    if (!entries) return undefined;
+    const seen = new Set<string | ts.Symbol>();
+    const identity = (entry: ts.Expression | ts.OmittedExpression): string | ts.Symbol | undefined => {
+      if (ts.isOmittedExpression(entry)) return "primitive:undefined";
+      if (ts.isStringLiteral(entry) || ts.isNumericLiteral(entry) || ts.isBigIntLiteral(entry)) return `primitive:${entry.kind}:${entry.text}`;
+      if (entry.kind === ts.SyntaxKind.TrueKeyword || entry.kind === ts.SyntaxKind.FalseKeyword
+        || entry.kind === ts.SyntaxKind.NullKeyword) return `primitive:${entry.kind}`;
+      if (ts.isIdentifier(entry)) {
+        return resolvedSymbol(entry);
+      }
+      return undefined;
+    };
+    return entries.filter((entry) => {
+      const key = identity(entry);
+      if (key === undefined) return true;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   };
   const localIterable = (expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined => {
     if (!expression) return undefined;
@@ -668,26 +701,27 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
           const array = iterable ? expandStaticArray(iterable) : undefined;
+          const set = iterable ? expandStaticSet(iterable) : undefined;
           let conditional = iterable;
           while (conditional && ts.isParenthesizedExpression(conditional)) conditional = conditional.expression;
           const conditionalArrays = conditional && ts.isConditionalExpression(conditional)
             ? [expandStaticArray(conditional.whenTrue), expandStaticArray(conditional.whenFalse)] as const : undefined;
           const boundedConditionalArrays = conditionalArrays?.[0] && conditionalArrays[1]
             ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
-          const boundedArray = array ?? boundedConditionalArrays?.[0];
-          const local = boundedArray ? undefined : localIterable(iterable);
-          const staticIterable = Boolean(boundedArray || local);
+          const boundedElements = array ?? set ?? boundedConditionalArrays?.[0];
+          const local = boundedElements ? undefined : localIterable(iterable);
+          const staticIterable = Boolean(boundedElements || local);
           const branchNodes = local?.branches;
           const branchAlternatives = boundedConditionalArrays ? Array.from({ length: Math.max(boundedConditionalArrays[0].length, boundedConditionalArrays[1].length) }, (_, index) =>
             [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText(source))) : undefined;
           const branchPresence = boundedConditionalArrays ? branchAlternatives!.map((_, index) =>
             boundedConditionalArrays[0][index] === undefined ? "when-false" : boundedConditionalArrays[1][index] === undefined ? "when-true" : "always" as const) : undefined;
           const branches = branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
-            : boundedArray ? boundedArray.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
+            : boundedElements ? boundedElements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
           const branchKinds = boundedConditionalArrays ? branchAlternatives!.map((_, index) => {
             const kinds = [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
             return kinds.every((kind) => kind === kinds[0]) ? kinds[0]! : "unknown";
-          }) : (boundedArray ? boundedArray.map(branchKind) : branchNodes?.map(branchKind) ?? []);
+          }) : (boundedElements ? boundedElements.map(branchKind) : branchNodes?.map(branchKind) ?? []);
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -698,9 +732,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             current = current.parent;
           }
           combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), staticIterable,
-            iteratorKind: boundedArray ? "array" : local ? "local" : "dynamic", iteratorEffects: boundedArray ? [] : ["InvokeUserCode"],
+            iteratorKind: set ? "set" : boundedElements ? "array" : local ? "local" : "dynamic", iteratorEffects: boundedElements ? [] : ["InvokeUserCode"],
             iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && array ? array.map(rejectionReason) : undefined,
+            aggregateErrorReasons: operation.combinator === "any" && (array ?? set) ? (array ?? set)!.map(rejectionReason) : undefined,
             awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }

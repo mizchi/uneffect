@@ -584,12 +584,22 @@ describe("Uneffect dogfood", () => {
         branchKinds: ["value", "value", "thenable"],
         staticIterable: true,
       }),
+      expect.objectContaining({
+        combinator: "all",
+        branches: ["remote", '"cached-profile"'],
+        branchKinds: ["thenable", "value"],
+        staticIterable: true,
+        iteratorKind: "set",
+        iteratorEffects: [],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("mixed_batch", model);
     expect(quint).not.toContain("action reject_0_0");
     expect(quint).not.toContain("action reject_0_1");
     expect(quint).toContain("action assimilate_0_2");
     expect(quint).toContain("action reject_0_2");
+    expect(quint).toContain("action assimilate_1_0");
+    expect(quint).not.toContain("action reject_1_1");
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {
