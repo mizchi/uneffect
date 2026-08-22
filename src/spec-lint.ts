@@ -110,7 +110,30 @@ function synthesizedStrengtheningProperties(spec: TemporalSpec): TemporalSpec["p
   });
 }
 
-function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
+interface RelationalStrengtheningSynthesisOptions {
+  maxArity?: number;
+  candidateLimit?: number;
+}
+
+export interface TemporalReachabilityLintOptions {
+  maxSteps?: number;
+  strengtheningProperties?: readonly string[];
+  discoverStrengtheningProperties?: boolean;
+  synthesizeStrengtheningProperties?: boolean;
+  synthesizeRelationalStrengtheningProperties?: boolean;
+  relationalStrengtheningMaxArity?: number;
+  relationalStrengtheningCandidateLimit?: number;
+  synthesizeCollectionStrengtheningProperties?: boolean;
+}
+
+export interface SpecLintWithZ3Options extends Omit<TemporalReachabilityLintOptions, "maxSteps"> {
+  reachabilitySteps?: number | false;
+}
+
+function synthesizedRelationalStrengtheningProperties(
+  spec: TemporalSpec,
+  options: RelationalStrengtheningSynthesisOptions = {},
+): TemporalSpec["properties"] {
   const integers = spec.states.filter((state) => state.type === "int");
   const initialInteger = (name: string): bigint | undefined => {
     const expression = spec.init.find((assignment) => assignment.target === name)?.expressionAst;
@@ -137,21 +160,42 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
     const rightWithOffset = difference > 0n ? `${right} + ${difference}` : difference < 0n ? `${right} - ${-difference}` : right;
     return `${left} === ${rightWithOffset}`;
   };
-  const conservationExpressions = integers.flatMap((first, firstIndex) =>
-    integers.slice(firstIndex + 1).flatMap((second, secondOffset) =>
-      integers.slice(firstIndex + secondOffset + 2).flatMap((third) => {
-        const firstInitial = initialInteger(first.name);
-        const secondInitial = initialInteger(second.name);
-        const thirdInitial = initialInteger(third.name);
-        if (firstInitial === undefined || secondInitial === undefined || thirdInitial === undefined) return [];
-        return [
-          withOffset(`${first.name} + ${second.name}`, third.name, firstInitial + secondInitial - thirdInitial),
-          withOffset(`${first.name} + ${third.name}`, second.name, firstInitial + thirdInitial - secondInitial),
-          withOffset(`${second.name} + ${third.name}`, first.name, secondInitial + thirdInitial - firstInitial),
-        ];
-      }),
-    ),
-  );
+  const requestedMaxArity = options.maxArity ?? 3;
+  const requestedCandidateLimit = options.candidateLimit ?? 256;
+  const maxArity = Number.isFinite(requestedMaxArity) ? Math.max(3, Math.min(6, Math.trunc(requestedMaxArity))) : 3;
+  const candidateLimit = Number.isFinite(requestedCandidateLimit) ? Math.max(0, Math.trunc(requestedCandidateLimit)) : 256;
+  const initializedIntegers = integers.flatMap((state) => {
+    const initial = initialInteger(state.name);
+    return initial === undefined ? [] : [{ name: state.name, initial }];
+  });
+  const conservationExpressions: string[] = [];
+  const combinations = function* <T>(values: readonly T[], size: number, start = 0, prefix: readonly T[] = []): Generator<readonly T[]> {
+    if (prefix.length === size) {
+      yield prefix;
+      return;
+    }
+    for (let index = start; index <= values.length - (size - prefix.length); index++) {
+      yield* combinations(values, size, index + 1, [...prefix, values[index]!]);
+    }
+  };
+  outer: for (let arity = 3; arity <= Math.min(maxArity, initializedIntegers.length); arity++) {
+    for (const variables of combinations(initializedIntegers, arity)) {
+      // Keep the first variable on the left to emit only one of each complementary partition.
+      const partitionCount = 2 ** (arity - 1);
+      for (let suffixMask = 0; suffixMask < partitionCount - 1; suffixMask++) {
+        if (conservationExpressions.length >= candidateLimit) break outer;
+        const left = variables.filter((_, index) => index === 0 || (suffixMask & (1 << (index - 1))) !== 0);
+        const right = variables.filter((variable) => !left.includes(variable));
+        const leftInitial = left.reduce((sum, variable) => sum + variable.initial, 0n);
+        const rightInitial = right.reduce((sum, variable) => sum + variable.initial, 0n);
+        conservationExpressions.push(withOffset(
+          left.map((variable) => variable.name).join(" + "),
+          right.map((variable) => variable.name).join(" + "),
+          leftInitial - rightInitial,
+        ));
+      }
+    }
+  }
   const expressions = [...new Set([...pairwiseExpressions, ...conservationExpressions])];
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
@@ -667,7 +711,7 @@ export async function findTemporalCounterexampleWithZ3(
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
-export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean; synthesizeRelationalStrengtheningProperties?: boolean; synthesizeCollectionStrengtheningProperties?: boolean } = {}): Promise<SpecLintDiagnostic[]> {
+export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: TemporalReachabilityLintOptions = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
   if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
@@ -711,7 +755,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const explicitStrengthening = new Set(options.strengtheningProperties ?? []);
   const synthesized = [
     ...(options.synthesizeStrengtheningProperties ? synthesizedStrengtheningProperties(spec) : []),
-    ...(options.synthesizeRelationalStrengtheningProperties ? synthesizedRelationalStrengtheningProperties(spec) : []),
+    ...(options.synthesizeRelationalStrengtheningProperties ? synthesizedRelationalStrengtheningProperties(spec, {
+      maxArity: options.relationalStrengtheningMaxArity,
+      candidateLimit: options.relationalStrengtheningCandidateLimit,
+    }) : []),
     ...(options.synthesizeCollectionStrengtheningProperties ? synthesizedCollectionStrengtheningProperties(spec) : []),
   ];
   const synthesizedByName = new Map(synthesized.map((property) => [property.name, property]));
@@ -1000,7 +1047,7 @@ export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; di
 }
 
 /** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
-export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean; synthesizeRelationalStrengtheningProperties?: boolean; synthesizeCollectionStrengtheningProperties?: boolean } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+export async function lintSpecWithZ3(fileName: string, text: string, options: SpecLintWithZ3Options = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
   const result = lintSpec(fileName, text);
   const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, {
     maxSteps: options.reachabilitySteps ?? 8,
@@ -1008,6 +1055,8 @@ export async function lintSpecWithZ3(fileName: string, text: string, options: { 
     discoverStrengtheningProperties: options.discoverStrengtheningProperties,
     synthesizeStrengtheningProperties: options.synthesizeStrengtheningProperties,
     synthesizeRelationalStrengtheningProperties: options.synthesizeRelationalStrengtheningProperties,
+    relationalStrengtheningMaxArity: options.relationalStrengtheningMaxArity,
+    relationalStrengtheningCandidateLimit: options.relationalStrengtheningCandidateLimit,
     synthesizeCollectionStrengtheningProperties: options.synthesizeCollectionStrengtheningProperties,
   });
   return {

@@ -25,6 +25,13 @@ samples (3.84% RME) after adding bounded coefficient-1 conservation templates.
 This includes candidate generation plus independent Z3 initialization,
 preservation, and reachability obligations; it is not a parser-only benchmark.
 
+The opt-in four-counter telemetry routing model measured 1,411.37 ms for one
+sample after generalizing conservation partitions. This includes pairwise and
+three-variable candidates before the four-variable candidate, plus independent
+Z3 obligations for each. The single sample is a development observation, not a
+stable performance claim; it shows why arity remains explicit and candidate
+generation is capped.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

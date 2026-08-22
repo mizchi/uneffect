@@ -174,10 +174,17 @@ their initial affine boundary. The pool includes coefficient-1 offsets such as
 `left === right + 2` and the reduced small-coefficient pairs `(2,1)` and
 `(1,2)`, allowing relations such as `2 * used <= capacity`. Arbitrary
 coefficients, conjunction discovery, and general polyhedra remain unsupported.
-The same opt-in includes bounded three-variable conservation equalities such
-as `accepted + dropped === attempted`, with an offset derived from constant
-initializers. Coefficients other than one and relations over four or more
-variables are not inferred by this template.
+The same opt-in includes bounded conservation equalities such as
+`accepted + dropped === attempted`, with an offset derived from constant
+initializers. The default maximum arity is three, preserving the original
+quadratic-sized use case. Set `relationalStrengtheningMaxArity` or CLI
+`--relational-max-arity=N` to consider larger partitions, up to the hard safety
+limit of six variables. Conservation generation stops after 256 candidates by
+default; configure `relationalStrengtheningCandidateLimit` or
+`--relational-candidate-limit=N` when a reviewed model needs a different bound.
+These bounds apply to conservation candidates, while the existing pairwise
+pool remains quadratic. Coefficients other than one and general polyhedra are
+not inferred by this template.
 Same-shaped Set, Map, and record pairs have a separate equality template pool
 behind `synthesizeCollectionStrengtheningProperties` and
 `--synthesize-collection-strengthening`. The same opt-in recursively discovers
@@ -200,6 +207,13 @@ to accepted, dropped, and attempted telemetry counts. Omitting the dropped
 counter update prevents the candidate from being admitted. As with the capacity
 example, the adjacent TypeScript class is reviewable correspondence rather than
 a proved implementation-to-model refinement.
+
+`examples/dogfood/telemetry-routing-accounting.ts` opts into arity four and
+checks that every attempted telemetry item is classified as delivered, dropped,
+or buffered. Its negative test removes the buffered-counter update, after which
+the conservation candidate is rejected. The neighboring TypeScript class is
+still only a reviewable implementation: Uneffect does not yet prove that its
+computed-property update refines the declared temporal actions.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

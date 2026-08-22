@@ -114,12 +114,14 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
     - [x] Derive reduced small-coefficient `(2,1)` and `(1,2)` affine equality/order templates from constant initializers.
     - [x] Derive coefficient-1 three-variable conservation equalities from constant initializers.
+    - [x] Generalize coefficient-1 conservation equalities to an explicitly bounded arity (maximum six) and cap generated conservation candidates.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.
     - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
     - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.
     - [x] Treat finite `Map.keys()` domains, including record-nested maps, as derived Set views for directional subset synthesis.
     - [x] Treat scalar finite `Map.values()` domains as derived Set views without generalizing unsupported composite values.
     - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
+      - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

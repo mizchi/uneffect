@@ -868,6 +868,77 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes bounded four-variable conservation equalities when requested", async () => {
+    const temporal = parseSpec("four-counter-conservation-strengthening.ts", `/* uneffect:
+      state accepted: int
+      state dropped: int
+      state retried: int
+      state attempted: int
+      state armed: bool
+      init accepted = 0
+      init dropped = 0
+      init retried = 0
+      init attempted = 0
+      init armed = false
+      action accept: accepted' = accepted + 1, attempted' = attempted + 1
+      action drop: dropped' = dropped + 1, attempted' = attempted + 1
+      action retry: retried' = retried + 1, attempted' = attempted + 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && accepted + dropped + retried < attempted
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxArity: 4,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:accepted + dropped + retried === attempted>",
+    }));
+  });
+
+  it("keeps relational conservation synthesis capped at three variables by default", async () => {
+    const temporal = parseSpec("capped-conservation-strengthening.ts", `/* uneffect:
+      state accepted: int
+      state dropped: int
+      state retried: int
+      state attempted: int
+      state armed: bool
+      init accepted = 0
+      init dropped = 0
+      init retried = 0
+      init attempted = 0
+      init armed = false
+      action accept: accepted' = accepted + 1, attempted' = attempted + 1
+      action drop: dropped' = dropped + 1, attempted' = attempted + 1
+      action retry: retried' = retried + 1, attempted' = attempted + 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && accepted + dropped + retried < attempted
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+    }));
+
+    const candidateCappedDiagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxArity: 4,
+      relationalStrengtheningCandidateLimit: 12,
+    });
+    expect(candidateCappedDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+    }));
+  });
+
   it("synthesizes equality invariants for collection state pairs", async () => {
     const temporal = parseSpec("collection-strengthening.ts", `/* uneffect:
       state left: Set<int>

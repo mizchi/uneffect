@@ -106,6 +106,36 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves four-way telemetry routing accounting and rejects a missing update", async () => {
+    const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxArity: 4,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeLostOutcome",
+      relatedName: "<synth:delivered + dropped + buffered === attempted>",
+    }));
+
+    const broken = parseSpec(fileName, source.replace(
+      "action buffer: buffered' = buffered + 1, attempted' = attempted + 1",
+      "action buffer: attempted' = attempted + 1",
+    )).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxArity: 4,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:delivered + dropped + buffered === attempted>",
+    }));
+  });
+
   it("proves a scaled telemetry capacity relation and catches unbalanced accounting", async () => {
     const fileName = "examples/dogfood/telemetry-capacity.ts";
     const source = readFileSync(fileName, "utf8");

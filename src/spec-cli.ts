@@ -16,9 +16,21 @@ const strengtheningProperties = arguments_.flatMap((argument) => argument.starts
 const discoverStrengtheningProperties = arguments_.includes("--discover-strengthening");
 const synthesizeStrengtheningProperties = arguments_.includes("--synthesize-strengthening");
 const synthesizeRelationalStrengtheningProperties = arguments_.includes("--synthesize-relational-strengthening");
+const numericOption = (prefix: string): number | undefined => {
+  const argument = arguments_.find((candidate) => candidate.startsWith(prefix));
+  if (!argument) return undefined;
+  const value = Number(argument.slice(prefix.length));
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error(`${prefix.slice(2, -1)} must be a non-negative safe integer`);
+  return value;
+};
+const relationalStrengtheningMaxArity = numericOption("--relational-max-arity=");
+const relationalStrengtheningCandidateLimit = numericOption("--relational-candidate-limit=");
+if (relationalStrengtheningMaxArity !== undefined && (relationalStrengtheningMaxArity < 3 || relationalStrengtheningMaxArity > 6)) {
+  throw new Error("relational-max-arity must be between 3 and 6");
+}
 const synthesizeCollectionStrengtheningProperties = arguments_.includes("--synthesize-collection-strengthening");
 if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--synthesize-collection-strengthening]");
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--relational-max-arity=3..6] [--relational-candidate-limit=256] [--synthesize-collection-strengthening]");
   process.exit(2);
 }
 
@@ -28,7 +40,7 @@ const spec = parseSpec(fileName, source);
 if (command === "ir") {
   console.log(JSON.stringify(spec, null, 2));
 } else if (command === "lint") {
-  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties, discoverStrengtheningProperties, synthesizeStrengtheningProperties, synthesizeRelationalStrengtheningProperties, synthesizeCollectionStrengtheningProperties });
+  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties, discoverStrengtheningProperties, synthesizeStrengtheningProperties, synthesizeRelationalStrengtheningProperties, relationalStrengtheningMaxArity, relationalStrengtheningCandidateLimit, synthesizeCollectionStrengtheningProperties });
   console.log(JSON.stringify(result.diagnostics, null, 2));
   if (result.diagnostics.length > 0) process.exitCode = 1;
 } else if (command === "z3") {
