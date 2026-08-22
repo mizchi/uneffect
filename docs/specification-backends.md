@@ -155,6 +155,13 @@ conjunction, may produce `strengthened-unreachable-action`; rejected and
 unknown names remain diagnostics. Uneffect does not infer an unstated
 strengthening invariant.
 
+For finite state products, bounded exploration can itself become complete.
+Uneffect computes exact cardinalities for boolean scalars and supported finite
+record, `Set`, and boolean-keyed `Map` shapes. If the requested depth reaches
+`stateCount - 1`, every reachable guard has a simple path within that bound,
+so an absent guard is reported as `finite-state-unreachable-action`. Integer
+domains, cardinality overflow, and shallower runs retain only bounded evidence.
+
 Property vacuity follows the same split. `bounded-vacuous-property` means the
 referenced state did not change on any reachable transition within the chosen
 depth. `inductively-vacuous-property` is added only when init establishes the

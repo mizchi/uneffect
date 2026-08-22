@@ -751,6 +751,29 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("uses a complete finite-state bound to prove unreachable boolean states", async () => {
+    const temporal = parseSpec("finite-complete.ts", `/* uneffect:
+      state left: bool
+      state right: bool
+      init left = false
+      init right = false
+      action toggle: left' = !left, right' = !right
+      action_when toggle: left === right
+      action unreachableBridge: left' = false, right' = true
+      action_when unreachableBridge: left && !right
+      action observeMismatch: left' = left
+      action_when observeMismatch: !left && right
+    */`).temporal;
+    const complete = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(complete).toContainEqual(expect.objectContaining({
+      code: "finite-state-unreachable-action", name: "observeMismatch", depth: 3,
+    }));
+    const incomplete = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 });
+    expect(incomplete).not.toContainEqual(expect.objectContaining({
+      code: "finite-state-unreachable-action", name: "observeMismatch",
+    }));
+  });
+
   it("proves an initial deadlock without claiming unbounded reachability", async () => {
     const temporal = parseSpec("deadlock.ts", `/* uneffect:
       state phase: int

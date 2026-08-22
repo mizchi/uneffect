@@ -106,7 +106,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Report depth-labelled bounded unreachability by unrolling init and complete stuttering transitions in Z3.
     - [x] Upgrade bounded-unreachable actions to an unbounded result when `!guard` is established at init and preserved by one-step induction across every transition.
     - [x] Accept explicitly selected temporal properties as strengthening invariants, but only after Z3 proves initialization and one-step preservation; combine multiple proven properties when required.
-    - [ ] Discover strengthening invariants automatically, or use a finite-state completeness bound.
+    - [x] Promote unreachable actions after a complete `state-count - 1` exploration bound for finite boolean/record/Set/Map state products.
+    - [ ] Discover strengthening invariants automatically for infinite or impractically large state spaces.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

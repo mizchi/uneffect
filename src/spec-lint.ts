@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "inductively-unreachable-action" | "strengthened-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property"
+    | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property"
     | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
@@ -61,6 +61,39 @@ function supportsZ3FiniteCollectionState(type: TemporalValueType): boolean {
   if (type.kind === "map") return type.key !== "never" && type.value !== "never" && supportsZ3FiniteCollectionState(type.value);
   for (const field of Object.values(type.fields)) if (!supportsZ3FiniteCollectionState(field)) return false;
   return true;
+}
+
+function finiteTypeCardinality(type: TemporalValueType | "never"): bigint | undefined {
+  if (type === "bool") return 2n;
+  if (type === "int") return undefined;
+  if (type === "never") return 0n;
+  if (type.kind === "record") {
+    let total = 1n;
+    for (const field of Object.values(type.fields)) {
+      const cardinality = finiteTypeCardinality(field);
+      if (cardinality === undefined) return undefined;
+      total *= cardinality;
+    }
+    return total;
+  }
+  if (type.kind === "set") {
+    const elements = finiteTypeCardinality(type.element);
+    return elements === undefined || elements > 52n ? undefined : 2n ** elements;
+  }
+  if (type.key !== "bool") return undefined;
+  const values = finiteTypeCardinality(type.value);
+  return values === undefined ? undefined : (2n * values) ** 2n;
+}
+
+function finiteStateCompletenessDepth(spec: TemporalSpec): number | undefined {
+  let states = 1n;
+  for (const state of spec.states) {
+    const cardinality = finiteTypeCardinality(state.type);
+    if (cardinality === undefined) return undefined;
+    states *= cardinality;
+    if (states > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
+  }
+  return Math.max(0, Number(states) - 1);
 }
 
 type MapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool"; value: TemporalValueType };
@@ -572,6 +605,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const disjoin = (values: readonly string[]) => values.length === 0 ? "false" : values.length === 1 ? values[0]! : `(or ${values.join(" ")})`;
   const step = (index: number) => disjoin(spec.actions.map((action) => actionTransition(action, index)));
   const diagnostics: SpecLintDiagnostic[] = [];
+  const completenessDepth = finiteStateCompletenessDepth(spec);
   const initStatus = await checkSmt(declarations, init);
   const strengthening: TemporalSpec["properties"] = [];
   for (const name of [...new Set(options.strengtheningProperties ?? [])]) {
@@ -674,6 +708,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       diagnostics.push({
         code: "bounded-unreachable-action", name: action.name, backend: "z3", depth: maxSteps,
         message: `${action.name} is unreachable from init within ${maxSteps} transition steps; this is not by itself an unbounded proof`,
+      });
+      if (completenessDepth !== undefined && maxSteps >= completenessDepth) diagnostics.push({
+        code: "finite-state-unreachable-action", name: action.name, backend: "z3", depth: completenessDepth,
+        message: `${action.name} is unreachable: the complete finite state space is covered by paths of at most ${completenessDepth} transitions`,
       });
       if (maxSteps >= 1) {
         const induction = await checkSmt(declarations, [`(not ${guard(action, 0)})`, step(0), guard(action, 1)]);
