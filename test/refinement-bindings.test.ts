@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -165,6 +165,37 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementActionBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
       expect.objectContaining({ code: "missing-action-binding", modelName: "increment" }),
+    ]);
+  });
+
+  it("proves scalar invariant predicates without accepting missing, stale, or unsupported bodies", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * state armed: bool
+       * init value = 0
+       * init armed = false
+       * temporal nonNegative: value >= 0
+       * temporal guarded: !armed || value > 0
+       * temporal unsupported: value < 10
+       * temporal strictZero: value === 0
+       * temporal missing: value === 0
+       */
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 invariant nonNegative */ export function nonNegative(runtime: Runtime) { return runtime.value >= 0 }
+      /* uneffect: refinement counter@1 invariant guarded */ export function guarded(runtime: Runtime) { return !runtime.armed && runtime.value > 0 }
+      /* uneffect: refinement counter@1 invariant unsupported */ export function unsupported(runtime: Runtime) { const limit = 10; return runtime.value < limit }
+      /* uneffect: refinement counter@1 invariant strictZero */ export function strictZero(runtime: Runtime) { return runtime.value == 0 }
+      /* uneffect: refinement counter@1 invariant stale */ export function stale(runtime: Runtime) { return runtime.value === 0 }
+    `;
+    expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
+      expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "guarded" }),
+      expect.objectContaining({ code: "unsupported-invariant-body", modelName: "unsupported", exportName: "unsupported" }),
+      expect.objectContaining({ code: "unsupported-invariant-body", modelName: "strictZero", exportName: "strictZero" }),
+      expect.objectContaining({ code: "missing-invariant-binding", modelName: "missing" }),
+      expect.objectContaining({ code: "unknown-invariant-binding", modelName: "stale", exportName: "stale" }),
     ]);
   });
 });

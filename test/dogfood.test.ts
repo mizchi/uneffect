@@ -11,7 +11,7 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
-import { validateRefinementActionBodies, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
+import { validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
   it("distinguishes retry-loop resource generations before cleanup", () => {
@@ -113,6 +113,7 @@ describe("Uneffect dogfood", () => {
     const temporal = parseSpec(fileName, source).temporal;
     expect(validateRefinementBindingCoverage(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     expect(validateRefinementActionBodies(fileName, source, "telemetryRouting", temporal)).toEqual([]);
+    expect(validateRefinementInvariantBodies(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

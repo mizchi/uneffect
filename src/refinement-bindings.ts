@@ -53,6 +53,18 @@ export interface RefinementActionDiagnostic {
   message: string;
 }
 
+export type RefinementInvariantDiagnosticCode = "missing-invariant-binding" | "unknown-invariant-binding" | "unsupported-invariant-body" | "invariant-expression-mismatch";
+
+export interface RefinementInvariantDiagnostic {
+  code: RefinementInvariantDiagnosticCode;
+  adapterName: string;
+  modelName: string;
+  exportName?: string;
+  expected?: string;
+  actual?: string;
+  message: string;
+}
+
 function parseBinding(value: string, exportName: string, span: { start: number; end: number }): RefinementBinding {
   const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s+(create|observe|action\s+([A-Za-z_$][\w$]*)|invariant\s+([A-Za-z_$][\w$]*))$/.exec(value);
   if (!match) throw new Error(`invalid refinement binding on ${exportName}: ${value}`);
@@ -141,6 +153,10 @@ const temporalBinaryOperators = new Map<ts.SyntaxKind, TemporalBinaryOperator>([
   [ts.SyntaxKind.PlusToken, "add"], [ts.SyntaxKind.MinusToken, "subtract"],
   [ts.SyntaxKind.AsteriskToken, "multiply"], [ts.SyntaxKind.SlashToken, "divide"],
   [ts.SyntaxKind.PercentToken, "modulo"],
+  [ts.SyntaxKind.EqualsEqualsEqualsToken, "eq"], [ts.SyntaxKind.ExclamationEqualsEqualsToken, "neq"],
+  [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
+  [ts.SyntaxKind.LessThanToken, "lt"], [ts.SyntaxKind.LessThanEqualsToken, "lte"],
+  [ts.SyntaxKind.GreaterThanToken, "gt"], [ts.SyntaxKind.GreaterThanEqualsToken, "gte"],
 ]);
 
 function formatRefinementExpression(expression: TemporalExpression): string {
@@ -153,6 +169,50 @@ function formatRefinementExpression(expression: TemporalExpression): string {
     return `${formatRefinementExpression(expression.left)} ${operator} ${formatRefinementExpression(expression.right)}`;
   }
   return `<${expression.kind}>`;
+}
+
+function refinementFieldName(
+  target: ts.Expression,
+  receiver: string,
+  substitutions: ReadonlyMap<string, ts.Expression>,
+): string | undefined {
+  if (ts.isPropertyAccessExpression(target)
+    && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) return target.name.text;
+  if (ts.isElementAccessExpression(target)
+    && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) {
+    const argument = target.argumentExpression;
+    const replacement = ts.isIdentifier(argument) ? substitutions.get(argument.text) : argument;
+    return replacement && ts.isStringLiteral(replacement) ? replacement.text : undefined;
+  }
+  return undefined;
+}
+
+function normalizeRefinementExpression(
+  node: ts.Expression,
+  receiver: string,
+  substitutions: ReadonlyMap<string, ts.Expression>,
+  stateNames: ReadonlySet<string>,
+): TemporalExpression | undefined {
+  if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames);
+  if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
+  if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
+  if (ts.isIdentifier(node)) {
+    const replacement = substitutions.get(node.text);
+    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames) : stateNames.has(node.text) ? { kind: "name", name: node.text } : undefined;
+  }
+  const field = refinementFieldName(node, receiver, substitutions);
+  if (field && stateNames.has(field)) return { kind: "name", name: field };
+  if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
+    const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames);
+    return operand ? { kind: "unary", operator: node.operator === ts.SyntaxKind.ExclamationToken ? "not" : "negate", operand } : undefined;
+  }
+  if (ts.isBinaryExpression(node)) {
+    const operator = temporalBinaryOperators.get(node.operatorToken.kind);
+    const left = normalizeRefinementExpression(node.left, receiver, substitutions, stateNames);
+    const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames);
+    return operator && left && right ? { kind: "binary", operator, left, right } : undefined;
+  }
+  return undefined;
 }
 
 /** Proves a deliberately small, zero-runtime scalar update fragment against model actions. */
@@ -169,39 +229,6 @@ export function validateRefinementActionBodies(
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
-  const expression = (node: ts.Expression, receiver: string, substitutions: ReadonlyMap<string, ts.Expression>): TemporalExpression | undefined => {
-    if (ts.isParenthesizedExpression(node)) return expression(node.expression, receiver, substitutions);
-    if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
-    if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
-    if (ts.isIdentifier(node)) {
-      const replacement = substitutions.get(node.text);
-      return replacement ? expression(replacement, receiver, substitutions) : stateNames.has(node.text) ? { kind: "name", name: node.text } : undefined;
-    }
-    const fieldName = (target: ts.Expression): string | undefined => {
-      if (ts.isPropertyAccessExpression(target)
-        && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) return target.name.text;
-      if (ts.isElementAccessExpression(target)
-        && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) {
-        const argument = target.argumentExpression;
-        const replacement = ts.isIdentifier(argument) ? substitutions.get(argument.text) : argument;
-        return replacement && ts.isStringLiteral(replacement) ? replacement.text : undefined;
-      }
-      return undefined;
-    };
-    const field = fieldName(node);
-    if (field && stateNames.has(field)) return { kind: "name", name: field };
-    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
-      const operand = expression(node.operand, receiver, substitutions);
-      return operand ? { kind: "unary", operator: "negate", operand } : undefined;
-    }
-    if (ts.isBinaryExpression(node)) {
-      const operator = temporalBinaryOperators.get(node.operatorToken.kind);
-      const left = expression(node.left, receiver, substitutions), right = expression(node.right, receiver, substitutions);
-      return operator && left && right ? { kind: "binary", operator, left, right } : undefined;
-    }
-    return undefined;
-  };
-
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -209,17 +236,6 @@ export function validateRefinementActionBodies(
     substitutions: ReadonlyMap<string, ts.Expression>,
   ): Map<string, TemporalExpression> | undefined => {
     const updates = new Map<string, TemporalExpression>();
-    const targetName = (target: ts.Expression): string | undefined => {
-      if (ts.isPropertyAccessExpression(target)
-        && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) return target.name.text;
-      if (ts.isElementAccessExpression(target)
-        && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) {
-        const argument = target.argumentExpression;
-        const replacement = ts.isIdentifier(argument) ? substitutions.get(argument.text) : argument;
-        return replacement && ts.isStringLiteral(replacement) ? replacement.text : undefined;
-      }
-      return undefined;
-    };
     for (const statement of body.statements) {
       if (!ts.isExpressionStatement(statement)) return undefined;
       const node = statement.expression;
@@ -242,15 +258,15 @@ export function validateRefinementActionBodies(
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
         if (node.operator !== ts.SyntaxKind.PlusPlusToken && node.operator !== ts.SyntaxKind.MinusMinusToken) return undefined;
-        const target = targetName(node.operand);
+        const target = refinementFieldName(node.operand, receiver, substitutions);
         if (!target || !stateNames.has(target) || updates.has(target)) return undefined;
         updates.set(target, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: { kind: "name", name: target }, right: { kind: "integer", value: "1" } });
         continue;
       }
       if (ts.isBinaryExpression(node)) {
-        const target = targetName(node.left);
+        const target = refinementFieldName(node.left, receiver, substitutions);
         if (!target || !stateNames.has(target) || updates.has(target)) return undefined;
-        const right = expression(node.right, receiver, substitutions);
+        const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames);
         if (!right) return undefined;
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.set(target, right);
         else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
@@ -294,6 +310,50 @@ export function validateRefinementActionBodies(
   for (const [modelName, exportName] of Object.entries(manifest.actions)) {
     if (modelActions.has(modelName)) continue;
     diagnostics.push({ code: "unknown-action-binding", adapterName, modelName, exportName, message: `action refinement ${exportName} refers to unknown model action ${modelName}` });
+  }
+  return diagnostics;
+}
+
+/** Proves a single-return, side-effect-free scalar predicate against temporal safety properties. */
+export function validateRefinementInvariantBodies(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementInvariantDiagnostic[] {
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const stateNames = new Set(spec.states.map(({ name }) => name));
+  const diagnostics: RefinementInvariantDiagnostic[] = [];
+  for (const property of spec.properties) {
+    const exportName = manifest.invariants[property.name];
+    if (!exportName) {
+      diagnostics.push({ code: "missing-invariant-binding", adapterName, modelName: property.name, message: `invariant ${property.name} has no ${adapterName} refinement binding to verify` });
+      continue;
+    }
+    const implementation = functions.get(exportName);
+    const runtimeParameter = implementation?.parameters[0];
+    const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
+    const statement = implementation?.body?.statements.length === 1 ? implementation.body.statements[0] : undefined;
+    const actual = receiver && statement && ts.isReturnStatement(statement) && statement.expression
+      ? normalizeRefinementExpression(statement.expression, receiver, new Map(), stateNames)
+      : undefined;
+    if (!actual) {
+      diagnostics.push({ code: "unsupported-invariant-body", adapterName, modelName: property.name, exportName, message: `${exportName} is not a single supported scalar return predicate` });
+      continue;
+    }
+    if (JSON.stringify(property.expressionAst) === JSON.stringify(actual)) continue;
+    diagnostics.push({
+      code: "invariant-expression-mismatch", adapterName, modelName: property.name, exportName,
+      expected: formatRefinementExpression(property.expressionAst), actual: formatRefinementExpression(actual),
+      message: `${exportName} returns ${formatRefinementExpression(actual)}, expected ${formatRefinementExpression(property.expressionAst)}`,
+    });
+  }
+  const modelProperties = new Set(spec.properties.map(({ name }) => name));
+  for (const [modelName, exportName] of Object.entries(manifest.invariants)) {
+    if (modelProperties.has(modelName)) continue;
+    diagnostics.push({ code: "unknown-invariant-binding", adapterName, modelName, exportName, message: `invariant refinement ${exportName} refers to unknown temporal property ${modelName}` });
   }
   return diagnostics;
 }

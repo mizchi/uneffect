@@ -123,6 +123,18 @@ collection operations, and dynamic computed members produce
 This check currently covers transition updates, not create/observe correctness,
 action guards, or invariant-function equivalence.
 
+`validateRefinementInvariantBodies` checks the adjacent safety-property
+functions. A supported implementation is exactly one `return` whose expression
+uses runtime scalar fields, integer/boolean literals, arithmetic, strict
+equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
+exactly equal the temporal property AST. Loose JavaScript equality is rejected
+because coercion would make the correspondence unsound. Local declarations,
+calls, mutation, collections, and merely logically equivalent but differently
+shaped predicates remain unsupported. Missing and stale invariant bindings are
+reported by this validator itself, so an empty diagnostic list means every
+declared safety property passed this fragment. Liveness properties are still
+outside point-state invariant binding.
+
 `|` is the only union separator. Commas separate parameters inside a parameterized effect and are never accepted as top-level effect unions.
 
 ## Attachment

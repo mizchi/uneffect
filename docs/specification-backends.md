@@ -219,7 +219,10 @@ the dogfood coverage check catches missing and stale model names. Its
 straight-line action bodies are also checked against the model assignments:
 literal calls to `record` are locally specialized, including the computed
 outcome-field write. Create/observe and invariant-body equivalence remain
-outside this proof.
+outside the action proof. The adjacent single-return invariant function is now
+also checked by exact normalized scalar-AST equivalence. Create/observe
+correctness and solver-proven equivalence of differently shaped predicates
+remain outside this proof.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

@@ -43,6 +43,11 @@ over 1,032 samples (1.66% RME). The extra work includes literal specialization
 of three local `record` calls and all-state stuttering comparisons. It still
 excludes create/observe, guards, and invariant-function equivalence.
 
+Adding exact scalar invariant-body comparison to the same benchmark measured
+0.4768 ms mean over 1,049 samples (0.94% RME). The value is slightly below the
+preceding run and should be treated as measurement noise, not an optimization;
+the benchmark now includes coverage, five action bodies, and one invariant body.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
