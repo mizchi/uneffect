@@ -1403,6 +1403,13 @@ describe("async error and explicit resource safety", () => {
     expect(repeatTarget).toBe(acquirePc);
     expect(quint).toContain("action dispose_start_resource_handler_loop");
     expect(quint).toContain("action dispose_resume_resource_handler_loop");
+    expect(quint).toContain("var generation_0: int");
+    expect(quint).toMatch(/action acquire_resource = all \{[\s\S]*?generation_0' = generation_0 \+ 1,/);
+    expect(quint).toMatch(/action dispose_resume_resource_handler_loop = all \{[\s\S]*?disposed_generation_0' = generation_0,/);
+    expect(quint).toContain("disposed_generation_0 == generation_0");
     expect(run(quint).status).toBe(0);
+    const stale = generateUnifiedAsyncQuint("handler_loop_stale_resource", result, "run", { reuseStaleDisposal: true });
+    expect(stale).toContain("action skip_stale_disposed_resource_handler_loop");
+    expect(run(stale).status).not.toBe(0);
   }, 10_000);
 });

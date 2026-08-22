@@ -2,7 +2,7 @@ import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
-import { analyzeAsyncSafety } from "../src/async-safety.js";
+import { analyzeAsyncSafety, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
@@ -13,6 +13,16 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 
 describe("Uneffect dogfood", () => {
+  it("distinguishes retry-loop resource generations before cleanup", () => {
+    const fileName = "examples/dogfood/retry-attempts.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.diagnostics).toEqual([]);
+    const quint = generateUnifiedAsyncQuint("retry_attempts", result, "flushWithRetry");
+    expect(quint).toMatch(/action acquire_attempt = all \{[\s\S]*?generation_0' = generation_0 \+ 1,/);
+    expect(quint).toMatch(/action dispose_resume_attempt_handler_loop = all \{[\s\S]*?disposed_generation_0' = generation_0,/);
+    expect(quint).toContain("disposed_generation_0 == generation_0");
+  });
+
   it("derives executable aligned shard boundaries from a realistic contract", () => {
     const fileName = "examples/dogfood/shard-batch.ts";
     const result = generateUneffectPropertyTests({ files: { [fileName]: readFileSync(fileName, "utf8") } });

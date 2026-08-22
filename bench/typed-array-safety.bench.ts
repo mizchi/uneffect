@@ -11,7 +11,7 @@ import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounter
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns } from "../src/async-patterns.js";
-import { analyzeAsyncSafety } from "../src/async-safety.js";
+import { analyzeAsyncSafety, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
@@ -40,6 +40,7 @@ const dynamicThenableSource = `declare const flag: boolean; declare const extern
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
 const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
 const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetry-packet.ts", import.meta.url), "utf8");
+const retryAttemptsSource = readFileSync(new URL("../examples/dogfood/retry-attempts.ts", import.meta.url), "utf8");
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -409,6 +410,11 @@ describe("typed-array static verification", () => {
     const entry = "examples/dogfood/telemetry-once.ts";
     await verifyUneffectProject({ temporalRuntime: "web", files: { [entry]: readFileSync(entry, "utf8") } });
   }, { time: 500, iterations: 1 });
+
+  bench("lower generation-safe retry resources to unified Quint", () => {
+    const result = analyzeAsyncSafety("retry-attempts.ts", retryAttemptsSource);
+    generateUnifiedAsyncQuint("retry_attempts", result, "flushWithRetry");
+  }, { time: 500, iterations: 20 });
 
   bench("resolve 64 named timer callback bodies", () => {
     const callbacks = Array.from({ length: 64 }, (_, index) => `function callback${index}() { queueMicrotask(() => {}) }`).join("\n");

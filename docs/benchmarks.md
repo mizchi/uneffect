@@ -45,6 +45,11 @@ measured 1.1135 ms mean over 450 samples (1.64% RME). The benchmark includes
 range-sign validation and BigInt normalization before emitting JavaScript `%`
 compatible negative candidates.
 
+Analyzing the retry-attempt dogfood and lowering its awaited handler loop plus
+generation-safe `await using` cleanup to unified Quint measured 123.12 ms mean
+over 20 samples (1.04% RME). This includes TypeScript program construction,
+Promise/resource analysis, and model emission, but not Quint execution.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

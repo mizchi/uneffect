@@ -949,7 +949,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean } = {}): string {
+export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean } = {}): string {
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
   const awaited = result.promises
@@ -1068,17 +1068,17 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   };
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
-  resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`));
+  resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`, `  var generation_${index}: int`, `  var disposed_generation_${index}: int`));
   lines.push("", "  action init = all {", "    pc' = 0,", "    completion' = 0,", "    broken' = false,");
   branchIds.forEach((_, index) => lines.push(`    branch_${index}' = -1,`));
-  resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`));
+  resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`, `    generation_${index}' = 0,`, `    disposed_generation_${index}' = -1,`));
   lines.push("  }");
   const actions: string[] = [];
   const emit = (name: string, guards: string[], updates = new Map<string, string>()): void => {
     actions.push(name);
     lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`);
     branchIds.forEach((_, index) => lines.push(`    branch_${index}' = ${updates.get(`branch_${index}`) ?? `branch_${index}`},`));
-    resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`));
+    resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`, `    generation_${index}' = ${updates.get(`generation_${index}`) ?? `generation_${index}`},`, `    disposed_generation_${index}' = ${updates.get(`disposed_generation_${index}`) ?? `disposed_generation_${index}`},`));
     lines.push("  }");
   };
   const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
@@ -1087,14 +1087,15 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (resourceIndex < 0) return;
     const label = `${labels[resourceIndex]!}${suffix}`;
     emit(`skip_unacquired_${label}`, [`pc == ${current}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
-    emit(`skip_disposed_${label}`, [`pc == ${current}`, `disposed_${resourceIndex}`], new Map([["pc", String(next)]]));
+    emit(`skip_disposed_${label}`, [`pc == ${current}`, `disposed_${resourceIndex}`, `disposed_generation_${resourceIndex} == generation_${resourceIndex}`], new Map([["pc", String(next)]]));
+    if (options.reuseStaleDisposal) emit(`skip_stale_disposed_${label}`, [`pc == ${current}`, `disposed_${resourceIndex}`, `disposed_generation_${resourceIndex} != generation_${resourceIndex}`], new Map([["pc", String(next)]]));
     if (disposal.asynchronous) {
       emit(`dispose_start_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`, `not(disposing_${resourceIndex})`], new Map([[`disposing_${resourceIndex}`, "true"]]));
-      emit(`dispose_resume_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
-      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
+      emit(`dispose_resume_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     } else {
-      emit(`dispose_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], [`disposed_${resourceIndex}`, "true"]]));
-      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"]]));
+      emit(`dispose_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     }
   };
   branchIds.forEach((_, index) => {
@@ -1112,7 +1113,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (event.kind === "acquire") {
       const resource = resources[event.index]!;
       const guards = [`pc == ${pc}`, ...conditionPathGuards(resource.controlPaths)];
-      emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
+      emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
       emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
       const mismatch = conditionPathMismatch(resource.controlPaths);
       if (resource.conditional) emit(`skip_acquire_${labels[event.index]}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
@@ -1173,7 +1174,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
           if (event.kind === "acquire") {
             const resource = resources[event.index]!;
             const guards = [`pc == ${eventPc}`, ...conditionPathGuards(resource.controlPaths)];
-            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"]]));
+            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, options.reuseStaleDisposal ? `disposed_${event.index}` : "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
             emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(finalEntry)], ["completion", "1"]]));
             return;
           }
@@ -1212,7 +1213,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
           if (event.kind === "acquire") {
             const resource = resources[event.index]!;
             const guards = [`pc == ${eventPc}`, ...conditionPathGuards(resource.controlPaths)];
-            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"]]));
+            emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(eventNext)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, options.reuseStaleDisposal ? `disposed_${event.index}` : "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
             emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(exceptionalTarget(layout.region))], ["completion", "1"]]));
             return;
           }
@@ -1253,7 +1254,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   emit("finish_rejected", [`pc == ${completePc}`, "completion != 0"], new Map([["pc", "-1"]]));
   if (options.skipCleanup) emit("finish_without_cleanup", [`pc == ${cleanupPc}`], new Map([["pc", "-2"], ["broken", "true"]]));
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
-  const disposed = resources.map((_, index) => `(not(acquired_${index}) or disposed_${index})`).join(" and ") || "true";
+  const disposed = resources.map((_, index) => `(not(acquired_${index}) or (disposed_${index} and disposed_generation_${index} == generation_${index}))`).join(" and ") || "true";
   lines.push("", `  val resourceSafe = not(broken) and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

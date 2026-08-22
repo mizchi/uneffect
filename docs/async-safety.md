@@ -468,11 +468,17 @@ Awaited handler loops additionally receive explicit repeat and exit states, so
 the control graph covers arbitrary finite repetition of their awaited chains.
 Lexical `using` and `await using` declarations in those loops are handler
 events: each abstract iteration acquires the resource and completes disposal
-before repeat or exit, resetting the finite acquired/disposed state for the
-next iteration. This proves cleanup ordering when the resource cannot escape
-its lexical iteration. This is not a data-state fixed point: loop-carried
-values, distinct dynamic resource-generation identities, and escaping aliases
-remain outside the unified lowering.
+before repeat or exit. Each acquisition increments an abstract generation and
+disposal records the generation it completed; terminal resource safety requires
+the disposed generation to equal the latest acquired generation. This prevents
+an earlier iteration's cleanup bit from authorizing a later resource instance.
+The `reuseStaleDisposal` negative lowering deliberately retains the prior
+iteration's disposal state and skips cleanup on a generation mismatch; Quint
+rejects the resulting terminal execution.
+It proves cleanup ordering when the resource cannot escape its lexical
+iteration. This is not a data-state fixed point: loop-carried values and
+escaping aliases that retain an older generation remain outside the unified
+lowering.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

@@ -335,6 +335,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Propagate labeled `break`/`continue` through nested loops to the owning loop without inner-loop discharge.
     - [x] Add repeat/exit states for awaited catch/finally loops, giving arbitrary finite repetition in the control graph.
     - [x] Re-acquire and dispose lexical `using` / `await using` resources within each modeled handler-loop iteration.
+    - [x] Give repeated lexical resources generation identities and require cleanup of the latest acquired generation.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
