@@ -115,7 +115,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Promote a reachable all-actions-stutter state to an explicit infinite no-progress execution witness.
     - [x] Report bounded property-specific vacuity when a safe property's referenced state cannot change on any bounded reachable transition.
     - [x] Upgrade property-specific vacuity to an unbounded result when no typed transition can change any referenced state.
-    - [ ] Discover strengthening invariants for reachability-specific frozen state and support general liveness/fairness properties beyond explicit stutter cycles.
+    - [x] Use explicitly selected, proven strengthening invariants to promote reachability-specific frozen-state vacuity beyond a bound.
+    - [ ] Discover strengthening invariants automatically and support general liveness/fairness properties beyond explicit stutter cycles.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

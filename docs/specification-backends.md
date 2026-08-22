@@ -168,6 +168,10 @@ depth. `inductively-vacuous-property` is added only when init establishes the
 property and no typed transition can change any referenced state at all. An
 unreachable mutating transition prevents this promotion until a strengthening
 invariant can justify excluding it.
+When verified strengthening properties exclude every transition that could
+change the referenced state, the checker emits
+`strengthened-vacuous-property`. This is an unbounded frozen-state result under
+the reported inductive properties, not a general proof of useful liveness.
 
 Standalone TLC output is normalized for scalar values and the supported
 single- or multiline finite Set, scalar-key Map/function, and closed-record

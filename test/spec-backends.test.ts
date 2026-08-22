@@ -845,10 +845,18 @@ describe("spec IR and generated verifier programs", () => {
       action unreachableChange: phase' = 1
       action_when unreachableChange: phase < 0
       temporal phaseFixed: phase === 0
+      temporal phaseNonnegative: phase >= 0
     */`).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
     expect(diagnostics).toContainEqual(expect.objectContaining({ code: "bounded-vacuous-property", name: "phaseFixed" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "inductively-vacuous-property", name: "phaseFixed" }));
+    const strengthened = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 3,
+      strengtheningProperties: ["phaseNonnegative"],
+    });
+    expect(strengthened).toContainEqual(expect.objectContaining({
+      code: "strengthened-vacuous-property", name: "phaseFixed", relatedName: "phaseNonnegative",
+    }));
   });
 
   it("detects models whose enabled initial transitions cannot change state", async () => {

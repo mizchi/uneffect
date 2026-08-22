@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property"
+    | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
     | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
@@ -626,6 +626,10 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     }
     strengthening.push(property);
   }
+  const strengtheningCandidates: TemporalSpec["properties"][] = [
+    ...strengthening.map((property) => [property]),
+    ...(strengthening.length > 1 ? [strengthening] : []),
+  ];
   const enabledStatus = await checkSmt(declarations, [...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
   if (enabledStatus === "unsat" && initStatus === "sat") diagnostics.push({
     code: "deadlocked-initial-state", name: "<init>", backend: "z3", depth: 0, message: "no action is enabled in any state satisfying init",
@@ -695,6 +699,18 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         code: "inductively-vacuous-property", name: property.name, backend: "z3", depth: 1,
         message: `${property.name} is vacuous without a bound: init establishes it and no transition can change any state it references`,
       });
+      else for (const properties of strengtheningCandidates) {
+        const invariant = properties.length === 1
+          ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
+          : `(and ${properties.map((candidate) => temporalToSmt(candidate.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
+        if (await checkSmt(declarations, [invariant, step(0), changesOnAnyTransition]) !== "unsat") continue;
+        const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
+        diagnostics.push({
+          code: "strengthened-vacuous-property", name: property.name, relatedName: propertyNames, backend: "z3", depth: 1,
+          message: `${property.name} is vacuous without a bound under proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
+        });
+        break;
+      }
     }
   }
   for (const action of spec.actions) {
@@ -719,10 +735,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
           code: "inductively-unreachable-action", name: action.name, backend: "z3", depth: 1,
           message: `${action.name} is unreachable: init excludes its guard and one-step induction preserves that exclusion across every transition`,
         });
-        else for (const properties of [
-          ...strengthening.map((property) => [property]),
-          ...(strengthening.length > 1 ? [strengthening] : []),
-        ]) {
+        else for (const properties of strengtheningCandidates) {
           const invariantAt = (index: number) => properties.length === 1
             ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, index), symbols)
             : `(and ${properties.map((property) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols)).join(" ")})`;
