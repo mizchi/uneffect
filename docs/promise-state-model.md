@@ -91,11 +91,14 @@ The model currently abstracts values and rejection reasons. Unknown or
 ambiguous adoption targets still admit either terminal state. Direct local
 throwing getters and callable hostile thenables are modeled. Conditional local
 getters, direct `Proxy` values with a `then` member, direct external/imported
-`PromiseLike` symbol identities, and typed imported call results use a conservative dynamic state that
+`PromiseLike` symbol identities, typed imported call results, and unresolved
+computed typed thenable selections use a conservative dynamic state that
 permits fulfillment, rejection, or remaining pending. Each such pattern carries
 an explicit `InvokeUserCode` capability effect, and effect inference assigns it
-to the enclosing Promise executor. Some dynamically selected thenables,
-concrete Proxy trap behavior, and exact nested thenable
+to the enclosing Promise executor. Direct conditional selections between
+analyzed local thenable symbols retain every branch identity and emit distinct
+adoption actions; more general computed selections, concrete Proxy trap
+behavior, and exact nested thenable
 resolution remain conservative gaps. Links currently require a direct local constructor binding
 and at least one analyzed reaction chain for the adopted executor; aliases,
 parameters, object properties, and named handler summaries remain conservative.

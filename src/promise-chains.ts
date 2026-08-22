@@ -18,6 +18,7 @@ export interface PromiseExecutorPattern {
   adoptedExecutor?: number;
   adoptedExecutors?: number[];
   adoptedThenable?: number;
+  adoptedThenables?: number[];
   selfResolution?: boolean;
   mayRemainPending: boolean;
   span: { start: number; end: number };
@@ -327,8 +328,22 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       }
       return thenable === undefined ? [] : [thenable];
     }))];
+    const selectedSymbols = (expression: ts.Expression): ts.Symbol[] => {
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return selectedSymbols(expression.expression);
+      if (ts.isConditionalExpression(expression)) return [...selectedSymbols(expression.whenTrue), ...selectedSymbols(expression.whenFalse)];
+      const symbol = targetSymbol(checker, expression);
+      return symbol ? [symbol] : [];
+    };
     for (const expression of pending.expressions) {
       if (targetSymbol(checker, expression)) continue;
+      const selected = [...new Set(selectedSymbols(expression).flatMap((symbol) => {
+        const thenable = thenableBySymbol.get(symbol);
+        return thenable === undefined ? [] : [thenable];
+      }))];
+      if (selected.length > 0) {
+        adoptedThenables.push(...selected);
+        continue;
+      }
       const type = checker.getTypeAtLocation(expression);
       if (!checker.getPropertyOfType(type, "then")) continue;
       const callTarget = ts.isCallExpression(expression) ? targetSymbol(checker, expression.expression) : undefined;
@@ -342,7 +357,9 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       });
       adoptedThenables.push(thenable);
     }
-    if (adoptedThenables.length === 1) executors[pending.executor]!.adoptedThenable = adoptedThenables[0];
+    const uniqueThenables = [...new Set(adoptedThenables)];
+    if (uniqueThenables.length) executors[pending.executor]!.adoptedThenables = uniqueThenables;
+    if (uniqueThenables.length === 1) executors[pending.executor]!.adoptedThenable = uniqueThenables[0];
   }
   const visitChains = (node: ts.Node): void => {
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunctionChains(node as ts.FunctionLikeDeclaration);
@@ -413,7 +430,9 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     if (settlements.includes("assimilating")) {
       action(`settle_${chainIndex}_assimilating`, [`${root} == 0`], new Map([[root, "3"]]));
       const executor = chain.executor === undefined ? undefined : model.executors[chain.executor];
-      emitAdoption(`assimilate_${chainIndex}`, root, executor?.adoptedExecutor, "1", "2", executor?.adoptedThenable, executor?.selfResolution);
+      if ((executor?.adoptedThenables?.length ?? 0) > 1) executor!.adoptedThenables!.forEach((thenable, option) =>
+        emitAdoption(`assimilate_${chainIndex}_thenable_option_${option}`, root, undefined, "1", "2", thenable));
+      else emitAdoption(`assimilate_${chainIndex}`, root, executor?.adoptedExecutor, "1", "2", executor?.adoptedThenable, executor?.selfResolution);
     }
     if (options.allowDoubleSettlement) action(`settle_${chainIndex}_again`, [`${root} == 1`], new Map([[root, "2"], [`chain_${chainIndex}_double_settlement`, "true"]]));
     chain.links.forEach((link, stage) => {

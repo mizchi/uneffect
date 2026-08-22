@@ -185,6 +185,22 @@ describe("Promise state and reaction chains", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("keeps a dynamically selected thenable as conservative assimilation", () => {
+    const model = analyzePromiseChains("selected-thenable.ts", `
+      function run(flag: boolean) {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const result = new Promise<number>(resolve => resolve(flag ? first : second))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables).toHaveLength(2);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [0, 1] });
+    const quint = generatePromiseChainsQuint("selected_thenable", model);
+    expect(quint).toContain("assimilate_0_thenable_option_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_option_1_thenable_1_rejected");
+  });
+
   it("resolves a thenable returned by a local factory before assimilation", () => {
     const model = analyzePromiseChains("returned-thenable.ts", `
       function hostile() {
