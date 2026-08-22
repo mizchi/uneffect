@@ -1053,4 +1053,30 @@ describe("async error and explicit resource safety", () => {
     expect(firstResumeTarget).toBe(secondEntry);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("correlates conditional awaited handler branches", () => {
+    const result = analyzeAsyncSafety("conditional-handler.ts", `
+      declare const recoverFirst: boolean
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          if (recoverFirst) {
+            await Promise.resolve("first").then(value => value)
+          } else {
+            await Promise.resolve("second").then(value => value)
+          }
+        }
+      }
+    `);
+    const first = result.promises.find((item) => item.source.includes('"first"'))!;
+    const second = result.promises.find((item) => item.source.includes('"second"'))!;
+    expect(first.controlConditions[0]?.id).toBe(second.controlConditions[0]?.id);
+    expect(first.controlConditions[0]?.expected).toBe(true);
+    expect(second.controlConditions[0]?.expected).toBe(false);
+    const quint = generateUnifiedAsyncQuint("conditional_handler", result, "run");
+    expect(quint).toContain(`action skip_handler_await_${first.promiseChain}`);
+    expect(quint).toContain(`action skip_handler_await_${second.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

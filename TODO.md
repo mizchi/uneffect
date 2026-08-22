@@ -303,7 +303,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.
-    - [ ] Extend enclosing-handler propagation to abrupt completion and await joins nested in handler branches.
+    - [x] Correlate analyzed awaits in top-level handler `if` then/else branches through shared condition identity and skip/join transitions.
+    - [ ] Extend enclosing-handler propagation to abrupt completion nested in handler branches and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

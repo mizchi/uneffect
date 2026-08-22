@@ -974,13 +974,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   });
   const emitHandlerAwait = (region: "catch" | "finally", observation: PromiseObservation, pc: number, next: number | string, completion: AsyncControlStatement["completion"], failureTarget: number, resumeGuards: string[] = []): void => {
     const chain = observation.promiseChain!;
-    emit(`promise_${chain}_fulfill`, [`pc == ${pc}`], new Map([["pc", String(pc + 1)]]));
-    emit(`promise_${chain}_reject_escapes`, [`pc == ${pc}`], new Map([["pc", String(failureTarget)], ["completion", "1"]]));
+    const guards = [`pc == ${pc}`, ...conditionGuards(observation.controlConditions)];
+    emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
+    emit(`promise_${chain}_reject_escapes`, guards, new Map([["pc", String(failureTarget)], ["completion", "1"]]));
     const resumeTarget = completion === "normal" ? next : failureTarget;
     const updates = new Map<string, string>([["pc", String(resumeTarget)]]);
     if (completion === "return" && region === "finally") updates.set("completion", "0");
     if (completion === "throw") updates.set("completion", "1");
     emit(`${region}_await_${chain}_resume`, [`pc == ${pc + 1}`, ...resumeGuards], updates);
+    const mismatch = conditionMismatch(observation.controlConditions);
+    if (observation.conditional) emit(`skip_handler_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map(updates));
   };
   regionLayouts.forEach((layout, regionIndex) => {
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;

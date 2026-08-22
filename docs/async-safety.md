@@ -446,7 +446,8 @@ analyzed awaits in the same top-level statement are sequenced left-to-right. Cat
 await rejection preserves an enclosing finally edge before escaping; normal
 finally completion resumes the first following outer await. Abrupt completion
 nested inside handler branches and general handler joins still require the
-statement-level CFG. Top-level rethrows and a
+statement-level CFG. Awaited chains in a top-level handler `if` share the same
+condition identity and use correlated then/else skip transitions. Top-level rethrows and a
 single analyzed awaited handler failure do propagate to the nearest enclosing
 catch, including through a normally completing inner finally region.
 
