@@ -229,21 +229,18 @@ describe("Promise state and reaction chains", () => {
 
   it("keeps nested thenable assimilation live instead of dropping its outcomes", () => {
     const model = analyzePromiseChains("nested-thenable.ts", `
-      declare const inner: PromiseLike<number>
       function run() {
+        const inner = { then(_resolve: (value: number) => void, reject: (reason: Error) => void) { reject(new Error("inner")) } }
         const outer = { then(resolve: (value: PromiseLike<number>) => void) { resolve(inner) } }
         const result = new Promise<number>((resolve) => resolve(outer))
         return result.catch(() => 0)
       }
     `);
-    expect(model.thenables).toContainEqual(expect.objectContaining({
-      binding: "outer",
-      possibleSettlements: ["fulfilled", "rejected"],
-      mayRemainPending: true,
-    }));
+    expect(model.thenables.find((thenable) => thenable.binding === "inner")).toMatchObject({ possibleSettlements: ["rejected"] });
+    expect(model.thenables.find((thenable) => thenable.binding === "outer")).toMatchObject({ adoptedThenable: 0 });
     const quint = generatePromiseChainsQuint("nested_thenable", model);
-    expect(quint).toContain("thenable_0_fulfilled");
-    expect(quint).toContain("thenable_0_rejected");
+    expect(quint).toContain("assimilate_0_thenable_1_nested_thenable_0_rejected");
+    expect(quint).not.toContain("assimilate_0_thenable_1_nested_thenable_0_fulfilled");
   });
 
   it("recognizes a direct Proxy get trap that always throws during then lookup", () => {

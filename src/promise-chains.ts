@@ -36,6 +36,7 @@ export interface PromiseThenablePattern {
   possibleSettlements: Exclude<PromiseExecutorSettlement, "assimilating">[];
   firstCallWins: true;
   mayRemainPending: boolean;
+  adoptedThenable?: number;
   span: { start: number; end: number };
 }
 export interface PromiseChainModel { executors: PromiseExecutorPattern[]; thenables: PromiseThenablePattern[]; chains: PromiseChainPattern[] }
@@ -177,6 +178,10 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     if (callback) {
       const analyzed = analyzeExecutor(callback, checker, expression.getSourceFile());
       const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
+      const adoptedThenables = [...new Set(analyzed.adoptedSymbols.flatMap((symbol) => {
+        const thenable = thenableBySymbol.get(symbol);
+        return thenable === undefined ? [] : [thenable];
+      }))];
       return {
         thenAccess: "callable", invokesUserCode: true,
         capabilityEffects: ["InvokeUserCode"], provenance: "local",
@@ -184,6 +189,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           ? ["fulfilled", "rejected"]
           : analyzed.possibleSettlements.filter((item): item is "fulfilled" | "rejected" => item !== "assimilating"),
         firstCallWins: true, mayRemainPending: analyzed.mayRemainPending || nestedAssimilation,
+        adoptedThenable: adoptedThenables.length === 1 ? adoptedThenables[0] : undefined,
       };
     }
     if (proxy && checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then")) {
@@ -395,13 +401,17 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
     const index = model.chains.findIndex((chain) => chain.executor === executor);
     return index < 0 ? undefined : index;
   };
-  const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string, adoptedThenable?: number, selfResolution = false): void => {
+  const emitAdoption = (name: string, state: string, adoptedExecutor: number | undefined, fulfilled: string, rejected: string, adoptedThenable?: number, selfResolution = false, seenThenables = new Set<number>()): void => {
     if (selfResolution) {
       action(`${name}_self_resolution_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
       return;
     }
     const adoptedChain = adoptedExecutor === undefined ? undefined : chainForExecutor(adoptedExecutor);
     const thenable = adoptedThenable === undefined ? undefined : model.thenables[adoptedThenable];
+    if (thenable?.adoptedThenable !== undefined && !seenThenables.has(adoptedThenable!)) {
+      emitAdoption(`${name}_thenable_${adoptedThenable}_nested`, state, undefined, fulfilled, rejected, thenable.adoptedThenable, false, new Set([...seenThenables, adoptedThenable!]));
+      return;
+    }
     if (thenable?.thenAccess === "throws") {
       action(`${name}_thenable_${adoptedThenable}_getter_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
       return;
