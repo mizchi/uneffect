@@ -365,14 +365,52 @@ describe("builtin async temporal patterns", () => {
     ]);
     const quint = generateWebEventLoopQuint("scheduler_tasks", model);
     expect(quint).toContain("action run_scheduler_task_1");
-    expect(quint).toMatch(/action run_scheduler_task_2[\s\S]*not\(\(callback_1_pending and callback_1_due <= clock\)/);
-    expect(quint).toMatch(/action run_scheduler_task_0[\s\S]*callback_1_pending and callback_1_due <= clock/);
+    expect(quint).toMatch(/action run_scheduler_task_2[\s\S]*callback_1_pending and callback_1_due <= clock and \(1 > 1 or \(1 == 1 and 1 < 2\)\)/);
+    expect(quint).toMatch(/action run_scheduler_task_0[\s\S]*callback_1_pending and callback_1_due <= clock and \(1 > 0/);
     expect(run(quint, "eventLoopSafe").status).toBe(0);
     expect(run(generateWebEventLoopQuint("scheduler_tasks_broken", model, { allowWrongSchedulerPriority: true }), "eventLoopSafe").status).not.toBe(0);
     expect(() => generateWebEventLoopQuint("dynamic_scheduler", analyzeAsyncPatterns("dynamic-scheduler.ts", `
       function schedule(signal: TaskSignal) { scheduler.postTask(() => {}, { signal }) }
     `))).toThrow(/requires a static priority/);
   }, 20_000);
+
+  it("applies ordered TaskController reprioritization before a queued task runs", () => {
+    const model = analyzeAsyncPatterns("scheduler-reprioritize.ts", `
+      function schedule() {
+        const controller = new TaskController({ priority: "user-blocking" })
+        scheduler.postTask(async () => { await scheduler.yield() }, { signal: controller.signal })
+        scheduler.postTask(() => {}, { priority: "user-visible" })
+        controller.setPriority("background")
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-blocking", priorityMutable: true, priorityChanges: ["background"] },
+      { kind: "scheduler-yield", priority: "background", priorityMutable: true, enqueuedBy: 0 },
+      { kind: "scheduler-post-task", priority: "user-visible" },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_reprioritize", model);
+    expect(quint).toContain("var callback_0_priority: int");
+    expect(quint).toContain("action reprioritize_scheduler_task_0_0");
+    expect(quint).toMatch(/action reprioritize_scheduler_task_0_0[\s\S]*callback_0_priority' = 0/);
+    expect(quint).toMatch(/action run_scheduler_task_0[\s\S]*callback_0_priority_step == 1/);
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("keeps an explicit postTask priority immutable when a TaskSignal is also present", () => {
+    const model = analyzeAsyncPatterns("scheduler-fixed-priority.ts", `
+      function schedule() {
+        const controller = new TaskController({ priority: "user-blocking" })
+        scheduler.postTask(() => {}, { signal: controller.signal, priority: "user-visible" })
+        controller.setPriority("background")
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-visible", priorityMutable: undefined, priorityChanges: undefined },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_fixed_priority", model);
+    expect(quint).not.toContain("reprioritize_scheduler_task_0");
+    expect(quint).not.toContain("callback_0_priority:");
+  });
 
   it("models scheduler.yield as a continuation inheriting its postTask priority", () => {
     const model = analyzeAsyncPatterns("scheduler-yield.ts", `

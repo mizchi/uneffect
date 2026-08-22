@@ -18,6 +18,8 @@ export interface TimerPattern {
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
+  priorityMutable?: true;
+  priorityChanges?: Array<"user-blocking" | "user-visible" | "background">;
   initiallyCancelled?: boolean;
   abortTimer?: number;
   abortComposition?: number;
@@ -259,6 +261,18 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const handleAliases = new Map<string, string>();
     const handleTargets = new Map<string, number>();
     const abortSignalTargets = new Map<string, AbortTarget>();
+    const taskControllers = new Map<string, { priority: NonNullable<TimerPattern["priority"]>; tasks: number[] }>();
+    const staticPriority = (expression: ts.Expression | undefined): TimerPattern["priority"] => expression && ts.isStringLiteralLike(expression)
+      && (expression.text === "user-blocking" || expression.text === "user-visible" || expression.text === "background") ? expression.text : undefined;
+    const taskControllerConstructor = (expression: ts.Expression): boolean => {
+      if (!ts.isIdentifier(expression) || expression.text !== "TaskController") return false;
+      return resolvedSymbol(expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+    };
+    const controllerForSignal = (expression: ts.Expression | undefined): { name: string; state: { priority: NonNullable<TimerPattern["priority"]>; tasks: number[] } } | undefined => {
+      if (!expression || !ts.isPropertyAccessExpression(expression) || expression.name.text !== "signal" || !ts.isIdentifier(expression.expression)) return undefined;
+      const state = taskControllers.get(expression.expression.text);
+      return state ? { name: expression.expression.text, state } : undefined;
+    };
     const assignedBinding = (call: ts.CallExpression): string | undefined => ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name) ? call.parent.name.text
       : ts.isBinaryExpression(call.parent) && call.parent.right === call && call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(call.parent.left) ? call.parent.left.text
         : undefined;
@@ -446,6 +460,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (target !== undefined) handleTargets.set(node.name.text, target);
         const signal = abortSignalTargets.get(node.initializer.text);
         if (signal) abortSignalTargets.set(node.name.text, signal);
+      } else if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && ts.isNewExpression(node.initializer) && taskControllerConstructor(node.initializer.expression)) {
+        const options = node.initializer.arguments?.[0];
+        const priorityProperty = options && ts.isObjectLiteralExpression(options) ? options.properties.find((property) =>
+          ts.isPropertyAssignment(property) && property.name.getText(source).replaceAll(/["']/g, "") === "priority") : undefined;
+        const priority = priorityProperty && ts.isPropertyAssignment(priorityProperty) ? staticPriority(priorityProperty.initializer) : "user-visible";
+        if (priority) taskControllers.set(node.name.text, { priority, tasks: [] });
       } else if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
         handleAliases.delete(node.left.text);
         handleTargets.delete(node.left.text);
@@ -459,6 +480,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (ts.isReturnStatement(node) && node.expression) recordEscapesInValue(node.expression, "return", node);
       if (ts.isCallExpression(node)) {
         const operation = adapter.resolveCall(node)?.operation;
+        if (!operation && ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "setPriority"
+          && ts.isIdentifier(node.expression.expression)) {
+          const controller = taskControllers.get(node.expression.expression.text);
+          const priority = staticPriority(node.arguments[0]);
+          const standard = resolvedSymbol(node.expression.name)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+          if (controller && priority && standard) {
+            controller.priority = priority;
+            for (const task of controller.tasks) (timers[task]!.priorityChanges ??= []).push(priority);
+          }
+        }
         if (operation?.kind !== "timer-clear") for (const argument of node.arguments) recordEscapesInValue(argument, "argument", node);
         if (operation?.kind === "timer") {
           const callbackNode = node.arguments[operation.callbackArgument];
@@ -520,17 +551,18 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           })[0];
           const priorityNode = option("priority");
           const signalNode = option("signal");
+          const taskController = !priorityNode ? controllerForSignal(signalNode) : undefined;
           const signalSymbol = signalNode && ts.isIdentifier(signalNode) ? resolvedSymbol(signalNode) : undefined;
           const signalType = signalNode ? signalSymbol?.valueDeclaration
             ? checker.getTypeOfSymbolAtLocation(signalSymbol, signalSymbol.valueDeclaration)
             : checker.getTypeAtLocation(signalNode) : undefined;
           const signalSetsPriority = Boolean(!priorityNode && signalType && checker.getPropertyOfType(signalType, "priority"));
-          const externalAbortSignal = Boolean(signalNode && !abortTarget(signalNode) && signalType
+          const externalAbortSignal = Boolean(signalNode && !taskController && !abortTarget(signalNode) && signalType
             && checker.getPropertyOfType(signalType, "aborted")?.declarations?.some((declaration) =>
               declaration.getSourceFile().isDeclarationFile && ts.isInterfaceDeclaration(declaration.parent)
               && declaration.parent.name.text === "AbortSignal"));
-          const priority = priorityNode && ts.isStringLiteralLike(priorityNode)
-            && (priorityNode.text === "user-blocking" || priorityNode.text === "user-visible" || priorityNode.text === "background") ? priorityNode.text : priorityNode || signalSetsPriority ? undefined : "user-visible";
+          const priority = taskController?.state.priority
+            ?? (priorityNode ? staticPriority(priorityNode) : signalSetsPriority ? undefined : "user-visible");
           const delayNode = option("delay");
           const delay = delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : delayNode ? undefined : 0;
           const signal = signalNode && ts.isIdentifier(signalNode) ? abortSignalTargets.get(signalNode.text) : undefined;
@@ -544,12 +576,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             queue: "scheduler-task",
             kind: "scheduler-post-task",
             priority,
+            priorityMutable: taskController ? true : undefined,
+            priorityChanges: taskController ? [] : undefined,
             initiallyCancelled: signal?.alreadyAborted,
             abortTimer: signal?.timer,
             abortComposition: signal?.composition,
             externalAbortSignal,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (taskController) taskController.state.tasks.push(timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "scheduler-yield") {
           timers.push({
@@ -616,6 +651,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (cancellation.timer !== undefined) continue;
     const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle);
     if (timer >= 0) cancellation.timer = timer;
+  }
+  for (const timer of timers) {
+    if (timer.kind !== "scheduler-yield" || timer.enqueuedBy === undefined) continue;
+    const parent = timers[timer.enqueuedBy];
+    if (!parent?.priorityMutable) continue;
+    timer.priorityMutable = true;
+    timer.priority = parent.priorityChanges?.at(-1) ?? parent.priority;
   }
   return { timers, combinators, cancellations, abortCompositions, timerEscapes };
 }
@@ -775,7 +817,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const initialTicket = new Map(initialJobs.map((job, ticket) => [job.key, ticket]));
   const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, `  var ${phase}: int`, "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var callback_precondition_broken: bool", "  var next_microtask_ticket: int"];
   temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
-  model.timers.forEach((timer, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`, ...(timer.externalAbortSignal ? [`  var callback_${index}_external_aborted: bool`] : [])));
+  model.timers.forEach((timer, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`, ...(timer.externalAbortSignal ? [`  var callback_${index}_external_aborted: bool`] : []), ...(timer.priorityChanges?.length ? [`  var callback_${index}_priority: int`, `  var callback_${index}_priority_step: int`] : [])));
   abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
@@ -789,6 +831,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const definitelyCancelled = model.cancellations.some((cancellation) => cancellation.timer === index && cancellation.definite);
     lines.push(`    callback_${index}_pending' = ${!timer.initiallyCancelled && !definitelyCancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
     if (timer.externalAbortSignal) lines.push(`    callback_${index}_external_aborted' = false,`);
+    if (timer.priorityChanges?.length) lines.push(`    callback_${index}_priority' = ${timer.priority === "user-blocking" ? 2 : timer.priority === "background" ? 0 : 1},`, `    callback_${index}_priority_step' = 0,`);
     if (timer.queue === "microtask") lines.push(`    callback_${index}_ticket' = ${initialTicket.get(`callback:${index}`) ?? -1},`);
   });
   abortCompositions.forEach((composition, index) => {
@@ -803,7 +846,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
+  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.priorityChanges?.length ? [`callback_${index}_priority`, `callback_${index}_priority_step`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
@@ -868,14 +911,22 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   action("skip_rendering_opportunity", phaseGuard(2), new Map([[phase, "0"], ["wrong_phase", `${phase} != 2`]]));
   action("advance_clock", phaseGuard(0), new Map([[clock, `${clock} + 1`], ["wrong_phase", `${phase} != 0`]]));
   action("idle_turn", phaseGuard(0), new Map([[phase, "1"], ["wrong_phase", `${phase} != 0`]]));
-  const priorityRank = (timer: TimerPattern): number => timer.priority === "user-blocking" ? 2 : timer.priority === "background" ? 0 : 1;
+  const priorityRank = (priority: TimerPattern["priority"]): number => priority === "user-blocking" ? 2 : priority === "background" ? 0 : 1;
+  const priorityTerm = (index: number): string => model.timers[index]!.priorityChanges?.length ? `callback_${index}_priority` : String(priorityRank(model.timers[index]!.priority));
+  model.timers.forEach((timer, index) => timer.priorityChanges?.forEach((priority, step) => {
+    action(`reprioritize_scheduler_task_${index}_${step}`, [`callback_${index}_priority_step == ${step}`], new Map([
+      [`callback_${index}_priority`, String(priorityRank(priority))],
+      [`callback_${index}_priority_step`, String(step + 1)],
+    ]));
+  }));
+  const pendingPriorityChanges = model.timers.flatMap((timer, index) => timer.priorityChanges?.length ? [`callback_${index}_priority_step == ${timer.priorityChanges.length}`] : []);
   schedulerTasks.forEach((index) => {
     const timer = model.timers[index]!;
-    const rank = priorityRank(timer);
+    const rank = priorityTerm(index);
     const outranking = schedulerTasks.flatMap((other) => {
       if (other === index) return [];
-      const otherRank = priorityRank(model.timers[other]!);
-      return otherRank > rank || (otherRank === rank && other < index) ? [`(callback_${other}_pending and callback_${other}_due <= clock)`] : [];
+      const otherRank = priorityTerm(other);
+      return [`(callback_${other}_pending and callback_${other}_due <= clock and (${otherRank} > ${rank} or (${otherRank} == ${rank} and ${other} < ${index})))`];
     });
     const violation = outranking.join(" or ") || "false";
     const abortViolation = [timer.abortComposition === undefined ? undefined : `abort_${timer.abortComposition}_aborted`, timer.abortTimer === undefined ? undefined : `callback_${timer.abortTimer}_fires > 0`].filter((term): term is string => Boolean(term)).join(" or ") || "false";
@@ -883,7 +934,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
       [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
     ]);
     enqueueChildren(index, updates);
-    const guards = [...phaseGuard(0), `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
+    const guards = [...phaseGuard(0), ...pendingPriorityChanges, `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
     applyCallbackSummary(index, guards, updates);
     action(timerAction("run", timer, index), guards, updates);
     if (options.allowRunAbortedSchedulerTask && abortViolation !== "false") action(`run_aborted_scheduler_task_${index}`, [`callback_${index}_pending`, `(${abortViolation})`], new Map([

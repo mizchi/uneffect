@@ -169,6 +169,19 @@ as an unrelated generic timer/composition, and separate calls receive separate
 abstract instances. Recursive and multi-return factories still stop at the
 dynamic boundary.
 
+The initial TaskSignal reprioritization slice follows the
+[Prioritized Task Scheduling specification](https://wicg.github.io/scheduling-apis/):
+a direct `TaskController` with a literal initial priority owns tasks receiving
+its `.signal`, and later literal `setPriority` calls in the same synchronous
+function become ordered Quint transitions that must finish before queued tasks
+run. Queue selection compares the resulting dynamic priority with fixed tasks,
+and an inline `scheduler.yield` inherits the final controller priority. An
+explicit `postTask({ priority })` remains immutable and ignores signal priority,
+as required by the platform semantics. Controller aliases, changes from later
+callbacks, dynamic priority values, dependent TaskSignals, and reentrant
+`prioritychange`/`NotAllowedError` behavior remain unsupported rather than
+being treated as proofs.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts
