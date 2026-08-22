@@ -255,10 +255,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     if (declaration && ts.isFunctionDeclaration(declaration) && declaration.asteriskToken && declaration.body) {
       const branches: ts.Expression[] = [];
+      const substitutions = new Map<ts.Symbol, ts.Expression>();
+      if (ts.isCallExpression(expression)) declaration.parameters.forEach((parameter, index) => {
+        if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
+        const symbol = resolvedSymbol(parameter.name);
+        if (symbol) substitutions.set(symbol, expression.arguments[index]);
+      });
       let failure: "step" | undefined;
       for (const statement of declaration.body.statements) {
         if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
-          && statement.expression.expression && !statement.expression.asteriskToken) branches.push(statement.expression.expression);
+          && statement.expression.expression && !statement.expression.asteriskToken) {
+          const yielded = statement.expression.expression;
+          const substitution = ts.isIdentifier(yielded) ? substitutions.get(resolvedSymbol(yielded)!) : undefined;
+          branches.push(substitution ?? yielded);
+        }
         else if (ts.isThrowStatement(statement)) failure = "step";
         else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
       }
@@ -717,7 +727,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const branchPresence = boundedConditionalArrays ? branchAlternatives!.map((_, index) =>
             boundedConditionalArrays[0][index] === undefined ? "when-false" : boundedConditionalArrays[1][index] === undefined ? "when-true" : "always" as const) : undefined;
           const branches = branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
-            : boundedElements ? boundedElements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
+            : boundedElements ? boundedElements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText()) ?? [];
           const branchKinds = boundedConditionalArrays ? branchAlternatives!.map((_, index) => {
             const kinds = [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
             return kinds.every((kind) => kind === kinds[0]) ? kinds[0]! : "unknown";

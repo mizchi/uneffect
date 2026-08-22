@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -600,6 +600,29 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action reject_0_2");
     expect(quint).toContain("action assimilate_1_0");
     expect(quint).not.toContain("action reject_1_1");
+  });
+
+  it("models a finite Promise batch supplied by an imported generator", () => {
+    const entry = "examples/dogfood/imported-promise-batch.ts";
+    const values = "examples/dogfood/dashboard-values.ts";
+    const program = ts.createProgram([entry, values], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+    });
+    const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(entry)!);
+    expect(model.combinators).toEqual([
+      expect.objectContaining({
+        owner: "loadImportedDashboard",
+        branches: ['"cached-profile"', "network"],
+        branchKinds: ["value", "thenable"],
+        staticIterable: true,
+        iteratorKind: "local",
+        iteratorEffects: ["InvokeUserCode"],
+      }),
+    ]);
+    const quint = generateAsyncPatternsQuint("imported_batch", model);
+    expect(quint).not.toContain("action reject_0_0");
+    expect(quint).toContain("action assimilate_0_1");
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {

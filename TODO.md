@@ -467,6 +467,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve literal `Promise.reject` and direct `new Error` reasons in `Promise.any` input order and emit stable Quint artifact constants.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
     - [x] Bound direct builtin `Set` construction over a static array, preserving insertion order and only removing statically provable duplicate identities while leaving custom or mutable Sets dynamic.
+    - [x] Resolve imported finite generator functions by TypeChecker symbol identity and substitute directly yielded parameters with their call-site arguments.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.
