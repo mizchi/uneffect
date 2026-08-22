@@ -12,6 +12,7 @@ import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedA
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { extractAnnotations } from "./annotations.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
+import { analyzeProgramEffects, type EffectDiagnostic } from "./effects.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -28,7 +29,7 @@ export interface ProjectVerificationObligation extends VerificationArtifact {
 
 export interface VerifyUneffectProjectResult {
   obligations: ProjectVerificationObligation[];
-  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic>;
+  diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic>;
   emittedFiles: Record<string, string>;
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
@@ -70,6 +71,7 @@ function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
     lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+    types: ["node"],
     noEmit: true,
     skipLibCheck: true,
   };
@@ -102,12 +104,13 @@ function verifyQuintInvariant(program: string, invariant: string): ProjectTempor
 
 export async function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
-  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic> = [];
+  const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files);
   const program = inMemoryProgram(options.files);
+  diagnostics.push(...analyzeProgramEffects(program, { requireAnnotations: false }).diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);

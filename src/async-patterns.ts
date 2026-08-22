@@ -438,11 +438,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (node !== callback && ts.isFunctionLike(node)) return;
         if (ts.isCallExpression(node)) {
           const operation = adapter.resolveCall(node)?.operation;
-          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "check")) {
+          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "timer" || operation.queue === "check")) {
+            if (operation.queue === "timer" && (timers[parent]!.repeats || node.getStart(node.getSourceFile()) === timers[parent]!.span.start)) return;
             const child = timers.length;
             const callbackNode = node.arguments[operation.callbackArgument];
+            const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
             const childSource = node.getSourceFile();
-            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: operation.queue, enqueuedBy: parent, span: { start: node.getStart(childSource), end: node.getEnd() } });
+            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
             collectNestedJobs(callbackNode, child, visited);
             return;
           } else if (operation?.kind === "scheduler-yield") {
@@ -887,6 +889,10 @@ export function generateNodeEventLoopQuint(
     checks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
       updates.set(`callback_${child}_due`, "clock + 1");
+    });
+    timers.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+      updates.set(`callback_${child}_pending`, "true");
+      updates.set(`callback_${child}_due`, `clock + ${nodeDelay(model.timers[child]!)}`);
     });
   };
   polls.forEach((index) => action(`complete_poll_${index}`, [

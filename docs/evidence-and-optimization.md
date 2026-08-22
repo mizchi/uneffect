@@ -9,6 +9,13 @@ Uneffect separates gradual diagnostics from authority to rewrite code. Every eff
 
 `inferred` and `unknown` remain useful for adoption diagnostics, but neither authorizes an optimizer transformation.
 
+`verifyUneffectProject` runs the program-wide effect analysis in gradual
+adoption mode alongside contracts, typed arrays, ownership, assumptions, and
+optional temporal verification. Unannotated functions are inferred without a
+mandatory boundary, while any function that has an `effect` annotation is
+checked as an upper bound and its missing/unused effects appear in the unified
+project diagnostics.
+
 ## Reproducible artifacts
 
 `just evidence file.ts` emits JSON containing the Uneffect version, TypeScript compiler revision, normalized compiler-options hash, source hash, builtin-contract digest, summaries, and diagnostics. Changing any of these proof dependencies invalidates the artifact.
@@ -119,6 +126,11 @@ authorization plan for a downstream compressor, not rewritten JavaScript.
 ## Dogfood gate
 
 `just dogfood` analyzes every TypeScript implementation file as one Program in inference-only adoption mode, then runs a regression test requiring zero diagnostics and zero `unknown` summaries. This exercise found and fixed two frontend issues: mutations of freshly allocated locals were incorrectly escaping into caller summaries, and known synchronous TypeScript/Array callback APIs were being classified with unknown invocation timing. Annotated boundaries remain enforced in inference-only mode.
+
+The Node service dogfood additionally reads a scoped settings file, composes
+the callback's Console and Timer capabilities into the registering function,
+and verifies fs poll → next-tick → V8 microtask → later Immediate behavior.
+Removing `Console` from the annotated boundary is a required negative control.
 
 The telemetry packet dogfood fixture additionally applies the assumption policy
 to a statement-scoped typed-array wire-format escape hatch, a Console builtin,

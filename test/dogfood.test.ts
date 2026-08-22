@@ -11,18 +11,26 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 
 describe("Uneffect dogfood", () => {
   it("verifies a Node callback-checkpoint application model through the project API", async () => {
-    const verified = await verifyUneffectProject({ temporalRuntime: "node", files: {
-      "src/node-service.ts": `
+    const source = `
         import { nextTick } from "node:process"
+        import { readFile } from "node:fs"
+        /* uneffect: effect FsRead<"settings.json"> | Console | Timer */
         export function scheduleFlush() {
-          nextTick(() => console.log("tick"))
-          queueMicrotask(() => console.log("microtask"))
-          setImmediate(() => console.log("check"))
+          readFile("settings.json", "utf8", () => {
+            nextTick(() => console.log("tick"))
+            queueMicrotask(() => console.log("microtask"))
+            setImmediate(() => console.log("check"))
+          })
         }
-      `,
-    } });
-    expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("nodeEventLoopSafe") }));
+      `;
+    const verified = await verifyUneffectProject({ temporalRuntime: "node", files: { "src/node-service.ts": source } });
+    expect(verified.diagnostics).toEqual([]);
+    expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("action run_poll_0") }));
+    expect(verified.temporal?.models[0]?.quint).toContain("action drain_next_tick_1");
     expect(verified.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nodeEventLoopSafe", result: "verified" }));
+
+    const broken = await verifyUneffectProject({ temporalRuntime: "node", files: { "src/node-service.ts": source.replace(' | Console', '') } });
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({ functionName: "scheduleFlush", effect: "Console" }));
   });
 
   it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {

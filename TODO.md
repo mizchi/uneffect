@@ -357,6 +357,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for reviewed one-shot `node:fs` completion APIs; watchers, streams, remaining callbacks, and readiness/order details remain open.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
+    - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks; repeated-parent multi-instance call sites remain open.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
@@ -368,6 +369,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [x] Add cross-frontend parity fixtures and reject schema drift.
 - [x] Dogfood against representative external TypeScript programs.
+  - [x] Integrate program-wide gradual effect checking into `verifyUneffectProject`; annotated capability upper bounds now fail through the unified project diagnostics.
+  - [x] Dogfood a scoped Node settings read whose fs callback composes Console/Timer authority with poll and checkpoint ordering, including a missing-Console negative control.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
   - [x] Run inference-only frontend compatibility over the pinned external `effect` Function module graph; this does not enforce external boundaries.
   - [x] Record false-positive rate, unknown-summary rate, builtin drift, annotation density, verifier time, and frontend time in one machine-readable adoption report.

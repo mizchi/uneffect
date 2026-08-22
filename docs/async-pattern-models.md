@@ -77,6 +77,12 @@ An Immediate created inside any executing callback receives a next-iteration
 due time and cannot run in the current iteration, matching Node's documented
 queue rule.
 
+A static `setTimeout`/`setInterval` call found in a resolved non-repeating
+parent callback is likewise absent initially and registered with a normalized
+due time when the parent runs. Re-registering one static child call-site from
+a repeating parent could require multiple simultaneous timer instances; that
+case remains outside the single-slot projection instead of being collapsed.
+
 For Node `Timeout`/`Interval` handles, the projection normalizes a static delay
 below `1`, above `2147483647`, or equal to the standard global `NaN` to `1`,
 and truncates other fractional delays,

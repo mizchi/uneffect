@@ -1101,4 +1101,20 @@ describe("builtin async temporal patterns", () => {
     expect(second).not.toContain("not(callback_0_pending)");
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("registers a nested one-shot Node timeout only when its parent runs", () => {
+    const model = analyzeAsyncPatterns("node-nested-timeout.ts", `
+      function schedule() {
+        setImmediate(() => setTimeout(() => undefined, 0))
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "check" },
+      { queue: "timer", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_nested_timeout", model);
+    expect(quint).toMatch(/action init[\s\S]*callback_1_pending' = false/);
+    expect(quint).toMatch(/action run_check_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock \+ 1/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });
