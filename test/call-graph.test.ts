@@ -71,6 +71,23 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
   });
 
+  it("classifies aliased node:fs completion callbacks as deferred by builtin identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-fs-callback-"));
+    const source = join(directory, "fs.ts");
+    writeFileSync(source, `
+      import { readFile as loadFile } from "node:fs"
+      /* uneffect: effect FsRead | Console */
+      export function load() { loadFile("settings.json", () => console.log("loaded")) }
+    `);
+    const program = ts.createProgram([source], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true });
+    const graph = buildProgramCallGraph(program);
+    expect(graph.edges).toContainEqual(expect.objectContaining({ kind: "callback-argument", timing: "deferred" }));
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    expect(result.diagnostics.filter((item) => item.functionName === "load")).toEqual([]);
+    expect(result.summaries.find((item) => item.functionName === "load")).toMatchObject({ evidence: "verified" });
+    rmSync(directory, { recursive: true, force: true });
+  });
+
   it("classifies Effect.catchAll handlers as deferred by package symbol identity", () => {
     const directory = mkdtempSync(join(process.cwd(), ".tmp-uneffect-effect-callback-"));
     const source = join(directory, "effect.ts");

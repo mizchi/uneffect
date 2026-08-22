@@ -14,6 +14,13 @@ file/path read and write, copy, descriptor read/write, and path mutation APIs.
 Sync, `node:fs/promises`, watcher, and stream symbols retain only their
 applicable effect/Promise semantics.
 
+The program-wide call graph consumes the same resolved contract to classify
+these completion callbacks as deferred. Effects in a callback are therefore
+composed into the registering function (for example, `FsRead | Console`), and
+renamed or namespace imports do not degrade the summary to unknown timing.
+The legacy `analyzeEffects(fileName, text)` convenience path remains a shallow
+single-source check; proof/adoption tooling uses `analyzeProgramEffects`.
+
 ## Contract lookup
 
 String matching such as `callee.getText() === "document.createElement"` is insufficient because of shadowing, aliases, inheritance, and overloads. The native frontend must resolve a call to a stable symbol key:
