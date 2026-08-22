@@ -1044,7 +1044,7 @@ describe("builtin async temporal patterns", () => {
       }
     `);
     const timerQuint = generateNodeEventLoopQuint("node_timer_immediate", fromTimer);
-    expect(timerQuint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock,/);
+    expect(timerQuint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock \+ 1/);
     expect(run(timerQuint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 });

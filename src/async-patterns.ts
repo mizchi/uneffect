@@ -849,7 +849,7 @@ export function generateNodeEventLoopQuint(
       .forEach((child) => updates.set(`callback_${child}_pending`, "true"));
     checks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
-      updates.set(`callback_${child}_due`, model.timers[parent]!.queue === "check" ? "clock + 1" : "clock");
+      updates.set(`callback_${child}_due`, "clock + 1");
     });
   };
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];

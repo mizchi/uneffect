@@ -64,9 +64,9 @@ iteration. A phase-fault oracle is rejected by the same invariant. This phase
 numbering is Uneffect IR, not a public numeric API from Node.
 
 A statically resolved nested `setImmediate` is also registered dynamically.
-One created by a timer callback can run in the subsequent check phase of the
-current iteration; one created while draining the check phase receives a
-next-iteration due time and cannot run in that same phase.
+An Immediate created inside any executing callback receives a next-iteration
+due time and cannot run in the current iteration, matching Node's documented
+queue rule.
 
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
