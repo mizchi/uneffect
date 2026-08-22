@@ -226,6 +226,12 @@ They normalize to the corresponding temporal finite view followed by
 `forall(value => predicate)`. The callback parameter is a
 real bound temporal name, so a subset check such as
 `allowed.has(value)` cannot be confused with a constant member check. The
+element may be a closed record, and field predicates such as
+`lease => !lease.valid || lease.epoch > 0` retain their field structure.
+Expression callbacks and blocks containing exactly one expression-bearing
+`return` are accepted. Callback-local declarations, multiple statements, and
+abrupt control flow remain unsupported.
+The
 syntax-only API and custom/shadowed `Array.from`, `keys`, `values`, or `every` methods remain
 unsupported rather than being trusted by spelling.
 Receiver identity is established by the separately required Program-backed

@@ -164,6 +164,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Support TypeChecker-identified builtin `Map.get(key)` only against a conjunctively membership-guarded temporal lookup, with Quint, runtime, replay, and Z3 lowering.
           - [x] Normalize TypeChecker-identified `Array.from(Set).every` subset predicates to temporal `Set.forall` with capture-safe callback binding.
           - [x] Extend the same quantified refinement to TypeChecker-identified builtin `Map.keys()` and `Map.values()` iterator views.
+          - [x] Refine record-valued Map iterator field predicates and accept only expression callbacks or a block containing one direct return.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.

@@ -362,18 +362,22 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       state owners: Set<int>
       state allowedOwners: Set<int>
       state epochs: Map<int, int>
+      state leases: Map<int, { epoch: int, valid: bool }>
       init owners = Set(1)
       init allowedOwners = Set(1, 2)
       init epochs = Map([[1, 1]])
+      init leases = Map([[1, { epoch: 1, valid: true }]])
       action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1)
       temporal ownerPresent: owners.contains(1)
       temporal epochRegistered: epochs.keys().contains(1)
       temporal initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1
       temporal epochsNonNegative: epochs.values().forall(epoch => epoch >= 0)
       temporal epochKeysKnown: epochs.keys().forall(owner => owner === 1 || owner === 2)
+      temporal validLeases: leases.values().forall(lease => !lease.valid || lease.epoch > 0)
       temporal ownersAllowed: owners.forall(owner => allowedOwners.contains(owner))
     */
-      interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number> }
+      interface LeaseRecord { epoch: number; valid: boolean }
+      interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number>; leases: Map<number, LeaseRecord> }
       /* uneffect: refinement lease@1 create */
       export function createLease(initial: Runtime): Runtime { return initial }
       /* uneffect: refinement lease@1 observe */
@@ -390,6 +394,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       export function epochsNonNegative(runtime: Runtime) { return Array.from(runtime.epochs.values()).every(epoch => epoch >= 0) }
       /* uneffect: refinement lease@1 invariant epochKeysKnown */
       export function epochKeysKnown(runtime: Runtime) { return Array.from(runtime.epochs.keys()).every(owner => owner === 1 || owner === 2) }
+      /* uneffect: refinement lease@1 invariant validLeases */
+      export function validLeases(runtime: Runtime) {
+        return Array.from(runtime.leases.values()).every(lease => { return !lease.valid || lease.epoch > 0 })
+      }
       /* uneffect: refinement lease@1 invariant ownersAllowed */
       export function ownersAllowed(runtime: Runtime) { return Array.from(runtime.owners).every(owner => runtime.allowedOwners.has(owner)) }
     `;
@@ -436,6 +444,24 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenValuesProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenValuesProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "epochsNonNegative" }),
+      );
+      const brokenLeaseField = source.replace(
+        "return Array.from(runtime.leases.values()).every(lease => { return !lease.valid || lease.epoch > 0 })",
+        "return Array.from(runtime.leases.values()).every(lease => { return !lease.valid || lease.epoch >= 0 })",
+      );
+      writeFileSync(fileName, brokenLeaseField);
+      const brokenLeaseFieldProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenLeaseFieldProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "validLeases" }),
+      );
+      const statementCallback = source.replace(
+        "lease => { return !lease.valid || lease.epoch > 0 }",
+        "lease => { const epoch = lease.epoch; return !lease.valid || epoch > 0 }",
+      );
+      writeFileSync(fileName, statementCallback);
+      const statementCallbackProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(statementCallbackProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "validLeases" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

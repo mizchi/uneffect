@@ -122,6 +122,11 @@ Map iterator refinements are exercised in the same lease: native
 value-view quantifier, while `Array.from(epochs.keys()).every(...)` maps to the
 key-view quantifier. Tightening the implementation predicate to `epoch > 0`
 fails against the declared nonnegative invariant.
+The lease table itself is a record-valued
+`Map<number, { epoch: number, valid: boolean }>`. A native `values()` iterator
+with a single-return callback block proves
+`!lease.valid || lease.epoch > 0`; weakening the field comparison fails, while
+adding callback-local statements remains an explicit unsupported non-proof.
 
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,
