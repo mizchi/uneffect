@@ -401,6 +401,29 @@ function affineVariable(expression: LogicExpression): { name: string; offset: nu
   return undefined;
 }
 
+function combineCongruences(items: readonly { modulus: number; residue: number }[]): { modulus: number; residue: number } | undefined {
+  if (items.length === 0 || items.some(({ modulus, residue }) => !Number.isSafeInteger(modulus) || !Number.isSafeInteger(residue))) return undefined;
+  const gcd = (left: bigint, right: bigint): bigint => { while (right !== 0n) [left, right] = [right, left % right]; return left < 0n ? -left : left; };
+  const inverse = (value: bigint, modulus: bigint): bigint | undefined => {
+    let oldR = value, r = modulus, oldS = 1n, s = 0n;
+    while (r !== 0n) { const quotient = oldR / r; [oldR, r] = [r, oldR - quotient * r]; [oldS, s] = [s, oldS - quotient * s]; }
+    return oldR === 1n || oldR === -1n ? ((oldS * oldR) % modulus + modulus) % modulus : undefined;
+  };
+  let modulus = BigInt(items[0]!.modulus), residue = BigInt(items[0]!.residue);
+  for (const item of items.slice(1)) {
+    const nextModulus = BigInt(item.modulus), nextResidue = BigInt(item.residue), divisor = gcd(modulus, nextModulus);
+    const difference = nextResidue - residue;
+    if (difference % divisor !== 0n) return undefined;
+    const reducedNext = nextModulus / divisor;
+    const multiplier = reducedNext === 1n ? 0n : ((difference / divisor) * inverse((modulus / divisor) % reducedNext, reducedNext)!) % reducedNext;
+    const combinedModulus = modulus * reducedNext;
+    residue = ((residue + modulus * multiplier) % combinedModulus + combinedModulus) % combinedModulus;
+    modulus = combinedModulus;
+    if (modulus > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
+  }
+  return { modulus: Number(modulus), residue: Number(residue) };
+}
+
 function refinementHints(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[]): PropertyLiteral[][] {
   const parsed: LogicExpression[] = [];
   for (const requirement of requires) try { parsed.push(parseLogicExpression(requirement)); } catch { /* Structured hints are derived by the solver-backed path. */ }
@@ -459,13 +482,13 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
     for (const expression of expressions) { addComparison(expression); addCongruence(expression); }
     if (alignCongruence) for (let index = 0; index < hints.length; index++) {
       const unique = [...new Map(congruences[index]!.map((item) => [`${item.modulus}:${item.residue}`, item])).values()];
-      const [congruence] = unique;
-      if (!congruence || unique.length !== 1) continue;
+      const congruence = combineCongruences(unique);
+      if (!congruence) continue;
       const anchors = hints[index]!.length ? hints[index]!.map(Number) : [congruence.residue, congruence.residue + congruence.modulus];
-      const aligned = anchors.flatMap((anchor) => {
+      const aligned = [congruence.residue, congruence.residue + congruence.modulus, ...anchors.flatMap((anchor) => {
         const below = congruence.residue + Math.floor((anchor - congruence.residue) / congruence.modulus) * congruence.modulus;
         return [below, below + congruence.modulus];
-      });
+      })];
       const { lower = -Infinity, upper = Infinity } = bounds[index]!;
       const domain = domains[index] as PropertyBoundaryKind;
       hints[index] = aligned.filter((candidate) => candidate >= lower && candidate <= upper && scalarAccepts(domain, candidate));

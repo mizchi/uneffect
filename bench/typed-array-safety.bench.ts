@@ -334,6 +334,15 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/tenant-shards.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("combine congruence hints for 16 partition routing contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires partition >= ${index * 256} && partition < ${(index + 1) * 256} && partition % 4 === 1 && partition % 6 === 3 */
+      /* uneffect: ensures result >= 0 */
+      export function route${index}(partition: Nat): Nat { return partition }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/partition-routes.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("derive branched affine hints for 16 scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       /* uneffect: requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */

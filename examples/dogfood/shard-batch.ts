@@ -11,3 +11,9 @@ export function shardBatch(shard: Nat): Nat {
 export function tenantShard(shard: Nat): Nat {
   return shard;
 }
+
+/* uneffect: requires partition >= 0 && partition < 256 && partition % 4 === 1 && partition % 6 === 3 */
+/* uneffect: ensures result >= 0 */
+export function partitionRoute(partition: Nat): Nat {
+  return partition;
+}

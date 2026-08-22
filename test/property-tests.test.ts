@@ -175,6 +175,26 @@ describe("property-test generation", () => {
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1]]);
   });
 
+  it("combines compatible non-coprime modulo refinements", () => {
+    const result = generateUneffectPropertyTests({ files: { "partition.ts": `
+      type Nat = number
+      /* uneffect: requires partition >= 0 && partition < 50 && partition % 4 === 1 && partition % 6 === 3 */
+      /* uneffect: ensures result >= 0 */
+      export function routed(partition: Nat): Nat { return partition }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[9, 21, 45]]);
+  });
+
+  it("does not invent a congruence class for incompatible modulo refinements", () => {
+    const result = generateUneffectPropertyTests({ files: { "impossible-partition.ts": `
+      type Nat = number
+      /* uneffect: requires partition >= 0 && partition < 50 && partition % 4 === 0 && partition % 6 === 3 */
+      /* uneffect: ensures result >= 0 */
+      export function impossible(partition: Nat): Nat { return partition }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1, 48, 49]]);
+  });
+
   it("derives correlated tuples from affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
       type Int = number

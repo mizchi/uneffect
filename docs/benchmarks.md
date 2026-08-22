@@ -35,6 +35,11 @@ Branch-local DNF hint generation for 16 two-tenant shard contracts measured
 materializing more than 32 branches, so this benchmark does not hide an
 unbounded expansion path.
 
+Generalized-CRT hint generation for 16 partition-routing contracts with
+`% 4 === 1` and `% 6 === 3` measured 1.1774 ms mean over 425 samples (0.35% RME).
+The path uses exact BigInt arithmetic internally and only publishes a hint when
+the combined modulus and residue remain safe JavaScript integers.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |
