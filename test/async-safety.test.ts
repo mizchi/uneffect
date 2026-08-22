@@ -1309,4 +1309,74 @@ describe("async error and explicit resource safety", () => {
     expect(labeledContinuePath?.completion).toBe("normal");
     expect(run(generateUnifiedAsyncQuint("labeled_continue_handler", result, "run")).status).toBe(0);
   }, 10_000);
+
+  it("adds repeat and exit transitions for an awaited handler loop", () => {
+    const result = analyzeAsyncSafety("repeating-handler-loop.ts", `
+      async function run(enabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          while (enabled) {
+            await Promise.resolve("tick").then(value => value)
+          }
+          await Promise.resolve("after").then(value => value)
+        }
+      }
+    `);
+    expect(result.controlStatements[0]!.loop).toMatchObject({ kind: "while", atLeastOnce: false });
+    const tick = result.promises.find((item) => item.source.includes('"tick"'))!;
+    const quint = generateUnifiedAsyncQuint("repeating_handler_loop", result, "run");
+    const tickEntry = new RegExp(`action promise_${tick.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    const repeatTarget = /action catch_loop_0_repeat = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    expect(repeatTarget).toBe(tickEntry);
+    expect(quint).toContain("action catch_loop_0_exit");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("repeats awaited finally loops before their outer continuation", () => {
+    const result = analyzeAsyncSafety("repeating-finally-loop.ts", `
+      async function run(enabled: boolean) {
+        try {
+          await Promise.resolve("try").then(value => value)
+        } finally {
+          while (enabled) {
+            await Promise.resolve("tick").then(value => value)
+          }
+        }
+        await Promise.resolve("after").then(value => value)
+      }
+    `);
+    const tick = result.promises.find((item) => item.source.includes('"tick"'))!;
+    const after = result.promises.find((item) => item.source.includes('"after"'))!;
+    const quint = generateUnifiedAsyncQuint("repeating_finally_loop", result, "run");
+    const tickEntry = new RegExp(`action promise_${tick.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    const repeatTarget = /action finally_loop_0_repeat = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const afterEntry = new RegExp(`action promise_${after.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    const exitTarget = /action finally_loop_0_exit = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    expect(repeatTarget).toBe(tickEntry);
+    expect(exitTarget).toBe(afterEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("models an awaited do-while handler as at least one repeatable iteration", () => {
+    const result = analyzeAsyncSafety("do-handler-loop.ts", `
+      async function run(enabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          do {
+            await Promise.resolve("tick").then(value => value)
+          } while (enabled)
+        }
+      }
+    `);
+    const statement = result.controlStatements[0]!;
+    const tick = result.promises.find((item) => item.source.includes('"tick"'))!;
+    expect(statement.loop).toMatchObject({ kind: "do-while", atLeastOnce: true });
+    expect(tick.conditional).toBe(false);
+    const quint = generateUnifiedAsyncQuint("do_handler_loop", result, "run");
+    expect(quint).toContain("action catch_loop_0_repeat");
+    expect(quint).not.toContain(`action skip_handler_await_${tick.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

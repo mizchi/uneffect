@@ -309,7 +309,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add disjunctive control paths for operations reachable through both direct case entry and fallthrough, carried through Corsa schema v6.
     - [x] Correlate one-step zero-iteration handler loop bodies and preserve conditional break/continue completion paths.
     - [x] Propagate labeled `break`/`continue` through nested loops to the owning loop without inner-loop discharge.
-    - [ ] Extend handler loops to fixed-point iteration and general CFG joins.
+    - [x] Add repeat/exit states for awaited catch/finally loops, giving arbitrary finite repetition in the control graph.
+    - [ ] Add loop-carried data invariants, repeated resource acquisition/disposal instances, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

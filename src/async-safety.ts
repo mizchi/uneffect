@@ -102,8 +102,14 @@ export interface AsyncControlStatement {
   order: number;
   completion: "normal" | "return" | "throw";
   completionPaths: AsyncControlCompletionPath[];
+  loop?: AsyncControlLoop;
   source: string;
   span: { start: number; end: number };
+}
+export interface AsyncControlLoop {
+  id: string;
+  kind: "while" | "for" | "for-in" | "for-of" | "do-while";
+  atLeastOnce: boolean;
 }
 export interface AsyncControlCompletionPath {
   controlConditions: AsyncControlCondition[];
@@ -453,7 +459,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if ((ts.isWhileStatement(parent) || ts.isForStatement(parent) || ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && child === parent.statement) return true;
         if (ts.isConditionalExpression(parent) && child !== parent.condition) return true;
         if (ts.isBinaryExpression(parent) && child === parent.right && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(parent.operatorToken.kind)) return true;
-        if (ts.isCaseClause(parent) || ts.isDefaultClause(parent) || ts.isCatchClause(parent)) return true;
+        if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) return true;
       }
       return false;
     };
@@ -800,8 +806,18 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         };
         return execute(statement, []).map((path) => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
       };
-      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
-      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      const loopOf = (statement: ts.Statement): AsyncControlLoop | undefined => {
+        let current = statement;
+        while (ts.isLabeledStatement(current)) current = current.statement;
+        const kind: AsyncControlLoop["kind"] | undefined = ts.isWhileStatement(current) ? "while"
+          : ts.isForStatement(current) ? "for"
+            : ts.isForInStatement(current) ? "for-in"
+              : ts.isForOfStatement(current) ? "for-of"
+                : ts.isDoStatement(current) ? "do-while" : undefined;
+        return kind ? { id: `${owner}@loop:${current.getStart(source)}`, kind, atLeastOnce: ts.isDoStatement(current) } : undefined;
+      };
+      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), completionPaths: completionPaths(statement), loop: loopOf(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), completionPaths: completionPaths(statement), loop: loopOf(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
     }
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
@@ -976,7 +992,8 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       const pc = nextPc;
       const awaitIndexes = awaitsInStatement(statement);
       nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
-      return { statement, pc, awaitIndexes };
+      const loopDecisionPc = statement.loop && awaitIndexes.length > 0 ? nextPc++ : undefined;
+      return { statement, pc, awaitIndexes, loopDecisionPc };
     });
     const afterCatchPc = nextPc++;
     const finallyPc = nextPc;
@@ -984,7 +1001,8 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       const pc = nextPc;
       const awaitIndexes = awaitsInStatement(statement);
       nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
-      return { statement, pc, awaitIndexes };
+      const loopDecisionPc = statement.loop && awaitIndexes.length > 0 ? nextPc++ : undefined;
+      return { statement, pc, awaitIndexes, loopDecisionPc };
     });
     return { region, catchPc, catchLayout, afterCatchPc, finallyPc, finallyLayout };
   });
@@ -1125,14 +1143,22 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
     const finalEntry = layout.finallyLayout.length ? layout.finallyPc : exceptionalTarget(layout.region);
     const afterRegion = continuationPc(layout.region.fullSpan.end);
-    layout.catchLayout.forEach(({ statement, pc, awaitIndexes }, index) => {
+    layout.catchLayout.forEach(({ statement, pc, awaitIndexes, loopDecisionPc }, index) => {
       const next = layout.catchLayout[index + 1]?.pc ?? layout.afterCatchPc;
       if (awaitIndexes.length > 0) {
         awaitIndexes.forEach((awaitIndex, awaitOrder) => {
           const awaitPc = pc + awaitOrder * 2;
-          const awaitNext = awaitOrder + 1 < awaitIndexes.length ? awaitPc + 2 : next;
-          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, completionForAwait(statement, awaitIndex, awaitIndexes), finalEntry);
+          const completion = completionForAwait(statement, awaitIndex, awaitIndexes);
+          const awaitNext = awaitOrder + 1 < awaitIndexes.length ? awaitPc + 2 : loopDecisionPc !== undefined && completion === "normal" ? loopDecisionPc : next;
+          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, completion, finalEntry);
         });
+        if (loopDecisionPc !== undefined) {
+          const repeatGuards = [`pc == ${loopDecisionPc}`];
+          const branch = statement.loop && branchIndex.get(statement.loop.id);
+          if (branch !== undefined) repeatGuards.push(`branch_${branch} == 1`);
+          emit(`catch_loop_${index}_repeat`, repeatGuards, new Map([["pc", String(pc)]]));
+          emit(`catch_loop_${index}_exit`, [`pc == ${loopDecisionPc}`], new Map([["pc", String(next)]]));
+        }
         return;
       }
       const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
@@ -1144,20 +1170,28 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     });
     const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
     emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
-    layout.finallyLayout.forEach(({ statement, pc, awaitIndexes }, index) => {
+    layout.finallyLayout.forEach(({ statement, pc, awaitIndexes, loopDecisionPc }, index) => {
       const following = layout.finallyLayout[index + 1]?.pc;
       const next = following ?? `if (completion == 0) ${afterRegion} else ${exceptionalTarget(layout.region)}`;
       if (awaitIndexes.length > 0) {
         awaitIndexes.forEach((awaitIndex, awaitOrder) => {
           const awaitPc = pc + awaitOrder * 2;
           const isLastAwait = awaitOrder + 1 === awaitIndexes.length;
-          const awaitNext = isLastAwait ? following ?? afterRegion : awaitPc + 2;
           const completion = completionForAwait(statement, awaitIndex, awaitIndexes);
+          const awaitNext = isLastAwait ? loopDecisionPc ?? following ?? afterRegion : awaitPc + 2;
           const chain = awaited[awaitIndex]!.promiseChain!;
-          const pendingCompletion = isLastAwait && following === undefined && completion === "normal";
+          const pendingCompletion = isLastAwait && loopDecisionPc === undefined && following === undefined && completion === "normal";
           emitHandlerAwait("finally", awaited[awaitIndex]!, awaitPc, awaitNext, completion, exceptionalTarget(layout.region), pendingCompletion ? ["completion == 0"] : []);
           if (pendingCompletion) emit(`finally_await_${chain}_resume_abrupt`, [`pc == ${awaitPc + 1}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
         });
+        if (loopDecisionPc !== undefined) {
+          const repeatGuards = [`pc == ${loopDecisionPc}`];
+          const branch = statement.loop && branchIndex.get(statement.loop.id);
+          if (branch !== undefined) repeatGuards.push(`branch_${branch} == 1`);
+          emit(`finally_loop_${index}_repeat`, repeatGuards, new Map([["pc", String(pc)]]));
+          emit(`finally_loop_${index}_exit`, [`pc == ${loopDecisionPc}`, "completion == 0"], new Map([["pc", String(following ?? afterRegion)]]));
+          emit(`finally_loop_${index}_exit_abrupt`, [`pc == ${loopDecisionPc}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
+        }
         return;
       }
       const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
