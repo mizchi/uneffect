@@ -1079,4 +1079,54 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain(`action skip_handler_await_${second.promiseChain}`);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("retains branch-specific return and throw completion in a handler", () => {
+    const result = analyzeAsyncSafety("conditional-handler-completion.ts", `
+      declare const recover: boolean
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          if (recover) return
+          else throw error
+        }
+      }
+    `);
+    const statement = result.controlStatements[0]!;
+    expect(statement.completionPaths.map((path) => ({ expected: path.controlConditions[0]?.expected, completion: path.completion }))).toEqual([
+      { expected: true, completion: "return" },
+      { expected: false, completion: "throw" },
+    ]);
+    const quint = generateUnifiedAsyncQuint("conditional_handler_completion", result, "run");
+    expect(quint).toContain("action catch_statement_0_path_0");
+    expect(quint).toContain("action catch_statement_0_path_1");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("applies abrupt completion only to the selected awaited handler branch", () => {
+    const result = analyzeAsyncSafety("conditional-awaited-completion.ts", `
+      declare const recover: boolean
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          if (recover) {
+            await Promise.resolve("recover").then(value => value)
+            return
+          } else {
+            await Promise.resolve("fail").then(value => value)
+            throw error
+          }
+        }
+      }
+    `);
+    const recovered = result.promises.find((item) => item.source.includes('"recover"'))!;
+    const failed = result.promises.find((item) => item.source.includes('"fail"'))!;
+    const quint = generateUnifiedAsyncQuint("conditional_awaited_completion", result, "run");
+    const failedResume = new RegExp(`action catch_await_${failed.promiseChain}_resume = all \\{[\\s\\S]*?completion' = ([^,]+),`).exec(quint)?.[1]?.trim();
+    const recoveredSkip = new RegExp(`action skip_handler_await_${recovered.promiseChain} = all \\{[\\s\\S]*?completion' = ([^,]+),`).exec(quint)?.[1]?.trim();
+    expect(failedResume).toBe("1");
+    expect(recoveredSkip).toBe("completion");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

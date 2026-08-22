@@ -99,8 +99,13 @@ export interface AsyncControlStatement {
   region: "catch" | "finally";
   order: number;
   completion: "normal" | "return" | "throw";
+  completionPaths: AsyncControlCompletionPath[];
   source: string;
   span: { start: number; end: number };
+}
+export interface AsyncControlCompletionPath {
+  controlConditions: AsyncControlCondition[];
+  completion: "normal" | "return" | "throw";
 }
 export interface OwnershipGuardObligation {
   owner: string;
@@ -688,8 +693,37 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         finallySpan: node.finallyBlock ? { start: node.finallyBlock.getStart(source), end: node.finallyBlock.getEnd() } : undefined,
       });
       const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
-      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
-      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      const completionPaths = (statement: ts.Statement): AsyncControlCompletionPath[] => {
+        const executeStatements = (statements: readonly ts.Statement[], initial: AsyncControlCondition[]): AsyncControlCompletionPath[] => {
+          let active: AsyncControlCondition[][] = [initial];
+          const abrupt: AsyncControlCompletionPath[] = [];
+          for (const child of statements) {
+            const next: AsyncControlCondition[][] = [];
+            for (const conditions of active) for (const path of execute(child, conditions)) {
+              if (path.completion === "normal") next.push(path.controlConditions);
+              else abrupt.push(path);
+            }
+            active = next;
+          }
+          return [...abrupt, ...active.map((controlConditions) => ({ controlConditions, completion: "normal" as const }))];
+        };
+        const execute = (current: ts.Statement, conditions: AsyncControlCondition[]): AsyncControlCompletionPath[] => {
+          if (ts.isReturnStatement(current)) return [{ controlConditions: conditions, completion: "return" }];
+          if (ts.isThrowStatement(current)) return [{ controlConditions: conditions, completion: "throw" }];
+          if (ts.isBlock(current)) return executeStatements(current.statements, conditions);
+          if (ts.isIfStatement(current)) {
+            const id = `${owner}@if:${current.getStart(source)}`;
+            return [
+              ...execute(current.thenStatement, [...conditions, { id, expected: true }]),
+              ...(current.elseStatement ? execute(current.elseStatement, [...conditions, { id, expected: false }]) : [{ controlConditions: [...conditions, { id, expected: false }], completion: "normal" as const }]),
+            ];
+          }
+          return [{ controlConditions: conditions, completion: "normal" }];
+        };
+        return execute(statement, []);
+      };
+      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
     }
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
@@ -893,7 +927,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   };
   const continuationPc = (end: number) => normalLayout.find(({ event }) => event.position > end)?.pc ?? cleanupPc;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
-  const branchIds = [...new Set([...resources.flatMap((item) => item.controlConditions), ...awaited.flatMap((item) => item.controlConditions)].map((condition) => condition.id))];
+  const branchIds = [...new Set([
+    ...resources.flatMap((item) => item.controlConditions),
+    ...awaited.flatMap((item) => item.controlConditions),
+    ...result.controlStatements.filter((item) => item.owner === owner).flatMap((item) => item.completionPaths.flatMap((path) => path.controlConditions)),
+  ].map((condition) => condition.id))];
   const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
   const conditionGuards = (conditions: readonly AsyncControlCondition[]): string[] => conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 1 : 0}`);
   const conditionMismatch = (conditions: readonly AsyncControlCondition[]): string | undefined => conditions.length
@@ -983,7 +1021,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (completion === "throw") updates.set("completion", "1");
     emit(`${region}_await_${chain}_resume`, [`pc == ${pc + 1}`, ...resumeGuards], updates);
     const mismatch = conditionMismatch(observation.controlConditions);
-    if (observation.conditional) emit(`skip_handler_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map(updates));
+    if (observation.conditional) emit(`skip_handler_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
+  };
+  const sameConditions = (left: readonly AsyncControlCondition[], right: readonly AsyncControlCondition[]): boolean => left.length === right.length && left.every((condition, index) => condition.id === right[index]?.id && condition.expected === right[index]?.expected);
+  const completionForAwait = (statement: AsyncControlStatement, awaitIndex: number, awaitIndexes: readonly number[]): AsyncControlStatement["completion"] => {
+    const observation = awaited[awaitIndex]!;
+    const path = statement.completionPaths.find((candidate) => sameConditions(candidate.controlConditions, observation.controlConditions));
+    if (!path || path.completion === "normal") return "normal";
+    const position = awaitIndexes.indexOf(awaitIndex);
+    const hasLaterOnPath = awaitIndexes.slice(position + 1).some((laterIndex) => sameConditions(awaited[laterIndex]!.controlConditions, path.controlConditions));
+    return hasLaterOnPath ? "normal" : path.completion;
   };
   regionLayouts.forEach((layout, regionIndex) => {
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
@@ -995,13 +1042,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         awaitIndexes.forEach((awaitIndex, awaitOrder) => {
           const awaitPc = pc + awaitOrder * 2;
           const awaitNext = awaitOrder + 1 < awaitIndexes.length ? awaitPc + 2 : next;
-          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, awaitOrder + 1 === awaitIndexes.length ? statement.completion : "normal", finalEntry);
+          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, completionForAwait(statement, awaitIndex, awaitIndexes), finalEntry);
         });
         return;
       }
-      const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : finalEntry)]]);
-      if (statement.completion === "throw") updates.set("completion", "1");
-      emit(`catch_statement_${index}${regionSuffix}`, [`pc == ${pc}`], updates);
+      const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
+      for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
+        const updates = new Map<string, string>([["pc", String(path.completion === "normal" ? next : finalEntry)]]);
+        if (path.completion === "throw") updates.set("completion", "1");
+        emit(`catch_statement_${index}${regionSuffix}${pathSuffix ? `_path_${pathIndex}` : ""}`, [`pc == ${pc}`, ...conditionGuards(path.controlConditions)], updates);
+      }
     });
     const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
     emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
@@ -1013,7 +1063,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
           const awaitPc = pc + awaitOrder * 2;
           const isLastAwait = awaitOrder + 1 === awaitIndexes.length;
           const awaitNext = isLastAwait ? following ?? afterRegion : awaitPc + 2;
-          const completion = isLastAwait ? statement.completion : "normal";
+          const completion = completionForAwait(statement, awaitIndex, awaitIndexes);
           const chain = awaited[awaitIndex]!.promiseChain!;
           const pendingCompletion = isLastAwait && following === undefined && completion === "normal";
           emitHandlerAwait("finally", awaited[awaitIndex]!, awaitPc, awaitNext, completion, exceptionalTarget(layout.region), pendingCompletion ? ["completion == 0"] : []);
@@ -1021,11 +1071,14 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         });
         return;
       }
-      const target = statement.completion === "normal" ? next : statement.completion === "return" ? cleanupPc : exceptionalTarget(layout.region);
-      const updates = new Map<string, string>([["pc", String(target)]]);
-      if (statement.completion === "return") updates.set("completion", "0");
-      if (statement.completion === "throw") updates.set("completion", "1");
-      emit(`finally_statement_${index}${regionSuffix}`, [`pc == ${pc}`], updates);
+      const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
+      for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
+        const target = path.completion === "normal" ? next : path.completion === "return" ? cleanupPc : exceptionalTarget(layout.region);
+        const updates = new Map<string, string>([["pc", String(target)]]);
+        if (path.completion === "return") updates.set("completion", "0");
+        if (path.completion === "throw") updates.set("completion", "1");
+        emit(`finally_statement_${index}${regionSuffix}${pathSuffix ? `_path_${pathIndex}` : ""}`, [`pc == ${pc}`, ...conditionGuards(path.controlConditions)], updates);
+      }
     });
   });
   disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
