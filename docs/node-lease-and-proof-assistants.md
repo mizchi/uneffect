@@ -36,11 +36,18 @@ owner epoch. Removing that guard lets Quint reach `badCommit = true`; this
 negative control demonstrates that the constraint is load-bearing rather than
 an invariant that passes because the relevant transition is absent.
 
-This is not a proof of a Node implementation. The model currently omits lease
-renewal, delayed completion, held-lease sets, node GC, in-flight writes, CAS
-failure, crashes, storage behavior, and an implementation-to-model refinement
-mapping. “No violation found” is bounded evidence for this two-node abstraction,
-not universal correctness.
+The lifecycle model also dogfoods Z3 strengthening hints. Defensive actions
+for malformed negative and zero epochs are unreachable in a valid lease run,
+but make `ownerEpoch !== 0` non-inductive over arbitrary typed states. Uneffect
+first proves `ownerEpochPositive` at init and across every transition, then
+uses it to prove `observeZeroEpoch` unreachable without a depth bound. A hint
+that fails either proof obligation is diagnosed and never trusted.
+
+This is not a proof of a Node implementation. The lifecycle abstraction covers
+renewal, delayed completion, GC, in-flight writes, CAS failure, and crashes as
+model actions, but still omits concrete storage/network behavior and an
+implementation-to-model refinement proof. “No violation found” remains bounded
+evidence unless an explicit inductive diagnostic is produced.
 
 ## Comparison with Dafny
 
@@ -86,12 +93,14 @@ domain should pay no analysis-policy or runtime cost for it.
 
 ## Specification quality checks
 
-`lintSpec` currently reports directly constant temporal properties such as
-`true`, `x === x`, `x !== x`, and actions whose assignments are all
-self-assignments. Parser/type errors remain hard failures. This is only a
-syntactic first slice: algebraic tautologies, inconsistent initial states,
-unreachable actions, vacuous preservation caused by deadlock, and redundant or
-subsumed invariants are not detected yet.
+`lintSpec` reports directly constant temporal properties and self-assignment
+actions. Its Z3 extension also detects algebraic tautologies, inconsistent
+initial states, globally impossible guards, duplicate/subsumed properties,
+bounded reachability, deadlock, stuttering, and property vacuity. Implemented
+unbounded promotions require one-step induction, optionally under explicitly
+selected strengthening properties whose own induction obligations pass.
+Automatic invariant discovery, finite-state completeness, and general
+fairness/liveness diagnostics remain open.
 
 Effect declarations remain equally important. The existing function/program
 effect checker diagnoses missing effects and unused upper-bound effects for its
@@ -100,9 +109,8 @@ acceptance-level normalized drift report are still incomplete, so support must
 not be described as universal across dynamic dispatch, unresolved packages, or
 all Corsa paths.
 
-Type-driven QuickCheck generation with shrinking is now an executable skipped
-acceptance requirement, not an implemented feature. The intended build-only
-pipeline derives generators from TypeScript/refinement boundaries, satisfies
-preconditions, checks postconditions/invariants, shrinks failures within the
-domain, and stores replayable counterexamples. It must not add a required
-production runtime.
+Type-driven property-test generation now covers the documented scalar,
+bounded-array, closed-record, finite Set/Map, and selected refinement fragments,
+including constraint-preserving shrinking and persisted replay. Arbitrary
+contract refinements and all TypeScript heap shapes remain incomplete. The
+pipeline is build/test-only and adds no required production runtime.

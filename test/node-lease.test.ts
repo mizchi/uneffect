@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { generateQuint } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { parseQuintItfCounterexample, replayModelCounterexample, type ModelState } from "../src/model-replay.js";
-import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 
 function leaseModel(skewGrace: number): string {
   return `
@@ -113,6 +113,10 @@ function leaseLifecycleModel(fencedCommit: boolean): string {
     action_when startWrite: workerAlive && !selfFenced && !writeInFlight
     action takeover: ownerEpoch' = ownerEpoch + 1
     action_when takeover: realNow >= leaseExpiry
+    action normalizeInvalidEpoch: ownerEpoch' = 0
+    action_when normalizeInvalidEpoch: ownerEpoch < 0
+    action observeZeroEpoch: badCommit' = true
+    action_when observeZeroEpoch: ownerEpoch === 0
     action completeWrite: writeInFlight' = false, badCommit' = writeEpoch !== ownerEpoch
     action_when completeWrite: writeInFlight${fencedCommit ? " && writeEpoch === ownerEpoch" : ""}
     action crash: workerAlive' = false
@@ -120,6 +124,7 @@ function leaseLifecycleModel(fencedCommit: boolean): string {
     action gc: resourceHeld' = false
     action_when gc: !workerAlive && resourceHeld
     temporal noStaleCommit: !badCommit
+    temporal ownerEpochPositive: ownerEpoch > 0
     temporal casFailureFences: !selfFenced || !renewalInFlight
     temporal gcDoesNotInventResources: resourceHeld || !workerAlive
   */`;
@@ -135,6 +140,19 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("uses a proven lease-domain invariant to exclude invalid epoch actions", async () => {
+    const temporal = parseSpec("lease-strengthening.ts", leaseLifecycleModel(true)).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 3,
+      strengtheningProperties: ["ownerEpochPositive"],
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeZeroEpoch",
+      relatedName: "ownerEpochPositive",
+    }));
+  });
+
   it("extracts the collection-valued Node Lease violation with Z3 finite observation", async () => {
     const broken = await findTemporalCounterexampleWithZ3(parseSpec("node-lease-collections-z3.ts", collectionLeaseModel(0)).temporal, "singleWriter", { maxSteps: 12 });
     expect(broken.status).toBe("counterexample");
