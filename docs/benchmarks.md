@@ -52,7 +52,11 @@ Promise/resource analysis, and model emission, but not Quint execution.
 
 Analyzing the broken retry-attempt dogfood and detecting its post-disposal
 alias use through two local edges measured 137.00 ms mean over 20 samples
-(2.45% RME) on the stable repeat run.
+(2.45% RME) on the stable repeat run. This was the baseline before changing
+the dogfood escape to a static aggregate property; the aggregate result is
+141.74 ms mean over 20 samples (5.90% RME). The small difference is within the
+noise of rebuilding the TypeScript program and is not claimed as a property
+tracking speedup or regression.
 This includes TypeScript program construction and the complete async analysis,
 not only the alias scan. An immediately preceding run under system pressure
 measured 340.85 ms with 13.95% RME, so it is recorded as noise rather than a

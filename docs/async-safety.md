@@ -485,9 +485,12 @@ a `using`/`await using` binding through local symbol alias chains. If an alias i
 after the resource's lexical scope ends, it emits `disposed-resource-use` and
 retains the resource/alias assignment and use spans in `resourceAliases`.
 An unconditional direct reassignment before the later read kills this alias
-fact; a conditional reassignment is conservatively not a must-kill.
-Property/array escapes, aliases passed through calls, and path-correlated alias
-joins are not yet claimed as covered.
+fact; a conditional reassignment is conservatively not a must-kill. The same
+source-ordered flow covers a direct property or literal array slot on a local
+identifier root, such as `state.current` or `slots[0]`, and can propagate that
+slot back into a local alias. Nested property paths, computed keys, mutations
+through an aliased aggregate root, aliases passed through calls, and
+path-correlated alias joins are not yet claimed as covered.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

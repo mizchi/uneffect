@@ -7,12 +7,12 @@ declare function openAttempt(): Attempt;
 
 export async function brokenRetry(enabled: boolean): Promise<void> {
   let lastAttempt: Attempt | undefined;
-  let forwardedAttempt: Attempt | undefined;
+  const retryState: { forwardedAttempt?: Attempt } = {};
   while (enabled) {
     await using attempt = openAttempt();
     lastAttempt = attempt;
-    forwardedAttempt = lastAttempt;
+    retryState.forwardedAttempt = lastAttempt;
     await Promise.resolve("flush");
   }
-  forwardedAttempt?.flush();
+  retryState.forwardedAttempt?.flush();
 }

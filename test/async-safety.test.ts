@@ -1535,4 +1535,76 @@ describe("async error and explicit resource safety", () => {
       functionName: "conditionallyKilled", kind: "disposed-resource-use",
     }));
   });
+
+  it("tracks disposed resources through static local property and array slots", () => {
+    const result = analyzeAsyncSafety("aggregate-resource-alias.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function propertyEscape() {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        holder.current?.send()
+      }
+      async function propagated() {
+        const holder: { current?: Resource } = {}
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          holder.current = resource
+          alias = holder.current
+        }
+        alias?.send()
+      }
+      async function conditionallyCleared(clear: boolean) {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        if (clear) holder.current = undefined
+        holder.current?.send()
+      }
+      async function arrayEscape() {
+        const holder: Array<Resource | undefined> = []
+        {
+          await using resource = open()
+          holder[0] = resource
+        }
+        holder[0]?.send()
+      }
+      async function cleared() {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        holder["current"] = undefined
+        holder.current?.send()
+      }
+    `);
+    expect(result.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "propertyEscape", resource: "resource", alias: "holder.current",
+    }));
+    expect(result.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "arrayEscape", resource: "resource", alias: "holder[0]",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "propertyEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "arrayEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "cleared", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "propagated", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "conditionallyCleared", kind: "disposed-resource-use",
+    }));
+  });
 });
