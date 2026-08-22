@@ -32,6 +32,10 @@ const result = await replayModelCounterexample(trace, {
 })
 ```
 
+Generated adapters also retain their source-level `abstractions` record. This
+is audit metadata: replay executes only the create/observe/action bindings
+whose refinement was already checked and never evaluates abstraction strings.
+
 The trace accepts only JSON-safe finite state. Creation rejects disconnected
 steps whose `before` state differs from the initial state or preceding `after`
 state. Replay clones the trace, checks the initial observation, dispatches each

@@ -152,16 +152,29 @@ function parseAbstractionRelations(
 ): Map<string, string> {
   const abstraction = new Map<string, string>();
   for (const value of extractAnnotations(text, "abstraction")) {
-    const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/.exec(value);
+    const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s+([A-Za-z_$][\w$]*)\s*=\s*(\S+)$/.exec(value);
     if (!match) throw new Error(`invalid abstraction relation: ${value}`);
+    parseAbstractionValue(match[4]!);
     if (match[1] !== adapterName) continue;
     if (match[2] !== version) throw new Error(`abstraction relation ${match[1]} has version ${match[2]}, expected ${version}`);
     if (stateNames && !stateNames.has(match[3]!)) throw new Error(`abstraction relation refers to unknown model state ${match[3]}`);
-    const overlaps = [...abstraction.values()].some((existing) => existing === match[4] || existing.startsWith(`${match[4]}.`) || match[4]!.startsWith(`${existing}.`));
+    const concretePath = parseAbstractionValue(match[4]!).path;
+    const overlaps = [...abstraction.values()].some((existing) => {
+      const existingPath = parseAbstractionValue(existing).path;
+      return existingPath === concretePath || existingPath.startsWith(`${concretePath}.`) || concretePath.startsWith(`${existingPath}.`);
+    });
     if (abstraction.has(match[3]!) || overlaps) throw new Error(`duplicate or overlapping abstraction relation for ${match[3]} or ${match[4]}`);
     abstraction.set(match[3]!, match[4]!);
   }
   return abstraction;
+}
+
+function parseAbstractionValue(value: string): { kind: "identity" | "set-from-array"; path: string } {
+  const pathPattern = "[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*";
+  if (new RegExp(`^${pathPattern}$`).test(value)) return { kind: "identity", path: value };
+  const set = new RegExp(`^Set\\((${pathPattern})\\)$`).exec(value);
+  if (set) return { kind: "set-from-array", path: set[1]! };
+  throw new Error(`unsupported abstraction expression: ${value}`);
 }
 
 /** Checks structural coverage only; it does not prove that implementation bodies refine model transitions. */
@@ -269,8 +282,8 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
     return receiver ? [...receiver, value.name] : undefined;
   };
   const concretePath = expressionPath(expression)?.join(".");
-  if (concretePath) for (const [abstract, concrete] of abstraction) {
-    if (concretePath === concrete) return { kind: "name", name: abstract };
+  if (concretePath) for (const [abstract, value] of abstraction) {
+    if (concretePath === parseAbstractionValue(value).path) return { kind: "name", name: abstract };
   }
   if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "name") return expression;
   if (expression.kind === "unary") return { ...expression, operand: canonicalizeAbstractionExpression(expression.operand, abstraction) };
@@ -437,7 +450,8 @@ function normalizeRefinementExpression(
     }
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-    && node.expression.name.text === "has" && node.arguments.length === 1) {
+    && (node.expression.name.text === "has" || node.expression.name.text === "includes") && node.arguments.length === 1
+    && (node.expression.name.text === "has" || isDeclarationFileSymbol(checker, node.expression.name, "includes"))) {
     const collection = normalizeRefinementExpression(node.expression.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
     const argument = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
     if (collection && argument) {
@@ -520,14 +534,14 @@ function validateRefinementActionBodiesInSource(
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
-  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const expressionStateNames = new Set([...stateNames, ...[...concreteToAbstract.keys()].map((path) => path.split(".")[0]!).filter(Boolean)]);
   const canonicalize = (expression: TemporalExpression): TemporalExpression => canonicalizeAbstractionExpression(expression, abstraction);
   const actionFieldPath = (node: ts.Expression, receiver: string, substitutions: ReadonlyMap<string, ts.Expression>): string[] | undefined => {
     const path = refinementFieldPath(node, receiver, substitutions);
     if (!path?.[0]) return path;
-    for (const [abstract, concrete] of abstraction) {
-      const concretePath = concrete.split(".");
+    for (const [abstract, value] of abstraction) {
+      const concretePath = parseAbstractionValue(value).path.split(".");
       if (concretePath.every((part, index) => path[index] === part)) return [abstract, ...path.slice(concretePath.length)];
     }
     return path;
@@ -551,6 +565,13 @@ function validateRefinementActionBodiesInSource(
       return !!constraint && constraint !== type && matches(constraint, new Set([...seen, type]));
     };
     return matches(checker.getTypeAtLocation(node));
+  };
+  const isBuiltinArrayReceiver = (node: ts.Expression): boolean => {
+    if (!checker) return false;
+    const type = checker.getTypeAtLocation(node);
+    const symbol = type.getSymbol() ?? type.aliasSymbol;
+    return symbol?.getName() === "Array"
+      && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
   };
 
   const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
@@ -721,6 +742,20 @@ function validateRefinementActionBodiesInSource(
         for (const field of fields) {
           if (!targetType || typeof targetType === "string" || targetType.kind !== "record") { targetType = undefined; break; }
           targetType = targetType.fields[field];
+        }
+        const relation = target ? abstraction.get(target) : undefined;
+        if (target && stateNames.has(target) && targetType && relation
+          && parseAbstractionValue(relation).kind === "set-from-array"
+          && typeof targetType !== "string" && targetType.kind === "set"
+          && fields.length === 0 && node.expression.name.text === "push" && node.arguments.length === 1
+          && isBuiltinArrayReceiver(node.expression.expression)) {
+          const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
+          if (!element) return undefined;
+          writePath(target, [], {
+            kind: "method", receiver: readPath(target, []), name: "union",
+            arguments: [{ kind: "call", name: "Set", arguments: [expandLocalSnapshots(resolveCurrentState(element))] }],
+          });
+          continue;
         }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "clear" && node.arguments.length === 0
           && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")
@@ -909,7 +944,7 @@ function validateRefinementInvariantBodiesInSource(
     : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
-  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const expressionStateNames = new Set([...stateNames, ...[...concreteToAbstract.keys()].map((path) => path.split(".")[0]!).filter(Boolean)]);
   const canonicalize = (expression: TemporalExpression): TemporalExpression => canonicalizeAbstractionExpression(expression, abstraction);
   const diagnostics: RefinementInvariantDiagnostic[] = [];
@@ -1116,7 +1151,7 @@ function validateRefinementStateProjectionInSource(
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
-  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, value]) => [parseAbstractionValue(value).path, abstract]));
   const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
 
   const extract = (
@@ -1156,8 +1191,10 @@ function validateRefinementStateProjectionInSource(
       const base = accessPath(node.expression);
       if (!base) return undefined;
       const combined = [...base, node.name.text];
-      if (role === "observe") for (const [abstract, concrete] of abstraction) {
-        const concretePath = concrete.split(".");
+      if (role === "observe") for (const [abstract, value] of abstraction) {
+        const parsed = parseAbstractionValue(value);
+        if (parsed.kind !== "identity") continue;
+        const concretePath = parsed.path.split(".");
         if (combined.length >= concretePath.length && concretePath.every((part, index) => combined[index] === part)) {
           return [abstract, ...combined.slice(concretePath.length)];
         }
@@ -1170,6 +1207,15 @@ function validateRefinementStateProjectionInSource(
       return fields.reduce<TemporalExpression>((value, name) => ({ kind: "field", receiver: value, name }), { kind: "name", name: root });
     };
     const normalizeProjectionExpression = (node: ts.Expression): TemporalExpression | undefined => {
+      if (role === "observe" && checker && ts.isNewExpression(node)
+        && ts.isIdentifier(node.expression) && node.expression.text === "Set"
+        && node.arguments?.length === 1 && isDeclarationFileSymbol(checker, node.expression, "Set")) {
+        const concrete = refinementFieldPath(node.arguments[0]!, receiver, new Map())?.join(".");
+        for (const [abstract, value] of abstraction) {
+          const parsed = parseAbstractionValue(value);
+          if (parsed.kind === "set-from-array" && parsed.path === concrete) return { kind: "name", name: abstract };
+        }
+      }
       const path = accessPath(node);
       if (path) return pathExpression(path);
       if (!ts.isObjectLiteralExpression(node)) {
@@ -1234,8 +1280,18 @@ function validateRefinementStateProjectionInSource(
         return ts.isObjectLiteralExpression(property.initializer) ? initializerAt(property.initializer, tail) : undefined;
       };
       for (const { name, type } of spec.states) {
-        const initializer = initializerAt(expression, (abstraction.get(name) ?? name).split("."));
-        let value = initializer ? normalizeProjectionExpression(initializer) : undefined;
+        const relation = abstraction.get(name);
+        const parsed = relation ? parseAbstractionValue(relation) : { kind: "identity" as const, path: name };
+        const initializer = initializerAt(expression, parsed.path.split("."));
+        let value: TemporalExpression | undefined;
+        if (parsed.kind === "set-from-array" && checker && initializer && ts.isCallExpression(initializer)
+          && ts.isPropertyAccessExpression(initializer.expression)
+          && ts.isIdentifier(initializer.expression.expression) && initializer.expression.expression.text === "Array"
+          && initializer.expression.name.text === "from" && initializer.arguments.length === 1
+          && isDeclarationFileSymbol(checker, initializer.expression.name, "from")) {
+          const source = accessPath(initializer.arguments[0]!);
+          if (source?.length === 1 && source[0] === name) value = { kind: "name", name };
+        } else if (initializer) value = normalizeProjectionExpression(initializer);
         const expanded = expandedIdentity(type, [name]);
         if (value && expanded && sameRefinementExpression(value, expanded)) value = { kind: "name", name };
         if (!value) return undefined;
@@ -1278,15 +1334,31 @@ function validateRefinementStateProjectionInSource(
     if ((actual.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return [];
     if ((actual.flags & ts.TypeFlags.Object) === 0 && !actual.isIntersection()) return [];
     for (const { name, type } of spec.states) {
+      const relation = abstraction.get(name);
+      const parsed = relation ? parseAbstractionValue(relation) : { kind: "identity" as const, path: name };
       let current = actual;
       let declaration: ts.Node = location;
-      for (const part of (abstraction.get(name) ?? name).split(".")) {
+      for (const part of parsed.path.split(".")) {
         const property = current.getProperty(part);
         if (!property) return [name];
         declaration = property.valueDeclaration ?? property.declarations?.[0] ?? declaration;
         current = checker!.getTypeOfSymbolAtLocation(property, declaration);
       }
-      const mismatch = typescriptTemporalShapeMismatch(checker!, current, type, declaration, [name]);
+      let mismatch: readonly string[] | undefined;
+      if (parsed.kind === "set-from-array") {
+        if (typeof type === "string" || type.kind !== "set") mismatch = [name];
+        else {
+          const symbol = current.getSymbol() ?? current.aliasSymbol;
+          const builtinArray = symbol?.getName() === "Array"
+            && (symbol.declarations ?? []).some((candidate) => candidate.getSourceFile().isDeclarationFile);
+          const element = builtinArray && (current.flags & ts.TypeFlags.Object) !== 0
+            ? checker!.getTypeArguments(current as ts.TypeReference)[0]
+            : undefined;
+          mismatch = element && type.element !== "never"
+            ? typescriptTemporalShapeMismatch(checker!, element, type.element, declaration, [name, "<element>"])
+            : element ? undefined : [name];
+        }
+      } else mismatch = typescriptTemporalShapeMismatch(checker!, current, type, declaration, [name]);
       if (mismatch) return mismatch;
     }
     return undefined;

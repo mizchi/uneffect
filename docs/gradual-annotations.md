@@ -60,7 +60,9 @@ refinement_decl = "refinement", identifier, "@", version,
                   | "action", identifier
                   | "invariant", identifier ) ;
 abstraction_decl = "abstraction", identifier, "@", version,
-                   identifier, "=", qualified_name ;
+                   identifier, "=", abstraction_expression ;
+abstraction_expression = qualified_name
+                       | "Set", "(", qualified_name, ")" ;
 
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name
@@ -111,19 +113,26 @@ model by declaring an explicit, version-matched abstraction relation:
 ```ts
 /* uneffect:
   state subscribers: Set<int>
-  abstraction routingState@1 subscribers = routing.activeSubscriberIds
+  abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds)
 */
 ```
 
-The left side is a temporal state field and the right side is its concrete
-runtime property path. The relation is one-to-one, and concrete paths may
+The left side is a temporal state field. A bare right side is an identity
+projection from its concrete runtime property path. `Set(path)` is the first
+computed relation: a temporal `Set<T>` is represented by a mutable concrete
+`T[]`; create must use builtin `Array.from(modelSet)`, observe must use builtin
+`new Set(runtimeArray)`, `push(value)` refines Set union, and `includes(value)`
+refines membership. Array order and duplicate entries are deliberately outside
+the abstract observation. These builtins are accepted only through the
+Program-backed TypeChecker path. The relation is one-to-one, and concrete paths may
 share parents but may not overlap as prefixes. The Program-backed checker verifies
 the abstract create parameter and observe result, the concrete create result
 and observe parameter, and then canonicalizes action updates and invariant
 reads through the same relation. Unknown fields, duplicate mappings, stale
 adapter versions, `any`/`unknown`, and incompatible scalar or builtin
-collection types are rejected. Computed projections, conversions, dynamic
-property paths, and many-to-one relations remain explicit non-proofs.
+collection types are rejected. Other computed conversions, array operations
+such as indexed writes/splice/pop, dynamic property paths, and many-to-one
+relations remain explicit non-proofs.
 
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to

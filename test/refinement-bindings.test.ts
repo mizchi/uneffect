@@ -922,6 +922,88 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("refines a Set model through a computed array abstraction", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-set-abstraction-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state subscribers: Set<int>
+      init subscribers = Set(1)
+      action admit: subscribers' = subscribers.union(Set(2))
+      temporal primaryPresent: subscribers.contains(1)
+      abstraction arraySet@1 subscribers = Set(routing.activeSubscriberIds)
+    */
+      interface ModelState { subscribers: Set<number> }
+      interface Runtime { routing: { activeSubscriberIds: number[] } }
+      /* uneffect: refinement arraySet@1 create */
+      export function create(initial: ModelState): Runtime { return { routing: { activeSubscriberIds: Array.from(initial.subscribers) } } }
+      /* uneffect: refinement arraySet@1 observe */
+      export function observe(runtime: Runtime): ModelState { return { subscribers: new Set(runtime.routing.activeSubscriberIds) } }
+      /* uneffect: refinement arraySet@1 action admit */
+      export function admit(runtime: Runtime): void { runtime.routing.activeSubscriberIds.push(2) }
+      /* uneffect: refinement arraySet@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.includes(1) }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(fileName, source).temporal;
+      expect(buildRefinementBindingManifest(fileName, source, "arraySet").abstractions).toEqual({ subscribers: "Set(routing.activeSubscriberIds)" });
+      expect(validateRefinementStateProjectionInProgram(program, fileName, "arraySet", spec)).toEqual([]);
+      expect(validateRefinementActionBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
+      expect(validateRefinementInvariantBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
+      const wrongAction = source.replace("activeSubscriberIds.push(2)", "activeSubscriberIds.push(3)");
+      expect(validateRefinementActionBodies(fileName, wrongAction, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "admit" }),
+      );
+      writeFileSync(fileName, wrongAction);
+      const wrongActionProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongActionProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "admit", target: "subscribers" }),
+      );
+      const wrongInvariant = source.replace("activeSubscriberIds.includes(1)", "activeSubscriberIds.includes(2)");
+      writeFileSync(fileName, wrongInvariant);
+      const wrongInvariantProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(wrongInvariantProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryPresent" }),
+      );
+      const wrongType = source.replace("activeSubscriberIds: number[]", "activeSubscriberIds: boolean[]");
+      writeFileSync(fileName, wrongType);
+      const wrongTypeProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(wrongTypeProgram, fileName, "arraySet", parseSpec(fileName, wrongType).temporal)).toContainEqual(
+        expect.objectContaining({ code: "create-type-mismatch", field: "subscribers" }),
+      );
+      const missingConversion = source.replace("Array.from(initial.subscribers)", "[...initial.subscribers]");
+      writeFileSync(fileName, missingConversion);
+      const missingConversionProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(missingConversionProgram, fileName, "arraySet", parseSpec(fileName, missingConversion).temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-create-body" }),
+      );
+      const spliceAction = source.replace("activeSubscriberIds.push(2)", "activeSubscriberIds.splice(0, 0, 2)");
+      writeFileSync(fileName, spliceAction);
+      const spliceProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(spliceProgram, fileName, "arraySet", parseSpec(fileName, spliceAction).temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "admit" }),
+      );
+      expect(() => buildRefinementBindingManifest(fileName, source.replace(
+        "Set(routing.activeSubscriberIds)", "Map(routing.activeSubscriberIds)",
+      ), "arraySet")).toThrow(/unsupported abstraction expression/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves imported create and observe wrappers only in the Program-backed path", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-projection-"));
     const helperFile = join(directory, "projection.ts");

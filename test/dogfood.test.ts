@@ -1,4 +1,6 @@
-import { globSync, readFileSync } from "node:fs";
+import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
@@ -27,11 +29,22 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
 
-    const wrongAction = source.replace("activeSubscriberIds.add(2)", "activeSubscriberIds.add(3)");
-    expect(await validateRefinementActionBodiesWithZ3(fileName, wrongAction, "routingState", temporal)).toContainEqual(
-      expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
-    );
-    const wrongObservation = source.replace("subscribers: runtime.routing.activeSubscriberIds", "subscribers: new Set<number>()");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-routing-dogfood-"));
+    const wrongFile = join(directory, "renamed-routing-state.ts");
+    try {
+      const wrongAction = source.replace("activeSubscriberIds.push(2)", "activeSubscriberIds.push(3)");
+      writeFileSync(wrongFile, wrongAction);
+      const wrongProgram = ts.createProgram([wrongFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "routingState", temporal)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+    const wrongObservation = source.replace("subscribers: new Set(runtime.routing.activeSubscriberIds)", "subscribers: new Set<number>()");
     expect(validateRefinementStateProjection(fileName, wrongObservation, "routingState", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-observe-body" }),
     );

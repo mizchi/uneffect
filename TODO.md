@@ -171,6 +171,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.
           - [x] Extend one-to-one abstraction relations to non-overlapping dotted concrete property paths, including nested create reconstruction and Program-backed type traversal.
+          - [x] Add a proof-directed `Set(arrayPath)` computed abstraction with builtin `Array.from`/`new Set` boundaries and `push`/`includes` action/invariant refinement.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
