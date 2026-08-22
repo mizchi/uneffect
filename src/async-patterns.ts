@@ -970,7 +970,7 @@ export function generateNodeEventLoopQuint(
     ], updates);
   };
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
-  polls.forEach((index, order) => macro(index, polls.slice(0, order), 2));
+  polls.forEach((index) => macro(index, [], 2));
   checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
   action("advance_timers_to_poll", [
     ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),

@@ -89,8 +89,13 @@ const fsWriteNames = [
 
 function fsBuiltinContracts(module: string): BuiltinContract[] {
   const contracts: BuiltinContract[] = [];
+  const completionCallbacks = new Set([
+    "access", "exists", "readFile", "readdir", "readlink", "realpath", "stat", "lstat", "open",
+    "appendFile", "chmod", "chown", "link", "mkdir", "rename", "rm", "rmdir", "symlink", "truncate", "unlink", "utimes", "writeFile",
+    "copyFile", "cp", "read", "write",
+  ]);
   const callbackOperation = (name: string): Pick<FsBuiltinOperation, "callbackArgumentFromEnd" | "callbackQueue"> =>
-    module === "node:fs" && ["readFile", "writeFile", "copyFile"].includes(name)
+    module === "node:fs" && completionCallbacks.has(name)
       ? { callbackArgumentFromEnd: 1, callbackQueue: "poll" }
       : {};
   for (const name of fsReadNames) contracts.push(trusted({
@@ -104,10 +109,10 @@ function fsBuiltinContracts(module: string): BuiltinContract[] {
     symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1, ...callbackOperation(name) },
   }));
   for (const name of ["read", "readSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1 },
+    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1, ...callbackOperation(name) },
   }));
   for (const name of ["write", "writeSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true },
+    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, ...callbackOperation(name) },
   }));
   return contracts;
 }

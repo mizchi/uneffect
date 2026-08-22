@@ -7,11 +7,12 @@ The prototype exposes a `FrontendSymbolAdapter` boundary and a TypeScript implem
 The standalone analyzer and CLI also construct a TypeScript Program; there is no fallback recognizer based on callee source text. Array/Map/Set mutation methods are declaration-symbol overlays, so a user-defined method named `push` is not classified as an Array mutation.
 
 A builtin contract may carry more than one semantic projection. In the current
-Node slice, callback overloads of `node:fs.readFile`, `writeFile`, and
-`copyFile` still emit `FsRead`/`FsWrite`, while their final callback argument
-also becomes a poll-phase job in the Node temporal model. The sync and
-`node:fs/promises` symbols retain only their applicable effect/Promise
-semantics.
+Node slice, reviewed one-shot completion APIs in `node:fs` still emit
+`FsRead`/`FsWrite`, while their final callback argument also becomes a
+poll-phase job in the Node temporal model. This includes access/stat,
+file/path read and write, copy, descriptor read/write, and path mutation APIs.
+Sync, `node:fs/promises`, watcher, and stream symbols retain only their
+applicable effect/Promise semantics.
 
 ## Contract lookup
 

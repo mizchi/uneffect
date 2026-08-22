@@ -1087,4 +1087,18 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("does not invent source-order FIFO for independent poll completions", () => {
+    const model = analyzeAsyncPatterns("node-fs-order.ts", `
+      import { readFile } from "node:fs"
+      function load() {
+        readFile("a", () => undefined)
+        readFile("b", () => undefined)
+      }
+    `);
+    const quint = generateNodeEventLoopQuint("node_fs_order", model);
+    const second = quint.slice(quint.indexOf("action run_poll_1"), quint.indexOf("action advance_poll_to_check"));
+    expect(second).not.toContain("not(callback_0_pending)");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });

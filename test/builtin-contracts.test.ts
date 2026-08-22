@@ -39,4 +39,14 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "global", export: "setImmediate" }, operation: expect.objectContaining({ kind: "timer", queue: "check" }) }),
     ]));
   });
+
+  it("marks one-shot node:fs completion callbacks without changing sync or Promise APIs", () => {
+    const lookup = (module: string, name: string) => builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.operation;
+    for (const name of ["access", "readFile", "writeFile", "copyFile", "read", "write", "rename", "rm"]) {
+      expect(lookup("node:fs", name)).toMatchObject({ kind: "fs", callbackArgumentFromEnd: 1, callbackQueue: "poll" });
+    }
+    expect(lookup("node:fs", "readFileSync")).not.toHaveProperty("callbackQueue");
+    expect(lookup("node:fs/promises", "readFile")).not.toHaveProperty("callbackQueue");
+    expect(lookup("node:fs", "watch")).not.toHaveProperty("callbackQueue");
+  });
 });
