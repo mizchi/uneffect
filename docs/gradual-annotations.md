@@ -210,15 +210,19 @@ TypeScript Program may instead be passed to
 resolves imported helpers and reassignment-free `const` function aliases by
 symbol identity. Direct namespace-import selections such as
 `Predicates.valid(runtime.epoch)` are also accepted when the selected property
-resolves to a function declaration. Mutable aliases, ambiguous lexical call
+resolves to a function declaration. Native `Set.has(value)` and the `Set.size`
+property normalize to temporal `set.contains(value)` and `set.size()`.
+Receiver identity is established by the separately required Program-backed
+create/observe shape check; this predicate pass proves the expression mapping,
+not builtin symbol identity in isolation. Mutable aliases, ambiguous lexical call
 names, recursion, ordinary object methods, dynamic dispatch,
 statement-bearing helpers, mutable local
-declarations, mutation, collections, and merely logically equivalent but differently
+declarations, mutation, other collection operations, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous
 Z3 variants discharge a normalized mismatch only
 when Z3 proves the two normalized boolean expressions equivalent over all typed
 states. They do not make statement-bearing helpers, mutable declarations,
-mutation, or collections supported, and preserve `unknown` as a diagnostic.
+mutation, or additional collection operations supported, and preserve `unknown` as a diagnostic.
 Multi-layer scalar and runtime-object argument substitution is supported for
 this single-return fragment. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every

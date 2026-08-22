@@ -571,6 +571,28 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([]);
   });
 
+  it("proves native Set membership and size invariant predicates", () => {
+    const source = `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      temporal ownerPresent: owners.contains(1)
+      temporal boundedOwners: owners.size() <= 2
+    */
+      interface Runtime { owners: Set<number> }
+      /* uneffect: refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
+      /* uneffect: refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lease@1 invariant ownerPresent */
+      export function ownerPresent(runtime: Runtime) { return runtime.owners.has(1) }
+      /* uneffect: refinement lease@1 invariant boundedOwners */
+      export function boundedOwners(runtime: Runtime) { return runtime.owners.size <= 2 }
+    `;
+    expect(validateRefinementInvariantBodies("lease.ts", source, "lease", parseSpec("lease.ts", source).temporal)).toEqual([]);
+    const wrongMember = source.replace("runtime.owners.has(1)", "runtime.owners.has(2)");
+    expect(validateRefinementInvariantBodies("lease.ts", wrongMember, "lease", parseSpec("lease.ts", wrongMember).temporal)).toContainEqual(
+      expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "ownerPresent" }),
+    );
+  });
+
   it("inlines an acyclic local pure invariant helper graph without trusting recursive calls", () => {
     const model = `/* uneffect:
       state value: int

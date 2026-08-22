@@ -257,6 +257,7 @@ function normalizeRefinementExpression(
   if (field && stateNames.has(field)) return { kind: "name", name: field };
   if (ts.isPropertyAccessExpression(node)) {
     const base = normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    if (base && node.name.text === "size") return { kind: "method", receiver: base, name: "size", arguments: [] };
     if (base) return { kind: "field", receiver: base, name: node.name.text };
   }
   if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
@@ -299,6 +300,12 @@ function normalizeRefinementExpression(
       fields[name] = value;
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === "has" && node.arguments.length === 1) {
+    const collection = normalizeRefinementExpression(node.expression.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    const argument = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    if (collection && argument) return { kind: "method", receiver: collection, name: "contains", arguments: [argument] };
   }
   if (ts.isCallExpression(node) && (ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression))) {
     const name = ts.isIdentifier(node.expression) ? node.expression.text : node.expression.getText();
