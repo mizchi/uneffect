@@ -17,9 +17,7 @@ that does not provision that verifier.
 Files that exercise both verifier APIs belong to `integration`, even when one
 backend dominates most test cases. The Node Lease suite is intentionally in
 that tier because it runs Quint subprocesses and Z3 reachability in the same
-application model. Its two-pass strengthening case has an explicit 60-second
-per-test ceiling; this bounds slow shared-runner execution without weakening
-the solver obligations or skipping either pass.
+application model.
 
 Set `UNEFFECT_CI_TIER` to select a tier through Vitest. A generated property
 test may launch a child Vitest process with an explicit `.test.ts` path. That
@@ -43,6 +41,14 @@ queries were enough to exhaust one file process on GitHub. A manifest test
 keeps those selectors synchronized with every declared test. GitHub still runs
 independent capability-tier jobs in parallel, so this bounds memory without
 collapsing CI-level parallelism.
+
+The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
+fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier
+runner captures each explicitly isolated test and retries it once only when
+both parts of that crash signature are present. Assertion failures and plain
+timeouts are never retried, and a repeated WASM crash still fails the job. This
+is process recovery for a recognized verifier-runtime crash, not a flaky-test
+allowance or weakened proof obligation.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds

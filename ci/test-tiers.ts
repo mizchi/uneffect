@@ -64,3 +64,7 @@ export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readon
   const hasExplicitTestFile = argv.some((argument) => argument.endsWith(".test.ts"));
   return hasExplicitTestFile ? undefined : ciTestTiers[tier];
 }
+
+export function shouldRetryIsolatedSolverFailure(output: string): boolean {
+  return output.includes("memory access out of bounds") && output.includes("z3-built.wasm");
+}

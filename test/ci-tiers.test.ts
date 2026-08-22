@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedTestNames, ciTestTiers, resolveCiTestIncludes } from "../ci/test-tiers.js";
+import { ciIsolatedTestNames, ciTestTiers, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -50,5 +50,11 @@ describe("CI test tier manifest", () => {
       const declared = [...source.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]);
       expect(selected, file).toEqual(declared);
     }
+  });
+
+  it("retries only known transient Z3 WASM crashes", () => {
+    expect(shouldRetryIsolatedSolverFailure("RuntimeError: memory access out of bounds\nat z3-built.wasm.smt::context")).toBe(true);
+    expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
+    expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
   });
 });
