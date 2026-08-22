@@ -10,6 +10,21 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 
 describe("Uneffect dogfood", () => {
+  it("verifies a Node callback-checkpoint application model through the project API", async () => {
+    const verified = await verifyUneffectProject({ temporalRuntime: "node", files: {
+      "src/node-service.ts": `
+        import { nextTick } from "node:process"
+        export function scheduleFlush() {
+          nextTick(() => console.log("tick"))
+          queueMicrotask(() => console.log("microtask"))
+          setImmediate(() => console.log("check"))
+        }
+      `,
+    } });
+    expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("nodeEventLoopSafe") }));
+    expect(verified.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nodeEventLoopSafe", result: "verified" }));
+  });
+
   it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {
     const program = ts.createProgram(globSync("src/*.ts"), {
       target: ts.ScriptTarget.ES2024,

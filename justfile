@@ -64,6 +64,9 @@ spec-unified-async file function:
 spec-web-event-loop file:
     pnpm tsx src/spec-cli.ts web-loop-quint {{ file }}
 
+spec-node-event-loop file:
+    pnpm tsx src/spec-cli.ts node-loop-quint {{ file }}
+
 build:
     pnpm build
 

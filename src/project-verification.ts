@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { analyzeAsyncPatterns, generateWebEventLoopQuint } from "./async-patterns.js";
+import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
 import { analyzePromiseChains } from "./promise-chains.js";
@@ -16,7 +16,7 @@ import { parseTemporalComposition } from "./temporal-compose.js";
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
   runtimeAssertions?: "off" | "fallback";
-  temporalRuntime?: "web";
+  temporalRuntime?: "web" | "node";
   temporalRoot?: string;
   assumptionPolicy?: AssumptionPolicy;
 }
@@ -49,7 +49,7 @@ export interface ProjectTemporalProperty {
 
 export interface ProjectTemporalModel {
   fileName: string;
-  kind: "web-event-loop";
+  kind: "web-event-loop" | "node-event-loop";
   quint: string;
 }
 
@@ -161,9 +161,13 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
       temporalModels.push({ fileName, kind: "web-event-loop", quint });
       temporalProperties.push(verifyQuintInvariant(quint, "eventLoopSafe"));
       for (const property of temporalComposition?.properties ?? []) temporalProperties.push(verifyQuintInvariant(quint, property.name));
+    } else if (options.temporalRuntime === "node") {
+      const quint = generateNodeEventLoopQuint(fileName.replace(/[^A-Za-z0-9_]/g, "_"), analyzeAsyncPatterns(fileName, source));
+      temporalModels.push({ fileName, kind: "node-event-loop", quint });
+      temporalProperties.push(verifyQuintInvariant(quint, "nodeEventLoopSafe"));
     }
   }
-  const temporal = options.temporalRuntime === "web"
+  const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
   return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, ...(temporal ? { temporal } : {}) };

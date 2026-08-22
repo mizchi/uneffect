@@ -4,13 +4,13 @@ import { basename } from "node:path";
 import { generateQuint, generateSmtLib } from "./spec-backends.js";
 import { parseSpec } from "./spec-ir.js";
 import { generateComposedQuint, parseTemporalComposition } from "./temporal-compose.js";
-import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "./async-patterns.js";
+import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "./promise-chains.js";
 import { lintSpecWithZ3 } from "./spec-lint.js";
 
 const [command, fileName, selectedFunction] = process.argv.slice(2);
-if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|promise-quint> <file.ts> [function]");
+if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"].includes(command)) {
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function]");
   process.exit(2);
 }
 
@@ -42,6 +42,9 @@ if (command === "ir") {
 } else if (command === "web-loop-quint") {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
   process.stdout.write(generateWebEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
+} else if (command === "node-loop-quint") {
+  const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
+  process.stdout.write(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source)));
 } else {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
   process.stdout.write(generatePromiseChainsQuint(moduleName, analyzePromiseChains(fileName, source)));

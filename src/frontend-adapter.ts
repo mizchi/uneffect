@@ -73,7 +73,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       if (path && isLibraryGlobal) contract = this.#globalContracts.get(path);
     }
-    if (!contract && ts.isPropertyAccessExpression(call.expression)) {
+    if (!contract) {
       for (const declaration of symbol.declarations ?? []) {
         const parent = declaration.parent;
         if ((ts.isInterfaceDeclaration(parent) || ts.isClassDeclaration(parent)) && parent.name) {

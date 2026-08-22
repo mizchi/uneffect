@@ -32,4 +32,11 @@ describe("builtin semantic overlays", () => {
       operation: { kind: "scheduler-yield" },
     }));
   });
+
+  it("registers Node next-tick and check-phase scheduling by builtin identity", () => {
+    expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: { module: "lib.node", export: "Process#nextTick" }, operation: expect.objectContaining({ kind: "timer", queue: "next-tick" }) }),
+      expect.objectContaining({ symbol: { module: "global", export: "setImmediate" }, operation: expect.objectContaining({ kind: "timer", queue: "check" }) }),
+    ]));
+  });
 });

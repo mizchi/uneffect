@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
-import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const source = `
@@ -900,4 +900,27 @@ describe("builtin async temporal patterns", () => {
       ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("models the Node callback checkpoint with nextTick before V8 microtasks", () => {
+    const model = analyzeAsyncPatterns("node-loop.ts", `
+      import { nextTick } from "node:process"
+      function schedule() {
+        setTimeout(() => {}, 0)
+        setImmediate(() => {})
+        queueMicrotask(() => {})
+        nextTick(() => {})
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "timer" },
+      { queue: "check" },
+      { queue: "microtask" },
+      { queue: "next-tick" },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_loop", model);
+    expect(quint).toContain("action drain_next_tick_3");
+    expect(quint).toMatch(/action drain_microtask_2[\s\S]*not\(callback_3_pending\)/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+    expect(run(generateNodeEventLoopQuint("node_loop_broken", model, { allowMicrotaskBeforeNextTick: true }), "nodeEventLoopSafe").status).not.toBe(0);
+  }, 20_000);
 });

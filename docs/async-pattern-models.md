@@ -36,24 +36,42 @@ cannot fire. Cancellation under a branch, loop, or `try` is retained as
 non-definite rather than unsoundly assumed to happen.
 
 `queueMicrotask` is a distinct zero-delay queue. Pending microtasks must drain
-before an eligible timer callback. This is a deliberately small event-loop
-rule, not a complete HTML or Node event-loop model. The negative controls allow
-post-cancellation firing and timer-before-microtask firing; Quint finds both.
+before an eligible timer callback in the Web profile. The negative controls
+allow post-cancellation firing and timer-before-microtask firing; Quint finds
+both.
+
+The initial Node 24 profile is available through
+`just spec-node-event-loop <file>`, `node-loop-quint`,
+`generateNodeEventLoopQuint`, and project verification with
+`temporalRuntime: "node"`. TypeChecker-resolved `process.nextTick` callbacks
+use a separate next-tick queue, `queueMicrotask` uses the V8 microtask queue,
+and `setImmediate` uses a check queue. At an ordinary callback checkpoint the
+next-tick queue must drain before V8 microtasks, and both drain before another
+modeled timer/check callback. A broken option permits a microtask to overtake a
+pending next-tick callback and is rejected by `nodeEventLoopSafe`.
+
+This is intentionally not a complete libuv model. Node documents a special
+ESM top-level case where module evaluation is already executing as a
+microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded
+from this callback-checkpoint profile. Poll/I/O readiness, close callbacks,
+pending callbacks, idle/prepare internals, recursive starvation, Promise
+reactions in the Node profile, and version/platform-dependent timer/check
+selection remain explicit gaps.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It
-does not yet resolve computed properties or imported closure factories. Nested
-minimum-delay clamping, integer overflow,
-browser background throttling, Node event-loop phases, `process.nextTick`, and
+now resolves direct/literal-computed methods and single-return source callback
+factories, but not dynamic property selection. Nested minimum-delay clamping,
+integer overflow, browser background throttling, complete libuv phases, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite
 cancellation, not fully symbolically executed.
 
 Direct timer registrations also retain a `handleKind` of `number`, `object`, or
 `unknown` from the resolved TypeScript return type. This distinguishes common
-DOM and Node handle representations in neutral IR without claiming that the
-current event-loop model implements Node phases or cross-host cancellation.
+DOM and Node handle representations in neutral IR. Cross-host cancellation
+compatibility is still not proven.
 
 ## Promise combinators
 

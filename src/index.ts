@@ -204,7 +204,7 @@ export { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnership
 export type { OptimizationDecision, OptimizationEvent, OptimizationObligation, OwnershipAssertionRewrite, OwnershipGuardElisionObligation, PropertyMangleObligation, StableReadReuseObligation, StableReadRewrite } from "./optimizer.js";
 export { optimizeUneffectProject } from "./project-optimizer.js";
 export type { OptimizeUneffectProjectOptions, OptimizeUneffectProjectResult, ProjectOptimizationTransformation, StaleProjectEvidence } from "./project-optimizer.js";
-export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "./async-patterns.js";
+export { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 export type { AbortCompositionPattern, AsyncPatternModel, PromiseCombinatorPattern, TimerCancellation, TimerHandleEscape, TimerPattern } from "./async-patterns.js";
 export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
 export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern, PromiseThenablePattern } from "./promise-chains.js";
