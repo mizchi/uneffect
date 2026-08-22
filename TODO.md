@@ -282,7 +282,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 ## P8 — Async/resource model hardening
 
-- [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v5 Corsa contract validates protocol-symbol edges and correlated control conditions; production Context Mapper emission remains tracked in P6.)
+- [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v6 Corsa contract validates protocol-symbol edges and disjunctive correlated control paths; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.
   - [x] Cover typed aliases, interface inheritance, intersections, and generic constraints in the TypeChecker frontend.
 - [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model.
@@ -306,7 +306,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Correlate analyzed awaits in top-level handler `if` then/else branches through shared condition identity and skip/join transitions.
     - [x] Preserve `return`/`throw` completion paths inside handler `if` branches, including branches ending in analyzed awaits.
     - [x] Model handler `switch` case selection as an ordered decision chain and retain top-level fallthrough/break completion.
-    - [ ] Add disjunctive control paths for operations reachable through both direct case entry and fallthrough.
+    - [x] Add disjunctive control paths for operations reachable through both direct case entry and fallthrough, carried through Corsa schema v6.
     - [ ] Extend enclosing-handler propagation to loops, labeled control flow, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

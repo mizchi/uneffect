@@ -7,7 +7,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 6 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 7 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -48,7 +48,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     }));
   });
 
-  it("preserves correlated control conditions in schema v5", async () => {
+  it("preserves disjunctive control paths in schema v6", async () => {
     const result = await compareUneffectFrontends({ files: { "conditional.ts": `
       interface Resource { [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
@@ -60,9 +60,25 @@ describe("TypeScript/Corsa neutral projection parity", () => {
       }
     ` } });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
-    expect(result.typescriptIr.schemaVersion).toBe(5);
-    expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] }));
-    expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] }));
+    expect(result.typescriptIr.schemaVersion).toBe(6);
+    expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
+    expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
+  });
+
+  it("preserves switch fallthrough control-path disjunctions across frontends", async () => {
+    const result = await compareUneffectFrontends({ files: { "switch.ts": `
+      declare function note(value: string): void
+      export async function run(mode: "prepare" | "run" | "ignore") {
+        switch (mode) {
+          case "prepare": note("prepared")
+          case "run": await Promise.resolve("shared")
+          default: return
+        }
+      }
+    ` } });
+    expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
+    const shared = result.typescriptIr.promiseObservations.find((item) => item.source.includes('"shared"'))!;
+    expect(shared.controlPaths).toHaveLength(2);
   });
 
   it("preserves nested SuppressedError payload order across frontends", async () => {

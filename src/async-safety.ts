@@ -16,6 +16,7 @@ export interface PromiseObservation {
   catchesRejection: boolean;
   conditional: boolean;
   controlConditions: AsyncControlCondition[];
+  controlPaths: AsyncControlCondition[][];
   promiseChain?: number;
   span: { start: number; end: number };
 }
@@ -33,6 +34,7 @@ export interface ResourceBinding {
   asynchronous: boolean;
   conditional: boolean;
   controlConditions: AsyncControlCondition[];
+  controlPaths: AsyncControlCondition[][];
   acquisitionIndex: number;
   scopeId: string;
   scopeDepth: number;
@@ -149,6 +151,19 @@ function switchControlConditions(owner: string, source: ts.SourceFile, clause: t
   if (ts.isDefaultClause(clause)) return cases.map((_, index) => ({ id: id(index), expected: false }));
   const selected = cases.indexOf(clause);
   return cases.slice(0, selected).map((_, index) => ({ id: id(index), expected: false })).concat({ id: id(selected), expected: true });
+}
+function switchControlPaths(owner: string, source: ts.SourceFile, clause: ts.CaseOrDefaultClause): AsyncControlCondition[][] {
+  const clauses = clause.parent.clauses;
+  const target = clauses.indexOf(clause);
+  const fallsThrough = (candidate: ts.CaseOrDefaultClause): boolean => !candidate.statements.some((statement) =>
+    (ts.isBreakStatement(statement) && !statement.label) || ts.isReturnStatement(statement) || ts.isThrowStatement(statement));
+  const entries: ts.CaseOrDefaultClause[] = [];
+  for (let index = 0; index <= target; index++) {
+    let reaches = true;
+    for (let cursor = index; cursor < target; cursor++) if (!fallsThrough(clauses[cursor]!)) { reaches = false; break; }
+    if (reaches) entries.push(clauses[index]!);
+  }
+  return entries.map((entry) => switchControlConditions(owner, source, entry));
 }
 function isPromiseLike(checker: ts.TypeChecker, expression: ts.Expression): boolean {
   const type = checker.getTypeAtLocation(expression);
@@ -409,19 +424,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visitFunction = (ownerNode: ts.FunctionLikeDeclaration): void => {
     if (!ownerNode.body) return;
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [];
-    const controlConditions = (node: ts.Node): AsyncControlCondition[] => {
-      const conditions: AsyncControlCondition[] = [];
+    const controlPaths = (node: ts.Node): AsyncControlCondition[][] => {
+      let paths: AsyncControlCondition[][] = [[]];
       let child = node;
       for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
         if (!ts.isIfStatement(parent) || child === parent.expression) continue;
-        conditions.unshift({ id: `${owner}@if:${parent.getStart(source)}`, expected: child === parent.thenStatement });
-        continue;
+        const condition = { id: `${owner}@if:${parent.getStart(source)}`, expected: child === parent.thenStatement };
+        paths = paths.map((path) => [condition, ...path]);
       }
-      for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
-        if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) conditions.unshift(...switchControlConditions(owner, source, parent));
+      for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) {
+        paths = switchControlPaths(owner, source, parent).flatMap((prefix) => paths.map((path) => [...prefix, ...path]));
       }
-      return conditions;
+      return paths;
     };
+    const controlConditions = (node: ts.Node): AsyncControlCondition[] => controlPaths(node)[0] ?? [];
     const isConditionalExecution = (node: ts.Node): boolean => {
       if (controlConditions(node).length > 0) return true;
       let child = node;
@@ -466,7 +482,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       return undefined;
     };
     const observe = (expression: ts.Expression, observation: PromiseObservationKind, catchesRejection: boolean): void => {
-      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), controlConditions: controlConditions(expression), span: { start: expression.getStart(source), end: expression.getEnd() } });
+      const paths = controlPaths(expression);
+      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), controlConditions: paths[0] ?? [], controlPaths: paths, span: { start: expression.getStart(source), end: expression.getEnd() } });
       if (observation === "floating") diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, expression.getStart(source)), kind: "floating-promise", severity: "error", message: `${owner} has a floating Promise whose rejection is not observed; await, return, catch, or explicitly void it` });
     };
     const visit = (node: ts.Node): void => {
@@ -498,7 +515,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const protocol = disposableProperties(checker, declaration.initializer);
           const selectedProtocol = asynchronous ? protocol.asyncSymbol ?? protocol.syncSymbol : protocol.syncSymbol;
           const protocolDeclaration = selectedProtocol?.declarations?.[0];
-          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), controlConditions: controlConditions(declaration), acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
+          const paths = controlPaths(declaration);
+          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), controlConditions: paths[0] ?? [], controlPaths: paths, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
             disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
@@ -961,15 +979,26 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const continuationPc = (end: number) => normalLayout.find(({ event }) => event.position > end)?.pc ?? cleanupPc;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
   const branchIds = [...new Set([
-    ...resources.flatMap((item) => item.controlConditions),
-    ...awaited.flatMap((item) => item.controlConditions),
+    ...resources.flatMap((item) => item.controlPaths.flat()),
+    ...awaited.flatMap((item) => item.controlPaths.flat()),
     ...result.controlStatements.filter((item) => item.owner === owner).flatMap((item) => item.completionPaths.flatMap((path) => path.controlConditions)),
   ].map((condition) => condition.id))];
   const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
   const conditionGuards = (conditions: readonly AsyncControlCondition[]): string[] => conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 1 : 0}`);
-  const conditionMismatch = (conditions: readonly AsyncControlCondition[]): string | undefined => conditions.length
-    ? conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 0 : 1}`).join(" or ")
-    : undefined;
+  const conditionPathGuards = (paths: readonly (readonly AsyncControlCondition[])[]): string[] => {
+    if (paths.length <= 1) return conditionGuards(paths[0] ?? []);
+    const alternatives = paths.map((path) => path.length ? path.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 1 : 0}`).join(" and ") : "true");
+    return [`(${alternatives.join(") or (")})`];
+  };
+  const conditionPathMismatch = (paths: readonly (readonly AsyncControlCondition[])[]): string | undefined => {
+    if (paths.length <= 1) {
+      const conditions = paths[0] ?? [];
+      return conditions.length ? conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 0 : 1}`).join(" or ") : undefined;
+    }
+    const guards = conditionPathGuards(paths);
+    if (guards.length === 0) return undefined;
+    return `not(${guards.join(" and ")})`;
+  };
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`));
@@ -1015,10 +1044,10 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       : nextEvent?.pc ?? cleanupPc;
     if (event.kind === "acquire") {
       const resource = resources[event.index]!;
-      const guards = [`pc == ${pc}`, ...conditionGuards(resource.controlConditions)];
+      const guards = [`pc == ${pc}`, ...conditionPathGuards(resource.controlPaths)];
       emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
       emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
-      const mismatch = conditionMismatch(resource.controlConditions);
+      const mismatch = conditionPathMismatch(resource.controlPaths);
       if (resource.conditional) emit(`skip_acquire_${labels[event.index]}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
       return;
     }
@@ -1029,13 +1058,13 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     }
     const observation = awaited[event.index]!;
     const chain = observation.promiseChain!;
-    const guards = [`pc == ${pc}`, ...conditionGuards(observation.controlConditions)];
+    const guards = [`pc == ${pc}`, ...conditionPathGuards(observation.controlPaths)];
     emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
     const rejectionTarget = observation.catchesRejection && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
     const rejectionUpdates = new Map<string, string>([["pc", String(rejectionTarget)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
-    const mismatch = conditionMismatch(observation.controlConditions);
+    const mismatch = conditionPathMismatch(observation.controlPaths);
     if (observation.conditional) emit(`skip_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
     const isLast = eventIndex === normalLayout.length - 1;
     const resumeName = awaited.length === 1
@@ -1045,7 +1074,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   });
   const emitHandlerAwait = (region: "catch" | "finally", observation: PromiseObservation, pc: number, next: number | string, completion: AsyncControlStatement["completion"], failureTarget: number, resumeGuards: string[] = []): void => {
     const chain = observation.promiseChain!;
-    const guards = [`pc == ${pc}`, ...conditionGuards(observation.controlConditions)];
+    const guards = [`pc == ${pc}`, ...conditionPathGuards(observation.controlPaths)];
     emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
     emit(`promise_${chain}_reject_escapes`, guards, new Map([["pc", String(failureTarget)], ["completion", "1"]]));
     const resumeTarget = completion === "normal" ? next : failureTarget;
@@ -1053,16 +1082,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (completion === "return" && region === "finally") updates.set("completion", "0");
     if (completion === "throw") updates.set("completion", "1");
     emit(`${region}_await_${chain}_resume`, [`pc == ${pc + 1}`, ...resumeGuards], updates);
-    const mismatch = conditionMismatch(observation.controlConditions);
+    const mismatch = conditionPathMismatch(observation.controlPaths);
     if (observation.conditional) emit(`skip_handler_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
   };
   const sameConditions = (left: readonly AsyncControlCondition[], right: readonly AsyncControlCondition[]): boolean => left.length === right.length && left.every((condition, index) => condition.id === right[index]?.id && condition.expected === right[index]?.expected);
   const completionForAwait = (statement: AsyncControlStatement, awaitIndex: number, awaitIndexes: readonly number[]): AsyncControlStatement["completion"] => {
     const observation = awaited[awaitIndex]!;
-    const path = statement.completionPaths.find((candidate) => sameConditions(candidate.controlConditions, observation.controlConditions));
+    const path = statement.completionPaths.find((candidate) => observation.controlPaths.some((controlPath) => sameConditions(candidate.controlConditions, controlPath)));
     if (!path || path.completion === "normal") return "normal";
     const position = awaitIndexes.indexOf(awaitIndex);
-    const hasLaterOnPath = awaitIndexes.slice(position + 1).some((laterIndex) => sameConditions(awaited[laterIndex]!.controlConditions, path.controlConditions));
+    const hasLaterOnPath = awaitIndexes.slice(position + 1).some((laterIndex) => awaited[laterIndex]!.controlPaths.some((controlPath) => sameConditions(controlPath, path.controlConditions)));
     return hasLaterOnPath ? "normal" : path.completion;
   };
   regionLayouts.forEach((layout, regionIndex) => {

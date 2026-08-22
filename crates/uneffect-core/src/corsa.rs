@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 5;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +100,7 @@ pub struct CorsaPromiseObservation {
     pub catches_rejection: bool,
     pub conditional: bool,
     pub control_conditions: Vec<CorsaControlCondition>,
+    pub control_paths: Vec<Vec<CorsaControlCondition>>,
     pub span: SourceSpanDto,
 }
 
@@ -129,6 +130,7 @@ pub struct CorsaResourceScope {
     pub asynchronous: bool,
     pub conditional: bool,
     pub control_conditions: Vec<CorsaControlCondition>,
+    pub control_paths: Vec<Vec<CorsaControlCondition>>,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -280,6 +282,7 @@ pub struct NormalizedPromiseObservation {
     pub catches_rejection: bool,
     pub conditional: bool,
     pub control_conditions: Vec<CorsaControlCondition>,
+    pub control_paths: Vec<Vec<CorsaControlCondition>>,
     pub start: u32,
     pub end: u32,
 }
@@ -304,6 +307,7 @@ pub struct NormalizedResourceScope {
     pub asynchronous: bool,
     pub conditional: bool,
     pub control_conditions: Vec<CorsaControlCondition>,
+    pub control_paths: Vec<Vec<CorsaControlCondition>>,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -396,6 +400,7 @@ impl NativeFrontendProgram {
                     catches_rejection: item.catches_rejection,
                     conditional: item.conditional,
                     control_conditions: item.control_conditions.clone(),
+                    control_paths: item.control_paths.clone(),
                     start: item.span.start,
                     end: item.span.end,
                 })
@@ -422,6 +427,7 @@ impl NativeFrontendProgram {
                     asynchronous: item.asynchronous,
                     conditional: item.conditional,
                     control_conditions: item.control_conditions.clone(),
+                    control_paths: item.control_paths.clone(),
                     acquisition_index: item.acquisition_index,
                     scope_id: item.scope_id.clone(),
                     scope_depth: item.scope_depth,
@@ -526,6 +532,24 @@ fn validate_control_conditions(
     Ok(())
 }
 
+fn validate_control_paths(
+    conditions: &[CorsaControlCondition],
+    paths: &[Vec<CorsaControlCondition>],
+) -> Result<(), CorsaFrontendError> {
+    if paths.is_empty() {
+        return Err(CorsaFrontendError("control paths are empty".into()));
+    }
+    for path in paths {
+        validate_control_conditions(path)?;
+    }
+    if paths[0] != conditions {
+        return Err(CorsaFrontendError(
+            "primary control conditions do not match the first control path".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFrontendError> {
     let file: CorsaFrontendFile =
         serde_json::from_str(json).map_err(|error| CorsaFrontendError(error.to_string()))?;
@@ -611,6 +635,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
     }
     for resource in &file.resource_scopes {
         validate_control_conditions(&resource.control_conditions)?;
+        validate_control_paths(&resource.control_conditions, &resource.control_paths)?;
         match (resource.protocol_symbol, resource.protocol_kind) {
             (Some(id), Some(kind))
                 if protocol_symbols
@@ -631,6 +656,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
     }
     for observation in &file.promise_observations {
         validate_control_conditions(&observation.control_conditions)?;
+        validate_control_paths(&observation.control_conditions, &observation.control_paths)?;
     }
     for owner in file
         .promise_observations

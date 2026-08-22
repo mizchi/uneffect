@@ -1191,4 +1191,32 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain("action catch_statement_0_path_2");
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("models an awaited switch operation reached by direct entry or fallthrough", () => {
+    const result = analyzeAsyncSafety("switch-awaited-fallthrough.ts", `
+      declare function note(value: string): void
+      async function run(mode: "prepare" | "fail" | "ignore") {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          switch (mode) {
+            case "prepare":
+              note("prepared")
+            case "fail":
+              await Promise.resolve("shared-failure").then(value => value)
+              throw error
+            default:
+              return
+          }
+        }
+      }
+    `);
+    const shared = result.promises.find((item) => item.source.includes('"shared-failure"'))!;
+    expect(shared.controlPaths).toHaveLength(2);
+    expect(shared.controlPaths[0]).toEqual([{ id: expect.any(String), expected: true }]);
+    expect(shared.controlPaths[1]).toHaveLength(2);
+    const quint = generateUnifiedAsyncQuint("switch_awaited_fallthrough", result, "run");
+    expect(quint).toContain(`action promise_${shared.promiseChain}_fulfill`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

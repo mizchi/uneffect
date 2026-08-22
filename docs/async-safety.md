@@ -456,8 +456,10 @@ Handler `switch` cases use an ordered boolean decision chain: a selected case
 requires earlier cases not to match, while default requires every case not to
 match. Top-level fallthrough and unlabeled break contribute the corresponding
 completion paths. An awaited operation reached both by direct case entry and
-by fallthrough still needs disjunctive control paths; the current Promise
-observation stores one conjunction and does not claim that case yet.
+by fallthrough carries `controlPaths`, an OR of condition conjunctions. The
+legacy-compatible `controlConditions` field is the first path. Unified Quint
+lowering guards the operation by their disjunction and Corsa schema v6
+validates every path plus the primary-path correspondence.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.
