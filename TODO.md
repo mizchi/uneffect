@@ -329,6 +329,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Provision the Z3 CLI and Java 21, and serialize Quint evaluator warm-up before parallel Vitest workers.
   - [x] Bound CI solver integration concurrency and timeout separately from the faster local profile.
   - [x] Allow the Corsa parity subprocess 120 seconds for a cold Rust build while keeping an explicit configurable timeout diagnostic.
+  - [x] Retry an isolated solver test once for both Z3 WASM out-of-bounds and fixed-heap growth OOM signatures.
   - [x] Partition every TypeScript test into exactly one fast, Z3, Quint, or mixed integration tier with an executable no-gap/no-overlap manifest check.
   - [x] Keep generated child Vitest files runnable when they inherit a parent tier selection.
 

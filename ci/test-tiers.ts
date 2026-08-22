@@ -67,7 +67,10 @@ export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readon
 }
 
 export function shouldRetryIsolatedSolverFailure(output: string): boolean {
-  const wasmCrash = output.includes("memory access out of bounds") && output.includes("z3-built.wasm");
+  const wasmCrash = output.includes("z3-built.wasm") && (
+    output.includes("memory access out of bounds")
+    || output.includes("Cannot enlarge memory arrays")
+  );
   const knownLeaseTimeout = output.includes("test/node-lease.test.ts")
     && output.includes("uses a proven lease-domain invariant to exclude invalid epoch actions")
     && output.includes("Test timed out in 60000ms");
