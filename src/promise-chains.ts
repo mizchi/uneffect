@@ -396,6 +396,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const unwrappedIndex = indexInitializer && (ts.isAsExpression(indexInitializer) || ts.isTypeAssertionExpression(indexInitializer))
           ? indexInitializer.expression : indexInitializer;
         const index = unwrappedIndex && ts.isNumericLiteral(unwrappedIndex) ? Number(unwrappedIndex.text) : undefined;
+        const key = unwrappedIndex && (ts.isStringLiteral(unwrappedIndex) || ts.isNumericLiteral(unwrappedIndex))
+          ? unwrappedIndex.text : undefined;
         const tupleInitializer = constInitializer(expression.expression);
         const immutableTuple = tupleInitializer && ts.isAsExpression(tupleInitializer)
           && tupleInitializer.type.getText(tupleInitializer.getSourceFile()) === "const"
@@ -403,20 +405,41 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (immutableTuple && index !== undefined && Number.isSafeInteger(index) && index >= 0 && index < immutableTuple.elements.length) {
           return selectedSymbols(immutableTuple.elements[index]! as ts.Expression);
         }
+        const immutableObject = tupleInitializer && ts.isAsExpression(tupleInitializer)
+          && tupleInitializer.type.getText(tupleInitializer.getSourceFile()) === "const"
+          && ts.isObjectLiteralExpression(tupleInitializer.expression) ? tupleInitializer.expression : undefined;
+        if (immutableObject && key !== undefined) {
+          const property = immutableObject.properties.find((item) => {
+            if (!item.name || ts.isComputedPropertyName(item.name)) return false;
+            return item.name.getText(item.getSourceFile()).replace(/^['"]|['"]$/g, "") === key;
+          });
+          if (property && ts.isPropertyAssignment(property)) return selectedSymbols(property.initializer);
+          if (property && ts.isShorthandPropertyAssignment(property)) {
+            const valueSymbol = checker.getShorthandAssignmentValueSymbol(property);
+            return valueSymbol ? [valueSymbol] : [];
+          }
+        }
       }
       const symbol = targetSymbol(checker, expression);
       return symbol ? [symbol] : [];
     };
     for (const expression of pending.expressions) {
-      if (targetSymbol(checker, expression)) continue;
+      const directSymbol = targetSymbol(checker, expression);
       const selected = [...new Set(selectedSymbols(expression).flatMap((symbol) => {
         const thenable = thenableBySymbol.get(symbol);
         return thenable === undefined ? [] : [thenable];
       }))];
       if (selected.length > 0) {
+        const provisional = directSymbol && thenableBySymbol.get(directSymbol);
+        if (provisional !== undefined && !selected.includes(provisional)) {
+          for (let index = adoptedThenables.length - 1; index >= 0; index--) {
+            if (adoptedThenables[index] === provisional) adoptedThenables.splice(index, 1);
+          }
+        }
         adoptedThenables.push(...selected);
         continue;
       }
+      if (directSymbol) continue;
       const type = checker.getTypeAtLocation(expression);
       if (!checker.getPropertyOfType(type, "then")) continue;
       const callTarget = ts.isCallExpression(expression) ? targetSymbol(checker, expression.expression) : undefined;

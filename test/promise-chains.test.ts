@@ -231,6 +231,30 @@ describe("Promise state and reaction chains", () => {
     expect(mutable.thenables[2]).toMatchObject({ thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"] });
   });
 
+  it("resolves an immutable object thenable selected by a const literal key", () => {
+    const model = analyzePromiseChains("object-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const choices = { ok: first, fail: second } as const
+        const selected = "fail" as const
+        const result = new Promise<number>(resolve => resolve(choices[selected]))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+
+    const mutable = analyzePromiseChains("mutable-object-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const choices: Record<string, PromiseLike<number>> = { ok: first }
+        const result = new Promise<number>(resolve => resolve(choices["ok"]!))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(mutable.thenables.at(-1)).toMatchObject({ binding: 'choices["ok"]!', thenAccess: "dynamic" });
+  });
+
   it("links a directly chained Promise constructor to its executor", () => {
     const model = analyzePromiseChains("direct-constructor-chain.ts", `
       function run(remote: PromiseLike<number>) {

@@ -100,7 +100,10 @@ analyzed local thenable symbols retain every branch identity and emit distinct
 adoption actions. A direct Proxy `get` trap that solely throws or returns a
 concrete then callback is analyzed exactly. The canonical
 `if (property === "then") return callback; return forwardingValue` shape is
-also narrowed by TypeScript symbol identity; more general computed selections and complex Proxy trap
+also narrowed by TypeScript symbol identity. Immutable `as const` tuples and
+object literals can be selected exactly through reassignment-free literal
+`const` indexes/keys; mutable arrays and records remain dynamic. More general
+computed selections and complex Proxy trap
 behavior, and recursive thenable cycles
 resolution remain conservative gaps. Links currently require a direct local constructor binding
 and at least one analyzed reaction chain for the adopted executor; aliases,

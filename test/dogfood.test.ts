@@ -573,6 +573,15 @@ describe("Uneffect dogfood", () => {
     expect(quint).not.toMatch(/assimilate_3.*_(fulfilled|rejected)/);
   });
 
+  it("selects an exact legacy thenable from an immutable routing table", () => {
+    const fileName = "examples/dogfood/promise-routing.ts";
+    const model = analyzePromiseChains(fileName, readFileSync(fileName, "utf8"));
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+    const quint = generatePromiseChainsQuint("promise_routing", model);
+    expect(quint).toContain("assimilate_0_thenable_1_rejected");
+    expect(quint).not.toContain("assimilate_0_thenable_0_fulfilled");
+  });
+
   it("models cached values, sparse slots, and remote thenables in one batch", () => {
     const fileName = "examples/dogfood/mixed-promise-batch.ts";
     const source = readFileSync(fileName, "utf8");
