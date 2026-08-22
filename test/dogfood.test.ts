@@ -24,7 +24,7 @@ describe("Uneffect dogfood", () => {
     });
     expect(validateRefinementBindingCoverage(fileName, source, "leaseAuthority", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "leaseAuthority", temporal)).toEqual([]);
-    expect(validateRefinementStateProjection(fileName, source, "leaseAuthority", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "leaseAuthority", temporal)).toEqual([]);
 
     const wrong = source.replace("owners.add(2)", "owners.add(20)");
     expect(await validateRefinementActionBodiesWithZ3(fileName, wrong, "leaseAuthority", temporal)).toContainEqual(

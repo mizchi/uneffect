@@ -254,8 +254,12 @@ shape. Integer state requires a TypeScript number domain, Boolean state requires
 boolean, and nested records require every same-named field recursively. `any`,
 `unknown`, optional or missing fields, and scalar-kind mismatches produce an
 explicit `create-type-mismatch` or `observe-type-mismatch`; expression identity
-alone cannot discharge them. TypeChecker evidence for temporal Set/Map state is
-not implemented yet and remains a conservative non-proof.
+alone cannot discharge them. Temporal Set/Map state additionally requires the
+exact builtin TypeScript collection declaration and recursively compatible
+element, key, and value types. Transparent type aliases are accepted;
+`ReadonlySet`/`ReadonlyMap`, subclasses, and structurally compatible lookalikes
+are rejected. Non-identity abstraction between runtime collections and model
+collections remains unsupported.
 The proof assumes the annotated TypeScript parameter contract at the gradual
 boundary; it does not establish runtime object conformance against hostile
 Proxy/getter inputs.

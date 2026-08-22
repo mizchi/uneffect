@@ -884,7 +884,33 @@ function typescriptTemporalShapeMismatch(
     if (actual.isIntersection() && actual.types.some((part) => (part.flags & flag) !== 0)) return undefined;
     return path;
   }
-  if (expected.kind !== "record") return path;
+  if (expected.kind === "set" || expected.kind === "map") {
+    const expectedName = expected.kind === "set" ? "Set" : "Map";
+    const resolveBuiltin = (type: ts.Type, seen: ReadonlySet<ts.Type> = new Set()): readonly ts.Type[] | undefined => {
+      if (seen.has(type)) return undefined;
+      const symbol = type.getSymbol() ?? type.aliasSymbol;
+      if (symbol?.getName() === expectedName
+        && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile)) {
+        return (type.flags & ts.TypeFlags.Object) !== 0
+          ? checker.getTypeArguments(type as ts.TypeReference)
+          : [];
+      }
+      const constraint = checker.getBaseConstraintOfType(type);
+      return constraint && constraint !== type ? resolveBuiltin(constraint, new Set([...seen, type])) : undefined;
+    };
+    const arguments_ = resolveBuiltin(actual);
+    if (!arguments_) return path;
+    if (expected.kind === "set") {
+      if (expected.element === "never") return undefined;
+      const element = arguments_[0];
+      return element ? typescriptTemporalShapeMismatch(checker, element, expected.element, location, [...path, "<element>"]) : path;
+    }
+    const [key, value] = arguments_;
+    const keyMismatch = expected.key === "never" || !key ? undefined : typescriptTemporalShapeMismatch(checker, key, expected.key, location, [...path, "<key>"]);
+    if (keyMismatch) return keyMismatch;
+    if (expected.value === "never") return undefined;
+    return value ? typescriptTemporalShapeMismatch(checker, value, expected.value, location, [...path, "<value>"]) : path;
+  }
   if ((actual.flags & ts.TypeFlags.Object) === 0 && !actual.isIntersection()) return path;
   for (const [name, fieldType] of Object.entries(expected.fields)) {
     const property = actual.getProperty(name);

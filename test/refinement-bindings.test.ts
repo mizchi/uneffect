@@ -824,6 +824,46 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("checks builtin Set and Map runtime shapes by symbol identity", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-collection-projection-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state owners: Set<int>
+      state epochs: Map<int, int>
+      init owners = Set()
+      init epochs = Map([])
+    */
+      interface Runtime { owners: Set<number>; epochs: Map<number, number> }
+      /* uneffect: refinement authority@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observe(runtime: Runtime) { return runtime }
+    `;
+    const verify = (text: string) => {
+      writeFileSync(fileName, text);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      return validateRefinementStateProjectionInProgram(program, fileName, "authority", parseSpec(fileName, text).temporal);
+    };
+    try {
+      expect(verify(source)).toEqual([]);
+      expect(verify(source.replace("interface Runtime", "type Owners = Set<number>\n      interface Runtime").replace("owners: Set<number>", "owners: Owners"))).toEqual([]);
+      expect(verify(source.replace("Set<number>", "ReadonlySet<number>"))).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch", field: "owners",
+      }));
+      expect(verify(source.replace("Map<number, number>", "Map<number, boolean>"))).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch", field: "epochs",
+      }));
+      expect(verify(source.replace("Set<number>", "FakeSet<number>").replace("interface Runtime", "interface FakeSet<T> { add(value: T): this }\n      interface Runtime"))).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch", field: "owners",
+      }));
+      expect(verify(source.replace("Set<number>", "OwnerSet").replace("interface Runtime", "class OwnerSet extends Set<number> {}\n      interface Runtime"))).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch", field: "owners",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("inlines acyclic same-file create and observe projection helpers", () => {
     const model = `/* uneffect:
       state left: int

@@ -265,6 +265,9 @@ the dogfood now stores that selected function in an immutable alias, while the
 equivalent mutable alias is a tested non-proof. The
 syntax-only API deliberately leaves those imported calls
 unsupported.
+The same dogfood now runs create/observe projection through the Program path:
+the nested owners and epochs fields must be exact builtin `Set<number>` and
+`Map<number, number>` shapes as well as identity projections.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
