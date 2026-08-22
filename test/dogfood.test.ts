@@ -11,7 +11,7 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
-import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
   it("refines Node Lease authority Set/Map mutations", async () => {
@@ -44,11 +44,15 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/lease-projection.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    });
     expect(validateRefinementBindingCoverage(fileName, source, "leaseProjection", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "leaseProjection", temporal)).toEqual([]);
-    expect(validateRefinementStateProjection(fileName, source, "leaseProjection", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "leaseProjection", temporal)).toEqual([]);
 
-    const broken = source.replace("      valid: lease.valid,", "");
+    const broken = source.replace("return snapshotLease(runtime);", "return { lease: { owner: runtime.lease.owner, epoch: runtime.lease.epoch } };");
     expect(validateRefinementStateProjection(fileName, broken, "leaseProjection", temporal)).toContainEqual(
       expect.objectContaining({ code: "observe-state-mismatch", field: "lease" }),
     );

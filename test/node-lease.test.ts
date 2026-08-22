@@ -213,6 +213,9 @@ describe("Node Lease clock-skew model", () => {
       name: "observeZeroEpoch",
       relatedName: "ownerEpochPositive",
     }));
+  }, 60_000);
+
+  it("synthesizes a lease-domain invariant to exclude invalid epoch actions", async () => {
     const withoutDeclaredEpochInvariant = parseSpec(
       "lease-synthesized-strengthening.ts",
       leaseLifecycleModel(true).replace("temporal ownerEpochPositive: ownerEpoch > 0", ""),

@@ -49,6 +49,7 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
   "test/node-lease.test.ts": [
     "dogfoods synthesized subset authority and catches an unchecked request",
     "uses a proven lease-domain invariant to exclude invalid epoch actions",
+    "synthesizes a lease-domain invariant to exclude invalid epoch actions",
     "rules out worker-resource starvation only under the declared weak fairness",
     "extracts the collection-valued Node Lease violation with Z3 finite observation",
     "fences delayed writes across renewal, CAS failure, crash, GC, and takeover lifecycle",

@@ -241,7 +241,9 @@ immutable record update; replacing the epoch override with owner is reported as
 an action mismatch. The
 `takeover` transition updates owner and epoch in two TypeScript statements and
 is normalized to one order-independent temporal record update. Omitting either
-member write fails refinement.
+member write fails refinement. The hydrate and snapshot implementations live
+in a neighboring module; the Program-backed projection validator resolves both
+imported symbols before checking the nested identity mapping.
 
 `examples/dogfood/lease-authority-refinement.ts` binds a Node Lease-shaped
 authority record containing native Set and Map instances. Concrete `Set.add`

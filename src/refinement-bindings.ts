@@ -870,16 +870,18 @@ export async function validateRefinementInvariantBodiesInProgramWithZ3(
   );
 }
 
-/** Proves that create and observe each preserve every model state field by name. */
-export function validateRefinementStateProjection(
-  fileName: string,
+function validateRefinementStateProjectionInSource(
+  source: ts.SourceFile,
   text: string,
   adapterName: string,
   spec: TemporalSpec,
+  checker?: ts.TypeChecker,
 ): RefinementStateProjectionDiagnostic[] {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
-  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const functions = checker
+    ? collectProgramHelperFunctions(source, checker)
+    : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
@@ -953,10 +955,12 @@ export function validateRefinementStateProjection(
     };
     const expression = returned.expression;
     if (ts.isIdentifier(expression) && expression.text === receiver) return identity();
-    if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
+    if (ts.isCallExpression(expression)
+      && (ts.isIdentifier(expression.expression) || ts.isPropertyAccessExpression(expression.expression))
       && expression.arguments.length === 1 && ts.isIdentifier(expression.arguments[0]!)
       && expression.arguments[0]!.text === receiver) {
-      const helper = functions.get(expression.expression.text);
+      const helperName = ts.isIdentifier(expression.expression) ? expression.expression.text : expression.expression.getText();
+      const helper = functions.get(helperName);
       if (!helper?.body || helper.parameters.length !== 1 || !ts.isIdentifier(helper.parameters[0]!.name)) return undefined;
       return extract(helper, role, nextActiveHelpers);
     }
@@ -1022,6 +1026,30 @@ export function validateRefinementStateProjection(
     }
   }
   return diagnostics;
+}
+
+/** Proves that create and observe each preserve every model state field by name. */
+export function validateRefinementStateProjection(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementStateProjectionDiagnostic[] {
+  return validateRefinementStateProjectionInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), text, adapterName, spec,
+  );
+}
+
+/** Resolves imported create/observe wrappers through TypeScript symbol identity. */
+export function validateRefinementStateProjectionInProgram(
+  program: ts.Program,
+  fileName: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementStateProjectionDiagnostic[] {
+  const source = program.getSourceFile(fileName);
+  if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
+  return validateRefinementStateProjectionInSource(source, source.text, adapterName, spec, program.getTypeChecker());
 }
 
 function callable(exports: Record<string, unknown>, name: string): (...args: any[]) => any {

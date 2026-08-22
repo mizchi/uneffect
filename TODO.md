@@ -150,12 +150,14 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Resolve direct namespace-import invariant helper calls when the selected property has a TypeChecker-resolved function declaration.
       - [x] Prove supported create/observe adapters preserve every model state field by name, including transparent local-class construction and destructured observation.
       - [x] Inline acyclic same-file single-argument create/observe helper graphs while preserving the identity projection proof; reject recursion and nonlocal calls.
+      - [x] Resolve imported create/observe wrappers and immutable function aliases through TypeChecker symbol identity in the Program-backed projection path; reject mutable aliases and recursion.
+      - [x] Resolve direct namespace-import create/observe wrappers when the selected property resolves to a function declaration.
       - [x] Canonicalize complete nested-record reconstruction at create/observe boundaries from temporal field types; reject missing, extra, or redirected nested fields.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map add, set, delete, and clear operations, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic TypeChecker-resolved direct/namespace helpers and immutable aliases, and terminal returns to general loops, branch-local abrupt completion, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in.
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
-        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic same-file wrappers to explicit abstraction relations, nested collections, imported helpers, aliases, dynamic dispatch, and TypeChecker-backed runtime shape evidence.
+        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, nested collections, dynamic dispatch, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -330,6 +332,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Bound CI solver integration concurrency and timeout separately from the faster local profile.
   - [x] Allow the Corsa parity subprocess 120 seconds for a cold Rust build while keeping an explicit configurable timeout diagnostic.
   - [x] Retry an isolated solver test once for both Z3 WASM out-of-bounds and fixed-heap growth OOM signatures.
+  - [x] Split explicit and synthesized Node Lease strengthening proofs into separate processes so Z3 WASM contexts cannot accumulate past the fixed heap.
   - [x] Partition every TypeScript test into exactly one fast, Z3, Quint, or mixed integration tier with an executable no-gap/no-overlap manifest check.
   - [x] Keep generated child Vitest files runnable when they inherit a parent tier selection.
 

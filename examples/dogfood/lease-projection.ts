@@ -1,3 +1,5 @@
+import { rebuildLease, snapshotLease } from "./lease-projection-helpers.js";
+
 /* uneffect:
   state lease: { owner: int, epoch: int, valid: bool }
   init lease = { owner: 0, epoch: 0, valid: false }
@@ -13,30 +15,9 @@ export interface LeaseState {
   };
 }
 
-function rebuildLease(state: LeaseState): LeaseState {
-  return {
-    lease: {
-      owner: state.lease.owner,
-      epoch: state.lease.epoch,
-      valid: state.lease.valid,
-    },
-  };
-}
-
 /* uneffect: refinement leaseProjection@1 create */
 export function createLeaseRuntime(initial: LeaseState): LeaseState {
   return rebuildLease(initial);
-}
-
-function snapshotLease(runtime: LeaseState): LeaseState {
-  const { lease } = runtime;
-  return {
-    lease: {
-      owner: lease.owner,
-      epoch: lease.epoch,
-      valid: lease.valid,
-    },
-  };
 }
 
 /* uneffect: refinement leaseProjection@1 observe */

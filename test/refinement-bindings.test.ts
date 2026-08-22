@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -745,6 +745,62 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "create-state-mismatch", field: "left", expected: "left", actual: "left + 1" }),
       expect.objectContaining({ code: "observe-state-mismatch", field: "left", expected: "left", actual: "right" }),
     ]);
+  });
+
+  it("resolves imported create and observe wrappers only in the Program-backed path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-projection-"));
+    const helperFile = join(directory, "projection.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state owner: int
+      state epoch: int
+      init owner = 0
+      init epoch = 0
+    */
+      import { hydrate } from "./projection.js"
+      import * as Projections from "./projection.js"
+      const createRuntime = hydrate
+      interface State { owner: number; epoch: number }
+      /* uneffect: refinement lease@1 create */ export function create(initial: State) { return createRuntime(initial) }
+      /* uneffect: refinement lease@1 observe */ export function observe(runtime: State) { return Projections.snapshot(runtime) }
+    `;
+    try {
+      writeFileSync(helperFile, `
+        interface State { owner: number; epoch: number }
+        export function hydrate(initial: State): State { return initial }
+        export function snapshot(runtime: State): State { return runtime }
+      `);
+      writeFileSync(mainFile, source);
+      const spec = parseSpec(mainFile, source).temporal;
+      expect(validateRefinementStateProjection(mainFile, source, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-create-body",
+      }));
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(program, mainFile, "lease", spec)).toEqual([]);
+      writeFileSync(mainFile, source.replace("const createRuntime", "let createRuntime"));
+      const mutableProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(mutableProgram, mainFile, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-create-body",
+      }));
+      writeFileSync(mainFile, source);
+      writeFileSync(helperFile, `
+        interface State { owner: number; epoch: number }
+        export function hydrate(initial: State): State { return hydrate(initial) }
+        export function snapshot(runtime: State): State { return runtime }
+      `);
+      const recursiveProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(recursiveProgram, mainFile, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-create-body",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("inlines acyclic same-file create and observe projection helpers", () => {

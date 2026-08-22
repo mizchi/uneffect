@@ -235,9 +235,13 @@ transformations cannot masquerade as identity. Every temporal state field must
 map to its same-named source field independently at both endpoints; compensating
 renames between create and observe are rejected. Same-named globals are never
 treated as model state. An acyclic graph of direct single-argument calls to
-same-file function declarations may wrap either endpoint when every call passes
-the current create/observe receiver. Recursive, imported, aliased, and
-dynamically dispatched wrappers remain non-proofs. A record-valued temporal
+function declarations may wrap either endpoint when every call passes the
+current create/observe receiver. The syntax-only API limits this graph to
+same-file declarations. `validateRefinementStateProjectionInProgram` resolves
+imported wrappers and reassignment-free `const` aliases by TypeChecker symbol
+identity. A direct namespace-import selection is accepted when its property
+resolves to a function declaration. Mutable aliases, recursion, ordinary
+object methods, and dynamically dispatched wrappers remain non-proofs. A record-valued temporal
 state may also be rebuilt recursively as an object literal. The validator uses
 the declared temporal record shape and accepts the reconstruction as identity
 only when every nested field is present exactly once and reads the corresponding
