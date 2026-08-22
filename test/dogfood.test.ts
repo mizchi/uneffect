@@ -10,8 +10,17 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
+import { generateUneffectPropertyTests } from "../src/property-tests.js";
 
 describe("Uneffect dogfood", () => {
+  it("derives executable aligned shard boundaries from a realistic contract", () => {
+    const fileName = "examples/dogfood/shard-batch.ts";
+    const result = generateUneffectPropertyTests({ files: { [fileName]: readFileSync(fileName, "utf8") } });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 1008]]);
+    expect(result.generatedFiles["examples/dogfood/shard-batch.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
+  });
+
   it("proves that every telemetry attempt has exactly one outcome", async () => {
     const fileName = "examples/dogfood/telemetry-accounting.ts";
     const source = readFileSync(fileName, "utf8");

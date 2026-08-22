@@ -51,7 +51,13 @@ default and can be raised with `arrayLengthCap`; therefore a larger declared
 type maximum is not silently claimed as an exercised upper edge. Generator
 narrowing recognizes conjunctive integer comparisons and seeds values at and
 next to their boundaries before broad scalar edges. Disjunctions and
-single-variable affine comparisons are normalized syntactically. For affine
+single-variable affine comparisons are normalized syntactically. Conjunctive
+positive-modulo refinements with a canonical nonnegative residue snap those
+boundary seeds to the matching congruence class; for example,
+`shard >= 0 && shard < 1024 && shard % 16 === 0` yields `0`, `16`, and `1008`.
+Modulo constraints under disjunction, multiple simultaneous congruences, and
+negative modulus/residue semantics remain on runtime filtering or the opt-in
+Z3 path rather than receiving misleading syntactic hints. For affine
 equalities between scalar parameters, such as
 `y === x + 1 && z === y + 2`, the generator propagates boundary hints through
 the relation graph and runs valid correlated tuples before Cartesian samples.

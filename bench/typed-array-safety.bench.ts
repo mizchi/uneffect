@@ -316,6 +316,15 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/ranges.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("derive aligned hints for 16 modulo-refined shard contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires shard >= ${index * 1024} && shard < ${(index + 1) * 1024} && shard % 16 === 0 */
+      /* uneffect: ensures result >= 0 */
+      export function shard${index}(shard: Nat): Nat { return shard }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/shards.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("derive branched affine hints for 16 scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       /* uneffect: requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */

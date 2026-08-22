@@ -141,6 +141,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
     - [x] Seed valid boundary-adjacent values from conjunctive integer comparisons (`>=`, `>`, `<=`, `<`, `===`), including reversed operands.
     - [x] Derive boundary unions from disjunctions and normalize single-variable affine arithmetic.
+    - [x] Derive aligned boundary candidates from conjunctive positive-modulo refinements.
     - [x] Derive correlated tuples for affine equality graphs between scalar parameters and prioritize them before Cartesian samples.
     - [x] Enumerate bounded-count Z3 models for scalar nonlinear `requires` clauses and prioritize them as correlated tuples.
     - [x] Jointly shrink across known correlated tuples while rechecking the full precondition.

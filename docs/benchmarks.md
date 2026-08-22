@@ -25,6 +25,11 @@ samples (3.84% RME) after adding bounded coefficient-1 conservation templates.
 This includes candidate generation plus independent Z3 initialization,
 preservation, and reachability obligations; it is not a parser-only benchmark.
 
+Syntactic boundary generation for 16 shard contracts, each combining a range
+with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
+Generated Vitest execution and Z3 enumeration are intentionally outside this
+measurement; it isolates the zero-runtime syntactic hint path.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

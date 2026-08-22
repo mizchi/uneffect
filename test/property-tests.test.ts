@@ -143,6 +143,17 @@ describe("property-test generation", () => {
     expect(result.boundaries[0]?.generatorHints).toEqual([[6, 7, 17, 18]]);
   });
 
+  it("derives aligned boundary candidates from a positive modulo refinement", () => {
+    const result = generateUneffectPropertyTests({ files: { "shard.ts": `
+      type Nat = number
+      /* uneffect: requires shard >= 0 && shard < 1024 && shard % 16 === 0 */
+      /* uneffect: ensures result >= 0 */
+      export function alignedShard(shard: Nat): Nat { return shard }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 1008]]);
+    expect(result.generatedFiles["shard.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
+  });
+
   it("derives correlated tuples from affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
       type Int = number
