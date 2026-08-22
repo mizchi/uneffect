@@ -5,3 +5,7 @@ export async function loadDashboard(remote: PromiseLike<string>): Promise<(strin
 export async function loadUniqueDashboard(remote: PromiseLike<string>): Promise<string[]> {
   return Promise.all(new Set([remote, remote, "cached-profile"]));
 }
+
+export async function loadSpreadUniqueDashboard(remote: PromiseLike<string>): Promise<string[]> {
+  return Promise.all([...new Set([remote, remote, "cached-profile"])]);
+}

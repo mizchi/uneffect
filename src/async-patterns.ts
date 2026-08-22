@@ -156,7 +156,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return null;
   };
-  const expandStaticArray = (expression: ts.Expression, seen = new Set<ts.Symbol>()): (ts.Expression | ts.OmittedExpression)[] | undefined => {
+  function expandStaticArray(expression: ts.Expression, seen = new Set<ts.Symbol>()): (ts.Expression | ts.OmittedExpression)[] | undefined {
     while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
     if (ts.isIdentifier(expression)) {
       const symbol = resolvedSymbol(expression);
@@ -180,14 +180,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     for (const element of expression.elements) {
       if (!ts.isSpreadElement(element)) expanded.push(element);
       else {
-        const nested = expandStaticArray(element.expression, seen);
+        const nested = expandStaticArray(element.expression, seen) ?? expandStaticSet(element.expression);
         if (!nested) return undefined;
         expanded.push(...nested);
       }
     }
     return expanded;
-  };
-  const expandStaticSet = (expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined => {
+  }
+  function expandStaticSet(expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined {
     while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
     if (!ts.isNewExpression(expression) || !ts.isIdentifier(expression.expression) || expression.expression.text !== "Set"
       || (expression.arguments?.length ?? 0) > 1
@@ -217,7 +217,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       seen.add(key);
       return true;
     });
-  };
+  }
   const localIterable = (expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined => {
     if (!expression) return undefined;
     let declaration: ts.Declaration | undefined;

@@ -998,6 +998,29 @@ describe("builtin async temporal patterns", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("flattens a direct finite Set spread but keeps a stored mutable Set dynamic", () => {
+    const model = analyzeAsyncPatterns("set-spread.ts", `
+      declare const remote: PromiseLike<number>
+      const mutable = new Set([remote, 1])
+      function load() {
+        Promise.all([...new Set([remote, remote, 1])])
+        Promise.all([...mutable])
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      branches: ["remote", "1"],
+      branchKinds: ["thenable", "value"],
+      staticIterable: true,
+      iteratorKind: "array",
+      iteratorEffects: [],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      staticIterable: false,
+      iteratorKind: "dynamic",
+      iteratorEffects: ["InvokeUserCode"],
+    });
+  });
+
   it("models iterator next and result getter failures", () => {
     const model = analyzeAsyncPatterns("iterator-getters.ts", `
       const nextGetter = {

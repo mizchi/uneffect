@@ -468,6 +468,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
     - [x] Bound direct builtin `Set` construction over a static array, preserving insertion order and only removing statically provable duplicate identities while leaving custom or mutable Sets dynamic.
     - [x] Resolve imported finite generator functions by TypeChecker symbol identity and substitute directly yielded parameters with their call-site arguments.
+    - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.

@@ -163,7 +163,10 @@ and repeated references to the same TypeScript symbol. It deliberately keeps
 separate object literals and call expressions separate, because proving their
 runtime identity would require a stronger alias analysis. Shadowed or imported
 `Set` constructors and Sets received from mutable state remain dynamic and
-retain `InvokeUserCode`.
+retain `InvokeUserCode`. The same direct finite construction can be flattened
+inside an array spread such as `[...new Set([a, a, b])]`; assigning the Set to
+a variable first keeps it dynamic because later `.add`/`.delete` calls may
+change its cardinality before iteration.
 Direct conditional expressions are also bounded when both alternatives are
 finite arrays. The IR retains the source alternatives for each slot and joins
 differing value/thenable classifications to `unknown`, so both immediate

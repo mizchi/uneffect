@@ -592,6 +592,14 @@ describe("Uneffect dogfood", () => {
         iteratorKind: "set",
         iteratorEffects: [],
       }),
+      expect.objectContaining({
+        combinator: "all",
+        branches: ["remote", '"cached-profile"'],
+        branchKinds: ["thenable", "value"],
+        staticIterable: true,
+        iteratorKind: "array",
+        iteratorEffects: [],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("mixed_batch", model);
     expect(quint).not.toContain("action reject_0_0");
@@ -600,6 +608,8 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action reject_0_2");
     expect(quint).toContain("action assimilate_1_0");
     expect(quint).not.toContain("action reject_1_1");
+    expect(quint).toContain("action assimilate_2_0");
+    expect(quint).not.toContain("action reject_2_1");
   });
 
   it("models a finite Promise batch supplied by an imported generator", () => {
