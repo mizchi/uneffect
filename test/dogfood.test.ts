@@ -30,6 +30,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, wrongClear, "leaseAuthority", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "revokeOwners", target: "authority" }),
     );
+    const wrongDelete = source.replace("runtime.authority.owners.delete(1)", "runtime.authority.owners.delete(2)");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, wrongDelete, "leaseAuthority", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "revokeOwner", target: "authority" }),
+    );
   });
 
   it("proves nested Node Lease boundaries and an epoch transition", async () => {

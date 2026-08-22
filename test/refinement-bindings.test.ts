@@ -329,6 +329,8 @@ describe("annotated refinement bindings", () => {
       action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) }
       action clearOwners: authority' = { ...authority, owners: Set() }
       action clearEpochs: authority' = { ...authority, epochs: Map([]) }
+      action deleteOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(2)) }
+      action deleteEpoch: authority' = { ...authority, epochs: authority.epochs.remove(2) }
     */
       interface Runtime { authority: { owners: Set<number>; epochs: Map<number, number> } }
       /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
@@ -337,6 +339,8 @@ describe("annotated refinement bindings", () => {
       /* uneffect: refinement authority@1 action publishEpoch */ export function publishEpoch(runtime: Runtime) { runtime.authority.epochs.set(2, 1) }
       /* uneffect: refinement authority@1 action clearOwners */ export function clearOwners(runtime: Runtime) { runtime.authority.owners.clear() }
       /* uneffect: refinement authority@1 action clearEpochs */ export function clearEpochs(runtime: Runtime) { runtime.authority.epochs.clear() }
+      /* uneffect: refinement authority@1 action deleteOwner */ export function deleteOwner(runtime: Runtime) { runtime.authority.owners.delete(2) }
+      /* uneffect: refinement authority@1 action deleteEpoch */ export function deleteEpoch(runtime: Runtime) { runtime.authority.epochs.delete(2) }
     `;
     expect(validateRefinementActionBodies("collection-action.ts", source, "authority", parseSpec("collection-action.ts", source).temporal)).toEqual([]);
 

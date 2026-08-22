@@ -511,6 +511,16 @@ export function validateRefinementActionBodies(
             : { kind: "call", name: "Map", arguments: [{ kind: "array", elements: [] }] });
           continue;
         }
+        if (target && stateNames.has(target) && targetType && node.expression.name.text === "delete" && node.arguments.length === 1
+          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")) {
+          const item = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          if (!item) return undefined;
+          const argument = expandLocalSnapshots(resolveCurrentState(item));
+          writePath(target, fields, targetType.kind === "set"
+            ? { kind: "method", receiver: readPath(target, fields), name: "exclude", arguments: [{ kind: "call", name: "Set", arguments: [argument] }] }
+            : { kind: "method", receiver: readPath(target, fields), name: "remove", arguments: [argument] });
+          continue;
+        }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "add"
           && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1) {
           const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);

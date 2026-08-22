@@ -377,11 +377,11 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
   if (expression.kind === "method") {
     const receiver = z3TemporalType(expression.receiver, symbols);
     if (typeof receiver !== "string" && receiver.kind === "map") {
-      if (expression.name === "put") return receiver;
+      if (expression.name === "put" || expression.name === "remove") return receiver;
       if (expression.name === "keys") return { kind: "set", element: receiver.key };
       if (expression.name === "values") return { kind: "set", element: receiver.value };
     }
-    if (expression.name === "union") return receiver;
+    if (expression.name === "union" || expression.name === "exclude") return receiver;
     if (expression.name === "contains" || expression.name === "forall") return "bool";
     if (expression.name === "size") return "int";
   }
@@ -415,7 +415,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
         else complete = false;
       }
     }
-    if (expression.kind === "method" && expression.name === "put") {
+    if (expression.kind === "method" && (expression.name === "put" || expression.name === "remove")) {
       const key = literal(expression.arguments[0]!);
       if (typeof key === "number") integers.add(key);
       else if (typeof key === "boolean") booleans.add(key);
@@ -527,6 +527,10 @@ function temporalToSmt(
         const value = temporalToSmt(expression.arguments[1]!, resolveName, symbols, undefined, boundName);
         return `(${names.constructor} (store (${names.domain} ${receiver}) ${key} true) (store (${names.values} ${receiver}) ${key} ${value}))`;
       }
+      if (expression.name === "remove") {
+        const key = temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName);
+        return `(${names.constructor} (store (${names.domain} ${receiver}) ${key} false) (store (${names.values} ${receiver}) ${key} ${defaultSmtValue(mapType.value)}))`;
+      }
       if (expression.name === "keys") return `(${names.domain} ${receiver})`;
       if (expression.name === "values") {
         const keySort = smtSort(mapType.key), valueSort = smtSort(mapType.value);
@@ -538,6 +542,7 @@ function temporalToSmt(
     const receiver = temporalToSmt(expression.receiver, resolveName, symbols, receiverType, boundName);
     if (expression.name === "contains") return `(select ${receiver} ${temporalToSmt(expression.arguments[0]!, resolveName, symbols, undefined, boundName)})`;
     if (expression.name === "union") return `((_ map or) ${receiver} ${temporalToSmt(expression.arguments[0]!, resolveName, symbols, receiverType, boundName)})`;
+    if (expression.name === "exclude") return `((_ map and) ${receiver} ((_ map not) ${temporalToSmt(expression.arguments[0]!, resolveName, symbols, receiverType, boundName)}))`;
     if (expression.name === "forall") {
       const predicate = expression.arguments[0];
       if (!predicate || predicate.kind !== "lambda") throw new Error("Z3 Set forall requires a lambda");

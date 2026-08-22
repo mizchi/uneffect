@@ -127,10 +127,13 @@ For collection-valued state, a type-matched native `Set.add(value)` is lowered
 to `set.union(Set(value))`, and `Map.set(key, value)` is lowered to
 `map.put(key, value)`. This works through record member paths and preserves
 earlier symbolic writes. A zero-argument `Set.clear()` or `Map.clear()` is an
-exact replacement with `Set()` or `Map([])`. Element/key deletion remains
-unsupported because it requires an explicit difference/removal operation in
-the temporal IR; the validator does not invent a finite universe. Collection
-aliases and dynamically selected calls also remain unsupported. As with the rest of this syntax-only
+exact replacement with `Set()` or `Map([])`. Element/key deletion is supported
+without inventing a finite universe: `Set.delete(value)` lowers to
+`set.exclude(Set(value))`, while `Map.delete(key)` lowers to the typed temporal
+`map.remove(key)` operation. Quint reconstructs the Map from its remaining key
+domain, and the Z3 encoding removes the key from the domain while canonicalizing
+its hidden value. Collection aliases and dynamically selected calls remain
+unsupported. As with the rest of this syntax-only
 validator, the annotated TypeScript boundary is trusted; TypeChecker-backed
 proof that the concrete receiver is the builtin rather than a subclass is not
 yet established.

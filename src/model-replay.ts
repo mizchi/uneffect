@@ -145,11 +145,19 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
       const key = evaluateTemporalExpression(expression.arguments[0]!, state), value = evaluateTemporalExpression(expression.arguments[1]!, state);
       return [...receiver.filter((entry) => !same((entry as ModelValue[])[0], key)), [key, value] as ModelValue].sort((a, b) => stable((a as ModelValue[])[0]).localeCompare(stable((b as ModelValue[])[0])));
     }
+    if (expression.name === "remove") {
+      const key = evaluateTemporalExpression(expression.arguments[0]!, state);
+      return receiver.filter((entry) => !same((entry as ModelValue[])[0], key));
+    }
     if (expression.name === "keys") return receiver.map((entry) => (entry as ModelValue[])[0]!);
     if (expression.name === "values") return [...new Map(receiver.map((entry) => (entry as ModelValue[])[1]!).map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
     if (expression.name === "size") return receiver.length;
     if (expression.name === "contains") return receiver.some((item) => same(item, evaluateTemporalExpression(expression.arguments[0]!, state)));
     if (expression.name === "union") return [...new Map([...receiver, ...(evaluateTemporalExpression(expression.arguments[0]!, state) as ModelValue[])].map((item) => [stable(item), item])).values()].sort((a, b) => stable(a).localeCompare(stable(b)));
+    if (expression.name === "exclude") {
+      const excluded = evaluateTemporalExpression(expression.arguments[0]!, state) as ModelValue[];
+      return receiver.filter((item) => !excluded.some((candidate) => same(item, candidate)));
+    }
     const predicate = expression.arguments[0]!;
     if (predicate.kind !== "lambda") throw new Error("temporal forall requires a lambda");
     return receiver.every((item) => evaluateTemporalExpression(predicate.body, { ...state, [predicate.parameter]: item }) === true);

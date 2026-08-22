@@ -77,6 +77,19 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(check(new Map([[1, -1], [2, 0]]))).toBe(false);
   });
 
+  it("lowers exact Set difference and Map key removal", () => {
+    const setType = { kind: "set", element: "int" } as const;
+    const mapType = { kind: "map", key: "int", value: "int" } as const;
+    const setExpression = parseTemporalExpression("owners.exclude(Set(2))");
+    const mapExpression = parseTemporalExpression("epochs.remove(2)");
+    expect(typeCheckTemporalExpression(setExpression, new Map([["owners", setType]]))).toEqual(setType);
+    expect(typeCheckTemporalExpression(mapExpression, new Map([["epochs", mapType]]))).toEqual(mapType);
+    expect(generateQuintExpression(setExpression)).toBe("owners.exclude(Set(2))");
+    expect(generateQuintExpression(mapExpression)).toBe("epochs.keys().exclude(Set(2)).mapBy(_uneffect_key => epochs.get(_uneffect_key))");
+    expect(generateRuntimeAssertionExpression(setExpression)).toBe("new Set([...owners].filter(_uneffect_item => !new Set([2]).has(_uneffect_item)))");
+    expect(generateRuntimeAssertionExpression(mapExpression)).toBe("new Map([...epochs].filter(([_uneffect_key]) => _uneffect_key !== 2))");
+  });
+
   it("rejects malformed or heterogeneous Maps and keeps partial lookup outside the DSL", () => {
     expect(() => parseTemporalExpression("epochs.get(1)")).toThrow(/unsupported temporal method `get`/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("Map([1, 2])"), new Map())).toThrow(/\[key, value\] pairs/);

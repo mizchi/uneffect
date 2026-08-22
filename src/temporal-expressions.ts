@@ -9,7 +9,7 @@ export type TemporalExpression =
   | { kind: "field"; receiver: TemporalExpression; name: string }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
-  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "forall" | "size" | "put" | "keys" | "values"; arguments: TemporalExpression[] }
+  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "size" | "put" | "remove" | "keys" | "values"; arguments: TemporalExpression[] }
   | { kind: "conditional"; condition: TemporalExpression; whenTrue: TemporalExpression; whenFalse: TemporalExpression }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
@@ -129,11 +129,17 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "method") {
     const receiver = typeCheckTemporalExpression(expression.receiver, symbols);
-    if (expression.name === "put" || expression.name === "keys" || expression.name === "values") {
+    if (expression.name === "put" || expression.name === "remove" || expression.name === "keys" || expression.name === "values") {
       if (typeof receiver === "string" || receiver.kind !== "map") throw new Error(`temporal ${expression.name} requires a Map receiver`);
       if (expression.name === "keys" || expression.name === "values") {
         if (expression.arguments.length !== 0) throw new Error(`temporal ${expression.name} does not accept arguments`);
         return { kind: "set", element: expression.name === "keys" ? receiver.key : receiver.value };
+      }
+      if (expression.name === "remove") {
+        if (expression.arguments.length !== 1) throw new Error("temporal remove requires one matching key");
+        const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols);
+        if (typeof key !== "string" || (receiver.key !== "never" && receiver.key !== key)) throw new Error("temporal remove key type must match the Map");
+        return receiver;
       }
       if (expression.arguments.length !== 2) throw new Error("temporal put requires a key and value");
       const key = typeCheckTemporalExpression(expression.arguments[0]!, symbols), value = typeCheckTemporalExpression(expression.arguments[1]!, symbols);
@@ -151,9 +157,9 @@ export function typeCheckTemporalExpression(
       if (receiver.element !== "never" && !temporalTypesCompatible(receiver.element, element)) throw new Error("temporal contains requires one matching element");
       return "bool";
     }
-    if (expression.name === "union") {
+    if (expression.name === "union" || expression.name === "exclude") {
       if (expression.arguments.length !== 1) throw new Error("temporal union requires one matching Set");
-      if (!temporalTypesCompatible(receiver, typeCheckTemporalExpression(expression.arguments[0]!, symbols))) throw new Error("temporal union requires one matching Set");
+      if (!temporalTypesCompatible(receiver, typeCheckTemporalExpression(expression.arguments[0]!, symbols))) throw new Error(`temporal ${expression.name} requires one matching Set`);
       return receiver;
     }
     const predicate = expression.arguments[0];
@@ -230,10 +236,10 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isCallExpression(node)) {
     if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
     if (ts.isPropertyAccessExpression(node.expression)) {
-      if (!["contains", "union", "forall", "size", "put", "keys", "values"].includes(node.expression.name.text)) {
+      if (!["contains", "union", "exclude", "forall", "size", "put", "remove", "keys", "values"].includes(node.expression.name.text)) {
         throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
       }
-      return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as "contains" | "union" | "forall" | "size" | "put" | "keys" | "values", arguments: node.arguments.map(convert) };
+      return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: node.arguments.map(convert) };
     }
   }
   if (ts.isPrefixUnaryExpression(node)) {
@@ -318,13 +324,16 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
   if (expression.kind === "method") {
     const receiver = emit(expression.receiver, backend, 100);
     if (backend === "quint" && expression.name === "values") return `${receiver}.keys().map(_uneffect_key => ${receiver}.get(_uneffect_key))`;
+    if (backend === "quint" && expression.name === "remove") return `${receiver}.keys().exclude(Set(${emit(expression.arguments[0]!, backend)})).mapBy(_uneffect_key => ${receiver}.get(_uneffect_key))`;
     if (backend === "quint") return `${receiver}.${expression.name}(${expression.arguments.map((item) => emit(item, backend)).join(", ")})`;
     if (expression.name === "put") return `new Map([...${receiver}, [${emit(expression.arguments[0]!, backend)}, ${emit(expression.arguments[1]!, backend)}]])`;
+    if (expression.name === "remove") return `new Map([...${receiver}].filter(([_uneffect_key]) => _uneffect_key !== ${emit(expression.arguments[0]!, backend)}))`;
     if (expression.name === "keys") return `new Set(${receiver}.keys())`;
     if (expression.name === "values") return `new Set(${receiver}.values())`;
     if (expression.name === "size") return `${receiver}.size`;
     if (expression.name === "contains") return `${receiver}.has(${emit(expression.arguments[0]!, backend)})`;
     if (expression.name === "union") return `new Set([...${receiver}, ...${emit(expression.arguments[0]!, backend)}])`;
+    if (expression.name === "exclude") return `new Set([...${receiver}].filter(_uneffect_item => !${emit(expression.arguments[0]!, backend)}.has(_uneffect_item)))`;
     return `Array.from(${receiver}).every(${emit(expression.arguments[0]!, backend)})`;
   }
   if (expression.kind === "conditional") {

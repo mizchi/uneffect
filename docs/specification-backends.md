@@ -244,8 +244,9 @@ member write fails refinement.
 authority record containing native Set and Map instances. Concrete `Set.add`
 and `Map.set` calls refine immutable temporal `union` and `put` transitions;
 `Set.clear` and `Map.clear` refine exact empty-collection replacements.
-Admitting the wrong owner or clearing the wrong authority field is detected as
-an authority action mismatch. Receiver identity is still trusted at the
+`Set.delete` refines Quint `exclude`, and `Map.delete` refines removal from the
+map key domain. Admitting or deleting the wrong owner, or clearing the wrong
+authority field, is detected as an authority action mismatch. Receiver identity is still trusted at the
 annotated boundary rather than proven with the TypeScript TypeChecker.
 
 For finite state products, bounded exploration can itself become complete.

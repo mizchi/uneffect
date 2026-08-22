@@ -282,6 +282,35 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("executes Set difference and Map key removal in Quint and Z3", async () => {
+    const temporal = parseSpec("collection-removal.ts", `/* uneffect:
+      state owners: Set<int>
+      state epochs: Map<int, int>
+      init owners = Set(1, 2)
+      init epochs = Map([[1, 0], [2, 1]])
+      action revoke: owners' = owners.exclude(Set(2)), epochs' = epochs.remove(2)
+      temporal knownOwners: owners.forall(owner => owner === 1 || owner === 2)
+      temporal ownerTwoPresent: owners.contains(2)
+      temporal epochTwoPresent: epochs.keys().contains(2)
+    */`).temporal;
+    const quint = generateQuint("collection_removal", temporal);
+    expect(quint).toContain("owners' = owners.exclude(Set(2))");
+    expect(quint).toContain("epochs' = epochs.keys().exclude(Set(2)).mapBy(_uneffect_key => epochs.get(_uneffect_key))");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-collection-removal-"));
+    const path = join(directory, "removal.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=knownOwners", "--max-steps=4", "--max-samples=50"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    await expect(findTemporalCounterexampleWithZ3(temporal, "ownerTwoPresent", { maxSteps: 1 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+      trace: { steps: [{ action: "revoke", after: { owners: [1], epochs: [[1, 0]] } }] },
+    });
+    await expect(findTemporalCounterexampleWithZ3(temporal, "epochTwoPresent", { maxSteps: 1 })).resolves.toMatchObject({
+      status: "counterexample", depth: 1,
+    });
+  });
+
   it("parses and verifies record state with field reads and immutable updates", () => {
     const temporal = parseSpec("records.ts", `/* uneffect:
       state lease: { owner: int, valid: bool }
