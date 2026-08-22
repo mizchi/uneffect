@@ -332,6 +332,24 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("thenable_0_fulfilled");
   });
 
+  it("selects the concrete then branch of a forwarding Proxy trap", () => {
+    const model = analyzePromiseChains("proxy-forwarded-then.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(target, property, receiver) {
+            if (property === "then") return (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+            return Reflect.get(target, property, receiver)
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

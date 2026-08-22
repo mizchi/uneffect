@@ -98,7 +98,9 @@ an explicit `InvokeUserCode` capability effect, and effect inference assigns it
 to the enclosing Promise executor. Direct conditional selections between
 analyzed local thenable symbols retain every branch identity and emit distinct
 adoption actions. A direct Proxy `get` trap that solely throws or returns a
-concrete then callback is analyzed exactly; more general computed selections and conditional/forwarding Proxy trap
+concrete then callback is analyzed exactly. The canonical
+`if (property === "then") return callback; return forwardingValue` shape is
+also narrowed by TypeScript symbol identity; more general computed selections and complex Proxy trap
 behavior, and recursive thenable cycles
 resolution remain conservative gaps. Links currently require a direct local constructor binding
 and at least one analyzed reaction chain for the adopted executor; aliases,

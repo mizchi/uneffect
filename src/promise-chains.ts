@@ -225,8 +225,22 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
         return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
       }
-      const returned = trapBody?.statements.length === 1 && ts.isReturnStatement(trapBody.statements[0]!)
-        ? trapBody.statements[0]!.expression : undefined;
+      const returnedExpression = (statement: ts.Statement): ts.Expression | undefined => {
+        if (ts.isReturnStatement(statement)) return statement.expression;
+        return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0]!)
+          ? statement.statements[0]!.expression : undefined;
+      };
+      let returned = trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
+      if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
+        const branch = trapBody.statements[0]!, condition = branch.expression;
+        const propertyParameter = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.parameters[1]?.name : undefined;
+        const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
+        if (ts.isBinaryExpression(condition) && condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {
+          const selectsThen = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
+            && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
+          if (selectsThen(condition.left, condition.right) || selectsThen(condition.right, condition.left)) returned = returnedExpression(branch.thenStatement);
+        }
+      }
       if (returned && (ts.isArrowFunction(returned) || ts.isFunctionExpression(returned))) {
         const analyzed = analyzeExecutor(returned, checker, expression.getSourceFile());
         const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
