@@ -2,7 +2,7 @@
 
 This file is the implementation ledger. Work proceeds top to bottom within each priority unless a prerequisite or verifier result forces a redesign. An item is complete only when its code, regression tests, and relevant English documentation are all updated.
 
-- [ ] Replace `extractions/setup-just` when an audited Node 24-native release or an equally pinned binary install path is available; its current transitive `setup-crate` action emits a Node 20 deprecation warning despite successful forced Node 24 execution.
+- [x] Replace `extractions/setup-just` with the official Linux musl release asset pinned by version and SHA-256, removing its transitive Node 20 `setup-crate` action.
 - [x] Upgrade the SHA-pinned `pnpm/action-setup` workflow dependency to Node 24-native v6.0.9 and retain `actions/setup-node` pnpm-store caching.
 
 The product-level completion gates are the skipped executable scenarios in
