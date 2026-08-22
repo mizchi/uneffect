@@ -14,6 +14,18 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("proves a nested Node Lease create/observe boundary and rejects field loss", () => {
+    const fileName = "examples/dogfood/lease-projection.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementStateProjection(fileName, source, "leaseProjection", temporal)).toEqual([]);
+
+    const broken = source.replace("      valid: lease.valid,", "");
+    expect(validateRefinementStateProjection(fileName, broken, "leaseProjection", temporal)).toContainEqual(
+      expect.objectContaining({ code: "observe-state-mismatch", field: "lease" }),
+    );
+  });
+
   it("distinguishes retry-loop resource generations before cleanup", () => {
     const fileName = "examples/dogfood/retry-attempts.ts";
     const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));

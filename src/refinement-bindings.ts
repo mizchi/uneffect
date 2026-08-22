@@ -2,7 +2,7 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
-import type { TemporalBinaryOperator, TemporalExpression } from "./temporal-expressions.js";
+import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import { generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
 import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
 
@@ -609,6 +609,7 @@ export function validateRefinementStateProjection(
   const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
+  const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
 
   const extract = (
@@ -638,6 +639,45 @@ export function validateRefinementStateProjection(
         aliases.set(element.name.text, field);
       }
     }
+    const accessPath = (node: ts.Expression): string[] | undefined => {
+      if (ts.isIdentifier(node)) {
+        if (node.text === receiver) return [];
+        const alias = aliases.get(node.text);
+        return alias ? [alias] : undefined;
+      }
+      if (!ts.isPropertyAccessExpression(node)) return undefined;
+      const base = accessPath(node.expression);
+      return base ? [...base, node.name.text] : undefined;
+    };
+    const pathExpression = (path: readonly string[]): TemporalExpression | undefined => {
+      const [root, ...fields] = path;
+      if (!root || !stateNames.has(root)) return undefined;
+      return fields.reduce<TemporalExpression>((value, name) => ({ kind: "field", receiver: value, name }), { kind: "name", name: root });
+    };
+    const normalizeProjectionExpression = (node: ts.Expression): TemporalExpression | undefined => {
+      const path = accessPath(node);
+      if (path) return pathExpression(path);
+      if (!ts.isObjectLiteralExpression(node)) return normalizeRefinementExpression(node, receiver, new Map(), stateNames);
+      const fields: Record<string, TemporalExpression> = {};
+      for (const property of node.properties) {
+        if (!ts.isPropertyAssignment(property)) return undefined;
+        const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+        const value = normalizeProjectionExpression(property.initializer);
+        if (!name || !value || Object.hasOwn(fields, name)) return undefined;
+        fields[name] = value;
+      }
+      return { kind: "record", fields };
+    };
+    const expandedIdentity = (type: TemporalValueType, path: readonly string[]): TemporalExpression | undefined => {
+      if (typeof type === "string" || type.kind !== "record") return pathExpression(path);
+      const fields: Record<string, TemporalExpression> = {};
+      for (const [name, fieldType] of Object.entries(type.fields)) {
+        const value = expandedIdentity(fieldType, [...path, name]);
+        if (!value) return undefined;
+        fields[name] = value;
+      }
+      return { kind: "record", fields };
+    };
     const expression = returned.expression;
     if (ts.isIdentifier(expression) && expression.text === receiver) return identity();
     if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
@@ -677,10 +717,13 @@ export function validateRefinementStateProjection(
       const field = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
       if (!field || !stateNames.has(field)) return undefined;
       const alias = ts.isIdentifier(property.initializer) ? aliases.get(property.initializer.text) : undefined;
-      const value = alias
+      let value = alias
         ? { kind: "name", name: alias } as TemporalExpression
-        : normalizeRefinementExpression(property.initializer, receiver, new Map(), stateNames);
+        : normalizeProjectionExpression(property.initializer);
       if (!value) return undefined;
+      const type = stateTypes.get(field);
+      const expanded = type ? expandedIdentity(type, [field]) : undefined;
+      if (expanded && JSON.stringify(value) === JSON.stringify(expanded)) value = { kind: "name", name: field };
       projection.set(field, value);
     }
     return projection;

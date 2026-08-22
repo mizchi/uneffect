@@ -229,6 +229,11 @@ all five model state fields through same-file hydrate/snapshot wrappers. General
 of hostile object inputs, and solver-proven equivalence of differently shaped
 predicates remain unsupported.
 
+`examples/dogfood/lease-projection.ts` exercises a Node Lease-shaped nested
+record boundary. Both hydrate and snapshot wrappers reconstruct the complete
+`owner`/`epoch`/`valid` record, while the negative case removes `valid` and is
+reported as an observe projection mismatch.
+
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
 record, `Set`, and boolean-keyed `Map` shapes. If the requested depth reaches

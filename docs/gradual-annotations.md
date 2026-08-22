@@ -191,7 +191,11 @@ renames between create and observe are rejected. Same-named globals are never
 treated as model state. An acyclic graph of direct single-argument calls to
 same-file function declarations may wrap either endpoint when every call passes
 the current create/observe receiver. Recursive, imported, aliased, and
-dynamically dispatched wrappers remain non-proofs. Arbitrary factories, nested shapes, computed dynamic
+dynamically dispatched wrappers remain non-proofs. A record-valued temporal
+state may also be rebuilt recursively as an object literal. The validator uses
+the declared temporal record shape and accepts the reconstruction as identity
+only when every nested field is present exactly once and reads the corresponding
+runtime path. Missing, extra, or redirected fields remain mismatches. Arbitrary factories, nested collections, computed dynamic
 keys, defaults, and non-identity abstraction functions remain unsupported.
 The proof assumes the annotated TypeScript parameter contract at the gradual
 boundary; it does not establish runtime object conformance against hostile

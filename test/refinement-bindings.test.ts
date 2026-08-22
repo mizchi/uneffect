@@ -437,6 +437,26 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("proves complete nested-record reconstruction and rejects missing nested fields", () => {
+    const model = `/* uneffect:
+      state lease: { owner: int, valid: bool }
+      init lease = { owner: 1, valid: true }
+    */`;
+    const safe = `${model}
+      interface State { lease: { owner: number; valid: boolean } }
+      /* uneffect: refinement lease@1 create */
+      export function createLease(initial: State) { return { lease: { owner: initial.lease.owner, valid: initial.lease.valid } } }
+      /* uneffect: refinement lease@1 observe */
+      export function observeLease(runtime: State) { const { lease } = runtime; return { lease: { owner: lease.owner, valid: lease.valid } } }
+    `;
+    expect(validateRefinementStateProjection("nested-projection.ts", safe, "lease", parseSpec("nested-projection.ts", safe).temporal)).toEqual([]);
+
+    const missing = safe.replace("owner: lease.owner, valid: lease.valid", "owner: lease.owner");
+    expect(validateRefinementStateProjection("missing-nested.ts", missing, "lease", parseSpec("missing-nested.ts", missing).temporal)).toContainEqual(
+      expect.objectContaining({ code: "observe-state-mismatch", field: "lease" }),
+    );
+  });
+
   it("does not accept arbitrary create or observe calls as a state projection", () => {
     const source = `
       /* uneffect:
