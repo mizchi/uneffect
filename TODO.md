@@ -300,6 +300,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Correlate nested `if` then/else operations through shared condition identity/polarity and carry it through validated Corsa schema v5; loop and general CFG joins remain conservative.
     - [x] Preserve top-level catch/finally `return` and `throw` completion so abrupt handlers do not fall through to later awaits.
     - [x] Give one awaited chain per top-level catch/finally statement dedicated terminal/resume states, including finally-before-outer-await ordering.
+    - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
+    - [ ] Propagate rethrows and handler failures through enclosing control regions instead of directly to function cleanup.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

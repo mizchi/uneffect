@@ -855,4 +855,65 @@ describe("async error and explicit resource safety", () => {
     expect(recoverReject).toBe(finallyEntry);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("routes two sequential try rejections to distinct catch regions", () => {
+    const result = analyzeAsyncSafety("two-catches.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("first")).then(() => { throw new Error("first") })
+        } catch (error) {
+          note("caught-first")
+        }
+        try {
+          await new Promise<string>((resolve) => resolve("second")).then(() => { throw new Error("second") })
+        } catch (error) {
+          note("caught-second")
+        }
+      }
+    `);
+    expect(result.controlRegions).toHaveLength(2);
+    expect(result.controlStatements.map((item) => item.regionId)).toEqual([
+      result.controlRegions[0]!.id,
+      result.controlRegions[1]!.id,
+    ]);
+    const first = result.promises.find((item) => item.source.includes('"first"'))!;
+    const second = result.promises.find((item) => item.source.includes('"second"'))!;
+    const quint = generateUnifiedAsyncQuint("two_catches", result, "run");
+    const firstTarget = new RegExp(`action promise_${first.promiseChain}_reject_caught = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const secondTarget = new RegExp(`action promise_${second.promiseChain}_reject_caught = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    expect(firstTarget).toBeDefined();
+    expect(secondTarget).toBeDefined();
+    expect(firstTarget).not.toBe(secondTarget);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("routes a nested try rejection to the innermost catch region", () => {
+    const result = analyzeAsyncSafety("nested-catches.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          try {
+            await new Promise<string>((resolve) => resolve("inner")).then(() => { throw new Error("inner") })
+          } catch (error) {
+            note("caught-inner")
+          }
+        } catch (error) {
+          note("caught-outer")
+        }
+      }
+    `);
+    const observation = result.promises.find((item) => item.source.includes('"inner"'))!;
+    const inner = result.controlRegions
+      .slice()
+      .sort((left, right) => (left.trySpan.end - left.trySpan.start) - (right.trySpan.end - right.trySpan.start))[0]!;
+    const innerStatement = result.controlStatements.find((item) => item.regionId === inner.id)!;
+    const quint = generateUnifiedAsyncQuint("nested_catches", result, "run");
+    const rejectionTarget = new RegExp(`action promise_${observation.promiseChain}_reject_caught = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const statementIndex = result.controlStatements.filter((item) => item.regionId === inner.id && item.region === "catch").indexOf(innerStatement);
+    const regionIndex = result.controlRegions.filter((item) => item.owner === "run").findIndex((item) => item.id === inner.id);
+    const catchEntry = new RegExp(`action catch_statement_${statementIndex}_${regionIndex} = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(rejectionTarget).toBe(catchEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

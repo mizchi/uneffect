@@ -80,11 +80,21 @@ export interface AsyncSafetyResult {
   disposals: ResourceDisposal[];
   promiseChains: PromiseChainModel;
   controlEdges: AsyncControlEdge[];
+  controlRegions: AsyncControlRegion[];
   controlStatements: AsyncControlStatement[];
   ownershipObligations: OwnershipGuardObligation[];
   diagnostics: AsyncSafetyDiagnostic[];
 }
+export interface AsyncControlRegion {
+  id: string;
+  owner: string;
+  trySpan: { start: number; end: number };
+  fullSpan: { start: number; end: number };
+  catchSpan?: { start: number; end: number };
+  finallySpan?: { start: number; end: number };
+}
 export interface AsyncControlStatement {
+  regionId: string;
   owner: string;
   region: "catch" | "finally";
   order: number;
@@ -348,7 +358,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
@@ -668,9 +678,18 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visit = (node: ts.Node): void => {
     if (ts.isTryStatement(node)) {
       const owner = enclosingFunctionName(node);
+      const regionId = `${owner}@try:${node.getStart(source)}`;
+      controlRegions.push({
+        id: regionId,
+        owner,
+        trySpan: { start: node.tryBlock.getStart(source), end: node.tryBlock.getEnd() },
+        fullSpan: { start: node.getStart(source), end: node.getEnd() },
+        catchSpan: node.catchClause ? { start: node.catchClause.block.getStart(source), end: node.catchClause.block.getEnd() } : undefined,
+        finallySpan: node.finallyBlock ? { start: node.finallyBlock.getStart(source), end: node.finallyBlock.getEnd() } : undefined,
+      });
       const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
-      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ owner, region: "catch", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
-      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ owner, region: "finally", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
     }
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
@@ -699,7 +718,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, disposals, promiseChains, controlEdges, controlStatements, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
@@ -808,6 +827,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const awaited = result.promises
     .filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined)
     .sort((left, right) => left.span.start - right.span.start);
+  const controlRegions = result.controlRegions.filter((item) => item.owner === owner).sort((left, right) => left.fullSpan.start - right.fullSpan.start);
   const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
@@ -837,25 +857,32 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     nextPc += event.kind === "await" ? 2 : 1;
     return { event, pc };
   });
-  const catchPc = nextPc;
-  const catchLayout = catchStatements.map((statement) => {
-    const pc = nextPc;
-    const awaitIndex = awaitInStatement(statement);
-    nextPc += awaitIndex === undefined ? 1 : 2;
-    return { statement, pc, awaitIndex };
-  });
-  const afterCatchPc = nextPc++;
-  const finallyPc = nextPc;
-  const finallyLayout = finallyStatements.map((statement) => {
-    const pc = nextPc;
-    const awaitIndex = awaitInStatement(statement);
-    nextPc += awaitIndex === undefined ? 1 : 2;
-    return { statement, pc, awaitIndex };
+  const regionLayouts = controlRegions.map((region) => {
+    const regionCatch = catchStatements.filter((statement) => statement.regionId === region.id);
+    const regionFinally = finallyStatements.filter((statement) => statement.regionId === region.id);
+    const catchPc = nextPc;
+    const catchLayout = regionCatch.map((statement) => {
+      const pc = nextPc;
+      const awaitIndex = awaitInStatement(statement);
+      nextPc += awaitIndex === undefined ? 1 : 2;
+      return { statement, pc, awaitIndex };
+    });
+    const afterCatchPc = nextPc++;
+    const finallyPc = nextPc;
+    const finallyLayout = regionFinally.map((statement) => {
+      const pc = nextPc;
+      const awaitIndex = awaitInStatement(statement);
+      nextPc += awaitIndex === undefined ? 1 : 2;
+      return { statement, pc, awaitIndex };
+    });
+    return { region, catchPc, catchLayout, afterCatchPc, finallyPc, finallyLayout };
   });
   const cleanupPc = nextPc, completePc = cleanupPc + disposals.length;
-  const finallyStart = finallyStatements.reduce((start, statement) => Math.min(start, statement.span.start), Number.POSITIVE_INFINITY);
-  const finallyEnd = finallyStatements.reduce((end, statement) => Math.max(end, statement.span.end), -1);
-  const finallyContinuationPc = normalLayout.find(({ event }) => event.position > finallyEnd)?.pc ?? cleanupPc;
+  const containingTry = (position: number) => controlRegions
+    .filter((region) => position >= region.trySpan.start && position <= region.trySpan.end)
+    .sort((left, right) => (left.trySpan.end - left.trySpan.start) - (right.trySpan.end - right.trySpan.start))[0];
+  const layoutFor = (regionId: string | undefined) => regionLayouts.find((layout) => layout.region.id === regionId);
+  const continuationPc = (end: number) => normalLayout.find(({ event }) => event.position > end)?.pc ?? cleanupPc;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
   const branchIds = [...new Set([...resources.flatMap((item) => item.controlConditions), ...awaited.flatMap((item) => item.controlConditions)].map((condition) => condition.id))];
   const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
@@ -900,8 +927,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   });
   normalLayout.forEach(({ event, pc }, eventIndex) => {
     const nextEvent = normalLayout[eventIndex + 1];
-    const crossesFinally = finallyStatements.length > 0 && event.position < finallyStart && (nextEvent?.event.position ?? Number.POSITIVE_INFINITY) > finallyEnd;
-    const next = crossesFinally ? finallyPc : nextEvent?.pc ?? finallyPc;
+    const eventRegion = containingTry(event.position);
+    const eventRegionLayout = layoutFor(eventRegion?.id);
+    const exitsRegion = eventRegion !== undefined && (nextEvent?.event.position ?? Number.POSITIVE_INFINITY) > eventRegion.fullSpan.end;
+    const next = exitsRegion && eventRegionLayout?.finallyLayout.length
+      ? eventRegionLayout.finallyPc
+      : nextEvent?.pc ?? cleanupPc;
     if (event.kind === "acquire") {
       const resource = resources[event.index]!;
       const guards = [`pc == ${pc}`, ...conditionGuards(resource.controlConditions)];
@@ -912,63 +943,64 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       return;
     }
     if (event.kind === "dispose") {
-      emitDisposal(event.index, pc, next, "_scope_exit", disposals[event.index]!.catchesFailure ? catchPc : cleanupPc);
+      const failureTarget = disposals[event.index]!.catchesFailure && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
+      emitDisposal(event.index, pc, next, "_scope_exit", failureTarget);
       return;
     }
     const observation = awaited[event.index]!;
     const chain = observation.promiseChain!;
     const guards = [`pc == ${pc}`, ...conditionGuards(observation.controlConditions)];
     emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
-    const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
+    const rejectionTarget = observation.catchesRejection && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
+    const rejectionUpdates = new Map<string, string>([["pc", String(rejectionTarget)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
     const mismatch = conditionMismatch(observation.controlConditions);
     if (observation.conditional) emit(`skip_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
-    const isLast = event.index === awaited.length - 1;
+    const isLast = eventIndex === normalLayout.length - 1;
     const resumeName = awaited.length === 1
-      ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"
-      : isLast ? `await_${chain}_resume_${finallyStatements.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
+      ? eventRegionLayout?.finallyLayout.length ? "await_resume_finally" : "await_resume_return"
+      : isLast ? `await_${chain}_resume_${eventRegionLayout?.finallyLayout.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
     emit(resumeName, [`pc == ${pc + 1}`], new Map([["pc", String(next)]]));
   });
-  const emitHandlerAwait = (region: "catch" | "finally", observation: PromiseObservation, pc: number, next: number, completion: AsyncControlStatement["completion"]): void => {
+  const emitHandlerAwait = (region: "catch" | "finally", observation: PromiseObservation, pc: number, next: number, completion: AsyncControlStatement["completion"], ownFinallyPc: number): void => {
     const chain = observation.promiseChain!;
     emit(`promise_${chain}_fulfill`, [`pc == ${pc}`], new Map([["pc", String(pc + 1)]]));
-    const rejectionTarget = region === "catch" ? finallyPc : cleanupPc;
+    const rejectionTarget = region === "catch" ? ownFinallyPc : cleanupPc;
     emit(`promise_${chain}_reject_escapes`, [`pc == ${pc}`], new Map([["pc", String(rejectionTarget)], ["completion", "1"]]));
-    const resumeTarget = completion === "normal" ? next : region === "catch" ? finallyPc : cleanupPc;
+    const resumeTarget = completion === "normal" ? next : region === "catch" ? ownFinallyPc : cleanupPc;
     const updates = new Map<string, string>([["pc", String(resumeTarget)]]);
     if (completion === "return" && region === "finally") updates.set("completion", "0");
     if (completion === "throw") updates.set("completion", "1");
     emit(`${region}_await_${chain}_resume`, [`pc == ${pc + 1}`], updates);
   };
-  catchLayout.forEach(({ statement, pc, awaitIndex }, index) => {
-    const next = catchLayout[index + 1]?.pc ?? afterCatchPc;
-    if (awaitIndex !== undefined) {
-      emitHandlerAwait("catch", awaited[awaitIndex]!, pc, next, statement.completion);
-      return;
-    }
-    const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : finallyPc)]]);
-    if (statement.completion === "throw") updates.set("completion", "1");
-    emit(`catch_statement_${index}`, [`pc == ${pc}`], updates);
-  });
-  const catchEnd = catchStatements.reduce((end, statement) => Math.max(end, statement.span.end), -1);
-  const catchTerminates = catchStatements.some((statement) => statement.completion !== "normal");
-  const continuationAwait = !catchTerminates && finallyStatements.length === 0 && catchEnd >= 0
-    ? awaited.findIndex((observation) => observation.span.start > catchEnd)
-    : -1;
-  const continuationLayout = normalLayout.find(({ event }) => event.kind === "await" && event.index === continuationAwait);
-  const catchContinuationPc = continuationLayout?.pc ?? finallyPc;
-  emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(catchContinuationPc)]]));
-  finallyLayout.forEach(({ statement, pc, awaitIndex }, index) => {
-    const next = finallyLayout[index + 1]?.pc ?? finallyContinuationPc;
-    if (awaitIndex !== undefined) {
-      emitHandlerAwait("finally", awaited[awaitIndex]!, pc, next, statement.completion);
-      return;
-    }
-    const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : cleanupPc)]]);
-    if (statement.completion === "return") updates.set("completion", "0");
-    if (statement.completion === "throw") updates.set("completion", "1");
-    emit(`finally_statement_${index}`, [`pc == ${pc}`], updates);
+  regionLayouts.forEach((layout, regionIndex) => {
+    const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
+    const finalEntry = layout.finallyLayout.length ? layout.finallyPc : cleanupPc;
+    const afterRegion = continuationPc(layout.region.fullSpan.end);
+    layout.catchLayout.forEach(({ statement, pc, awaitIndex }, index) => {
+      const next = layout.catchLayout[index + 1]?.pc ?? layout.afterCatchPc;
+      if (awaitIndex !== undefined) {
+        emitHandlerAwait("catch", awaited[awaitIndex]!, pc, next, statement.completion, finalEntry);
+        return;
+      }
+      const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : finalEntry)]]);
+      if (statement.completion === "throw") updates.set("completion", "1");
+      emit(`catch_statement_${index}${regionSuffix}`, [`pc == ${pc}`], updates);
+    });
+    const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
+    emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
+    layout.finallyLayout.forEach(({ statement, pc, awaitIndex }, index) => {
+      const next = layout.finallyLayout[index + 1]?.pc ?? afterRegion;
+      if (awaitIndex !== undefined) {
+        emitHandlerAwait("finally", awaited[awaitIndex]!, pc, next, statement.completion, layout.finallyPc);
+        return;
+      }
+      const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : cleanupPc)]]);
+      if (statement.completion === "return") updates.set("completion", "0");
+      if (statement.completion === "throw") updates.set("completion", "1");
+      emit(`finally_statement_${index}${regionSuffix}`, [`pc == ${pc}`], updates);
+    });
   });
   disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
   emit("finish_fulfilled", [`pc == ${completePc}`, "completion == 0"], new Map([["pc", "-2"]]));

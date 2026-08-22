@@ -415,12 +415,15 @@ the unified module consumes its abstract fulfilled/rejected terminal boundary.
 A negative lowering can finish without cleanup, and the shared resource safety
 invariant rejects that execution.
 
-`controlStatements` retains each concrete catch and finally statement with its
-source span and lexical order. The unified lowering emits one transition per
-statement: caught rejection traverses the catch sequence, and both normal and
-recovered paths traverse the finally sequence before resource cleanup. This
-preserves ordering without pretending that arbitrary statement bodies have
-already been semantically interpreted.
+`controlRegions` gives every `try` statement a stable source-derived identity
+and retains its protected, catch, finally, and complete source spans.
+`controlStatements` links each concrete catch and finally statement to that
+identity while preserving source span and lexical order. The unified lowering
+emits one transition per statement: rejection selects the innermost containing
+try region instead of a function-wide catch, and both normal and recovered
+paths traverse that region's finally sequence before resource cleanup. This
+separates sequential and nested handlers without pretending that arbitrary
+statement bodies have already been semantically interpreted.
 
 Sequential awaited chains receive separate wait and resume states in source
 order. A fulfilled chain advances only to the next await; only the final
@@ -441,8 +444,9 @@ statements and later awaits. A top-level handler statement containing one
 analyzed awaited chain receives dedicated terminal and resume states. Catch
 await rejection preserves an enclosing finally edge before escaping; normal
 finally completion resumes the first following outer await. Abrupt completion
-nested inside handler branches, multiple awaits in one statement, and general
-handler joins still require the statement-level CFG.
+nested inside handler branches, multiple awaits in one statement, rethrow
+propagation from an inner handler to an outer handler, and general handler
+joins still require the statement-level CFG.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.
@@ -475,7 +479,7 @@ recursive `SuppressedError` payloads are retained in the analysis IR, while the
 Quint projection still uses an abstract completion state. The model records
 all exit kinds conservatively. Unified control edges connect Promise chains,
 await/catch, scope exits, and disposal failures. The initial single-function
-Quint lowering and concrete catch/finally statement ordering are implemented;
-straight-line multiple-await sequencing is also implemented. Arbitrary nested
-regions are covered only for a scope exit between two modeled awaits; general
-control-flow joins remain outside this slice.
+Quint lowering, region-identified catch/finally statement ordering,
+straight-line multiple-await sequencing, and innermost catch selection for
+sequential/nested try regions are implemented. General control-flow joins and
+full rethrow propagation across nested handlers remain outside this slice.
