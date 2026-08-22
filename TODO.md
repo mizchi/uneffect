@@ -122,7 +122,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Treat scalar finite `Map.values()` domains as derived Set views without generalizing unsupported composite values.
     - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
       - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
+      - [x] Prove direct scalar action assignments, increments, stuttering, and one-level literal-specialized local class methods against temporal assignments.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
+        - [ ] Extend action-body refinement beyond the current straight-line scalar fragment to branches, loops, multi-write sequencing, collections, imported/interprocedural calls, and guards.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

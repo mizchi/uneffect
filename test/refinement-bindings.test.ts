@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -87,6 +87,84 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unknown-action-binding", modelName: "removed", exportName: "removedCounter" }),
       expect.objectContaining({ code: "missing-invariant-binding", modelName: "nonNegative" }),
       expect.objectContaining({ code: "unknown-invariant-binding", modelName: "stale", exportName: "staleCounter" }),
+    ]);
+  });
+
+  it("proves direct scalar action updates and reports semantic mismatches", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * state armed: bool
+       * init value = 0
+       * init armed = false
+       * action increment: value' = value + 1
+       * action arm: armed' = true
+       * action observe: armed' = armed
+       * action badExtra: value' = value
+       */
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.value++ }
+      /* uneffect: refinement counter@1 action arm */ export function arm(runtime: Runtime) { runtime.armed = false }
+      /* uneffect: refinement counter@1 action observe */ export function observe(_runtime: Runtime) {}
+      /* uneffect: refinement counter@1 action badExtra */ export function badExtra(runtime: Runtime) { runtime.armed = true }
+    `;
+    expect(validateRefinementActionBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
+      expect.objectContaining({
+        code: "action-update-mismatch",
+        modelName: "arm",
+        target: "armed",
+        expected: "true",
+        actual: "false",
+      }),
+      expect.objectContaining({
+        code: "action-update-mismatch",
+        modelName: "badExtra",
+        target: "armed",
+        expected: "armed",
+        actual: "true",
+      }),
+    ]);
+  });
+
+  it("specializes one local class method call and rejects unsupported control flow", () => {
+    const source = `
+      /* uneffect:
+       * state delivered: int
+       * state attempted: int
+       * init delivered = 0
+       * init attempted = 0
+       * action deliver: delivered' = delivered + 1, attempted' = attempted + 1
+       * action conditional: delivered' = delivered + 1
+       */
+      class Runtime {
+        delivered = 0
+        attempted = 0
+        record(outcome: "delivered") { this.attempted += 1; this[outcome] += 1 }
+      }
+      /* uneffect: refinement routing@1 create */ export function createRouting(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observeRouting(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action deliver */ export function deliver(runtime: Runtime) { runtime.record("delivered") }
+      /* uneffect: refinement routing@1 action conditional */ export function conditional(runtime: Runtime) { if (runtime.delivered === 0) runtime.delivered++ }
+    `;
+    expect(validateRefinementActionBodies("routing.ts", source, "routing", parseSpec("routing.ts", source).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "conditional", exportName: "conditional" }),
+    ]);
+  });
+
+  it("does not treat a missing action binding as a successful body proof", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * init value = 0
+       * action increment: value' = value + 1
+       */
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: unknown) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: unknown) { return runtime }
+    `;
+    expect(validateRefinementActionBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
+      expect.objectContaining({ code: "missing-action-binding", modelName: "increment" }),
     ]);
   });
 });

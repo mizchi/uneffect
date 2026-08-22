@@ -109,6 +109,20 @@ adapter invariant is a point-state predicate, not a temporal monitor. This is a
 structural stale-binding check only: it does not prove that an action function's
 assignments implement the corresponding model transition.
 
+`validateRefinementActionBodies` adds a proof for a deliberately restricted
+zero-runtime fragment. It normalizes direct runtime-field assignment,
+`+=`/`-=`, increment/decrement, and omitted-field stuttering to the temporal
+expression AST. It can inline one local class method call when every argument
+is syntactically available; this supports wrappers such as
+`runtime.record("delivered")` and specializes a computed `this[outcome]`
+write to the literal field. Every model state is compared, so an extra runtime
+write is rejected as well as a missing or different write. Branches, loops,
+multiple sequential writes to one state field, imported calls, recursive calls,
+collection operations, and dynamic computed members produce
+`unsupported-action-body`; they are never silently treated as verified.
+This check currently covers transition updates, not create/observe correctness,
+action guards, or invariant-function equivalence.
+
 `|` is the only union separator. Commas separate parameters inside a parameterized effect and are never accepted as top-level effect unions.
 
 ## Attachment

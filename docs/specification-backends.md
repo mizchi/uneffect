@@ -215,7 +215,11 @@ the conservation candidate is rejected. The neighboring TypeScript class is
 still only a reviewable implementation: Uneffect does not yet prove that its
 computed-property update refines the declared temporal actions. It does bind
 create, observe, every action, and the invariant through refinement annotations;
-the dogfood coverage check catches missing and stale model names.
+the dogfood coverage check catches missing and stale model names. Its
+straight-line action bodies are also checked against the model assignments:
+literal calls to `record` are locally specialized, including the computed
+outcome-field write. Create/observe and invariant-body equivalence remain
+outside this proof.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

@@ -37,6 +37,12 @@ coverage measured 0.3583 ms mean over 1,396 samples (2.10% RME). This measures
 annotation extraction and structural action/invariant set comparison only; it
 does not measure or claim semantic implementation-to-model refinement.
 
+After adding scalar action-body refinement, parsing plus structural coverage
+and semantic comparison of all five telemetry actions measured 0.4847 ms mean
+over 1,032 samples (1.66% RME). The extra work includes literal specialization
+of three local `record` calls and all-state stuttering comparisons. It still
+excludes create/observe, guards, and invariant-function equivalence.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
