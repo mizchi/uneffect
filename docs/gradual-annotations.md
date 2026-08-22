@@ -133,6 +133,13 @@ symbolic state and merged field-by-field as conditional expressions. An omitted
 syntax in model expressions, emits JavaScript ternaries and Quint `if/else`, is
 evaluated during trace replay, and lowers to SMT `ite`. Branch-local abrupt
 completion and non-scalar branch state are still unsupported.
+An ascending loop of the exact form
+`for (let i = START; i < END; i++)` is symbolically unrolled when both bounds
+are nonnegative integer literals and the iteration count is at most 64. Each
+iteration receives its own substituted index and block-local snapshot scope,
+while state writes flow to the next iteration. Dynamic bounds, other update or
+comparison forms, `break`/`continue`, and larger loops remain explicit
+non-proofs rather than being approximated.
 For a guarded model action, the implementation may begin with
 `if (!(predicate)) return`; the positive predicate is normalized and must
 exactly match `action_when` in the synchronous fast path. Missing, different, and unexpected guards are

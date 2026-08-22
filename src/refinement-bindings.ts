@@ -316,14 +316,36 @@ export function validateRefinementActionBodies(
       if (expression.kind === "conditional") return { ...expression, condition: resolveCurrentState(expression.condition), whenTrue: resolveCurrentState(expression.whenTrue), whenFalse: resolveCurrentState(expression.whenFalse) };
       return expression;
     };
+    const asBlock = (statement: ts.Statement | undefined): ts.Block => !statement
+      ? ts.factory.createBlock([], true)
+      : ts.isBlock(statement) ? statement : ts.factory.createBlock([statement], true);
     for (const statement of body.statements) {
+      if (ts.isForStatement(statement)) {
+        const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
+          && (statement.initializer.flags & ts.NodeFlags.Let) !== 0
+          && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
+        const loopName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+        const start = declaration?.initializer && ts.isNumericLiteral(declaration.initializer) ? Number(declaration.initializer.text) : undefined;
+        const condition = statement.condition && ts.isBinaryExpression(statement.condition) ? statement.condition : undefined;
+        const end = condition && condition.operatorToken.kind === ts.SyntaxKind.LessThanToken
+          && ts.isIdentifier(condition.left) && condition.left.text === loopName && ts.isNumericLiteral(condition.right)
+          ? Number(condition.right.text) : undefined;
+        const increment = statement.incrementor;
+        const incrementsLoop = increment && ts.isPostfixUnaryExpression(increment)
+          && increment.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(increment.operand) && increment.operand.text === loopName;
+        if (!loopName || start === undefined || end === undefined || !incrementsLoop
+          || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 64) return undefined;
+        for (let value = start; value < end; value++) {
+          const iterationSubstitutions = new Map(substitutions);
+          iterationSubstitutions.set(loopName, ts.factory.createNumericLiteral(value));
+          if (!collect(asBlock(statement.statement), receiver, runtimeClass, iterationSubstitutions, updates, new Map(localValues))) return undefined;
+        }
+        continue;
+      }
       if (ts.isIfStatement(statement)) {
         const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
         if (!normalizedCondition) return undefined;
         const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
-        const asBlock = (branch: ts.Statement | undefined): ts.Block => !branch
-          ? ts.factory.createBlock([], true)
-          : ts.isBlock(branch) ? branch : ts.factory.createBlock([branch], true);
         const before = new Map(updates);
         const whenTrue = collect(asBlock(statement.thenStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));
         const whenFalse = collect(asBlock(statement.elseStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));

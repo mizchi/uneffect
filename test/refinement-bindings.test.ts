@@ -194,6 +194,26 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("conditional.ts", source, "counter", parseSpec("conditional.ts", source).temporal)).toEqual([]);
   });
 
+  it("unrolls a statically bounded ascending for loop and rejects dynamic bounds", () => {
+    const model = `/* uneffect:
+      state value: int
+      init value = 0
+      action addThree: value' = value + 1 + 1 + 1
+    */`;
+    const safe = `${model}
+      interface Runtime { value: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action addThree */
+      export function addThree(runtime: Runtime) { for (let index = 0; index < 3; index++) runtime.value++ }
+    `;
+    expect(validateRefinementActionBodies("loop.ts", safe, "counter", parseSpec("loop.ts", safe).temporal)).toEqual([]);
+    const dynamic = safe.replace("index < 3", "index < runtime.value");
+    expect(validateRefinementActionBodies("dynamic-loop.ts", dynamic, "counter", parseSpec("dynamic-loop.ts", dynamic).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
+    ]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:
