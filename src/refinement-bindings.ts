@@ -169,11 +169,13 @@ function parseAbstractionRelations(
   return abstraction;
 }
 
-function parseAbstractionValue(value: string): { kind: "identity" | "set-from-array"; path: string } {
+function parseAbstractionValue(value: string): { kind: "identity" | "set-from-array" | "map-from-entries"; path: string } {
   const pathPattern = "[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*";
   if (new RegExp(`^${pathPattern}$`).test(value)) return { kind: "identity", path: value };
   const set = new RegExp(`^Set\\((${pathPattern})\\)$`).exec(value);
   if (set) return { kind: "set-from-array", path: set[1]! };
+  const map = new RegExp(`^Map\\((${pathPattern})\\)$`).exec(value);
+  if (map) return { kind: "map-from-entries", path: map[1]! };
   throw new Error(`unsupported abstraction expression: ${value}`);
 }
 
@@ -807,6 +809,21 @@ function validateRefinementActionBodiesInSource(
           });
           continue;
         }
+        if (target && stateNames.has(target) && targetType && relation
+          && parseAbstractionValue(relation).kind === "map-from-entries"
+          && typeof targetType !== "string" && targetType.kind === "map"
+          && fields.length === 0 && node.expression.name.text === "push" && node.arguments.length === 1
+          && isBuiltinArrayReceiver(node.expression.expression)
+          && ts.isArrayLiteralExpression(node.arguments[0]!) && node.arguments[0]!.elements.length === 2) {
+          const key = normalizeRefinementExpression(node.arguments[0]!.elements[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
+          const value = normalizeRefinementExpression(node.arguments[0]!.elements[1]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
+          if (!key || !value) return undefined;
+          writePath(target, [], {
+            kind: "method", receiver: readPath(target, []), name: "put",
+            arguments: [expandLocalSnapshots(resolveCurrentState(key)), expandLocalSnapshots(resolveCurrentState(value))],
+          });
+          continue;
+        }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "clear" && node.arguments.length === 0
           && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")
           && isBuiltinCollectionReceiver(node.expression.expression, targetType.kind)) {
@@ -1301,12 +1318,13 @@ function validateRefinementStateProjectionInSource(
     };
     const normalizeProjectionExpression = (node: ts.Expression): TemporalExpression | undefined => {
       if (role === "observe" && checker && ts.isNewExpression(node)
-        && ts.isIdentifier(node.expression) && node.expression.text === "Set"
-        && node.arguments?.length === 1 && isDeclarationFileSymbol(checker, node.expression, "Set")) {
+        && ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")
+        && node.arguments?.length === 1 && isDeclarationFileSymbol(checker, node.expression, node.expression.text)) {
         const concrete = refinementFieldPath(node.arguments[0]!, receiver, new Map())?.join(".");
         for (const [abstract, value] of abstraction) {
           const parsed = parseAbstractionValue(value);
-          if (parsed.kind === "set-from-array" && parsed.path === concrete) return { kind: "name", name: abstract };
+          const expected = parsed.kind === "set-from-array" ? "Set" : parsed.kind === "map-from-entries" ? "Map" : undefined;
+          if (expected === node.expression.text && parsed.path === concrete) return { kind: "name", name: abstract };
         }
       }
       const path = accessPath(node);
@@ -1377,7 +1395,7 @@ function validateRefinementStateProjectionInSource(
         const parsed = relation ? parseAbstractionValue(relation) : { kind: "identity" as const, path: name };
         const initializer = initializerAt(expression, parsed.path.split("."));
         let value: TemporalExpression | undefined;
-        if (parsed.kind === "set-from-array" && checker && initializer && ts.isCallExpression(initializer)
+        if ((parsed.kind === "set-from-array" || parsed.kind === "map-from-entries") && checker && initializer && ts.isCallExpression(initializer)
           && ts.isPropertyAccessExpression(initializer.expression)
           && ts.isIdentifier(initializer.expression.expression) && initializer.expression.expression.text === "Array"
           && initializer.expression.name.text === "from" && initializer.arguments.length === 1
@@ -1450,6 +1468,24 @@ function validateRefinementStateProjectionInSource(
           mismatch = element && type.element !== "never"
             ? typescriptTemporalShapeMismatch(checker!, element, type.element, declaration, [name, "<element>"])
             : element ? undefined : [name];
+        }
+      } else if (parsed.kind === "map-from-entries") {
+        if (typeof type === "string" || type.kind !== "map") mismatch = [name];
+        else {
+          const symbol = current.getSymbol() ?? current.aliasSymbol;
+          const builtinArray = symbol?.getName() === "Array"
+            && (symbol.declarations ?? []).some((candidate) => candidate.getSourceFile().isDeclarationFile);
+          const element = builtinArray && (current.flags & ts.TypeFlags.Object) !== 0
+            ? checker!.getTypeArguments(current as ts.TypeReference)[0]
+            : undefined;
+          const tupleArguments = element && checker!.isTupleType(element)
+            ? checker!.getTypeArguments(element as ts.TypeReference)
+            : undefined;
+          const [key, value] = tupleArguments ?? [];
+          mismatch = !key || !value || tupleArguments?.length !== 2 ? [name]
+            : type.key !== "never" && typescriptTemporalShapeMismatch(checker!, key, type.key, declaration, [name, "<key>"])
+              || type.value !== "never" && typescriptTemporalShapeMismatch(checker!, value, type.value, declaration, [name, "<value>"])
+              || undefined;
         }
       } else mismatch = typescriptTemporalShapeMismatch(checker!, current, type, declaration, [name]);
       if (mismatch) return mismatch;

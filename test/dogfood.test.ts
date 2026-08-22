@@ -112,6 +112,35 @@ describe("Uneffect dogfood", () => {
     );
   });
 
+  it("refines a persisted Map through mutable entry arrays", async () => {
+    const fileName = "examples/dogfood/persisted-epoch-entries.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    });
+    expect(validateRefinementBindingCoverage(fileName, source, "persistedEpochs", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "persistedEpochs", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal)).toEqual([]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-map-entries-dogfood-"));
+    const wrongFile = join(directory, "persisted-epoch-entries.ts");
+    try {
+      const wrong = source.replace("push([2, 1])", "push([2, 3])");
+      writeFileSync(wrongFile, wrong);
+      const wrongProgram = ts.createProgram([wrongFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "persistedEpochs", temporal)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "addFallback", target: "epochs" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("proves nested Node Lease boundaries and an epoch transition", async () => {
     const fileName = "examples/dogfood/lease-projection.ts";
     const source = readFileSync(fileName, "utf8");

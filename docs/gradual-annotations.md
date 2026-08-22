@@ -144,6 +144,14 @@ captures and general callback statements are not. Other computed conversions, ar
 indexed writes/splice/pop or non-zero length assignment, dynamic property paths, and many-to-one
 relations remain explicit non-proofs.
 
+`Map(path)` is the corresponding proof-directed representation for a temporal
+`Map<K, V>` stored as a mutable builtin `Array<[K, V]>`. Create uses builtin
+`Array.from(modelMap)`, observe uses builtin `new Map(runtimeEntries)`, and an
+exact builtin `entries.push([key, value])` refines temporal `map.put(key,
+value)`. The Program-backed checker verifies the tuple arity and key/value
+types. Entry replacement, deletion/filtering, lookup predicates, duplicate-key
+ordering, and general iterable conversions are not yet proofs.
+
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to
 removed action or invariant names. Liveness properties are excluded because an

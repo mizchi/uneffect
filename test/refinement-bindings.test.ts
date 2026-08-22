@@ -1047,8 +1047,59 @@ describe("annotated refinement bindings", () => {
         expect.objectContaining({ code: "unsupported-action-body", modelName: "admit" }),
       );
       expect(() => buildRefinementBindingManifest(fileName, source.replace(
-        "Set(routing.activeSubscriberIds)", "Map(routing.activeSubscriberIds)",
+        "Set(routing.activeSubscriberIds)", "List(routing.activeSubscriberIds)",
       ), "arraySet")).toThrow(/unsupported abstraction expression/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refines a Map model through a computed entry-array abstraction", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-array-map-abstraction-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state epochs: Map<int, int>
+      init epochs = Map([[1, 0]])
+      action addFallback: epochs' = epochs.put(2, 1)
+      abstraction mapEntries@1 epochs = Map(storage.epochEntries)
+    */
+      interface ModelState { epochs: Map<number, number> }
+      interface Runtime { storage: { epochEntries: Array<[number, number]> } }
+      /* uneffect: refinement mapEntries@1 create */
+      export function create(initial: ModelState): Runtime { return { storage: { epochEntries: Array.from(initial.epochs) } } }
+      /* uneffect: refinement mapEntries@1 observe */
+      export function observe(runtime: Runtime): ModelState { return { epochs: new Map(runtime.storage.epochEntries) } }
+      /* uneffect: refinement mapEntries@1 action addFallback */
+      export function addFallback(runtime: Runtime): void { runtime.storage.epochEntries.push([2, 1]) }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(fileName, source).temporal;
+      expect(buildRefinementBindingManifest(fileName, source, "mapEntries").abstractions).toEqual({ epochs: "Map(storage.epochEntries)" });
+      expect(validateRefinementStateProjectionInProgram(program, fileName, "mapEntries", spec)).toEqual([]);
+      expect(validateRefinementActionBodiesInProgram(program, fileName, "mapEntries", spec)).toEqual([]);
+      const wrongAction = source.replace("push([2, 1])", "push([2, 2])");
+      writeFileSync(fileName, wrongAction);
+      const wrongActionProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongActionProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "addFallback", target: "epochs" }),
+      );
+      expect(validateRefinementActionBodies(fileName, source, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "addFallback" }),
+      );
+      const wrongType = source.replace("Array<[number, number]>", "Array<[boolean, number]>");
+      writeFileSync(fileName, wrongType);
+      const wrongTypeProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(wrongTypeProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "create-type-mismatch", field: "epochs" }),
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
