@@ -1935,4 +1935,56 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics.filter((diagnostic) => diagnostic.kind === "invalid-resource-contract")).toHaveLength(2);
   });
+
+  it("discharges conditional retention only when its guard is proven false", () => {
+    const result = analyzeAsyncSafety("conditional-retention.ts", `
+      interface Resource { [Symbol.dispose](): void }
+      declare function open(): Resource
+      /* uneffect: retains_resource_when 0: enabled */
+      declare function maybeRegister(resource: Resource, enabled: boolean): void
+      class MaybeRegistry {
+        /* uneffect: retains_resource_when 0: enabled */
+        constructor(resource: Resource, enabled: boolean) {}
+      }
+      function disabled() {
+        using resource = open()
+        maybeRegister(resource, false)
+      }
+      function enabled() {
+        using resource = open()
+        maybeRegister(resource, true)
+      }
+      function unknown(enabled: boolean) {
+        using resource = open()
+        maybeRegister(resource, enabled)
+      }
+      /* uneffect: requires !enabled */
+      function preconditionDisabled(enabled: boolean) {
+        using resource = open()
+        maybeRegister(resource, enabled)
+      }
+      function disabledConstruction() {
+        using resource = open()
+        new MaybeRegistry(resource, false)
+      }
+      function unknownConstruction(enabled: boolean) {
+        using resource = open()
+        new MaybeRegistry(resource, enabled)
+      }
+      /* uneffect: retains_resource_when nope */
+      declare function malformed(resource: Resource): void
+      /* uneffect: retains_resource_when 0: missing */
+      declare function missingGuard(resource: Resource): void
+    `);
+    expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "disabled" }));
+    expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "preconditionDisabled" }));
+    expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "disabledConstruction" }));
+    for (const owner of ["enabled", "unknown"]) expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner, resource: "resource", via: "retaining-call",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "unknownConstruction", resource: "resource", via: "retaining-construction",
+    }));
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.kind === "invalid-resource-contract")).toHaveLength(2);
+  });
 });

@@ -281,10 +281,18 @@ function resourceRetentionParameters(
   const declaration = checker.getResolvedSignature(call)?.declaration;
   if (!declaration || declaration.kind === ts.SyntaxKind.JSDocSignature) return new Set();
   const signature = declaration as ts.SignatureDeclaration;
-  const cached = cache.get(signature);
+  const signatureSource = signature.getSourceFile(), signatureStart = signature.getFullStart();
+  const hasConditionalRetention = extractLocatedAnnotations(
+    signatureSource.text.slice(signatureStart, signature.getStart(signatureSource)), "retains_resource_when", signatureStart,
+  ).length > 0;
+  const cached = hasConditionalRetention ? undefined : cache.get(signature);
   if (cached) return new Set(cached);
   const retained = parseIndexedOwnershipContract(signature, "retains_resource").indices;
-  if (!("body" in signature) || !signature.body) { cache.set(signature, retained); return retained; }
+  for (const index of conditionalOwnershipParameters(checker, signature, call, "retains_resource_when").indices) retained.add(index);
+  if (!("body" in signature) || !signature.body) {
+    if (!hasConditionalRetention) cache.set(signature, retained);
+    return retained;
+  }
   if (seen.has(signature)) return retained;
   const nextSeen = new Set(seen).add(signature);
   const parameterSymbols = signature.parameters.map((parameter) => checker.getSymbolAtLocation(parameter.name));
@@ -313,19 +321,19 @@ function resourceRetentionParameters(
     ts.forEachChild(node, visit);
   };
   visit(signature.body);
-  cache.set(signature, retained);
+  if (!hasConditionalRetention) cache.set(signature, retained);
   return retained;
 }
 
-type ConditionalOwnershipDirective = "consumes_rejection_when" | "consumes_callback_rejection_when";
-function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression, declaration: ts.SignatureDeclaration, guardSource: string): { assumptions: string[]; goal: string; verified: boolean } {
+type ConditionalOwnershipDirective = "consumes_rejection_when" | "consumes_callback_rejection_when" | "retains_resource_when";
+function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): { assumptions: string[]; goal: string; verified: boolean } {
   let instantiated = guardSource;
   declaration.parameters.forEach((parameter, index) => {
-    if (!ts.isIdentifier(parameter.name) || !call.arguments[index]) return;
+    if (!ts.isIdentifier(parameter.name) || !call.arguments?.[index]) return;
     instantiated = instantiated.replace(new RegExp(`\\b${parameter.name.text}\\b`, "g"), `(${call.arguments[index]!.getText()})`);
   });
   const facts: string[] = [];
-  call.arguments.forEach((argument) => {
+  call.arguments?.forEach((argument) => {
     const text = argument.getText();
     const type = checker.typeToString(checker.getTypeAtLocation(argument));
     if (argument.kind === ts.SyntaxKind.TrueKeyword || type === "true") facts.push(text);
@@ -339,14 +347,17 @@ function ownershipGuardEvidence(checker: ts.TypeChecker, call: ts.CallExpression
   }
   return { assumptions: facts, goal: instantiated, verified: proveBooleanImplication(facts, instantiated) };
 }
-function guardProvenTrue(checker: ts.TypeChecker, call: ts.CallExpression, declaration: ts.SignatureDeclaration, guardSource: string): boolean {
+function guardProvenTrue(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): boolean {
   return ownershipGuardEvidence(checker, call, declaration, guardSource).verified;
+}
+function guardProvenFalse(checker: ts.TypeChecker, call: ts.CallExpression | ts.NewExpression, declaration: ts.SignatureDeclaration, guardSource: string): boolean {
+  return ownershipGuardEvidence(checker, call, declaration, `!(${guardSource})`).verified;
 }
 
 function conditionalOwnershipParameters(
   checker: ts.TypeChecker | undefined,
   declaration: ts.SignatureDeclaration,
-  call: ts.CallExpression | undefined,
+  call: ts.CallExpression | ts.NewExpression | undefined,
   directive: ConditionalOwnershipDirective,
 ): IndexedOwnershipContract {
   const source = declaration.getSourceFile();
@@ -375,7 +386,9 @@ function conditionalOwnershipParameters(
         const parameters = new Set(declaration.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []));
         const missing = [...names].find((name) => !parameters.has(name));
         if (missing) errors.push({ position: annotation.span.start, message: `${directive} guard ${missing} is not a parameter` });
-        else if (call && checker && guardProvenTrue(checker, call, declaration, match[2]!)) indices.add(target);
+        else if (call && checker && (directive === "retains_resource_when"
+          ? !guardProvenFalse(checker, call, declaration, match[2]!)
+          : guardProvenTrue(checker, call, declaration, match[2]!))) indices.add(target);
       } catch {
         errors.push({ position: annotation.span.start, message: `${directive} has an invalid boolean guard` });
       }
@@ -461,6 +474,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
     }
     if (ts.isFunctionLike(node)) for (const error of parseIndexedOwnershipContract(node, "retains_resource").errors) {
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message });
+    }
+    if (ts.isFunctionLike(node)) for (const error of conditionalOwnershipParameters(undefined, node, undefined, "retains_resource_when").errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message });
     }
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection_when", "consumes_callback_rejection_when"] as const) for (const error of conditionalOwnershipParameters(undefined, node, undefined, directive).errors) {

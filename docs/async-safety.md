@@ -519,6 +519,13 @@ constructors remain unchecked to preserve gradual adoption. Retention through
 mutable local bindings inside the wrapper, mutable callback selection,
 unannotated container construction, and externally implemented unannotated
 callees are not yet claimed as escape proofs.
+
+`retains_resource_when 0: enabled` provides guarded retention for feature-flag
+and optional-registration APIs. Because a possible retained reference is
+already unsafe across lexical disposal, `true` and unknown guards report an
+escape; only a guard proved false by literal/type facts or an enclosing
+`requires` precondition is discharged. Conditional declarations are evaluated
+per call and deliberately excluded from the unconditional signature cache.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

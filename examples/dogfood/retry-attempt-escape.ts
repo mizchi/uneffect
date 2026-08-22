@@ -8,6 +8,8 @@ interface Attempt {
 declare function openAttempt(): Attempt;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
+/* uneffect: retains_resource_when 0: enabled */
+declare function maybeRegisterAttempt(attempt: Attempt, enabled: boolean): void;
 function registerRetryAttempt(attempt: Attempt): void {
   const queuedAttempt = attempt;
   registerAttempt(queuedAttempt);
@@ -52,4 +54,14 @@ export async function brokenRegisteredAttempt(): Promise<void> {
 export async function brokenQueuedAttempt(): Promise<void> {
   await using attempt = openAttempt();
   createAttemptQueueEntry(attempt);
+}
+
+export async function brokenConditionalAttempt(): Promise<void> {
+  await using attempt = openAttempt();
+  maybeRegisterAttempt(attempt, true);
+}
+
+export async function safeDisabledAttempt(): Promise<void> {
+  await using attempt = openAttempt();
+  maybeRegisterAttempt(attempt, false);
 }

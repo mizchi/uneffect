@@ -400,3 +400,10 @@ ms for warm analysis (20 cold samples and 717 warm samples). Constructor and
 factory summary propagation therefore remains below one millisecond on the
 warm path in this fixture; the result is observational rather than a large
 class-graph performance bound.
+
+Adding enabled and statically disabled conditional-registration calls measured
+137.09 ms cold, 95.75 ms for Program construction, and 0.858 ms for warm
+analysis (20 cold samples and 583 warm samples). The warm increase includes
+per-call parsing and finite propositional discharge because conditional
+declarations cannot reuse an unconditional summary; it remains below one
+millisecond in this fixture.

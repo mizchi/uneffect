@@ -231,3 +231,10 @@ changes emitted JavaScript.
 The directive may annotate a class constructor as well. Direct construction is
 reported as `retaining-construction`; a function returning `new Registry(x)`
 inherits retention for `x`, so callers of an ordinary factory are checked too.
+
+Conditional retention uses `retains_resource_when 0: enabled`. Unlike Promise
+ownership transfer, retention is a may-property: a resource escape is reported
+when the guard is true or unresolved, and discharged only when `!enabled` is
+proved from literal/type facts or a `requires` precondition. The guard is parsed
+by the same restricted TypeScript expression IR used by logical contracts, so
+it remains available for optional runtime assertion generation.
