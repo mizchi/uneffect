@@ -55,6 +55,7 @@ describe("CI test tier manifest", () => {
   it("retries only known transient Z3 WASM process failures", () => {
     expect(shouldRetryIsolatedSolverFailure("RuntimeError: memory access out of bounds\nat z3-built.wasm.smt::context")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("RuntimeError: Aborted(Cannot enlarge memory arrays to size 2912395264 bytes (OOM)\nat z3-built.wasm.rewriter_tpl")).toBe(true);
+    expect(shouldRetryIsolatedSolverFailure("ASSERTION VIOLATION\nFile: ../src/ast/for_each_expr.h\nUNEXPECTED CODE WAS REACHED.\nZ3 4.16.0.0")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("FAIL test/node-lease.test.ts > Node Lease clock-skew model > uses a proven lease-domain invariant to exclude invalid epoch actions\nTest timed out in 60000ms")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
