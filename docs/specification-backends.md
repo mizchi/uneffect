@@ -213,7 +213,9 @@ checks that every attempted telemetry item is classified as delivered, dropped,
 or buffered. Its negative test removes the buffered-counter update, after which
 the conservation candidate is rejected. The neighboring TypeScript class is
 still only a reviewable implementation: Uneffect does not yet prove that its
-computed-property update refines the declared temporal actions.
+computed-property update refines the declared temporal actions. It does bind
+create, observe, every action, and the invariant through refinement annotations;
+the dogfood coverage check catches missing and stale model names.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

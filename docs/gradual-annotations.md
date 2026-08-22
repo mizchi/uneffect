@@ -102,6 +102,13 @@ Build tooling can either resolve the manifest against already-loaded exports or
 emit a reviewable module containing direct namespace references. Normal
 TypeScript checking remains responsible for the concrete state/runtime types.
 
+`validateRefinementBindingCoverage` compares a named adapter manifest with a
+parsed temporal model. It reports missing bindings and bindings that refer to
+removed action or invariant names. Liveness properties are excluded because an
+adapter invariant is a point-state predicate, not a temporal monitor. This is a
+structural stale-binding check only: it does not prove that an action function's
+assignments implement the corresponding model transition.
+
 `|` is the only union separator. Commas separate parameters inside a parameterized effect and are never accepted as top-level effect unions.
 
 ## Attachment

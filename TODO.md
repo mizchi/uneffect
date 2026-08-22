@@ -121,6 +121,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Treat finite `Map.keys()` domains, including record-nested maps, as derived Set views for directional subset synthesis.
     - [x] Treat scalar finite `Map.values()` domains as derived Set views without generalizing unsupported composite values.
     - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
+      - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.

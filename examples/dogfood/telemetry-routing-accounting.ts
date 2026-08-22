@@ -20,14 +20,54 @@
 
 export type TelemetryOutcome = "delivered" | "dropped" | "buffered";
 
+export interface TelemetryRoutingState {
+  delivered: number;
+  dropped: number;
+  buffered: number;
+  attempted: number;
+  auditArmed: boolean;
+}
+
 export class TelemetryRoutingAccounting {
   delivered = 0;
   dropped = 0;
   buffered = 0;
   attempted = 0;
+  auditArmed = false;
 
   record(outcome: TelemetryOutcome): void {
     this.attempted += 1;
     this[outcome] += 1;
   }
+}
+
+/* uneffect: refinement telemetryRouting@1 create */
+export function createTelemetryRouting(initial: TelemetryRoutingState): TelemetryRoutingAccounting {
+  return Object.assign(new TelemetryRoutingAccounting(), initial);
+}
+
+/* uneffect: refinement telemetryRouting@1 observe */
+export function observeTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
+  const { delivered, dropped, buffered, attempted, auditArmed } = runtime;
+  return { delivered, dropped, buffered, attempted, auditArmed };
+}
+
+/* uneffect: refinement telemetryRouting@1 action deliver */
+export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("delivered"); }
+
+/* uneffect: refinement telemetryRouting@1 action drop */
+export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("dropped"); }
+
+/* uneffect: refinement telemetryRouting@1 action buffer */
+export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }
+
+/* uneffect: refinement telemetryRouting@1 action armAudit */
+export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void { runtime.auditArmed = true; }
+
+/* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
+export function observeLostTelemetryOutcome(_runtime: TelemetryRoutingAccounting): void {}
+
+/* uneffect: refinement telemetryRouting@1 invariant allAttemptsHaveOneOutcome */
+export function allTelemetryAttemptsHaveOneOutcome(runtime: TelemetryRoutingAccounting): boolean {
+  return runtime.delivered + runtime.dropped + runtime.buffered === runtime.attempted;
 }

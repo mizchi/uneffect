@@ -8,7 +8,7 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
-import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
+import { generateRefinementAdapterModule, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
@@ -533,5 +533,11 @@ describe("typed-array static verification", () => {
       ${actions}
     `;
     generateRefinementAdapterModule("machine.ts", source, "./machine.js", "machine");
+  }, { time: 500, iterations: 20 });
+
+  bench("parse and validate telemetry refinement coverage", () => {
+    const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    validateRefinementBindingCoverage(fileName, source, "telemetryRouting", parseSpec(fileName, source).temporal);
   }, { time: 500, iterations: 20 });
 });

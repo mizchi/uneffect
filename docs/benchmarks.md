@@ -32,6 +32,11 @@ Z3 obligations for each. The single sample is a development observation, not a
 stable performance claim; it shows why arity remains explicit and candidate
 generation is capped.
 
+Parsing the same telemetry routing source and checking complete refinement-name
+coverage measured 0.3583 ms mean over 1,396 samples (2.10% RME). This measures
+annotation extraction and structural action/invariant set comparison only; it
+does not measure or claim semantic implementation-to-model refinement.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

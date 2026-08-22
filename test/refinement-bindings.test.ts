@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementBindingCoverage } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -64,5 +64,29 @@ describe("annotated refinement bindings", () => {
     expect(() => buildRefinementBindingManifest("arity.ts", `
       /* uneffect: refinement counter@1 create */ export function createCounter() {}
     `, "counter")).toThrow(/expected exactly one parameter/);
+  });
+
+  it("reports stale and missing temporal model bindings", () => {
+    const source = `
+      /* uneffect:
+       * state value: int
+       * init value = 0
+       * action increment: value' = value + 1
+       * action reset: value' = 0
+       * temporal nonNegative: value >= 0
+       */
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: unknown) {}
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: unknown) {}
+      /* uneffect: refinement counter@1 action increment */ export function incrementCounter(runtime: unknown) {}
+      /* uneffect: refinement counter@1 action removed */ export function removedCounter(runtime: unknown) {}
+      /* uneffect: refinement counter@1 invariant stale */ export function staleCounter(runtime: unknown) {}
+    `;
+    const temporal = parseSpec("counter.ts", source).temporal;
+    expect(validateRefinementBindingCoverage("counter.ts", source, "counter", temporal)).toEqual([
+      expect.objectContaining({ code: "missing-action-binding", modelName: "reset" }),
+      expect.objectContaining({ code: "unknown-action-binding", modelName: "removed", exportName: "removedCounter" }),
+      expect.objectContaining({ code: "missing-invariant-binding", modelName: "nonNegative" }),
+      expect.objectContaining({ code: "unknown-invariant-binding", modelName: "stale", exportName: "staleCounter" }),
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
+import type { TemporalSpec } from "./spec-ir.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
 
@@ -22,6 +23,20 @@ export interface RefinementBindingManifest {
   observe: string;
   actions: Record<string, string>;
   invariants: Record<string, string>;
+}
+
+export type RefinementBindingCoverageCode =
+  | "missing-action-binding"
+  | "unknown-action-binding"
+  | "missing-invariant-binding"
+  | "unknown-invariant-binding";
+
+export interface RefinementBindingCoverageDiagnostic {
+  code: RefinementBindingCoverageCode;
+  adapterName: string;
+  modelName: string;
+  exportName?: string;
+  message: string;
 }
 
 function parseBinding(value: string, exportName: string, span: { start: number; end: number }): RefinementBinding {
@@ -69,6 +84,43 @@ export function buildRefinementBindingManifest(fileName: string, text: string, a
     schema: "uneffect-refinement-bindings/v1", fileName, adapterName, version: bindings[0]!.version,
     create: singleton("create"), observe: singleton("observe"), actions: named("action"), invariants: named("invariant"),
   };
+}
+
+/** Checks structural coverage only; it does not prove that implementation bodies refine model transitions. */
+export function validateRefinementBindingCoverage(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementBindingCoverageDiagnostic[] {
+  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const compare = (
+    kind: "action" | "invariant",
+    modelNames: readonly string[],
+    bindings: Record<string, string>,
+  ): RefinementBindingCoverageDiagnostic[] => {
+    const declared = new Set(modelNames);
+    const bound = new Set(Object.keys(bindings));
+    return [
+      ...modelNames.filter((name) => !bound.has(name)).map((modelName) => ({
+        code: `missing-${kind}-binding` as const,
+        adapterName,
+        modelName,
+        message: `${kind} ${modelName} has no ${adapterName} refinement binding`,
+      })),
+      ...Object.entries(bindings).filter(([name]) => !declared.has(name)).map(([modelName, exportName]) => ({
+        code: `unknown-${kind}-binding` as const,
+        adapterName,
+        modelName,
+        exportName,
+        message: `${kind} refinement ${exportName} refers to unknown model ${kind} ${modelName}`,
+      })),
+    ];
+  };
+  return [
+    ...compare("action", spec.actions.map(({ name }) => name), manifest.actions),
+    ...compare("invariant", spec.properties.map(({ name }) => name), manifest.invariants),
+  ];
 }
 
 function callable(exports: Record<string, unknown>, name: string): (...args: any[]) => any {
