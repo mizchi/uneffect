@@ -509,9 +509,14 @@ returned function or a reassignment-free local `const` callback initializer for
 captured resource symbols, including callbacks wrapped in returned objects or
 arrays, and records `via: "returned-closure"`. Returning unrelated data after
 using the resource, or invoking a callback only within the resource scope,
-remains valid. Calls that may retain an argument, mutable callback selection,
-and arbitrary class/container construction are not yet claimed as escape
-proofs.
+remains valid. A callee can declare `retains_resource` with zero-based parameter
+indices. Passing a resource or resolved local alias at that call records
+`via: "retaining-call"`; direct wrappers inherit retention when they forward a
+parameter to another retaining boundary. Unknown unannotated calls remain
+unchecked to preserve gradual adoption. Retention through local aliases inside
+the wrapper, mutable callback selection, arbitrary class/container
+construction, and externally implemented unannotated callees are not yet
+claimed as escape proofs.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

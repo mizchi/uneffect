@@ -6,7 +6,7 @@ export type UneffectDirective =
   | "temporal_requires" | "temporal_ensures" | "temporal_modifies" | "temporal_throws"
   | "temporal_rejects" | "temporal_suspends" | "temporal_cancellable"
   | "temporal_eventually" | "temporal_fair" | "consumes_rejection" | "consumes_callback_rejection"
-  | "consumes_rejection_when" | "consumes_callback_rejection_when";
+  | "consumes_rejection_when" | "consumes_callback_rejection_when" | "retains_resource";
 
 export interface SourceSpan { start: number; end: number }
 export interface LocatedAnnotation { value: string; span: SourceSpan }
@@ -75,7 +75,7 @@ const directives = new Set<UneffectDirective>([
   "temporal_throws",
   "temporal_rejects", "temporal_suspends", "temporal_cancellable",
   "temporal_eventually", "temporal_fair", "consumes_rejection", "consumes_callback_rejection",
-  "consumes_rejection_when", "consumes_callback_rejection_when",
+  "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource",
 ]);
 
 export function validateUneffectAnnotations(text: string, baseOffset = 0, additionalDirectives: Iterable<string> = []): AnnotationDiagnostic[] {

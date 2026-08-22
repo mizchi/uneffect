@@ -6,6 +6,11 @@ interface Attempt {
 }
 
 declare function openAttempt(): Attempt;
+/* uneffect: retains_resource 0 */
+declare function registerAttempt(attempt: Attempt): void;
+function registerRetryAttempt(attempt: Attempt): void {
+  registerAttempt(attempt);
+}
 
 export async function brokenRetry(enabled: boolean): Promise<void> {
   let lastAttempt: Attempt | undefined;
@@ -29,4 +34,9 @@ export async function brokenDeferredAttempt(): Promise<{ flush(): void }> {
   await using attempt = openAttempt();
   const flush = () => attempt.flush();
   return { flush };
+}
+
+export async function brokenRegisteredAttempt(): Promise<void> {
+  await using attempt = openAttempt();
+  registerRetryAttempt(attempt);
 }

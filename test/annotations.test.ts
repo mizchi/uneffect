@@ -41,6 +41,12 @@ describe("Uneffect annotation marker", () => {
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
+  it("recognizes explicit resource retention boundaries", () => {
+    const source = "/* uneffect: retains_resource 0, 2 */";
+    expect(extractAnnotations(source, "retains_resource")).toEqual(["0, 2"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
   it("recognizes Promise-returning callback ownership", () => {
     const source = "/* uneffect: consumes_callback_rejection 0 */";
     expect(extractAnnotations(source, "consumes_callback_rejection")).toEqual(["0"]);

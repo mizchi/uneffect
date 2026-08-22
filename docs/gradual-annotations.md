@@ -212,3 +212,17 @@ binds backend version and output to hashes of both the obligation and generated
 program. Only Z3 `unsat` or a successful exhaustive Quint verification is
 proof-grade; missing backend dependencies, unknown, and counterexamples remain
 unknown evidence.
+
+Lexically disposed resources have a separate retention contract:
+
+```ts
+/* uneffect: retains_resource 0 */
+declare function register(resource: Resource): void
+```
+
+The zero-based indices identify arguments that may remain reachable after the
+call returns. Passing a `using` or `await using` binding, or a statically
+resolved local alias, to such a parameter is an escape error. Direct wrappers
+infer the contract transitively by parameter symbol identity. This describes
+retention rather than ownership transfer: it neither suppresses disposal nor
+changes emitted JavaScript.

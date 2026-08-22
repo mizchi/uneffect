@@ -378,3 +378,11 @@ margin of error). TypeScript Program construction alone measured 89.30 ms,
 while the same analysis over a warm Program measured 0.389 ms over 1,287
 samples. The cold number is therefore dominated by compiler setup; the warm
 measurement is the relevant baseline for eventual compiler/Corsa integration.
+
+After adding an annotated retaining registration boundary and one direct
+wrapper to the same fixture, combined use/value/closure/retention detection
+measured 131.29 ms mean over 20 cold samples (1.79% relative margin of error).
+Program construction measured 93.33 ms, while warm analysis measured 0.504 ms
+over 994 samples. Transitive parameter-symbol retention therefore remains
+sub-millisecond in this fixture; this observation is not yet a large call-graph
+scaling guarantee.

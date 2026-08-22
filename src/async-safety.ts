@@ -76,14 +76,14 @@ export interface ResourceAliasEscape {
 export interface ResourceEscape {
   owner: string;
   resource: string;
-  via: "return" | "returned-closure";
+  via: "return" | "returned-closure" | "retaining-call";
   span: { start: number; end: number };
 }
 export interface AsyncSafetyDiagnostic {
   fileName: string;
   functionName: string;
   line: number;
-  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "disposed-resource-use" | "disposed-resource-escape";
+  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "invalid-resource-contract" | "disposed-resource-use" | "disposed-resource-escape";
   severity: "error";
   message: string;
 }
@@ -247,7 +247,8 @@ function directUnconditionalExpressions(signature: ts.SignatureDeclaration): ts.
   });
 }
 
-function parseIndexedOwnershipContract(declaration: ts.SignatureDeclaration, directive: "consumes_rejection" | "consumes_callback_rejection"): IndexedOwnershipContract {
+type IndexedOwnershipDirective = "consumes_rejection" | "consumes_callback_rejection" | "retains_resource";
+function parseIndexedOwnershipContract(declaration: ts.SignatureDeclaration, directive: IndexedOwnershipDirective): IndexedOwnershipContract {
   const source = declaration.getSourceFile();
   const start = declaration.getFullStart();
   const comments = source.text.slice(start, declaration.getStart(source));
@@ -269,6 +270,28 @@ function parseIndexedOwnershipContract(declaration: ts.SignatureDeclaration, dir
     }
   }
   return { indices, errors };
+}
+
+function resourceRetentionParameters(checker: ts.TypeChecker, call: ts.CallExpression, seen = new Set<ts.SignatureDeclaration>()): Set<number> {
+  const declaration = checker.getResolvedSignature(call)?.declaration;
+  if (!declaration || declaration.kind === ts.SyntaxKind.JSDocSignature) return new Set();
+  const signature = declaration as ts.SignatureDeclaration;
+  const retained = parseIndexedOwnershipContract(signature, "retains_resource").indices;
+  if (seen.has(signature) || !("body" in signature) || !signature.body) return retained;
+  const nextSeen = new Set(seen).add(signature);
+  const parameterSymbols = signature.parameters.map((parameter) => checker.getSymbolAtLocation(parameter.name));
+  const visit = (node: ts.Node): void => {
+    if (node !== signature.body && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, nextSeen)) {
+      const argument = node.arguments[nestedIndex];
+      if (!argument || !ts.isIdentifier(argument)) continue;
+      const parameterIndex = parameterSymbols.indexOf(checker.getSymbolAtLocation(argument));
+      if (parameterIndex >= 0) retained.add(parameterIndex);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(signature.body);
+  return retained;
 }
 
 type ConditionalOwnershipDirective = "consumes_rejection_when" | "consumes_callback_rejection_when";
@@ -412,6 +435,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
+    }
+    if (ts.isFunctionLike(node)) for (const error of parseIndexedOwnershipContract(node, "retains_resource").errors) {
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message });
     }
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection_when", "consumes_callback_rejection_when"] as const) for (const error of conditionalOwnershipParameters(undefined, node, undefined, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
@@ -741,6 +767,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) for (const index of resourceRetentionParameters(checker, node)) {
+        const argument = node.arguments[index];
+        if (!argument) continue;
+        const retained = aliasFact(argument);
+        if (!retained) continue;
+        resourceEscapes.push({ owner, resource: retained.resource.binding, via: "retaining-call", span: { start: node.getStart(source), end: node.getEnd() } });
+        diagnostics.push({
+          fileName: source.fileName, functionName: owner, line: lineAt(source, argument.getStart(source)), kind: "disposed-resource-escape", severity: "error",
+          message: `${retained.resource.binding} escapes through retaining call ${node.expression.getText(source)} argument ${index} and may be used after lexical disposal`,
+        });
+      }
       if (ts.isReturnStatement(node) && node.expression) {
         const returned = returnedResourceFact(node.expression);
         if (returned) {

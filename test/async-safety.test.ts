@@ -1861,4 +1861,45 @@ describe("async error and explicit resource safety", () => {
       functionName: "safeImmediateClosure", kind: "disposed-resource-escape",
     }));
   });
+
+  it("rejects lexical resources passed to declared retaining boundaries", () => {
+    const result = analyzeAsyncSafety("retained-resource.ts", `
+      interface Resource { send(): void; [Symbol.dispose](): void }
+      declare function open(): Resource
+      /* uneffect: retains_resource 0 */
+      declare function register(resource: Resource): void
+      declare function inspect(resource: Resource): void
+      function retainWrapper(value: Resource) { register(value) }
+      function broken() {
+        using resource = open()
+        const alias = resource
+        register(alias)
+      }
+      function brokenWrapper() {
+        using resource = open()
+        retainWrapper(resource)
+      }
+      function safe() {
+        using resource = open()
+        inspect(resource)
+      }
+      /* uneffect: retains_resource nope */
+      declare function malformed(resource: Resource): void
+      /* uneffect: retains_resource 1 */
+      declare function outOfRange(resource: Resource): void
+    `);
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "broken", resource: "resource", via: "retaining-call",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "broken", kind: "disposed-resource-escape", severity: "error",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "brokenWrapper", resource: "resource", via: "retaining-call",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safe", kind: "disposed-resource-escape",
+    }));
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.kind === "invalid-resource-contract")).toHaveLength(2);
+  });
 });
