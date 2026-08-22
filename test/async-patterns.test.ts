@@ -953,10 +953,16 @@ describe("builtin async temporal patterns", () => {
       { queue: "next-tick" },
     ]);
     const quint = generateNodeEventLoopQuint("node_loop", model);
+    expect(quint).toContain("var node_phase: int");
+    expect(quint).toContain("action advance_timers_to_poll");
+    expect(quint).toContain("action advance_poll_to_check");
+    expect(quint).toContain("action advance_check_to_close");
+    expect(quint).toMatch(/action run_check_1[\s\S]*node_phase == 3/);
     expect(quint).toContain("action drain_next_tick_3");
     expect(quint).toMatch(/action drain_microtask_2[\s\S]*not\(callback_3_pending\)/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
     expect(run(generateNodeEventLoopQuint("node_loop_broken", model, { allowMicrotaskBeforeNextTick: true }), "nodeEventLoopSafe").status).not.toBe(0);
+    expect(run(generateNodeEventLoopQuint("node_phase_broken", model, { allowWrongPhase: true }), "nodeEventLoopSafe").status).not.toBe(0);
   }, 20_000);
 
   it("shares the Node V8 microtask FIFO between queueMicrotask and Promise reactions", () => {

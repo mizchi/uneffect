@@ -801,7 +801,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 export function generateNodeEventLoopQuint(
   moduleName: string,
   model: AsyncPatternModel,
-  options: { allowMicrotaskBeforeNextTick?: boolean; allowMacroBeforeCheckpoint?: boolean } = {},
+  options: { allowMicrotaskBeforeNextTick?: boolean; allowMacroBeforeCheckpoint?: boolean; allowWrongPhase?: boolean } = {},
   promiseModel?: PromiseChainModel,
 ): string {
   for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) {
@@ -822,10 +822,10 @@ export function generateNodeEventLoopQuint(
     ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) =>
       initialReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
   ].sort((left, right) => left.span - right.span);
-  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var wrong_checkpoint_order: bool"];
+  const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool"];
   supported.forEach((index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
-  lines.push("", "  action init = all {", "    clock' = 0,", "    wrong_checkpoint_order' = false,");
+  lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
@@ -836,7 +836,7 @@ export function generateNodeEventLoopQuint(
   }));
   lines.push("  }");
   const reactionVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`])) ?? [];
-  const variables = ["clock", "wrong_checkpoint_order", ...supported.flatMap((index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`]), ...reactionVariables];
+  const variables = ["clock", "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", ...supported.flatMap((index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`]), ...reactionVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name);
@@ -844,10 +844,13 @@ export function generateNodeEventLoopQuint(
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
-  action("advance_clock", [], new Map([["clock", "clock + 1"]]));
+  const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
+  const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
   nextTicks.forEach((index, order) => action(`drain_next_tick_${index}`, [
-    `callback_${index}_pending`, ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
-  ], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`]])));
+    ...phaseGuard(0), `callback_${index}_pending`,
+    ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
+    ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
+  ], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]])));
   microtasks.forEach((index, order) => {
     const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
     const key = `callback:${index}`;
@@ -855,13 +858,14 @@ export function generateNodeEventLoopQuint(
       job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`
         : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
     action(`drain_microtask_${index}`, [
-      `callback_${index}_pending`,
+      ...phaseGuard(0), `callback_${index}_pending`,
       ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
       ...earlierV8.map((pending) => `not(${pending})`),
     ], new Map([
       [`callback_${index}_pending`, "false"],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
-      ["wrong_checkpoint_order", pendingNextTick.join(" or ") || "false"],
+      ["wrong_checkpoint_order", `wrong_checkpoint_order or (${pendingNextTick.join(" or ") || "false"})`],
+      ["wrong_phase", phaseViolation(0)],
     ]));
   });
   const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
@@ -876,32 +880,49 @@ export function generateNodeEventLoopQuint(
         candidateIndex === chainIndex && candidateStage === stage ? [] : [`promise_reaction_${candidateIndex}_${candidateStage}_pending`])),
     ];
     const updates = new Map<string, string>([[`promise_reaction_${chainIndex}_${stage}_pending`, "false"], [`promise_reaction_${chainIndex}_${stage}_done`, "true"]]);
-    updates.set("wrong_checkpoint_order", pendingNextTick.join(" or ") || "false");
+    updates.set("wrong_checkpoint_order", `wrong_checkpoint_order or (${pendingNextTick.join(" or ") || "false"})`);
+    updates.set("wrong_phase", phaseViolation(0));
     if (stage + 1 < chain.links.length) updates.set(`promise_reaction_${chainIndex}_${stage + 1}_pending`, "true");
     action(`drain_promise_reaction_${chainIndex}_${stage}`, [
-      `promise_reaction_${chainIndex}_${stage}_pending`,
+      ...phaseGuard(0), `promise_reaction_${chainIndex}_${stage}_pending`,
       ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
       ...earlierV8.map((pending) => `not(${pending})`),
     ], updates);
   }));
   const reactionPending = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.map((_, stage) => `promise_reaction_${chainIndex}_${stage}_pending`)) ?? [];
   const checkpointPending = [...nextTicks, ...microtasks].map((index) => `callback_${index}_pending`).concat(reactionPending);
-  const macro = (index: number, earlier: number[]): void => {
+  action("finish_node_checkpoint", [
+    ...phaseGuard(0), ...checkpointPending.map((pending) => `not(${pending})`),
+  ], new Map([["node_phase", "resume_phase"], ["wrong_phase", phaseViolation(0)]]));
+  const macro = (index: number, earlier: number[], phase: number): void => {
     const timer = model.timers[index]!;
     action(timer.queue === "check" ? `run_check_${index}` : `run_timer_${index}`, [
-      `callback_${index}_pending`, `clock >= callback_${index}_due`,
+      ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
       ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
       ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
     ], new Map([
       [`callback_${index}_pending`, String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`],
-      ["wrong_checkpoint_order", checkpointPending.join(" or ") || "false"],
+      ["node_phase", "0"],
+      ["resume_phase", String(phase)],
+      ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],
+      ["wrong_phase", phaseViolation(phase)],
     ]));
   };
-  timers.forEach((index, order) => macro(index, timers.slice(0, order)));
-  checks.forEach((index, order) => macro(index, checks.slice(0, order)));
-  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val nodeEventLoopSafe = not(wrong_checkpoint_order)", "}", "");
+  timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
+  checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
+  action("advance_timers_to_poll", [
+    ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
+  ], new Map([["node_phase", "2"], ["wrong_phase", phaseViolation(1)]]));
+  action("advance_poll_to_check", phaseGuard(2), new Map([["node_phase", "3"], ["wrong_phase", phaseViolation(2)]]));
+  action("advance_check_to_close", [
+    ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending)`),
+  ], new Map([["node_phase", "4"], ["wrong_phase", phaseViolation(3)]]));
+  action("advance_close_to_next_iteration", phaseGuard(4), new Map([
+    ["clock", "clock + 1"], ["node_phase", "0"], ["resume_phase", "1"], ["wrong_phase", phaseViolation(4)],
+  ]));
+  lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase)", "}", "");
   return lines.join("\n");
 }
 

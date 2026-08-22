@@ -52,10 +52,19 @@ same source-ordered V8 FIFO with `queueMicrotask` jobs. A broken option permits
 a V8 job to overtake a pending next-tick callback and is rejected by
 `nodeEventLoopSafe`.
 
+The generated state machine makes the modeled host phase explicit:
+callback checkpoint (`0`), timers (`1`), abstract poll (`2`), check (`3`), and
+close/iteration boundary (`4`). Every modeled timer or immediate callback
+returns to phase `0`, drains next-tick and V8 jobs, and resumes its originating
+phase. Time advances only when the close boundary starts the next bounded
+iteration. A phase-fault oracle is rejected by the same invariant. This phase
+numbering is Uneffect IR, not a public numeric API from Node.
+
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
 microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded
-from this callback-checkpoint profile. Poll/I/O readiness, close callbacks,
+from this callback-checkpoint profile. The poll and close phases currently
+carry sequencing state only: poll/I/O readiness and close callbacks,
 pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.
@@ -65,7 +74,7 @@ identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It
 now resolves direct/literal-computed methods and single-return source callback
 factories, but not dynamic property selection. Nested minimum-delay clamping,
-integer overflow, browser background throttling, complete libuv phases, and
+integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite
 cancellation, not fully symbolically executed.
