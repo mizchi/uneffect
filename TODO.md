@@ -110,7 +110,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Opt in to automatic discovery among declared temporal properties, retaining only candidates whose initialization and preservation obligations Z3 proves.
     - [x] Opt in to synthesized integer-sign and boolean-polarity templates, admitting only candidates whose induction obligations pass.
     - [x] Opt in separately to pairwise integer equality/order templates so quadratic relational candidate growth is explicit.
-    - [ ] Synthesize affine-with-offset/polyhedral and collection strengthening invariants.
+    - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
+    - [ ] Synthesize general affine/polyhedral and collection strengthening invariants.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -122,7 +123,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reuse automatically discovered, proven declared properties for frozen-state vacuity promotion.
     - [x] Reuse proven synthesized sign/polarity templates for frozen-state vacuity promotion.
     - [x] Reuse proven pairwise integer relations for frozen-state vacuity promotion.
-    - [ ] Synthesize affine-with-offset/polyhedral/collection invariants and support general liveness/fairness properties beyond explicit stutter cycles.
+    - [x] Reuse proven initial-difference affine templates for frozen-state vacuity promotion.
+    - [ ] Synthesize general affine/polyhedral/collection invariants and support general liveness/fairness properties beyond explicit stutter cycles.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

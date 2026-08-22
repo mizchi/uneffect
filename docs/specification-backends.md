@@ -169,8 +169,10 @@ collection invariant synthesis.
 Pairwise integer equality and ordering templates are available through the
 separate `synthesizeRelationalStrengtheningProperties` option and
 `--synthesize-relational-strengthening`. They are isolated because candidate
-count grows quadratically with integer state count. Offset relations,
-polyhedra, and collection relations remain unsupported.
+count grows quadratically with integer state count. When both states have
+constant integer initializers, it also generates coefficient-1 equality/order
+templates at their initial difference, such as `left === right + 2`. General
+coefficients, polyhedra, and collection relations remain unsupported.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

@@ -794,6 +794,29 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes initial-difference affine strengthening invariants", async () => {
+    const temporal = parseSpec("affine-strengthening.ts", `/* uneffect:
+      state left: int
+      state right: int
+      init left = 2
+      init right = 0
+      action descendTogether: left' = left - 1, right' = right - 1
+      action corruptMalformed: left' = right
+      action_when corruptMalformed: left > right + 2
+      action impossible: left' = left
+      action_when impossible: left < right + 2
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:left === right + 2>",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int

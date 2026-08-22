@@ -111,11 +111,24 @@ function synthesizedStrengtheningProperties(spec: TemporalSpec): TemporalSpec["p
 
 function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
   const integers = spec.states.filter((state) => state.type === "int");
-  const expressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => [
-    `${left.name} === ${right.name}`,
-    `${left.name} <= ${right.name}`,
-    `${left.name} >= ${right.name}`,
-  ]));
+  const initialInteger = (name: string): bigint | undefined => {
+    const expression = spec.init.find((assignment) => assignment.target === name)?.expressionAst;
+    if (expression?.kind === "integer") return BigInt(expression.value);
+    if (expression?.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -BigInt(expression.operand.value);
+    return undefined;
+  };
+  const expressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => {
+    const direct = [`${left.name} === ${right.name}`, `${left.name} <= ${right.name}`, `${left.name} >= ${right.name}`];
+    const leftInitial = initialInteger(left.name), rightInitial = initialInteger(right.name);
+    if (leftInitial === undefined || rightInitial === undefined || leftInitial === rightInitial) return direct;
+    const difference = leftInitial - rightInitial;
+    const rightWithOffset = difference > 0n ? `${right.name} + ${difference}` : `${right.name} - ${-difference}`;
+    return [...direct,
+      `${left.name} === ${rightWithOffset}`,
+      `${left.name} <= ${rightWithOffset}`,
+      `${left.name} >= ${rightWithOffset}`,
+    ];
+  }));
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
     expression,
