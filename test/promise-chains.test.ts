@@ -243,6 +243,38 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("assimilate_0_thenable_1_nested_thenable_0_fulfilled");
   });
 
+  it("links a nested external PromiseLike symbol conservatively", () => {
+    const model = analyzePromiseChains("nested-external-thenable.ts", `
+      declare const inner: PromiseLike<number>
+      function run() {
+        const outer = { then(resolve: (value: PromiseLike<number>) => void) { resolve(inner) } }
+        const result = new Promise<number>((resolve) => resolve(outer))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables.find((thenable) => thenable.binding === "inner")).toMatchObject({ provenance: "external", thenAccess: "dynamic" });
+    expect(model.thenables.find((thenable) => thenable.binding === "outer")).toMatchObject({ adoptedThenable: 0 });
+    const quint = generatePromiseChainsQuint("nested_external_thenable", model);
+    expect(quint).toContain("assimilate_0_thenable_1_nested_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_1_nested_thenable_0_rejected");
+  });
+
+  it("refines a forward local nested thenable without changing its identity", () => {
+    const model = analyzePromiseChains("nested-forward-thenable.ts", `
+      function run() {
+        const outer = { then(resolve: (value: PromiseLike<number>) => void) { resolve(inner) } }
+        const inner = { then(_resolve: (value: number) => void, reject: (reason: Error) => void) { reject(new Error("inner")) } }
+        const result = new Promise<number>((resolve) => resolve(outer))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables[0]).toMatchObject({ binding: "inner", provenance: "local", possibleSettlements: ["rejected"] });
+    expect(model.thenables.find((thenable) => thenable.binding === "outer")).toMatchObject({ adoptedThenable: 0 });
+    const quint = generatePromiseChainsQuint("nested_forward_thenable", model);
+    expect(quint).toContain("nested_thenable_0_rejected");
+    expect(quint).not.toContain("nested_thenable_0_fulfilled");
+  });
+
   it("recognizes a direct Proxy get trap that always throws during then lookup", () => {
     const model = analyzePromiseChains("proxy-trap.ts", `
       function run() {

@@ -159,6 +159,21 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
   const executorBySymbol = new Map<ts.Symbol, number>();
   const thenableBySymbol = new Map<ts.Symbol, number>();
   const pendingAdoptions: { executor: number; symbols: ts.Symbol[]; expressions: ts.Expression[] }[] = [];
+  const ensureExternalThenable = (symbol: ts.Symbol): number | undefined => {
+    const existing = thenableBySymbol.get(symbol);
+    if (existing !== undefined) return existing;
+    const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
+    const type = declaration && checker.getTypeOfSymbolAtLocation(symbol, declaration);
+    if (!declaration || !type || !checker.getPropertyOfType(type, "then")) return undefined;
+    const thenable = thenables.length;
+    thenableBySymbol.set(symbol, thenable);
+    const external = declaration.getSourceFile() !== source || declaration.getSourceFile().isDeclarationFile
+      || (ts.isVariableDeclaration(declaration) && declaration.initializer === undefined);
+    thenables.push({ owner: external ? "<external>" : enclosingOwner(declaration), binding: symbol.getName(), thenAccess: "dynamic", invokesUserCode: true,
+      capabilityEffects: ["InvokeUserCode"], provenance: external ? "external" : "local", possibleSettlements: ["fulfilled", "rejected"],
+      firstCallWins: true, mayRemainPending: true, span: { start: declaration.getStart(declaration.getSourceFile()), end: declaration.getEnd() } });
+    return thenable;
+  };
   const thenablePattern = (
     expression: ts.Expression,
     seen = new Set<ts.Symbol>(),
@@ -179,7 +194,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const analyzed = analyzeExecutor(callback, checker, expression.getSourceFile());
       const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
       const adoptedThenables = [...new Set(analyzed.adoptedSymbols.flatMap((symbol) => {
-        const thenable = thenableBySymbol.get(symbol);
+        const thenable = thenableBySymbol.get(symbol) ?? ensureExternalThenable(symbol);
         return thenable === undefined ? [] : [thenable];
       }))];
       return {
@@ -233,8 +248,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const pattern = thenablePattern(node.initializer);
       const symbol = pattern && targetSymbol(checker, node.name);
       if (pattern && symbol) {
-        thenableBySymbol.set(symbol, thenables.length);
-        thenables.push({ owner: enclosingOwner(node), binding: node.name.text, ...pattern, span: { start: node.initializer.getStart(source), end: node.initializer.getEnd() } });
+        const existing = thenableBySymbol.get(symbol);
+        const value = { owner: enclosingOwner(node), binding: node.name.text, ...pattern, span: { start: node.initializer.getStart(source), end: node.initializer.getEnd() } };
+        if (existing === undefined) {
+          thenableBySymbol.set(symbol, thenables.length);
+          thenables.push(value);
+        } else thenables[existing] = value;
       }
     }
     ts.forEachChild(node, collectThenables);
@@ -320,18 +339,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     if (adopted.includes(pending.executor)) executors[pending.executor]!.selfResolution = true;
     const adoptedThenables = [...new Set(pending.symbols.flatMap((symbol) => {
       if (executorBySymbol.has(symbol)) return [];
-      let thenable = thenableBySymbol.get(symbol);
-      if (thenable === undefined) {
-        const declaration = symbol.valueDeclaration ?? symbol.declarations?.[0];
-        const type = declaration && checker.getTypeOfSymbolAtLocation(symbol, declaration);
-        if (declaration && type && checker.getPropertyOfType(type, "then")) {
-          thenable = thenables.length;
-          thenableBySymbol.set(symbol, thenable);
-          thenables.push({ owner: "<external>", binding: symbol.getName(), thenAccess: "dynamic", invokesUserCode: true,
-            capabilityEffects: ["InvokeUserCode"], provenance: "external", possibleSettlements: ["fulfilled", "rejected"],
-            firstCallWins: true, mayRemainPending: true, span: { start: declaration.getStart(declaration.getSourceFile()), end: declaration.getEnd() } });
-        }
-      }
+      const thenable = thenableBySymbol.get(symbol) ?? ensureExternalThenable(symbol);
       return thenable === undefined ? [] : [thenable];
     }))];
     const selectedSymbols = (expression: ts.Expression): ts.Symbol[] => {

@@ -98,7 +98,7 @@ an explicit `InvokeUserCode` capability effect, and effect inference assigns it
 to the enclosing Promise executor. Direct conditional selections between
 analyzed local thenable symbols retain every branch identity and emit distinct
 adoption actions; more general computed selections, concrete Proxy trap
-behavior, and external/forward nested thenable
+behavior, and inline nested thenable-expression
 resolution remain conservative gaps. Links currently require a direct local constructor binding
 and at least one analyzed reaction chain for the adopted executor; aliases,
 parameters, object properties, and named handler summaries remain conservative.
