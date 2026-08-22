@@ -589,6 +589,30 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return current;
     };
+    const constantPropertyKey = (expression: ts.Expression, seen = new Set<ts.Symbol>()): string | undefined => {
+      if (ts.isStringLiteralLike(expression)) return expression.text;
+      if (ts.isNumericLiteral(expression)) {
+        const value = Number(expression.text);
+        return Number.isFinite(value) ? String(value) : undefined;
+      }
+      if (ts.isPrefixUnaryExpression(expression)
+        && (expression.operator === ts.SyntaxKind.PlusToken || expression.operator === ts.SyntaxKind.MinusToken)
+        && ts.isNumericLiteral(expression.operand)) {
+        const value = Number(expression.operand.text) * (expression.operator === ts.SyntaxKind.MinusToken ? -1 : 1);
+        return Number.isFinite(value) ? String(value) : undefined;
+      }
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+        || ts.isNonNullExpression(expression)) return constantPropertyKey(expression.expression, seen);
+      if (!ts.isIdentifier(expression)) return undefined;
+      const symbol = checker.getSymbolAtLocation(expression);
+      if (!symbol || seen.has(symbol)) return undefined;
+      const declaration = symbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent)
+        || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0) return undefined;
+      return constantPropertyKey(declaration.initializer, new Set(seen).add(symbol));
+    };
     const staticAccessPath = (expression: ts.Expression): { root: ts.Symbol; segments: string[] } | undefined => {
       if (ts.isIdentifier(expression)) {
         const symbol = checker.getSymbolAtLocation(expression);
@@ -599,10 +623,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         return parent ? { root: parent.root, segments: [...parent.segments, JSON.stringify(expression.name.text)] } : undefined;
       }
       if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
-        const argument = expression.argumentExpression;
-        if (!ts.isStringLiteralLike(argument) && !ts.isNumericLiteral(argument)) return undefined;
+        const key = constantPropertyKey(expression.argumentExpression);
+        if (key === undefined) return undefined;
         const parent = staticAccessPath(expression.expression);
-        return parent ? { root: parent.root, segments: [...parent.segments, JSON.stringify(argument.text)] } : undefined;
+        return parent ? { root: parent.root, segments: [...parent.segments, JSON.stringify(key)] } : undefined;
       }
       return undefined;
     };

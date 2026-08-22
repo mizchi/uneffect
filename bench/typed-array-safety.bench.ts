@@ -436,7 +436,7 @@ describe("typed-array static verification", () => {
     generateUnifiedAsyncQuint("retry_attempts", result, "flushWithRetry");
   }, { time: 500, iterations: 20 });
 
-  bench("detect a nested aggregate disposed retry resource alias", () => {
+  bench("detect a computed nested aggregate retry resource alias", () => {
     analyzeAsyncSafety("retry-attempt-escape.ts", retryAttemptEscapeSource);
   }, { time: 500, iterations: 20 });
 

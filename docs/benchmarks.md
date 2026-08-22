@@ -67,6 +67,13 @@ Program construction alone (2.93% RME), and 0.297 ms for analysis of a warm
 Program (3.33% RME). The nested access-path walk is therefore not the observed
 bottleneck; the two slow runs are retained as environment-noise evidence, while
 Program construction remains the dominant cold-path cost.
+
+After changing the same dogfood to address the nested slot through a local
+computed `const` key, a system-pressure run measured 267.83 ms end to end
+(4.18% RME), 208.38 ms for Program construction (8.19% RME), and 0.648 ms for
+the warm analysis (7.34% RME). Even in this slower run the warm walk was about
+0.24% of the cold total, so constant-key resolution does not move the dominant
+cost away from TypeScript Program construction.
 This includes TypeScript program construction and the complete async analysis,
 not only the alias scan. An immediately preceding run under system pressure
 measured 340.85 ms with 13.95% RME, so it is recorded as noise rather than a

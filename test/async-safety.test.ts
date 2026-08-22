@@ -1689,4 +1689,49 @@ describe("async error and explicit resource safety", () => {
       functionName: "conditionallyReassignedRootAlias", kind: "disposed-resource-use",
     }));
   });
+
+  it("resolves const computed keys without treating mutable keys as static", () => {
+    const result = analyzeAsyncSafety("computed-resource-slot.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function stringKeyEscape() {
+        const state: { current?: Resource } = {}
+        const slot = "current" as const
+        const forwardedSlot = slot
+        {
+          await using resource = open()
+          state[forwardedSlot] = resource
+        }
+        state.current?.send()
+      }
+      async function numberKeyEscape() {
+        const slots: Array<Resource | undefined> = []
+        const index = 0 as const
+        {
+          await using resource = open()
+          slots[index] = resource
+        }
+        slots[0]?.send()
+      }
+      async function mutableKeyIsUnknown(selectRight: boolean) {
+        const state: { left?: Resource; right?: Resource } = {}
+        let slot: "left" | "right" = "left"
+        if (selectRight) slot = "right"
+        {
+          await using resource = open()
+          state[slot] = resource
+        }
+        state.left?.send()
+      }
+    `);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "stringKeyEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "numberKeyEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "mutableKeyIsUnknown", kind: "disposed-resource-use",
+    }));
+  });
 });

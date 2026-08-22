@@ -491,7 +491,10 @@ identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the
 aggregate root share the same canonical slot identity; an unconditional root
 alias reassignment detaches it, and overwriting a parent slot invalidates all
-known descendant facts. Computed keys, mutation through imported or
+known descendant facts. Computed string and finite-number keys are resolved
+through reassignment-free local `const` alias chains, including `as const`,
+parenthesized, `satisfies`, and non-null wrappers. Mutable, imported, and
+otherwise dynamic computed keys remain unknown. Mutation through imported or
 interprocedural aggregate aliases, aliases passed through calls, and
 path-correlated alias joins are not yet claimed as covered.
 Labeled `break` and `continue` retain their target while
