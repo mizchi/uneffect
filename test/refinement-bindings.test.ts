@@ -871,6 +871,57 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("refines a temporal field through a nested concrete path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-nested-abstraction-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state subscribers: Set<int>
+      init subscribers = Set(1)
+      action admit: subscribers' = subscribers.union(Set(2))
+      temporal primaryPresent: subscribers.contains(1)
+      abstraction nested@1 subscribers = routing.activeSubscriberIds
+    */
+      interface ModelState { subscribers: Set<number> }
+      interface Runtime { routing: { activeSubscriberIds: Set<number> } }
+      /* uneffect: refinement nested@1 create */
+      export function create(initial: ModelState): Runtime { return { routing: { activeSubscriberIds: initial.subscribers } } }
+      /* uneffect: refinement nested@1 observe */
+      export function observe(runtime: Runtime): ModelState { return { subscribers: runtime.routing.activeSubscriberIds } }
+      /* uneffect: refinement nested@1 action admit */
+      export function admit(runtime: Runtime): void { runtime.routing.activeSubscriberIds.add(2) }
+      /* uneffect: refinement nested@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.has(1) }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(fileName, source).temporal;
+      expect(validateRefinementStateProjectionInProgram(program, fileName, "nested", spec)).toEqual([]);
+      expect(validateRefinementActionBodiesInProgram(program, fileName, "nested", spec)).toEqual([]);
+      expect(validateRefinementInvariantBodiesInProgram(program, fileName, "nested", spec)).toEqual([]);
+      const wrongAction = source.replace("activeSubscriberIds.add(2)", "activeSubscriberIds.add(3)");
+      expect(validateRefinementActionBodies(fileName, wrongAction, "nested", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "admit", target: "subscribers" }),
+      );
+      const wrongType = source.replace("activeSubscriberIds: Set<number>", "activeSubscriberIds: Set<boolean>");
+      writeFileSync(fileName, wrongType);
+      const wrongTypeProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(wrongTypeProgram, fileName, "nested", parseSpec(fileName, wrongType).temporal)).toContainEqual(
+        expect.objectContaining({ code: "create-type-mismatch", field: "subscribers" }),
+      );
+      expect(() => buildRefinementBindingManifest(fileName, source.replace(
+        "abstraction nested@1 subscribers = routing.activeSubscriberIds",
+        "abstraction nested@1 subscribers = routing.activeSubscriberIds\n      abstraction nested@1 other = routing",
+      ), "nested")).toThrow(/overlapping abstraction relation/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves imported create and observe wrappers only in the Program-backed path", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-projection-"));
     const helperFile = join(directory, "projection.ts");

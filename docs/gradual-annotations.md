@@ -60,7 +60,7 @@ refinement_decl = "refinement", identifier, "@", version,
                   | "action", identifier
                   | "invariant", identifier ) ;
 abstraction_decl = "abstraction", identifier, "@", version,
-                   identifier, "=", identifier ;
+                   identifier, "=", qualified_name ;
 
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name
@@ -111,19 +111,19 @@ model by declaring an explicit, version-matched abstraction relation:
 ```ts
 /* uneffect:
   state subscribers: Set<int>
-  abstraction routingState@1 subscribers = activeSubscriberIds
+  abstraction routingState@1 subscribers = routing.activeSubscriberIds
 */
 ```
 
 The left side is a temporal state field and the right side is its concrete
-runtime field. The relation is one-to-one. The Program-backed checker verifies
+runtime property path. The relation is one-to-one, and concrete paths may
+share parents but may not overlap as prefixes. The Program-backed checker verifies
 the abstract create parameter and observe result, the concrete create result
 and observe parameter, and then canonicalizes action updates and invariant
 reads through the same relation. Unknown fields, duplicate mappings, stale
 adapter versions, `any`/`unknown`, and incompatible scalar or builtin
-collection types are rejected. This first slice supports top-level field
-renaming only; computed projections, conversions, nested path mappings, and
-many-to-one relations remain explicit non-proofs.
+collection types are rejected. Computed projections, conversions, dynamic
+property paths, and many-to-one relations remain explicit non-proofs.
 
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to

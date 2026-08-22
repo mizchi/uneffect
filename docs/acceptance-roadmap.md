@@ -29,7 +29,7 @@ contract layer for existing TypeScript:
     density, and frontend/verifier cost.
 
 The checked-in routing-state dogfood deliberately names temporal
-`subscribers` as concrete `activeSubscriberIds`. A versioned `abstraction`
+`subscribers` as concrete `routing.activeSubscriberIds`. A versioned `abstraction`
 directive is consumed by projection, action, and invariant validation, and is
 retained in the generated refinement manifest. Wrong Set elements, redirected
 observations, stale relation versions, and incompatible concrete field types

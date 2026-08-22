@@ -31,7 +31,7 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, wrongAction, "routingState", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
     );
-    const wrongObservation = source.replace("subscribers: runtime.activeSubscriberIds", "subscribers: new Set<number>()");
+    const wrongObservation = source.replace("subscribers: runtime.routing.activeSubscriberIds", "subscribers: new Set<number>()");
     expect(validateRefinementStateProjection(fileName, wrongObservation, "routingState", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-observe-body" }),
     );
