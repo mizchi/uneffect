@@ -145,18 +145,23 @@ function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): Tempo
     if (type.kind === "record") for (const [field, fieldType] of Object.entries(type.fields)) collect(`${name}.${field}`, fieldType);
   };
   for (const state of spec.states) collect(state.name, state.type);
-  return collections.flatMap((left, leftIndex) => collections.slice(leftIndex + 1).flatMap((right) => {
+  const candidates = collections.flatMap((left, leftIndex) => collections.slice(leftIndex + 1).flatMap((right) => {
     if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
-    const candidates = [{ name: `${left.name} === ${right.name}`, expression: `${left.name} === ${right.name}` }];
-    if (typeof left.type !== "string" && left.type.kind === "set") candidates.push(
+    return [{ name: `${left.name} === ${right.name}`, expression: `${left.name} === ${right.name}` }];
+  }));
+  const setViews = collections.flatMap(({ name, type }) => type.kind === "set" ? [{ name, type }]
+    : type.kind === "map" && type.key !== "never" ? [{ name: `${name}.keys()`, type: { kind: "set", element: type.key } as const }] : []);
+  candidates.push(...setViews.flatMap((left, leftIndex) => setViews.slice(leftIndex + 1).flatMap((right) => {
+    if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
+    return [
       { name: `${left.name} subset ${right.name}`, expression: `${left.name}.forall(__uneffect_element => ${right.name}.contains(__uneffect_element))` },
       { name: `${right.name} subset ${left.name}`, expression: `${right.name}.forall(__uneffect_element => ${left.name}.contains(__uneffect_element))` },
-    );
-    return candidates.map((candidate) => ({
-      name: `<synth:${candidate.name}>`,
-      expression: candidate.expression,
-      expressionAst: parseTemporalExpression(candidate.expression),
-    }));
+    ];
+  })));
+  return [...new Map(candidates.map((candidate) => [candidate.name, candidate])).values()].map((candidate) => ({
+    name: `<synth:${candidate.name}>`,
+    expression: candidate.expression,
+    expressionAst: parseTemporalExpression(candidate.expression),
   }));
 }
 

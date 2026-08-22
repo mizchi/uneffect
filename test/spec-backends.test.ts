@@ -889,6 +889,31 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes subset invariants from Map key domains to Set authority", async () => {
+    const temporal = parseSpec("map-key-subset-strengthening.ts", `/* uneffect:
+      state allocated: Set<int>
+      state owners: Map<int, int>
+      state armed: bool
+      init allocated = Set(1, 2)
+      init owners = Map([[1, 10]])
+      init armed = false
+      action assignAllocated: owners' = owners.put(2, 20)
+      action_when assignAllocated: allocated.contains(2)
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && owners.keys().contains(2) && !allocated.contains(2)
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:owners.keys() subset allocated>",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int

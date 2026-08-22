@@ -58,16 +58,16 @@ function collectionLeaseModel(skewGrace: number): string {
 
 function capabilityRequestModel(enforceAuthority: boolean): string {
   return `/* uneffect:
-    state authority: { requested: Set<int>, allowed: Set<int> }
+    state authority: { owners: Map<int, int>, allowed: Set<int> }
     state auditArmed: bool
-    init authority = { requested: Set(1), allowed: Set(1, 2) }
+    init authority = { owners: Map([[1, 10]]), allowed: Set(1, 2) }
     init auditArmed = false
-    action requestWrite: authority' = { ...authority, requested: authority.requested.union(Set(2)) }
+    action requestWrite: authority' = { ...authority, owners: authority.owners.put(2, 20) }
     ${enforceAuthority ? "action_when requestWrite: authority.allowed.contains(2)" : ""}
     action armAudit: auditArmed' = true
     action observeEscalation: auditArmed' = auditArmed
-    action_when observeEscalation: auditArmed && authority.requested.contains(2) && !authority.allowed.contains(2)
-    temporal requestWithinAuthority: authority.requested.forall(permission => authority.allowed.contains(permission))
+    action_when observeEscalation: auditArmed && authority.owners.keys().contains(2) && !authority.allowed.contains(2)
+    temporal requestWithinAuthority: authority.owners.keys().forall(permission => authority.allowed.contains(permission))
   */`;
 }
 
@@ -164,16 +164,24 @@ describe("Node Lease clock-skew model", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
       name: "observeEscalation",
-      relatedName: "<synth:authority.requested subset authority.allowed>",
+      relatedName: "<synth:authority.owners.keys() subset authority.allowed>",
     }));
 
     const broken = parseSpec("capability-request-broken.ts", capabilityRequestModel(false)
       .replace("allowed: Set(1, 2)", "allowed: Set(1)")).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:authority.owners.keys() subset authority.allowed>",
+    }));
     const counterexample = await findTemporalCounterexampleWithZ3(broken, "requestWithinAuthority", { maxSteps: 2 });
     expect(counterexample.status).toBe("counterexample");
     if (counterexample.status === "counterexample") {
       expect(counterexample.trace.steps.map((step) => step.action)).toContain("requestWrite");
-      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ authority: { requested: [1, 2], allowed: [1] } });
+      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ authority: { owners: [[1, 10], [2, 20]], allowed: [1] } });
     }
   });
 

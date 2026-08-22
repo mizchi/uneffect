@@ -49,12 +49,14 @@ use case only; relational lease invariants still need explicit declarations.
 
 The same proof pipeline now synthesizes both directions of subset candidates
 for same-element finite `Set` state pairs, including sets nested recursively in
-record fields. A dogfood authority model proves
-`authority.requested subset authority.allowed` and uses it to rule out an armed escalation action.
+record fields. Finite `Map.keys()` domains are projected as derived Set views,
+so a dogfood ownership table proves
+`authority.owners.keys() subset authority.allowed` and uses it to rule out an armed escalation action.
 Removing the authority check and narrowing the allowed set produces a bounded
-Z3 trace ending in `requested = Set(1, 2)` and `allowed = Set(1)`. Candidates
-are not assumptions: a direction is discarded unless Z3 proves it at init and
-across every action.
+Z3 trace whose ownership keys are `{1, 2}` while the allowed set is `{1}`.
+Candidates are not assumptions: this broken model does not receive a
+strengthened diagnostic, because a direction is discarded unless Z3 proves it
+at init and across every action.
 
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
