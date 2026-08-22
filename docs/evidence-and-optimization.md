@@ -15,6 +15,9 @@ optional temporal verification. Unannotated functions are inferred without a
 mandatory boundary, while any function that has an `effect` annotation is
 checked as an upper bound and its missing/unused effects appear in the unified
 project diagnostics.
+The same call returns these inferred/verified summaries under `result.effects`,
+so tooling can inspect the authority actually attributed to every callable
+instead of reconstructing it from diagnostics.
 
 ## Reproducible artifacts
 

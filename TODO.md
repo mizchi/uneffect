@@ -370,6 +370,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Add cross-frontend parity fixtures and reject schema drift.
 - [x] Dogfood against representative external TypeScript programs.
   - [x] Integrate program-wide gradual effect checking into `verifyUneffectProject`; annotated capability upper bounds now fail through the unified project diagnostics.
+  - [x] Return program-wide effect summaries from `verifyUneffectProject` so adoption tooling can inspect attributed authority as well as failures.
   - [x] Dogfood a scoped Node settings read whose fs callback composes Console/Timer authority with poll and checkpoint ordering, including a missing-Console negative control.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.
   - [x] Run inference-only frontend compatibility over the pinned external `effect` Function module graph; this does not enforce external boundaries.

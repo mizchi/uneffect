@@ -12,7 +12,7 @@ import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedA
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { extractAnnotations } from "./annotations.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
-import { analyzeProgramEffects, type EffectDiagnostic } from "./effects.js";
+import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic } from "./effects.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -34,6 +34,7 @@ export interface VerifyUneffectProjectResult {
   typedArrays: TypedArrayProgramSafetyResult;
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
   assumptions: AssumptionLedger;
+  effects: EffectAnalysisResult;
   temporal?: ProjectTemporalVerification;
 }
 
@@ -110,7 +111,8 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporalProperties: ProjectTemporalProperty[] = [];
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files);
   const program = inMemoryProgram(options.files);
-  diagnostics.push(...analyzeProgramEffects(program, { requireAnnotations: false }).diagnostics);
+  const effects = analyzeProgramEffects(program, { requireAnnotations: false });
+  diagnostics.push(...effects.diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   for (const fileName of Object.keys(options.files)) {
     const sourceFile = program.getSourceFile(fileName);
@@ -173,5 +175,5 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
-  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, ...(temporal ? { temporal } : {}) };
+  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects, ...(temporal ? { temporal } : {}) };
 }
