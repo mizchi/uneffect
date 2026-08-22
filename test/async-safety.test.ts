@@ -1219,4 +1219,48 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain(`action promise_${shared.promiseChain}_fulfill`);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("correlates zero-iteration handler loops with body completion", () => {
+    const result = analyzeAsyncSafety("loop-handler.ts", `
+      async function run(enabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          while (enabled) {
+            await Promise.resolve("body").then(value => value)
+            throw error
+          }
+        }
+      }
+    `);
+    const statement = result.controlStatements[0]!;
+    const body = result.promises.find((item) => item.source.includes('"body"'))!;
+    expect(body.controlPaths).toEqual([[{ id: expect.any(String), expected: true }]]);
+    expect(statement.completionPaths.map((path) => path.completion).sort()).toEqual(["normal", "throw"]);
+    const quint = generateUnifiedAsyncQuint("loop_handler", result, "run");
+    const resumeCompletion = new RegExp(`action catch_await_${body.promiseChain}_resume = all \\{[\\s\\S]*?completion' = ([^,]+),`).exec(quint)?.[1]?.trim();
+    expect(resumeCompletion).toBe("1");
+    expect(quint).toContain(`action skip_handler_await_${body.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("preserves a conditional break as normal loop completion", () => {
+    const result = analyzeAsyncSafety("loop-break-handler.ts", `
+      declare const stop: boolean
+      async function run(enabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          while (enabled) {
+            if (stop) break
+            throw error
+          }
+        }
+      }
+    `);
+    const paths = result.controlStatements[0]!.completionPaths;
+    expect(paths.some((path) => path.completion === "normal" && path.controlConditions.some((condition) => condition.id.includes("@if:") && condition.expected))).toBe(true);
+    expect(paths.some((path) => path.completion === "throw")).toBe(true);
+    expect(run(generateUnifiedAsyncQuint("loop_break_handler", result, "run")).status).toBe(0);
+  }, 10_000);
 });

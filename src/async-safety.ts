@@ -432,6 +432,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const condition = { id: `${owner}@if:${parent.getStart(source)}`, expected: child === parent.thenStatement };
         paths = paths.map((path) => [condition, ...path]);
       }
+      for (let child: ts.Node = node, parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
+        const zeroIterationLoop = (ts.isWhileStatement(parent) || ts.isForStatement(parent) || ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && child === parent.statement;
+        if (zeroIterationLoop) {
+          const condition = { id: `${owner}@loop:${parent.getStart(source)}`, expected: true };
+          paths = paths.map((path) => [condition, ...path]);
+        }
+      }
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) {
         paths = switchControlPaths(owner, source, parent).flatMap((prefix) => paths.map((path) => [...prefix, ...path]));
       }
@@ -725,9 +732,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       });
       const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
       const completionPaths = (statement: ts.Statement): AsyncControlCompletionPath[] => {
-        const executeStatements = (statements: readonly ts.Statement[], initial: AsyncControlCondition[]): AsyncControlCompletionPath[] => {
+        type InternalCompletionPath = Omit<AsyncControlCompletionPath, "completion"> & { completion: AsyncControlCompletionPath["completion"] | "break" | "continue" };
+        const executeStatements = (statements: readonly ts.Statement[], initial: AsyncControlCondition[]): InternalCompletionPath[] => {
           let active: AsyncControlCondition[][] = [initial];
-          const abrupt: AsyncControlCompletionPath[] = [];
+          const abrupt: InternalCompletionPath[] = [];
           for (const child of statements) {
             const next: AsyncControlCondition[][] = [];
             for (const conditions of active) for (const path of execute(child, conditions)) {
@@ -738,9 +746,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           }
           return [...abrupt, ...active.map((controlConditions) => ({ controlConditions, completion: "normal" as const }))];
         };
-        const execute = (current: ts.Statement, conditions: AsyncControlCondition[]): AsyncControlCompletionPath[] => {
+        const execute = (current: ts.Statement, conditions: AsyncControlCondition[]): InternalCompletionPath[] => {
           if (ts.isReturnStatement(current)) return [{ controlConditions: conditions, completion: "return" }];
           if (ts.isThrowStatement(current)) return [{ controlConditions: conditions, completion: "throw" }];
+          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break" }];
+          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue" }];
           if (ts.isBlock(current)) return executeStatements(current.statements, conditions);
           if (ts.isIfStatement(current)) {
             const id = `${owner}@if:${current.getStart(source)}`;
@@ -749,6 +759,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               ...(current.elseStatement ? execute(current.elseStatement, [...conditions, { id, expected: false }]) : [{ controlConditions: [...conditions, { id, expected: false }], completion: "normal" as const }]),
             ];
           }
+          if (ts.isWhileStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)) {
+            const condition = { id: `${owner}@loop:${current.getStart(source)}`, expected: true };
+            const body = execute(current.statement, [...conditions, condition]).map((path): InternalCompletionPath => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
+            const definitelyEnters = ts.isWhileStatement(current) && current.expression.kind === ts.SyntaxKind.TrueKeyword;
+            return definitelyEnters ? body : [...body, { controlConditions: [...conditions, { ...condition, expected: false }], completion: "normal" }];
+          }
+          if (ts.isDoStatement(current)) return execute(current.statement, conditions).map((path) => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
           if (ts.isSwitchStatement(current)) {
             const clauses = current.caseBlock.clauses;
             const selectedPaths = clauses.flatMap((clause, clauseIndex) => {
@@ -767,11 +784,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 completion: "normal",
               });
             }
-            return selectedPaths;
+            return selectedPaths.map((path) => ({ ...path, completion: path.completion === "break" ? "normal" : path.completion }));
           }
           return [{ controlConditions: conditions, completion: "normal" }];
         };
-        return execute(statement, []);
+        return execute(statement, []).map((path) => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
       };
       node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "catch", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
       node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ regionId, owner, region: "finally", order, completion: completion(statement), completionPaths: completionPaths(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));

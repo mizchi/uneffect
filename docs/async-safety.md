@@ -460,6 +460,12 @@ by fallthrough carries `controlPaths`, an OR of condition conjunctions. The
 legacy-compatible `controlConditions` field is the first path. Unified Quint
 lowering guards the operation by their disjunction and Corsa schema v6
 validates every path plus the primary-path correspondence.
+Zero-iteration `while`, `for`, `for..in`, and `for..of` handler bodies share a
+stable loop-entry choice. The one-step abstraction retains a skipped path and
+normalizes body `break`/`continue` to normal loop completion; `while (true)`
+omits the skipped path and `do..while` executes once. This is not yet a loop
+fixed point: repeated iterations, labeled exits, and loop-carried state remain
+outside the unified lowering.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.
