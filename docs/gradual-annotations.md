@@ -117,9 +117,12 @@ is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`
 write to the literal field. Every model state is compared, so an extra runtime
 write is rejected as well as a missing or different write. Branches, loops,
-multiple sequential writes to one state field, imported calls, recursive calls,
-collection operations, and dynamic computed members produce
+imported calls, recursive calls, collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
+Multiple writes are executed over a symbolic scalar state in TypeScript source
+order before comparison. This both proves cases such as two increments and
+rejects a naive two-assignment swap: temporal action assignments are
+simultaneous, whereas the second TypeScript assignment observes the first.
 For a guarded model action, the implementation may begin with
 `if (!(predicate)) return`; the positive predicate is normalized and must
 exactly match `action_when` in the synchronous fast path. Missing, different, and unexpected guards are

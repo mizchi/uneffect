@@ -128,6 +128,30 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("composes repeated writes sequentially without confusing them with model simultaneous updates", () => {
+    const source = `/* uneffect:
+      state value: int
+      state left: int
+      state right: int
+      init value = 0
+      init left = 1
+      init right = 2
+      action incrementTwice: value' = value + 1 + 1
+      action brokenSwap: left' = right, right' = left
+    */
+      interface Runtime { value: number; left: number; right: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action incrementTwice */
+      export function incrementTwice(runtime: Runtime) { runtime.value++; runtime.value++ }
+      /* uneffect: refinement counter@1 action brokenSwap */
+      export function brokenSwap(runtime: Runtime) { runtime.left = runtime.right; runtime.right = runtime.left }
+    `;
+    expect(validateRefinementActionBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "brokenSwap", target: "right", expected: "left", actual: "right" }),
+    ]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

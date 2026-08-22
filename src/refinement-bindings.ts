@@ -288,8 +288,14 @@ export function validateRefinementActionBodies(
     receiver: string,
     runtimeClass: ts.ClassDeclaration | undefined,
     substitutions: ReadonlyMap<string, ts.Expression>,
+    updates: Map<string, TemporalExpression> = new Map(),
   ): Map<string, TemporalExpression> | undefined => {
-    const updates = new Map<string, TemporalExpression>();
+    const resolveCurrentState = (expression: TemporalExpression): TemporalExpression => {
+      if (expression.kind === "name") return updates.get(expression.name) ?? expression;
+      if (expression.kind === "unary") return { ...expression, operand: resolveCurrentState(expression.operand) };
+      if (expression.kind === "binary") return { ...expression, left: resolveCurrentState(expression.left), right: resolveCurrentState(expression.right) };
+      return expression;
+    };
     for (const statement of body.statements) {
       if (!ts.isExpressionStatement(statement)) return undefined;
       const node = statement.expression;
@@ -302,29 +308,25 @@ export function validateRefinementActionBodies(
         method.parameters.forEach((parameter, index) => {
           if (ts.isIdentifier(parameter.name)) nestedSubstitutions.set(parameter.name.text, node.arguments[index]!);
         });
-        const nested = collect(method.body, "this", runtimeClass, nestedSubstitutions);
-        if (!nested) return undefined;
-        for (const [target, value] of nested) {
-          if (updates.has(target)) return undefined;
-          updates.set(target, value);
-        }
+        if (!collect(method.body, "this", runtimeClass, nestedSubstitutions, updates)) return undefined;
         continue;
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
         if (node.operator !== ts.SyntaxKind.PlusPlusToken && node.operator !== ts.SyntaxKind.MinusMinusToken) return undefined;
         const target = refinementFieldName(node.operand, receiver, substitutions);
-        if (!target || !stateNames.has(target) || updates.has(target)) return undefined;
-        updates.set(target, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: { kind: "name", name: target }, right: { kind: "integer", value: "1" } });
+        if (!target || !stateNames.has(target)) return undefined;
+        updates.set(target, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: updates.get(target) ?? { kind: "name", name: target }, right: { kind: "integer", value: "1" } });
         continue;
       }
       if (ts.isBinaryExpression(node)) {
         const target = refinementFieldName(node.left, receiver, substitutions);
-        if (!target || !stateNames.has(target) || updates.has(target)) return undefined;
+        if (!target || !stateNames.has(target)) return undefined;
         const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames);
         if (!right) return undefined;
-        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.set(target, right);
+        const resolvedRight = resolveCurrentState(right);
+        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.set(target, resolvedRight);
         else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
-          updates.set(target, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: { kind: "name", name: target }, right });
+          updates.set(target, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: updates.get(target) ?? { kind: "name", name: target }, right: resolvedRight });
         } else return undefined;
         continue;
       }
