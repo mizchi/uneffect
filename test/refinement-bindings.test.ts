@@ -219,6 +219,35 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([]);
   });
 
+  it("inlines one local pure invariant helper without trusting recursive or external calls", () => {
+    const model = `/* uneffect:
+      state value: int
+      state armed: bool
+      init value = 0
+      init armed = false
+      temporal guarded: !armed || value > 0
+    */`;
+    const safe = `${model}
+      interface Runtime { value: number; armed: boolean }
+      function isGuarded(state: Runtime) { return !state.armed || state.value > 0 }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 invariant guarded */ export function guarded(runtime: Runtime) { return isGuarded(runtime) }
+    `;
+    expect(validateRefinementInvariantBodies("safe.ts", safe, "counter", parseSpec("safe.ts", safe).temporal)).toEqual([]);
+
+    const recursive = `${model}
+      interface Runtime { value: number; armed: boolean }
+      function isGuarded(state: Runtime): boolean { return isGuarded(state) }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 invariant guarded */ export function guarded(runtime: Runtime) { return isGuarded(runtime) }
+    `;
+    expect(validateRefinementInvariantBodies("recursive.ts", recursive, "counter", parseSpec("recursive.ts", recursive).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-invariant-body", modelName: "guarded" }),
+    ]);
+  });
+
   it("proves create/observe state projection and reports transformed or swapped fields", () => {
     const model = `/* uneffect:
       state left: int

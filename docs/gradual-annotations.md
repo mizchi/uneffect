@@ -138,12 +138,15 @@ functions. A supported implementation consists of zero or more immutable local
 returned expression may use runtime scalar fields, integer/boolean literals, arithmetic, strict
 equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
 exactly equal the temporal property AST. Loose JavaScript equality is rejected
-because coercion would make the correspondence unsound. Calls, mutable local
+because coercion would make the correspondence unsound. A direct call to a
+same-file function declaration is inlined only when it has exactly one
+expression-bearing `return`, identifier parameters, matching arity, and no
+recursive cycle. Imported/external calls, statement-bearing helpers, mutable local
 declarations, mutation, collections, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous
 `validateRefinementInvariantBodiesWithZ3` path discharges such a mismatch only
 when Z3 proves the two normalized boolean expressions equivalent over all typed
-states. It does not make calls, mutable declarations, mutation, or collections
+states. It does not make imported calls, statement-bearing helpers, mutable declarations, mutation, or collections
 supported, and it preserves `unknown` as a diagnostic. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still

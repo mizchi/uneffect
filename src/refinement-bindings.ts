@@ -192,10 +192,17 @@ function refinementFieldName(
   receiver: string,
   substitutions: ReadonlyMap<string, ts.Expression>,
 ): string | undefined {
+  const matchesReceiver = (base: ts.Expression): boolean => {
+    if (base.kind === ts.SyntaxKind.ThisKeyword) return true;
+    if (!ts.isIdentifier(base)) return false;
+    if (base.text === receiver) return true;
+    const replacement = substitutions.get(base.text);
+    return !!replacement && ts.isIdentifier(replacement) && replacement.text === receiver;
+  };
   if (ts.isPropertyAccessExpression(target)
-    && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) return target.name.text;
+    && matchesReceiver(target.expression)) return target.name.text;
   if (ts.isElementAccessExpression(target)
-    && ((ts.isIdentifier(target.expression) && target.expression.text === receiver) || target.expression.kind === ts.SyntaxKind.ThisKeyword)) {
+    && matchesReceiver(target.expression)) {
     const argument = target.argumentExpression;
     const replacement = ts.isIdentifier(argument) ? substitutions.get(argument.text) : argument;
     return replacement && ts.isStringLiteral(replacement) ? replacement.text : undefined;
@@ -208,25 +215,42 @@ function normalizeRefinementExpression(
   receiver: string,
   substitutions: ReadonlyMap<string, ts.Expression>,
   stateNames: ReadonlySet<string>,
+  helpers: ReadonlyMap<string, ts.FunctionDeclaration> = new Map(),
+  activeHelpers: ReadonlySet<string> = new Set(),
 ): TemporalExpression | undefined {
-  if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames);
+  if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers);
   if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
   if (ts.isIdentifier(node)) {
     const replacement = substitutions.get(node.text);
-    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames) : undefined;
+    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames, helpers, activeHelpers) : undefined;
   }
   const field = refinementFieldName(node, receiver, substitutions);
   if (field && stateNames.has(field)) return { kind: "name", name: field };
   if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
-    const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames);
+    const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames, helpers, activeHelpers);
     return operand ? { kind: "unary", operator: node.operator === ts.SyntaxKind.ExclamationToken ? "not" : "negate", operand } : undefined;
   }
   if (ts.isBinaryExpression(node)) {
     const operator = temporalBinaryOperators.get(node.operatorToken.kind);
-    const left = normalizeRefinementExpression(node.left, receiver, substitutions, stateNames);
-    const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames);
+    const left = normalizeRefinementExpression(node.left, receiver, substitutions, stateNames, helpers, activeHelpers);
+    const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, helpers, activeHelpers);
     return operator && left && right ? { kind: "binary", operator, left, right } : undefined;
+  }
+  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+    const name = node.expression.text;
+    const helper = helpers.get(name);
+    if (!helper?.body || activeHelpers.size > 0 || activeHelpers.has(name) || helper.parameters.length !== node.arguments.length
+      || helper.body.statements.length !== 1) return undefined;
+    const returned = helper.body.statements[0];
+    if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
+    const nested = new Map(substitutions);
+    for (let index = 0; index < helper.parameters.length; index++) {
+      const parameter = helper.parameters[index]!;
+      if (!ts.isIdentifier(parameter.name)) return undefined;
+      nested.set(parameter.name.text, node.arguments[index]!);
+    }
+    return normalizeRefinementExpression(returned.expression, receiver, nested, stateNames, helpers, new Set([...activeHelpers, name]));
   }
   return undefined;
 }
@@ -385,7 +409,7 @@ export function validateRefinementInvariantBodies(
       }
       for (const declaration of statement.declarationList.declarations) {
         if (!ts.isIdentifier(declaration.name) || !declaration.initializer
-          || !normalizeRefinementExpression(declaration.initializer, receiver ?? "", substitutions, stateNames)) {
+          || !normalizeRefinementExpression(declaration.initializer, receiver ?? "", substitutions, stateNames, functions)) {
           supportedLocals = false;
           break;
         }
@@ -394,7 +418,7 @@ export function validateRefinementInvariantBodies(
       if (!supportedLocals) break;
     }
     const actual = receiver && supportedLocals && returned && ts.isReturnStatement(returned) && returned.expression
-      ? normalizeRefinementExpression(returned.expression, receiver, substitutions, stateNames)
+      ? normalizeRefinementExpression(returned.expression, receiver, substitutions, stateNames, functions)
       : undefined;
     if (!actual) {
       diagnostics.push({ code: "unsupported-invariant-body", adapterName, modelName: property.name, exportName, message: `${exportName} is not a single supported scalar return predicate` });
