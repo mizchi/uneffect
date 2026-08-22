@@ -129,6 +129,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.
+      - [x] Lower a nested scalar member assignment, compound assignment, or increment into an immutable temporal record update and detect redirected writes.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
@@ -139,7 +140,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Inline acyclic same-file single-argument create/observe helper graphs while preserving the identity projection proof; reject recursion and nonlocal calls.
       - [x] Canonicalize complete nested-record reconstruction at create/observe boundaries from temporal field types; reject missing, extra, or redirected nested fields.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
-        - [ ] Extend action-body refinement beyond the current sequential scalar fragment, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic same-file direct helpers, and terminal returns to general loops, branch-local abrupt completion, collections, imported calls, aliases, and dynamic dispatch. Multi-write sequencing is composed symbolically and scalar guard equivalence is solver-proven opt-in.
+        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic same-file direct helpers, and terminal returns to general loops, branch-local abrupt completion, multi-member record writes, collections, imported calls, aliases, and dynamic dispatch. Multi-write sequencing is composed symbolically and scalar guard equivalence is solver-proven opt-in.
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic same-file pure helper graphs to collections, imported helpers, aliases, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic same-file wrappers to explicit abstraction relations, nested collections, imported helpers, aliases, dynamic dispatch, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.

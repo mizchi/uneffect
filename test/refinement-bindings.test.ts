@@ -262,6 +262,25 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("lowers one nested scalar field mutation to an immutable record update", () => {
+    const source = `/* uneffect:
+      state lease: { owner: int, epoch: int }
+      init lease = { owner: 1, epoch: 0 }
+      action renew: lease' = { ...lease, epoch: lease.epoch + 1 }
+    */
+      interface Runtime { lease: { owner: number; epoch: number } }
+      /* uneffect: refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
+      /* uneffect: refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lease@1 action renew */ export function renew(runtime: Runtime) { runtime.lease.epoch++ }
+    `;
+    expect(validateRefinementActionBodies("nested-action.ts", source, "lease", parseSpec("nested-action.ts", source).temporal)).toEqual([]);
+
+    const wrong = source.replace("runtime.lease.epoch++", "runtime.lease.owner++");
+    expect(validateRefinementActionBodies("wrong-nested-action.ts", wrong, "lease", parseSpec("wrong-nested-action.ts", wrong).temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "renew", target: "lease" }),
+    );
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

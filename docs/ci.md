@@ -45,10 +45,13 @@ collapsing CI-level parallelism.
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
 fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier
 runner captures each explicitly isolated test and retries it once only when
-both parts of that crash signature are present. Assertion failures and plain
-timeouts are never retried, and a repeated WASM crash still fails the job. This
-is process recovery for a recognized verifier-runtime crash, not a flaky-test
-allowance or weakened proof obligation.
+both parts of that crash signature are present. One Node Lease strengthening
+query has also twice taken Z3 from its usual roughly one-second runtime to the
+60-second Vitest limit in a fresh process. That exact file, test name, and
+timeout signature receives the same one-process retry. Other timeouts and all
+assertion failures are never retried, and a repeated crash or timeout still
+fails the job. This is process recovery for recognized verifier-runtime
+failures, not a flaky-test allowance or weakened proof obligation.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds

@@ -14,15 +14,21 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
-  it("proves a nested Node Lease create/observe boundary and rejects field loss", () => {
+  it("proves nested Node Lease boundaries and an epoch transition", async () => {
     const fileName = "examples/dogfood/lease-projection.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "leaseProjection", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "leaseProjection", temporal)).toEqual([]);
     expect(validateRefinementStateProjection(fileName, source, "leaseProjection", temporal)).toEqual([]);
 
     const broken = source.replace("      valid: lease.valid,", "");
     expect(validateRefinementStateProjection(fileName, broken, "leaseProjection", temporal)).toContainEqual(
       expect.objectContaining({ code: "observe-state-mismatch", field: "lease" }),
+    );
+    const wrongTransition = source.replace("runtime.lease.epoch++;", "runtime.lease.owner++;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, wrongTransition, "leaseProjection", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "renew", target: "lease" }),
     );
   });
 

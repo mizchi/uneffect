@@ -52,9 +52,11 @@ describe("CI test tier manifest", () => {
     }
   });
 
-  it("retries only known transient Z3 WASM crashes", () => {
+  it("retries only known transient Z3 WASM process failures", () => {
     expect(shouldRetryIsolatedSolverFailure("RuntimeError: memory access out of bounds\nat z3-built.wasm.smt::context")).toBe(true);
+    expect(shouldRetryIsolatedSolverFailure("FAIL test/node-lease.test.ts > Node Lease clock-skew model > uses a proven lease-domain invariant to exclude invalid epoch actions\nTest timed out in 60000ms")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
+    expect(shouldRetryIsolatedSolverFailure("FAIL test/other.test.ts\nTest timed out in 60000ms")).toBe(false);
   });
 });

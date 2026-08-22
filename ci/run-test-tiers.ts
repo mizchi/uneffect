@@ -26,7 +26,7 @@ for (const tier of tiers) {
         emit(result);
         const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
         if (result.status !== 0 && shouldRetryIsolatedSolverFailure(output)) {
-          process.stderr.write(`retrying isolated test after transient Z3 WASM crash: ${file} -t ${testName}\n`);
+          process.stderr.write(`retrying isolated test after a recognized transient solver-process failure: ${file} -t ${testName}\n`);
           result = runIsolated();
           emit(result);
         }

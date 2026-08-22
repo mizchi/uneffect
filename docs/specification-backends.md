@@ -232,7 +232,9 @@ predicates remain unsupported.
 `examples/dogfood/lease-projection.ts` exercises a Node Lease-shaped nested
 record boundary. Both hydrate and snapshot wrappers reconstruct the complete
 `owner`/`epoch`/`valid` record, while the negative case removes `valid` and is
-reported as an observe projection mismatch.
+reported as an observe projection mismatch. Its `renew` transition also proves
+that the concrete nested epoch increment refines the model's immutable record
+update; incrementing `owner` instead is reported as an action mismatch.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

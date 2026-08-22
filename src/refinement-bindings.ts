@@ -187,11 +187,11 @@ function formatRefinementExpression(expression: TemporalExpression): string {
   return generateRuntimeAssertionExpression(expression);
 }
 
-function refinementFieldName(
+function refinementFieldPath(
   target: ts.Expression,
   receiver: string,
   substitutions: ReadonlyMap<string, ts.Expression>,
-): string | undefined {
+): string[] | undefined {
   const matchesReceiver = (base: ts.Expression): boolean => {
     if (base.kind === ts.SyntaxKind.ThisKeyword) return true;
     if (!ts.isIdentifier(base)) return false;
@@ -199,15 +199,30 @@ function refinementFieldName(
     const replacement = substitutions.get(base.text);
     return !!replacement && ts.isIdentifier(replacement) && replacement.text === receiver;
   };
-  if (ts.isPropertyAccessExpression(target)
-    && matchesReceiver(target.expression)) return target.name.text;
-  if (ts.isElementAccessExpression(target)
-    && matchesReceiver(target.expression)) {
-    const argument = target.argumentExpression;
+  const path: string[] = [];
+  let current = target;
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (ts.isPropertyAccessExpression(current)) {
+      path.unshift(current.name.text);
+      current = current.expression;
+      continue;
+    }
+    const argument = current.argumentExpression;
     const replacement = ts.isIdentifier(argument) ? substitutions.get(argument.text) : argument;
-    return replacement && ts.isStringLiteral(replacement) ? replacement.text : undefined;
+    if (!replacement || !ts.isStringLiteral(replacement)) return undefined;
+    path.unshift(replacement.text);
+    current = current.expression;
   }
-  return undefined;
+  return path.length > 0 && matchesReceiver(current) ? path : undefined;
+}
+
+function refinementFieldName(
+  target: ts.Expression,
+  receiver: string,
+  substitutions: ReadonlyMap<string, ts.Expression>,
+): string | undefined {
+  const path = refinementFieldPath(target, receiver, substitutions);
+  return path?.length === 1 ? path[0] : undefined;
 }
 
 function normalizeRefinementExpression(
@@ -230,6 +245,10 @@ function normalizeRefinementExpression(
   }
   const field = refinementFieldName(node, receiver, substitutions);
   if (field && stateNames.has(field)) return { kind: "name", name: field };
+  if (ts.isPropertyAccessExpression(node)) {
+    const base = normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    if (base) return { kind: "field", receiver: base, name: node.name.text };
+  }
   if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
     const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
     return operand ? { kind: "unary", operator: node.operator === ts.SyntaxKind.ExclamationToken ? "not" : "negate", operand } : undefined;
@@ -317,6 +336,9 @@ export function validateRefinementActionBodies(
       if (expression.kind === "unary") return { ...expression, operand: expandLocalSnapshots(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: expandLocalSnapshots(expression.left), right: expandLocalSnapshots(expression.right) };
       if (expression.kind === "conditional") return { ...expression, condition: expandLocalSnapshots(expression.condition), whenTrue: expandLocalSnapshots(expression.whenTrue), whenFalse: expandLocalSnapshots(expression.whenFalse) };
+      if (expression.kind === "field") return { ...expression, receiver: expandLocalSnapshots(expression.receiver) };
+      if (expression.kind === "record") return { ...expression, ...(expression.base ? { base: expandLocalSnapshots(expression.base) } : {}), fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, expandLocalSnapshots(value)])) };
+      if (expression.kind === "array") return { ...expression, elements: expression.elements.map(expandLocalSnapshots) };
       return expression;
     };
     const resolveCurrentState = (expression: TemporalExpression): TemporalExpression => {
@@ -324,7 +346,25 @@ export function validateRefinementActionBodies(
       if (expression.kind === "unary") return { ...expression, operand: resolveCurrentState(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: resolveCurrentState(expression.left), right: resolveCurrentState(expression.right) };
       if (expression.kind === "conditional") return { ...expression, condition: resolveCurrentState(expression.condition), whenTrue: resolveCurrentState(expression.whenTrue), whenFalse: resolveCurrentState(expression.whenFalse) };
+      if (expression.kind === "field") return { ...expression, receiver: resolveCurrentState(expression.receiver) };
+      if (expression.kind === "record") return { ...expression, ...(expression.base ? { base: resolveCurrentState(expression.base) } : {}), fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, resolveCurrentState(value)])) };
+      if (expression.kind === "array") return { ...expression, elements: expression.elements.map(resolveCurrentState) };
       return expression;
+    };
+    const readPath = (root: string, fields: readonly string[]): TemporalExpression => fields.reduce<TemporalExpression>(
+      (value, name) => ({ kind: "field", receiver: value, name }),
+      updates.get(root) ?? { kind: "name", name: root },
+    );
+    const writePath = (root: string, fields: readonly string[], value: TemporalExpression): void => {
+      if (fields.length === 0) { updates.set(root, value); return; }
+      const updateRecord = (base: TemporalExpression, remaining: readonly string[]): TemporalExpression => {
+        const [name, ...tail] = remaining;
+        if (!name) return value;
+        const fieldValue = tail.length === 0 ? value : updateRecord({ kind: "field", receiver: base, name }, tail);
+        return { kind: "record", base, fields: { [name]: fieldValue } };
+      };
+      const base = updates.get(root) ?? { kind: "name", name: root } as TemporalExpression;
+      updates.set(root, updateRecord(base, fields));
     };
     const asBlock = (statement: ts.Statement | undefined): ts.Block => !statement
       ? ts.factory.createBlock([], true)
@@ -428,20 +468,20 @@ export function validateRefinementActionBodies(
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
         if (node.operator !== ts.SyntaxKind.PlusPlusToken && node.operator !== ts.SyntaxKind.MinusMinusToken) return undefined;
-        const target = refinementFieldName(node.operand, receiver, substitutions);
+        const [target, ...fields] = refinementFieldPath(node.operand, receiver, substitutions) ?? [];
         if (!target || !stateNames.has(target)) return undefined;
-        updates.set(target, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: updates.get(target) ?? { kind: "name", name: target }, right: { kind: "integer", value: "1" } });
+        writePath(target, fields, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: readPath(target, fields), right: { kind: "integer", value: "1" } });
         continue;
       }
       if (ts.isBinaryExpression(node)) {
-        const target = refinementFieldName(node.left, receiver, substitutions);
+        const [target, ...fields] = refinementFieldPath(node.left, receiver, substitutions) ?? [];
         if (!target || !stateNames.has(target)) return undefined;
         const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
         if (!right) return undefined;
         const resolvedRight = expandLocalSnapshots(resolveCurrentState(right));
-        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.set(target, resolvedRight);
+        if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) writePath(target, fields, resolvedRight);
         else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
-          updates.set(target, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: updates.get(target) ?? { kind: "name", name: target }, right: resolvedRight });
+          writePath(target, fields, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: readPath(target, fields), right: resolvedRight });
         } else return undefined;
         continue;
       }

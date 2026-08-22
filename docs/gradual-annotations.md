@@ -112,7 +112,11 @@ assignments implement the corresponding model transition.
 `validateRefinementActionBodies` adds a proof for a deliberately restricted
 zero-runtime fragment. It normalizes direct runtime-field assignment,
 `+=`/`-=`, increment/decrement, and omitted-field stuttering to the temporal
-expression AST. It can inline local class method calls when every argument
+expression AST. A nested scalar member mutation such as
+`runtime.lease.epoch++` is lowered to the immutable record update
+`{ ...lease, epoch: lease.epoch + 1 }`; redirected member writes therefore
+produce an action mismatch. Multiple nested writes are not yet canonicalized
+to one simultaneous record update. It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`
 write to the literal field. It also composes an acyclic graph of direct calls to
