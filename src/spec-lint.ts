@@ -9,7 +9,7 @@ export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
-    | "inductively-unreachable-action" | "inductively-vacuous-property"
+    | "inductively-unreachable-action" | "strengthened-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property"
     | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
@@ -544,7 +544,7 @@ export async function findTemporalCounterexampleWithZ3(
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
-export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number } = {}): Promise<SpecLintDiagnostic[]> {
+export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[] } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
   if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
@@ -556,7 +556,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
   const declarations = [
     ...z3TypeDeclarations(spec.states.map((state) => state.type)),
-    ...Array.from({ length: maxSteps + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat(),
+    ...Array.from({ length: Math.max(maxSteps, 1) + 1 }, (_, step) => spec.states.map((state) => `(declare-const ${at(state.name, step)} ${smtSort(state.type)})`)).flat(),
   ];
   const init = spec.init.map((assignment) => `(= ${at(assignment.target, 0)} ${temporalToSmt(assignment.expressionAst, (name) => at(name, 0), symbols, symbols.get(assignment.target))})`);
   const guard = (action: TemporalSpec["actions"][number], step: number) => action.guard ? temporalToSmt(action.guard.expressionAst, (name) => at(name, step), symbols) : "true";
@@ -573,6 +573,25 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const step = (index: number) => disjoin(spec.actions.map((action) => actionTransition(action, index)));
   const diagnostics: SpecLintDiagnostic[] = [];
   const initStatus = await checkSmt(declarations, init);
+  const strengthening: TemporalSpec["properties"] = [];
+  for (const name of [...new Set(options.strengtheningProperties ?? [])]) {
+    const property = spec.properties.find((candidate) => candidate.name === name);
+    if (!property) {
+      diagnostics.push({ code: "unknown-strengthening-property", name, backend: "z3", message: `strengthening property ${name} is not declared` });
+      continue;
+    }
+    const invariantAt = (index: number) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols);
+    const established = await checkSmt(declarations, [...init, `(not ${invariantAt(0)})`]);
+    const preserved = await checkSmt(declarations, [invariantAt(0), step(0), `(not ${invariantAt(1)})`]);
+    if (established !== "unsat" || preserved !== "unsat") {
+      diagnostics.push({
+        code: "non-inductive-strengthening-property", name, backend: "z3",
+        message: `${name} cannot be used as a strengthening invariant because Z3 did not prove both initialization and one-step preservation`,
+      });
+      continue;
+    }
+    strengthening.push(property);
+  }
   const enabledStatus = await checkSmt(declarations, [...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
   if (enabledStatus === "unsat" && initStatus === "sat") diagnostics.push({
     code: "deadlocked-initial-state", name: "<init>", backend: "z3", depth: 0, message: "no action is enabled in any state satisfying init",
@@ -662,6 +681,21 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
           code: "inductively-unreachable-action", name: action.name, backend: "z3", depth: 1,
           message: `${action.name} is unreachable: init excludes its guard and one-step induction preserves that exclusion across every transition`,
         });
+        else for (const properties of [
+          ...strengthening.map((property) => [property]),
+          ...(strengthening.length > 1 ? [strengthening] : []),
+        ]) {
+          const invariantAt = (index: number) => properties.length === 1
+            ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, index), symbols)
+            : `(and ${properties.map((property) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols)).join(" ")})`;
+          if (await checkSmt(declarations, [invariantAt(0), step(0), guard(action, 1)]) !== "unsat") continue;
+          const propertyNames = properties.map((property) => property.name).join(" & ");
+          diagnostics.push({
+            code: "strengthened-unreachable-action", name: action.name, relatedName: propertyNames, backend: "z3", depth: 1,
+            message: `${action.name} is unreachable using proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
+          });
+          break;
+        }
       }
     }
   }
@@ -779,9 +813,12 @@ export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; di
 }
 
 /** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
-export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[] } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
   const result = lintSpec(fileName, text);
-  const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, { maxSteps: options.reachabilitySteps ?? 8 });
+  const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, {
+    maxSteps: options.reachabilitySteps ?? 8,
+    strengtheningProperties: options.strengtheningProperties,
+  });
   return {
     spec: result.spec,
     diagnostics: [...result.diagnostics, ...await lintTemporalSpecWithZ3(result.spec.temporal), ...reachability],

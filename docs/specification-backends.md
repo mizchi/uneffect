@@ -146,9 +146,14 @@ remains a bounded result; `unknown` is never promoted to safety.
 Bounded action-unreachability remains depth-labelled. Uneffect additionally
 emits `inductively-unreachable-action` only when the action guard is excluded
 by init and `!guard && step => !guard'` is valid for every transition. This is
-an unbounded invariant proof. If that one-step induction fails, the bounded
-diagnostic is retained; Uneffect does not infer an unstated strengthening
-invariant or promote the result.
+an unbounded invariant proof. If that one-step induction fails, callers may
+select declared temporal properties as strengthening invariants through
+`strengtheningProperties`, or the CLI's comma-separated
+`--strengthening=name,...`. Uneffect first proves each selected property at
+init and across every one-step transition. Only proven properties, or their
+conjunction, may produce `strengthened-unreachable-action`; rejected and
+unknown names remain diagnostics. Uneffect does not infer an unstated
+strengthening invariant.
 
 Property vacuity follows the same split. `bounded-vacuous-property` means the
 referenced state did not change on any reachable transition within the chosen
@@ -231,6 +236,8 @@ Run source-level lint, including Z3-backed semantic checks:
 
 ```sh
 just spec-lint examples/spec.ts
+# Direct CLI form when selected temporal properties are proof hints:
+pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In

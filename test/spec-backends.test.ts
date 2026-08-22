@@ -704,6 +704,53 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("accepts only proven inductive properties as strengthening invariants", async () => {
+    const temporal = parseSpec("strengthened-unreachable.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action descend: phase' = phase - 1
+      action impossible: phase' = phase
+      action_when impossible: phase === 2
+      temporal nonpositive: phase <= 0
+      temporal merelyInitial: phase === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 3,
+      strengtheningProperties: ["nonpositive", "merelyInitial"],
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action", name: "impossible", relatedName: "nonpositive",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "non-inductive-strengthening-property", name: "merelyInitial",
+    }));
+  });
+
+  it("combines proven strengthening invariants when no single property excludes a guard", async () => {
+    const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
+      state left: int
+      state right: int
+      init left = 0
+      init right = 0
+      action descendLeft: left' = left - 1
+      action descendRight: right' = right - 1
+      action growOutsideInvariant: left' = left + 1
+      action_when growOutsideInvariant: left > 0
+      action impossible: left' = left
+      action_when impossible: left + right > 0
+      temporal leftNonpositive: left <= 0
+      temporal rightNonpositive: right <= 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      strengtheningProperties: ["leftNonpositive", "rightNonpositive"],
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action", name: "impossible",
+      relatedName: "leftNonpositive & rightNonpositive",
+    }));
+  });
+
   it("proves an initial deadlock without claiming unbounded reachability", async () => {
     const temporal = parseSpec("deadlock.ts", `/* uneffect:
       state phase: int
