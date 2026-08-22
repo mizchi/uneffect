@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { analyzeAsyncSafety, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 
 function run(program: string) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-"));
@@ -1733,5 +1734,53 @@ describe("async error and explicit resource safety", () => {
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "mutableKeyIsUnknown", kind: "disposed-resource-use",
     }));
+  });
+
+  it("resolves imported const computed keys through aliases and barrels", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-key-"));
+    try {
+      const keys = join(directory, "keys.ts"), barrel = join(directory, "index.ts"), main = join(directory, "main.ts");
+      writeFileSync(keys, `
+        export const ATTEMPT_SLOT = "current" as const
+        export let MUTABLE_SLOT: "left" | "right" = "left"
+      `);
+      writeFileSync(barrel, `export { ATTEMPT_SLOT as SLOT, MUTABLE_SLOT } from "./keys.js"`);
+      writeFileSync(main, `
+        import { SLOT as importedSlot, MUTABLE_SLOT } from "./index.js"
+        import * as keys from "./keys.js"
+        interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+        declare function open(): Resource
+        async function importedKeyEscape() {
+          const state: { current?: Resource } = {}
+          { await using resource = open(); state[importedSlot] = resource }
+          state.current?.send()
+        }
+        async function mutableImportedKeyIsUnknown() {
+          const state: { left?: Resource; right?: Resource } = {}
+          { await using resource = open(); state[MUTABLE_SLOT] = resource }
+          state.left?.send()
+        }
+        async function namespaceKeyEscape() {
+          const state: { current?: Resource } = {}
+          { await using resource = open(); state[keys.ATTEMPT_SLOT] = resource }
+          state.current?.send()
+        }
+      `);
+      const program = ts.createProgram([keys, barrel, main], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.esnext.d.ts", "lib.esnext.disposable.d.ts"], noEmit: true,
+      });
+      const result = analyzeAsyncSafetyInProgram(program, program.getSourceFile(main)!);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "importedKeyEscape", kind: "disposed-resource-use",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "mutableImportedKeyIsUnknown", kind: "disposed-resource-use",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "namespaceKeyEscape", kind: "disposed-resource-use",
+      }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 });

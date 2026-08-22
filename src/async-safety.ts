@@ -589,6 +589,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return current;
     };
+    const constantInitializer = (input: ts.Symbol | undefined, seen: Set<ts.Symbol>): { initializer: ts.Expression; seen: Set<ts.Symbol> } | undefined => {
+      let symbol = input;
+      if (!symbol || seen.has(symbol)) return undefined;
+      const nextSeen = new Set(seen).add(symbol);
+      while ((symbol.flags & ts.SymbolFlags.Alias) !== 0) {
+        const target = checker.getAliasedSymbol(symbol);
+        if (target === symbol || nextSeen.has(target)) return undefined;
+        symbol = target;
+        nextSeen.add(symbol);
+      }
+      const declaration = symbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent)
+        || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0) return undefined;
+      return { initializer: declaration.initializer, seen: nextSeen };
+    };
     const constantPropertyKey = (expression: ts.Expression, seen = new Set<ts.Symbol>()): string | undefined => {
       if (ts.isStringLiteralLike(expression)) return expression.text;
       if (ts.isNumericLiteral(expression)) {
@@ -604,14 +620,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
         || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
         || ts.isNonNullExpression(expression)) return constantPropertyKey(expression.expression, seen);
-      if (!ts.isIdentifier(expression)) return undefined;
-      const symbol = checker.getSymbolAtLocation(expression);
-      if (!symbol || seen.has(symbol)) return undefined;
-      const declaration = symbol.valueDeclaration;
-      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
-        || !ts.isVariableDeclarationList(declaration.parent)
-        || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0) return undefined;
-      return constantPropertyKey(declaration.initializer, new Set(seen).add(symbol));
+      const symbol = ts.isIdentifier(expression) ? checker.getSymbolAtLocation(expression)
+        : ts.isPropertyAccessExpression(expression) ? checker.getSymbolAtLocation(expression.name)
+          : undefined;
+      const constant = constantInitializer(symbol, seen);
+      return constant ? constantPropertyKey(constant.initializer, constant.seen) : undefined;
     };
     const staticAccessPath = (expression: ts.Expression): { root: ts.Symbol; segments: string[] } | undefined => {
       if (ts.isIdentifier(expression)) {

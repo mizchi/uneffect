@@ -2,7 +2,7 @@ import { globSync, readFileSync } from "node:fs";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
-import { analyzeAsyncSafety, generateUnifiedAsyncQuint } from "../src/async-safety.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
 import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
@@ -23,7 +23,13 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("disposed_generation_0 == generation_0");
 
     const brokenFile = "examples/dogfood/retry-attempt-escape.ts";
-    const broken = analyzeAsyncSafety(brokenFile, readFileSync(brokenFile, "utf8"));
+    const slotFile = "examples/dogfood/retry-slots.ts";
+    const brokenProgram = ts.createProgram([slotFile, brokenFile], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      lib: ["lib.esnext.d.ts", "lib.esnext.disposable.d.ts"], types: ["node"], noEmit: true,
+    });
+    const broken = analyzeAsyncSafetyInProgram(brokenProgram, brokenProgram.getSourceFile(brokenFile)!);
     expect(broken.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "brokenRetry", resource: "attempt", alias: "forwardedState.active[attemptSlot]",
     }));

@@ -492,11 +492,13 @@ that slot back into a local alias. Reassignment-free local aliases of the
 aggregate root share the same canonical slot identity; an unconditional root
 alias reassignment detaches it, and overwriting a parent slot invalidates all
 known descendant facts. Computed string and finite-number keys are resolved
-through reassignment-free local `const` alias chains, including `as const`,
-parenthesized, `satisfies`, and non-null wrappers. Mutable, imported, and
-otherwise dynamic computed keys remain unknown. Mutation through imported or
-interprocedural aggregate aliases, aliases passed through calls, and
-path-correlated alias joins are not yet claimed as covered.
+through reassignment-free `const` alias chains, including `as const`,
+parenthesized, `satisfies`, and non-null wrappers. The Program frontend follows
+named import aliases, barrel re-exports, and namespace imports to an exported
+`const` declaration; the single-text convenience frontend cannot resolve such
+imports. Mutable and otherwise dynamic computed keys remain unknown. Mutation
+through imported or interprocedural aggregate aliases, aliases passed through
+calls, and path-correlated alias joins are not yet claimed as covered.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

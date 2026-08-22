@@ -74,6 +74,12 @@ computed `const` key, a system-pressure run measured 267.83 ms end to end
 the warm analysis (7.34% RME). Even in this slower run the warm walk was about
 0.24% of the cold total, so constant-key resolution does not move the dominant
 cost away from TypeScript Program construction.
+
+The Program-wide dogfood then moved that key into a second imported module.
+The stable two-file run measured 131.51 ms end to end (3.35% RME), 92.59 ms
+for Program construction (1.93% RME), and 0.290 ms for the warm analysis
+(3.83% RME), over 20 cold samples and 1,722 warm samples. Following the import
+symbol adds no measurable warm-path regression at this fixture size.
 This includes TypeScript program construction and the complete async analysis,
 not only the alias scan. An immediately preceding run under system pressure
 measured 340.85 ms with 13.95% RME, so it is recorded as noise rather than a

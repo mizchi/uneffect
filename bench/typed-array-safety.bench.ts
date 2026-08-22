@@ -41,8 +41,8 @@ const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-
 const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
 const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetry-packet.ts", import.meta.url), "utf8");
 const retryAttemptsSource = readFileSync(new URL("../examples/dogfood/retry-attempts.ts", import.meta.url), "utf8");
-const retryAttemptEscapeSource = readFileSync(new URL("../examples/dogfood/retry-attempt-escape.ts", import.meta.url), "utf8");
-const retryAttemptEscapeFile = "/bench/retry-attempt-escape.ts";
+const retryAttemptEscapeFile = "examples/dogfood/retry-attempt-escape.ts";
+const retryAttemptSlotFile = "examples/dogfood/retry-slots.ts";
 const asyncSafetyCompilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.NodeNext,
@@ -52,12 +52,7 @@ const asyncSafetyCompilerOptions: ts.CompilerOptions = {
   noEmit: true,
 };
 function createAsyncSafetyBenchmarkProgram(): ts.Program {
-  const host = ts.createCompilerHost(asyncSafetyCompilerOptions);
-  const original = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, version, onError, fresh) => name === retryAttemptEscapeFile
-    ? ts.createSourceFile(name, retryAttemptEscapeSource, version, true, ts.ScriptKind.TS)
-    : original(name, version, onError, fresh);
-  return ts.createProgram([retryAttemptEscapeFile], asyncSafetyCompilerOptions, host);
+  return ts.createProgram([retryAttemptSlotFile, retryAttemptEscapeFile], asyncSafetyCompilerOptions);
 }
 const warmAsyncSafetyProgram = createAsyncSafetyBenchmarkProgram();
 const warmAsyncSafetySource = warmAsyncSafetyProgram.getSourceFile(retryAttemptEscapeFile)!;
@@ -437,7 +432,8 @@ describe("typed-array static verification", () => {
   }, { time: 500, iterations: 20 });
 
   bench("detect a computed nested aggregate retry resource alias", () => {
-    analyzeAsyncSafety("retry-attempt-escape.ts", retryAttemptEscapeSource);
+    const program = createAsyncSafetyBenchmarkProgram();
+    analyzeAsyncSafetyInProgram(program, program.getSourceFile(retryAttemptEscapeFile)!);
   }, { time: 500, iterations: 20 });
 
   bench("construct the retry resource TypeScript Program", () => {

@@ -1,3 +1,5 @@
+import { attemptSlot } from "./retry-slots.js";
+
 interface Attempt {
   flush(): void;
   [Symbol.asyncDispose](): Promise<void>;
@@ -9,7 +11,6 @@ export async function brokenRetry(enabled: boolean): Promise<void> {
   let lastAttempt: Attempt | undefined;
   const retryState: { active: { forwardedAttempt?: Attempt } } = { active: {} };
   const forwardedState = retryState;
-  const attemptSlot = "forwardedAttempt" as const;
   while (enabled) {
     await using attempt = openAttempt();
     lastAttempt = attempt;
