@@ -335,6 +335,33 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("nested_thenable_0_fulfilled");
   });
 
+  it("keeps a mutually recursive thenable assimilation cycle pending", () => {
+    const model = analyzePromiseChains("recursive-thenables.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(second); return this } }
+        const second: PromiseLike<number> = { then(resolve) { resolve(first); return this } }
+        const result = new Promise<number>(resolve => resolve(first))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables).toHaveLength(2);
+    expect(model.thenables.every((thenable) => thenable.mayRemainPending)).toBe(true);
+    const quint = generatePromiseChainsQuint("recursive_thenables", model);
+    expect(quint).toContain("settle_0_assimilating");
+    expect(quint).not.toMatch(/assimilate_0.*_(fulfilled|rejected)/);
+
+    const selfCycle = analyzePromiseChains("self-recursive-thenable.ts", `
+      function run() {
+        const loop: PromiseLike<number> = { then(resolve) { resolve(loop); return this } }
+        const result = new Promise<number>(resolve => resolve(loop))
+        return result.catch(() => 0)
+      }
+    `);
+    const selfCycleQuint = generatePromiseChainsQuint("self_recursive_thenable", selfCycle);
+    expect(selfCycle.thenables[0]).toMatchObject({ adoptedThenable: 0, mayRemainPending: true });
+    expect(selfCycleQuint).not.toMatch(/assimilate_0.*_(fulfilled|rejected)/);
+  });
+
   it("recognizes a direct Proxy get trap that always throws during then lookup", () => {
     const model = analyzePromiseChains("proxy-trap.ts", `
       function run() {

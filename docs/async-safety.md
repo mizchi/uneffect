@@ -122,10 +122,17 @@ When a local `then` callback itself resolves another thenable, the model keeps
 fulfillment, rejection, and pending outcomes rather than turning assimilation
 into a dead state. Resolved local and external symbols, including forward local
 references and direct inline thenable literals, link their terminal states by
-identity. Recursive cycles and general computed forwarding remain conservative.
+identity. Cycles through unresolved selections and general computed forwarding
+remain conservative.
 Promise constructors used directly as a `then`, `catch`, or `finally` receiver
 retain the same executor identity and assimilation transitions as an
 intermediate `const` binding.
+
+Exact self and mutual cycles in the linked local thenable graph remain in the
+assimilating state with no fabricated fulfillment or rejection transition.
+This covers the common broken-legacy-adapter shape where each `then` callback
+resolves to the next adapter. Cycles through computed properties, mutable
+containers, or opaque imported code remain dynamic rather than exact.
 For a direct standard `Proxy`, an object-literal `get` trap consisting solely
 of a throw is recognized as a definite rejection during `then` lookup. Other
 Proxy handlers remain dynamic because property tests, `Reflect.get`, target

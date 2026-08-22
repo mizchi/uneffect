@@ -438,6 +438,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
   - [ ] Resolve exact general computed selections, recursive thenable cycles, and complex conditional/forwarding Proxy trap behavior.
     - [x] Resolve `as const` tuple thenables selected by a reassignment-free literal `const` index while retaining mutable arrays as dynamic assimilation.
+    - [x] Detect exact self and mutual cycles in the linked local thenable graph and keep the adopting Promise pending instead of inventing terminal outcomes.
     - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
     - [x] Preserve imported `PromiseLike` call results as conservative external assimilation nodes using their call-site type and span.
     - [x] Preserve arbitrary typed dynamic selections conservatively, and link direct conditional branches exactly by local thenable symbol identity.

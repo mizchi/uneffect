@@ -470,6 +470,10 @@ export function generatePromiseChainsQuint(moduleName: string, model: PromiseCha
       action(`${name}_self_resolution_rejected`, [`${state} == 3`], new Map([[state, rejected]]));
       return;
     }
+    // A thenable cycle that never invokes either terminal callback leaves the
+    // adopting Promise pending. Do not manufacture a terminal transition at
+    // the repeated node merely to stop recursive code generation.
+    if (adoptedThenable !== undefined && seenThenables.has(adoptedThenable)) return;
     const adoptedChain = adoptedExecutor === undefined ? undefined : chainForExecutor(adoptedExecutor);
     const thenable = adoptedThenable === undefined ? undefined : model.thenables[adoptedThenable];
     if (thenable?.adoptedThenable !== undefined && !seenThenables.has(adoptedThenable!)) {

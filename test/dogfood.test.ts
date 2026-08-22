@@ -556,15 +556,21 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ binding: "operation", possibleSettlements: ["rejected"] }),
       expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedExecutor: 0 }),
       expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedThenable: 0 }),
+      expect.objectContaining({ binding: "exposed", possibleSettlements: ["assimilating"], adoptedThenable: 2 }),
     ]);
     expect(model.thenables).toEqual([
       expect.objectContaining({ binding: "legacy", thenAccess: "callable", possibleSettlements: ["fulfilled"], firstCallWins: true }),
+      expect.objectContaining({ binding: "secondary", adoptedThenable: 2, mayRemainPending: true }),
+      expect.objectContaining({ binding: "primary", adoptedThenable: 1, mayRemainPending: true }),
     ]);
     const quint = generatePromiseChainsQuint("legacy_adapter", model);
     expect(quint).toContain("assimilate_1_from_0_rejected");
     expect(quint).not.toContain("assimilate_1_fulfilled");
     expect(quint).toContain("assimilate_2_thenable_0_fulfilled");
     expect(quint).not.toContain("assimilate_2_thenable_0_rejected");
+    expect(model.thenables.filter((thenable) => thenable.binding === "primary" || thenable.binding === "secondary")).toHaveLength(2);
+    expect(quint).toContain("settle_3_assimilating");
+    expect(quint).not.toMatch(/assimilate_3.*_(fulfilled|rejected)/);
   });
 
   it("models cached values, sparse slots, and remote thenables in one batch", () => {
