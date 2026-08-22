@@ -17,7 +17,9 @@ checked as an upper bound and its missing/unused effects appear in the unified
 project diagnostics.
 The same call returns these inferred/verified summaries under `result.effects`,
 so tooling can inspect the authority actually attributed to every callable
-instead of reconstructing it from diagnostics.
+instead of reconstructing it from diagnostics. Program-produced summaries
+include a stable `fileName:start` ID and source span, avoiding ambiguity between
+same-named functions in different modules.
 
 ## Reproducible artifacts
 

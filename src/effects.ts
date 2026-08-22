@@ -17,7 +17,15 @@ export interface EffectDiagnostic {
   message: string;
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
-export interface EffectSummary { functionName: string; effects: Effect[]; evidence: EvidenceStatus }
+export interface EffectSummary {
+  functionName: string;
+  effects: Effect[];
+  evidence: EvidenceStatus;
+  /** Present on summaries produced from a Program; omitted by low-level manual summary helpers. */
+  id?: string;
+  fileName?: string;
+  span?: { start: number; end: number };
+}
 export interface EffectAnalysisResult { diagnostics: EffectDiagnostic[]; summaries: EffectSummary[] }
 
 interface CallEdge { target: string; arguments: string[]; dischargesThrow: boolean }
@@ -422,7 +430,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}` });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
-    summaries.push({ functionName: graphNode.name, effects: actual, evidence });
+    summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });
   }
   return { diagnostics, summaries };
 }
