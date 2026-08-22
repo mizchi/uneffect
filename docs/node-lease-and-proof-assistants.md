@@ -47,6 +47,14 @@ the declared property: it generates `<synth:ownerEpoch > 0>`, proves it, and
 uses it as the strengthening invariant. This is evidence for the epoch/counter
 use case only; relational lease invariants still need explicit declarations.
 
+The GC slice also exercises liveness rather than safety alone. With an
+unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
+never crashes and the resource remains held. Declaring weak fairness for both
+`crash` and `gc` removes such lassos within the four-step dogfood bound:
+crash cannot be postponed forever while continuously enabled, and after crash
+the same holds for GC. This conclusion depends on those scheduler assumptions;
+without them Uneffect intentionally reports starvation.
+
 This is not a proof of a Node implementation. The lifecycle abstraction covers
 renewal, delayed completion, GC, in-flight writes, CAS failure, and crashes as
 model actions, but still omits concrete storage/network behavior and an

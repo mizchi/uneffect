@@ -166,6 +166,32 @@ describe("Node Lease clock-skew model", () => {
     }));
   });
 
+  it("rules out worker-resource starvation only under the declared weak fairness", async () => {
+    const model = (fair: boolean) => parseSpec("lease-gc-liveness.ts", `/* uneffect:
+      state workerAlive: bool
+      state resourceHeld: bool
+      init workerAlive = true
+      init resourceHeld = true
+      action idle: resourceHeld' = resourceHeld
+      action crash: workerAlive' = false
+      action_when crash: workerAlive
+      action gc: resourceHeld' = false
+      action_when gc: !workerAlive && resourceHeld
+      ${fair ? "action_fair crash: weak" : ""}
+      ${fair ? "action_fair gc: weak" : ""}
+      temporal_eventually resourceReleased: !resourceHeld
+    */`).temporal;
+    const unfair = await lintTemporalReachabilityWithZ3(model(false), { maxSteps: 4 });
+    expect(unfair).toContainEqual(expect.objectContaining({
+      code: "reachable-liveness-cycle", name: "resourceReleased",
+    }));
+    const fair = await lintTemporalReachabilityWithZ3(model(true), { maxSteps: 4 });
+    expect(fair).not.toContainEqual(expect.objectContaining({
+      code: "reachable-liveness-cycle", name: "resourceReleased",
+    }));
+  });
+
+
   it("extracts the collection-valued Node Lease violation with Z3 finite observation", async () => {
     const broken = await findTemporalCounterexampleWithZ3(parseSpec("node-lease-collections-z3.ts", collectionLeaseModel(0)).temporal, "singleWriter", { maxSteps: 12 });
     expect(broken.status).toBe("counterexample");
