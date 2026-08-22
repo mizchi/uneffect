@@ -14,6 +14,20 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("refines Node Lease authority Set/Map mutations", async () => {
+    const fileName = "examples/dogfood/lease-authority-refinement.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "leaseAuthority", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "leaseAuthority", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "leaseAuthority", temporal)).toEqual([]);
+
+    const wrong = source.replace("owners.add(2)", "owners.add(20)");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, wrong, "leaseAuthority", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "admitOwner", target: "authority" }),
+    );
+  });
+
   it("proves nested Node Lease boundaries and an epoch transition", async () => {
     const fileName = "examples/dogfood/lease-projection.ts";
     const source = readFileSync(fileName, "utf8");

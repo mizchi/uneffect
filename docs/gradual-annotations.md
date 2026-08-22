@@ -123,6 +123,14 @@ leading spread, such as
 `runtime.lease = { ...runtime.lease, epoch: runtime.lease.epoch + 1 }`.
 Additional or non-leading spreads, methods, accessors, and unresolved spread
 sources remain non-proofs rather than being approximated.
+For collection-valued state, a type-matched native `Set.add(value)` is lowered
+to `set.union(Set(value))`, and `Map.set(key, value)` is lowered to
+`map.put(key, value)`. This works through record member paths and preserves
+earlier symbolic writes. Other mutators, collection aliases, and dynamically
+selected calls remain unsupported. As with the rest of this syntax-only
+validator, the annotated TypeScript boundary is trusted; TypeChecker-backed
+proof that the concrete receiver is the builtin rather than a subclass is not
+yet established.
 It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`

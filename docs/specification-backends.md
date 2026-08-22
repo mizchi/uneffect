@@ -240,6 +240,11 @@ an action mismatch. The
 is normalized to one order-independent temporal record update. Omitting either
 member write fails refinement.
 
+`examples/dogfood/lease-authority-refinement.ts` binds a Node Lease-shaped
+authority record containing native Set and Map instances. Concrete `Set.add`
+and `Map.set` calls refine immutable temporal `union` and `put` transitions;
+admitting the wrong owner is detected as an authority action mismatch.
+
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
 record, `Set`, and boolean-keyed `Map` shapes. If the requested depth reaches

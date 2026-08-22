@@ -321,6 +321,27 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("lowers nested Set.add and Map.set mutations to immutable collection updates", () => {
+    const source = `/* uneffect:
+      state authority: { owners: Set<int>, epochs: Map<int, int> }
+      init authority = { owners: Set(1), epochs: Map([[1, 0]]) }
+      action addOwner: authority' = { ...authority, owners: authority.owners.union(Set(2)) }
+      action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) }
+    */
+      interface Runtime { authority: { owners: Set<number>; epochs: Map<number, number> } }
+      /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.authority.owners.add(2) }
+      /* uneffect: refinement authority@1 action publishEpoch */ export function publishEpoch(runtime: Runtime) { runtime.authority.epochs.set(2, 1) }
+    `;
+    expect(validateRefinementActionBodies("collection-action.ts", source, "authority", parseSpec("collection-action.ts", source).temporal)).toEqual([]);
+
+    const wrong = source.replace("owners.add(2)", "owners.add(3)");
+    expect(validateRefinementActionBodies("wrong-collection.ts", wrong, "authority", parseSpec("wrong-collection.ts", wrong).temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "addOwner", target: "authority" }),
+    );
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

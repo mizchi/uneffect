@@ -338,6 +338,7 @@ export function validateRefinementActionBodies(
   const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
+  const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
   const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
@@ -495,6 +496,35 @@ export function validateRefinementActionBodies(
         if (!collect(helper.body, helperReceiver, undefined, new Map(), updates, helperLocals, new Set([...activeCalls, callKey]), true)) return undefined;
         if (terminalReturn) return updates;
         continue;
+      }
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        const [target, ...fields] = refinementFieldPath(node.expression.expression, receiver, substitutions) ?? [];
+        let targetType = target ? stateTypes.get(target) : undefined;
+        for (const field of fields) {
+          if (!targetType || typeof targetType === "string" || targetType.kind !== "record") { targetType = undefined; break; }
+          targetType = targetType.fields[field];
+        }
+        if (target && stateNames.has(target) && targetType && node.expression.name.text === "add"
+          && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1) {
+          const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          if (!element) return undefined;
+          writePath(target, fields, {
+            kind: "method", receiver: readPath(target, fields), name: "union",
+            arguments: [{ kind: "call", name: "Set", arguments: [expandLocalSnapshots(resolveCurrentState(element))] }],
+          });
+          continue;
+        }
+        if (target && stateNames.has(target) && targetType && node.expression.name.text === "set"
+          && typeof targetType !== "string" && targetType.kind === "map" && node.arguments.length === 2) {
+          const key = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const value = normalizeRefinementExpression(node.arguments[1]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          if (!key || !value) return undefined;
+          writePath(target, fields, {
+            kind: "method", receiver: readPath(target, fields), name: "put",
+            arguments: [expandLocalSnapshots(resolveCurrentState(key)), expandLocalSnapshots(resolveCurrentState(value))],
+          });
+          continue;
+        }
       }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
         && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === receiver && runtimeClass) {
