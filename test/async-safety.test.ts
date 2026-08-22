@@ -616,4 +616,26 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain("action await_resume_finally");
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("sequences multiple awaited Promise chains before async disposal", () => {
+    const result = analyzeAsyncSafety("multiple-awaits.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Promise<Resource>
+      async function run() {
+        await using resource = await open()
+        await Promise.resolve("first").then(value => value)
+        await Promise.resolve("second").then(value => value)
+      }
+    `);
+    const awaited = result.promises.filter((item) => item.owner === "run" && item.observation === "await" && item.promiseChain !== undefined);
+    expect(awaited).toHaveLength(2);
+    const quint = generateUnifiedAsyncQuint("multiple_awaits", result, "run");
+    const first = awaited[0]!.promiseChain!;
+    const second = awaited[1]!.promiseChain!;
+    expect(quint).toContain(`action promise_${first}_fulfill`);
+    expect(quint).toContain(`action await_${first}_resume_next`);
+    expect(quint).toContain(`action promise_${second}_fulfill`);
+    expect(quint.indexOf(`action promise_${first}_fulfill`)).toBeLessThan(quint.indexOf(`action promise_${second}_fulfill`));
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

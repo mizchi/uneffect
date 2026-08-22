@@ -289,6 +289,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Preserve concrete catch/finally statement sequencing in the unified graph.
   - [x] Lower the single-function unified graph into one Quint transition module.
   - [ ] Generalize unified lowering to multiple awaited chains, nested scopes, and arbitrary control-flow joins.
+    - [x] Give sequential awaited chains distinct wait/resume states and preserve their source order before cleanup.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

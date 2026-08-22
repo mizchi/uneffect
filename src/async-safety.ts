@@ -774,11 +774,14 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
 export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean } = {}): string {
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
-  const awaited = result.promises.filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined);
+  const awaited = result.promises
+    .filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined)
+    .sort((left, right) => left.span.start - right.span.start);
   const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
-  const waitPc = resources.length, resumePc = waitPc + 1, catchPc = waitPc + 2;
+  const firstWaitPc = resources.length;
+  const catchPc = firstWaitPc + awaited.length * 2;
   const afterCatchPc = catchPc + catchStatements.length, finallyPc = afterCatchPc + 1;
   const cleanupPc = finallyPc + finallyStatements.length, completePc = cleanupPc + disposals.length;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
@@ -798,14 +801,20 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     emit(`acquire_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(index + 1)], [`acquired_${index}`, "true"]]));
     emit(`acquire_fail_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
   });
-  for (const observation of awaited) {
+  awaited.forEach((observation, awaitIndex) => {
     const chain = observation.promiseChain!;
+    const waitPc = firstWaitPc + awaitIndex * 2;
+    const resumePc = waitPc + 1;
     emit(`promise_${chain}_fulfill`, [`pc == ${waitPc}`], new Map([["pc", String(resumePc)]]));
     const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${waitPc}`], rejectionUpdates);
-  }
-  emit(finallyStatements.length ? "await_resume_finally" : "await_resume_return", [`pc == ${resumePc}`], new Map([["pc", String(finallyPc)]]));
+    const isLast = awaitIndex === awaited.length - 1;
+    const resumeName = awaited.length === 1
+      ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"
+      : isLast ? `await_${chain}_resume_${finallyStatements.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
+    emit(resumeName, [`pc == ${resumePc}`], new Map([["pc", String(isLast ? finallyPc : resumePc + 1)]]));
+  });
   catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
   emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(finallyPc)]]));
   finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));

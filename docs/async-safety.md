@@ -422,6 +422,12 @@ recovered paths traverse the finally sequence before resource cleanup. This
 preserves ordering without pretending that arbitrary statement bodies have
 already been semantically interpreted.
 
+Sequential awaited chains receive separate wait and resume states in source
+order. A fulfilled chain advances only to the next await; only the final
+fulfilled chain may enter finally/cleanup. Rejection still follows the
+chain-local caught-or-escaping classification. This is a straight-line model:
+awaits selected by branches or loops do not yet have CFG-derived join states.
+
 ```sh
 just spec-resource-quint examples/resources.ts
 ```
@@ -442,5 +448,5 @@ Quint projection still uses an abstract completion state. The model records
 all exit kinds conservatively. Unified control edges connect Promise chains,
 await/catch, scope exits, and disposal failures. The initial single-function
 Quint lowering and concrete catch/finally statement ordering are implemented;
-multiple awaited chains, arbitrary nested regions, and general control-flow
-joins remain outside this slice.
+straight-line multiple-await sequencing is also implemented. Arbitrary nested
+regions and general control-flow joins remain outside this slice.
