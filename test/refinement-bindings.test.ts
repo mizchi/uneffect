@@ -948,7 +948,7 @@ describe("annotated refinement bindings", () => {
       /* uneffect: refinement arraySet@1 action clearSubscribers */
       export function clearSubscribers(runtime: Runtime): void { runtime.routing.activeSubscriberIds.length = 0 }
       /* uneffect: refinement arraySet@1 invariant primaryPresent */
-      export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.includes(1) }
+      export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.some(id => { return (id === 1) }) }
       /* uneffect: refinement arraySet@1 invariant nonEmpty */
       export function nonEmpty(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.length > 0 }
     `;
@@ -1003,7 +1003,7 @@ describe("annotated refinement bindings", () => {
       expect(validateRefinementActionBodiesInProgram(wrongActionProgram, fileName, "arraySet", spec)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "admit", target: "subscribers" }),
       );
-      const wrongInvariant = source.replace("activeSubscriberIds.includes(1)", "activeSubscriberIds.includes(2)");
+      const wrongInvariant = source.replace("id === 1", "id === 2");
       writeFileSync(fileName, wrongInvariant);
       const wrongInvariantProgram = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,

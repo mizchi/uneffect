@@ -174,6 +174,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Add a proof-directed `Set(arrayPath)` computed abstraction with builtin `Array.from`/`new Set` boundaries and `push`/`includes` action/invariant refinement.
           - [x] Close the basic array-backed Set update/read fragment with exact builtin `filter(item => item !== value)`, `length = 0`, and `length` normalization while rejecting general callbacks and array mutations.
           - [x] Accept a single-return filter callback block and immutable action-local deletion snapshots while rejecting mutable captures and general callback statements.
+          - [x] Normalize TypeChecker-identified builtin `array.some(item => item === value)` membership, including a one-return callback block, through `Set(arrayPath)` abstractions.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

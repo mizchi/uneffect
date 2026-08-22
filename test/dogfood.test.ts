@@ -59,6 +59,15 @@ describe("Uneffect dogfood", () => {
       expect(await validateRefinementActionBodiesInProgramWithZ3(mutableFilterProgram, wrongFile, "routingState", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "unsubscribePrimary" }),
       );
+      const wrongMembership = source.replace("id === 1", "id === 2");
+      writeFileSync(wrongFile, wrongMembership);
+      const wrongMembershipProgram = ts.createProgram([wrongFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(await validateRefinementInvariantBodiesInProgramWithZ3(wrongMembershipProgram, wrongFile, "routingState", temporal)).toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primarySubscribed" }),
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -298,7 +298,20 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
   if (expression.kind === "field") return { ...expression, receiver: canonicalizeAbstractionExpression(expression.receiver, abstraction) };
   if (expression.kind === "lambda") return { ...expression, body: canonicalizeAbstractionExpression(expression.body, abstraction) };
   if (expression.kind === "call") return { ...expression, arguments: expression.arguments.map((item) => canonicalizeAbstractionExpression(item, abstraction)) };
-  return { ...expression, receiver: canonicalizeAbstractionExpression(expression.receiver, abstraction), arguments: expression.arguments.map((item) => canonicalizeAbstractionExpression(item, abstraction)) };
+  const receiver = canonicalizeAbstractionExpression(expression.receiver, abstraction);
+  const args = expression.arguments.map((item) => canonicalizeAbstractionExpression(item, abstraction));
+  if (expression.name === "exists" && receiver.kind === "name"
+    && parseAbstractionValue(abstraction.get(receiver.name) ?? receiver.name).kind === "set-from-array"
+    && args.length === 1 && args[0]?.kind === "lambda" && args[0].body.kind === "binary" && args[0].body.operator === "eq") {
+    const parameter = args[0].parameter;
+    const leftIsParameter = args[0].body.left.kind === "name" && args[0].body.left.name === parameter;
+    const rightIsParameter = args[0].body.right.kind === "name" && args[0].body.right.name === parameter;
+    if (leftIsParameter !== rightIsParameter) return {
+      kind: "method", receiver, name: "contains",
+      arguments: [leftIsParameter ? args[0].body.right : args[0].body.left],
+    };
+  }
+  return { ...expression, receiver, arguments: args };
 }
 
 function refinementFieldPath(
@@ -419,6 +432,27 @@ function normalizeRefinementExpression(
     && isDeclarationFileSymbol(checker, node.expression.name, node.expression.name.text)) {
     const from = node.expression.expression;
     const callback = node.arguments[0];
+    const fromType = checker?.getTypeAtLocation(from);
+    const fromSymbol = fromType?.getSymbol() ?? fromType?.aliasSymbol;
+    const builtinArray = fromSymbol?.getName() === "Array"
+      && (fromSymbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+    if (builtinArray && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
+      && ts.isIdentifier(callback.parameters[0]!.name)) {
+      const collection = normalizeRefinementExpression(from, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+      const parameter = callback.parameters[0]!.name.text;
+      const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
+      const callbackExpression = ts.isBlock(callback.body)
+        ? callback.body.statements.length === 1 && ts.isReturnStatement(callback.body.statements[0]!)
+          ? callback.body.statements[0]!.expression : undefined
+        : callback.body;
+      const body = callbackExpression
+        ? normalizeRefinementExpression(callbackExpression, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)
+        : undefined;
+      if (collection && body) return {
+        kind: "method", receiver: collection, name: node.expression.name.text === "some" ? "exists" : "forall",
+        arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
+      };
+    }
     if (ts.isCallExpression(from) && ts.isPropertyAccessExpression(from.expression)
       && ts.isIdentifier(from.expression.expression) && from.expression.expression.text === "Array"
       && from.expression.name.text === "from" && from.arguments.length === 1

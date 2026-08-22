@@ -47,7 +47,9 @@ export function clearSubscribers(runtime: RoutingRuntime): void {
 
 /* uneffect: refinement routingState@1 invariant primarySubscribed */
 export function primarySubscribed(runtime: RoutingRuntime): boolean {
-  return runtime.routing.activeSubscriberIds.includes(1);
+  return runtime.routing.activeSubscriberIds.some((id) => {
+    return id === 1;
+  });
 }
 
 /* uneffect: refinement routingState@1 invariant hasSubscribers */

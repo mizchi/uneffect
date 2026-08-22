@@ -124,7 +124,9 @@ computed relation: a temporal `Set<T>` is represented by a mutable concrete
 `new Set(runtimeArray)`, `push(value)` refines Set union, an exact
 `array = array.filter(item => item !== value)` refines Set difference,
 `array.length = 0` refines Set clearing, and `includes(value)`/`length` refine
-membership/size reads. Array order and duplicate entries are deliberately outside
+membership/size reads. Builtin `array.some(item => item === value)`, including a
+block containing one direct return, is canonicalized to the same membership
+predicate. Array order and duplicate entries are deliberately outside
 the abstract observation. These builtins are accepted only through the
 Program-backed TypeChecker path. The relation is one-to-one, and concrete paths may
 share parents but may not overlap as prefixes. The Program-backed checker verifies
