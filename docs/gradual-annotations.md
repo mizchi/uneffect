@@ -157,6 +157,12 @@ Map receivers. Value filtering, entry replacement, value
 lookup, duplicate-key ordering, and general iterable conversions are not yet
 proofs.
 
+Builtin `entries.every(entry => predicate(entry[1]))` and `some` are projected
+to temporal Map value `forall`/`exists` when the callback does not otherwise
+observe the tuple or its key. Lambda comparison is alpha-equivalent, so model
+and implementation parameter names need not match; free variables remain
+distinct.
+
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to
 removed action or invariant names. Liveness properties are excluded because an

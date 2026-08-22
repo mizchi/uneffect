@@ -6,6 +6,7 @@
   action clearEpochs: epochs' = Map([])
   temporal primaryPresent: epochs.keys().contains(1)
   temporal hasEpochs: epochs.size() > 0
+  temporal nonNegativeEpochs: epochs.values().forall(epoch => epoch >= 0)
   abstraction persistedEpochs@1 epochs = Map(storage.epochEntries)
 */
 
@@ -50,4 +51,9 @@ export function primaryEpochPresent(runtime: PersistedEpochRuntime): boolean {
 /* uneffect: refinement persistedEpochs@1 invariant hasEpochs */
 export function hasPersistedEpochs(runtime: PersistedEpochRuntime): boolean {
   return runtime.storage.epochEntries.length > 0;
+}
+
+/* uneffect: refinement persistedEpochs@1 invariant nonNegativeEpochs */
+export function nonNegativePersistedEpochs(runtime: PersistedEpochRuntime): boolean {
+  return runtime.storage.epochEntries.every((entry) => entry[1] >= 0);
 }

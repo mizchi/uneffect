@@ -36,6 +36,13 @@ retained in the generated refinement manifest. Wrong Set elements, redirected
 observations, stale relation versions, and incompatible concrete element types
 remain failures rather than inferred mappings.
 
+The persisted-epoch dogfood applies the same contract to a temporal
+`Map<int, int>` represented by `storage.epochEntries: Array<[number, number]>`
+through `Map(storage.epochEntries)`. It checks create/observe conversion,
+append-as-put, key-filter deletion, clearing, key membership, and size. Wrong
+tuple types, changed keys or values, value-based filtering, non-zero length
+assignment, and syntax-only builtin guesses remain diagnostics or unknowns.
+
 ## Working rule
 
 New implementation work starts by adding or tightening a relevant acceptance

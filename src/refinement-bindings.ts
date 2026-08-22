@@ -231,7 +231,23 @@ function formatRefinementExpression(expression: TemporalExpression): string {
 }
 
 function refinementExpressionKey(expression: TemporalExpression): string {
-  return JSON.stringify(expression, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+  const alphaNormalize = (value: TemporalExpression, bindings: ReadonlyMap<string, string> = new Map()): TemporalExpression => {
+    if (value.kind === "name") return { ...value, name: bindings.get(value.name) ?? value.name };
+    if (value.kind === "integer" || value.kind === "boolean") return value;
+    if (value.kind === "unary") return { ...value, operand: alphaNormalize(value.operand, bindings) };
+    if (value.kind === "binary") return { ...value, left: alphaNormalize(value.left, bindings), right: alphaNormalize(value.right, bindings) };
+    if (value.kind === "conditional") return { ...value, condition: alphaNormalize(value.condition, bindings), whenTrue: alphaNormalize(value.whenTrue, bindings), whenFalse: alphaNormalize(value.whenFalse, bindings) };
+    if (value.kind === "array") return { ...value, elements: value.elements.map((item) => alphaNormalize(item, bindings)) };
+    if (value.kind === "record") return { ...value, ...(value.base ? { base: alphaNormalize(value.base, bindings) } : {}), fields: Object.fromEntries(Object.entries(value.fields).map(([name, field]) => [name, alphaNormalize(field, bindings)])) };
+    if (value.kind === "field") return { ...value, receiver: alphaNormalize(value.receiver, bindings) };
+    if (value.kind === "lambda") {
+      const canonical = `\u0000bound:${bindings.size}`;
+      return { ...value, parameter: canonical, body: alphaNormalize(value.body, new Map(bindings).set(value.parameter, canonical)) };
+    }
+    if (value.kind === "call") return { ...value, arguments: value.arguments.map((item) => alphaNormalize(item, bindings)) };
+    return { ...value, receiver: alphaNormalize(value.receiver, bindings), arguments: value.arguments.map((item) => alphaNormalize(item, bindings)) };
+  };
+  return JSON.stringify(alphaNormalize(expression), (_key, value) => value && typeof value === "object" && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
     : value);
 }
@@ -319,6 +335,36 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
     if (abstractionKind === "map-from-entries" && leftIsKey !== rightIsKey) return {
       kind: "method", receiver: { kind: "method", receiver, name: "keys", arguments: [] }, name: "contains",
       arguments: [leftIsKey ? args[0].body.right : args[0].body.left],
+    };
+  }
+  if ((expression.name === "forall" || expression.name === "exists") && receiver.kind === "name"
+    && parseAbstractionValue(abstraction.get(receiver.name) ?? receiver.name).kind === "map-from-entries"
+    && args.length === 1 && args[0]?.kind === "lambda") {
+    const parameter = args[0].parameter;
+    const rewriteValue = (value: TemporalExpression): TemporalExpression | undefined => {
+      if (value.kind === "field" && value.name === "1" && value.receiver.kind === "name" && value.receiver.name === parameter) {
+        return { kind: "name", name: parameter };
+      }
+      if (value.kind === "name") return value.name === parameter ? undefined : value;
+      if (value.kind === "integer" || value.kind === "boolean") return value;
+      if (value.kind === "unary") { const operand = rewriteValue(value.operand); return operand ? { ...value, operand } : undefined; }
+      if (value.kind === "binary") { const left = rewriteValue(value.left), right = rewriteValue(value.right); return left && right ? { ...value, left, right } : undefined; }
+      if (value.kind === "conditional") {
+        const condition = rewriteValue(value.condition), whenTrue = rewriteValue(value.whenTrue), whenFalse = rewriteValue(value.whenFalse);
+        return condition && whenTrue && whenFalse ? { ...value, condition, whenTrue, whenFalse } : undefined;
+      }
+      if (value.kind === "field") { const nestedReceiver = rewriteValue(value.receiver); return nestedReceiver ? { ...value, receiver: nestedReceiver } : undefined; }
+      if (value.kind === "array") { const elements = value.elements.map(rewriteValue); return elements.every((item): item is TemporalExpression => !!item) ? { ...value, elements } : undefined; }
+      if (value.kind === "record") return undefined;
+      if (value.kind === "lambda") return undefined;
+      if (value.kind === "call") { const callArgs = value.arguments.map(rewriteValue); return callArgs.every((item): item is TemporalExpression => !!item) ? { ...value, arguments: callArgs } : undefined; }
+      const methodReceiver = rewriteValue(value.receiver), methodArgs = value.arguments.map(rewriteValue);
+      return methodReceiver && methodArgs.every((item): item is TemporalExpression => !!item) ? { ...value, receiver: methodReceiver, arguments: methodArgs } : undefined;
+    };
+    const body = rewriteValue(args[0].body);
+    if (body) return {
+      kind: "method", receiver: { kind: "method", receiver, name: "values", arguments: [] }, name: expression.name,
+      arguments: [{ kind: "lambda", parameter, body }],
     };
   }
   return { ...expression, receiver, arguments: args };

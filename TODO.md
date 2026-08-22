@@ -155,7 +155,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Require Program-backed create/observe parameter and return types to match temporal scalar/nested-record state; reject `any`, `unknown`, optional/missing fields, and scalar-kind mismatches.
       - [x] Match temporal Set/Map state to exact builtin TypeScript collection symbols and compatible element/key/value types; accept transparent aliases while rejecting readonly variants, subclasses, and lookalikes.
       - [x] Canonicalize complete nested-record reconstruction at create/observe boundaries from temporal field types; reject missing, extra, or redirected nested fields.
-      - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
+      - [ ] Generalize refinement mapping from the currently proven TypeScript fragments to arbitrary adjacent implementation updates and temporal model actions; current dogfood verifies the supported fragments rather than the whole language.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map add, set, delete, and clear operations, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic TypeChecker-resolved direct/namespace helpers and immutable aliases, and terminal returns to general loops, branch-local abrupt completion, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in.
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
@@ -179,6 +179,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Add proof-directed `Map(entriesPath)` create/observe projection for builtin mutable `[K, V][]` storage and refine exact `push([key, value])` to temporal `put`.
           - [x] Refine exact entry-array key filtering to temporal Map removal and exact key equality `some` predicates to Map key membership.
           - [x] Refine entry-array `length = 0`/`length` to Map clear/size and support typed temporal `Map.size()` across runtime and Quint lowering.
+          - [x] Refine entry-array value-only `every`/`some` predicates to Map value quantifiers and compare lambda bodies alpha-equivalently.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
