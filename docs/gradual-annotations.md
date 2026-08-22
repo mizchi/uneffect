@@ -148,9 +148,12 @@ relations remain explicit non-proofs.
 `Map<K, V>` stored as a mutable builtin `Array<[K, V]>`. Create uses builtin
 `Array.from(modelMap)`, observe uses builtin `new Map(runtimeEntries)`, and an
 exact builtin `entries.push([key, value])` refines temporal `map.put(key,
-value)`. The Program-backed checker verifies the tuple arity and key/value
-types. Entry replacement, deletion/filtering, lookup predicates, duplicate-key
-ordering, and general iterable conversions are not yet proofs.
+value)`. Exact same-array `entries.filter(entry => entry[0] !== key)` refines
+`map.remove(key)`, while builtin `entries.some(entry => entry[0] === key)`
+refines `map.keys().contains(key)`. The Program-backed checker verifies the
+tuple arity and key/value types. Value filtering, entry replacement, value
+lookup, duplicate-key ordering, and general iterable conversions are not yet
+proofs.
 
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to

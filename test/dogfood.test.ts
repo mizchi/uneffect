@@ -123,6 +123,7 @@ describe("Uneffect dogfood", () => {
     expect(validateRefinementBindingCoverage(fileName, source, "persistedEpochs", temporal)).toEqual([]);
     expect(validateRefinementStateProjectionInProgram(program, fileName, "persistedEpochs", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "persistedEpochs", temporal)).toEqual([]);
 
     const directory = mkdtempSync(join(tmpdir(), "uneffect-map-entries-dogfood-"));
     const wrongFile = join(directory, "persisted-epoch-entries.ts");
@@ -135,6 +136,15 @@ describe("Uneffect dogfood", () => {
       });
       expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "persistedEpochs", temporal)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "addFallback", target: "epochs" }),
+      );
+      const wrongRemoval = source.replace("entry[0] !== 1", "entry[0] !== 2");
+      writeFileSync(wrongFile, wrongRemoval);
+      const wrongRemovalProgram = ts.createProgram([wrongFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongRemovalProgram, wrongFile, "persistedEpochs", temporal)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "removePrimary", target: "epochs" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

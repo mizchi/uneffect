@@ -1061,6 +1061,8 @@ describe("annotated refinement bindings", () => {
       state epochs: Map<int, int>
       init epochs = Map([[1, 0]])
       action addFallback: epochs' = epochs.put(2, 1)
+      action removePrimary: epochs' = epochs.remove(1)
+      temporal primaryPresent: epochs.keys().contains(1)
       abstraction mapEntries@1 epochs = Map(storage.epochEntries)
     */
       interface ModelState { epochs: Map<number, number> }
@@ -1071,6 +1073,10 @@ describe("annotated refinement bindings", () => {
       export function observe(runtime: Runtime): ModelState { return { epochs: new Map(runtime.storage.epochEntries) } }
       /* uneffect: refinement mapEntries@1 action addFallback */
       export function addFallback(runtime: Runtime): void { runtime.storage.epochEntries.push([2, 1]) }
+      /* uneffect: refinement mapEntries@1 action removePrimary */
+      export function removePrimary(runtime: Runtime): void { runtime.storage.epochEntries = runtime.storage.epochEntries.filter(entry => entry[0] !== 1) }
+      /* uneffect: refinement mapEntries@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime): boolean { return runtime.storage.epochEntries.some(entry => entry[0] === 1) }
     `;
     try {
       writeFileSync(fileName, source);
@@ -1081,6 +1087,7 @@ describe("annotated refinement bindings", () => {
       expect(buildRefinementBindingManifest(fileName, source, "mapEntries").abstractions).toEqual({ epochs: "Map(storage.epochEntries)" });
       expect(validateRefinementStateProjectionInProgram(program, fileName, "mapEntries", spec)).toEqual([]);
       expect(validateRefinementActionBodiesInProgram(program, fileName, "mapEntries", spec)).toEqual([]);
+      expect(validateRefinementInvariantBodiesInProgram(program, fileName, "mapEntries", spec)).toEqual([]);
       const wrongAction = source.replace("push([2, 1])", "push([2, 2])");
       writeFileSync(fileName, wrongAction);
       const wrongActionProgram = ts.createProgram([fileName], {
@@ -1088,6 +1095,30 @@ describe("annotated refinement bindings", () => {
       });
       expect(validateRefinementActionBodiesInProgram(wrongActionProgram, fileName, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "addFallback", target: "epochs" }),
+      );
+      const wrongRemoval = source.replace("entry[0] !== 1", "entry[0] !== 2");
+      writeFileSync(fileName, wrongRemoval);
+      const wrongRemovalProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongRemovalProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "removePrimary", target: "epochs" }),
+      );
+      const valueFilter = source.replace("entry[0] !== 1", "entry[1] !== 1");
+      writeFileSync(fileName, valueFilter);
+      const valueFilterProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(valueFilterProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "removePrimary" }),
+      );
+      const wrongLookup = source.replace("entry[0] === 1", "entry[0] === 2");
+      writeFileSync(fileName, wrongLookup);
+      const wrongLookupProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(wrongLookupProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryPresent" }),
       );
       expect(validateRefinementActionBodies(fileName, source, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "addFallback" }),

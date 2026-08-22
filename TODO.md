@@ -177,6 +177,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Normalize TypeChecker-identified builtin `array.some(item => item === value)` membership, including a one-return callback block, through `Set(arrayPath)` abstractions.
           - [x] Refine builtin array-backed Set `every`/`some` quantifiers with declaration-ordered immutable callback locals while rejecting mutable locals and general statements.
           - [x] Add proof-directed `Map(entriesPath)` create/observe projection for builtin mutable `[K, V][]` storage and refine exact `push([key, value])` to temporal `put`.
+          - [x] Refine exact entry-array key filtering to temporal Map removal and exact key equality `some` predicates to Map key membership.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

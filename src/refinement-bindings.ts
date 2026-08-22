@@ -303,14 +303,22 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
   const receiver = canonicalizeAbstractionExpression(expression.receiver, abstraction);
   const args = expression.arguments.map((item) => canonicalizeAbstractionExpression(item, abstraction));
   if (expression.name === "exists" && receiver.kind === "name"
-    && parseAbstractionValue(abstraction.get(receiver.name) ?? receiver.name).kind === "set-from-array"
     && args.length === 1 && args[0]?.kind === "lambda" && args[0].body.kind === "binary" && args[0].body.operator === "eq") {
+    const abstractionKind = parseAbstractionValue(abstraction.get(receiver.name) ?? receiver.name).kind;
     const parameter = args[0].parameter;
     const leftIsParameter = args[0].body.left.kind === "name" && args[0].body.left.name === parameter;
     const rightIsParameter = args[0].body.right.kind === "name" && args[0].body.right.name === parameter;
-    if (leftIsParameter !== rightIsParameter) return {
+    if (abstractionKind === "set-from-array" && leftIsParameter !== rightIsParameter) return {
       kind: "method", receiver, name: "contains",
       arguments: [leftIsParameter ? args[0].body.right : args[0].body.left],
+    };
+    const isKey = (value: TemporalExpression): boolean => value.kind === "field" && value.name === "0"
+      && value.receiver.kind === "name" && value.receiver.name === parameter;
+    const leftIsKey = isKey(args[0].body.left);
+    const rightIsKey = isKey(args[0].body.right);
+    if (abstractionKind === "map-from-entries" && leftIsKey !== rightIsKey) return {
+      kind: "method", receiver: { kind: "method", receiver, name: "keys", arguments: [] }, name: "contains",
+      arguments: [leftIsKey ? args[0].body.right : args[0].body.left],
     };
   }
   return { ...expression, receiver, arguments: args };
@@ -379,6 +387,10 @@ function normalizeRefinementExpression(
     const base = normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
     if (base && node.name.text === "size") return { kind: "method", receiver: base, name: "size", arguments: [] };
     if (base) return { kind: "field", receiver: base, name: node.name.text };
+  }
+  if (ts.isElementAccessExpression(node) && node.argumentExpression && ts.isNumericLiteral(node.argumentExpression)) {
+    const base = normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+    if (base) return { kind: "field", receiver: base, name: node.argumentExpression.text };
   }
   if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
     const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
@@ -890,15 +902,17 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isBinaryExpression(node)) {
         const rawLeftPath = refinementFieldPath(node.left, receiver, substitutions)?.join(".");
-        const setArrayRelation = rawLeftPath
+        const computedArrayRelation = rawLeftPath
           ? [...abstraction].find(([, value]) => {
               const parsed = parseAbstractionValue(value);
-              return parsed.kind === "set-from-array" && (rawLeftPath === parsed.path || rawLeftPath === `${parsed.path}.length`);
+              return parsed.kind === "set-from-array" && (rawLeftPath === parsed.path || rawLeftPath === `${parsed.path}.length`)
+                || parsed.kind === "map-from-entries" && rawLeftPath === parsed.path;
             })
           : undefined;
-        if (setArrayRelation) {
-          const [abstract, relation] = setArrayRelation;
-          const concretePath = parseAbstractionValue(relation).path;
+        if (computedArrayRelation) {
+          const [abstract, relation] = computedArrayRelation;
+          const parsedRelation = parseAbstractionValue(relation);
+          const concretePath = parsedRelation.path;
           if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return undefined;
           if (rawLeftPath === `${concretePath}.length`) {
             if (!ts.isNumericLiteral(node.right) || node.right.text !== "0") return undefined;
@@ -920,16 +934,22 @@ function validateRefinementActionBodiesInSource(
           if (!callbackExpression || !ts.isBinaryExpression(callbackExpression)
             || callbackExpression.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return undefined;
           const parameter = callback.parameters[0]!.name.text;
-          const leftIsParameter = ts.isIdentifier(callbackExpression.left) && callbackExpression.left.text === parameter;
-          const rightIsParameter = ts.isIdentifier(callbackExpression.right) && callbackExpression.right.text === parameter;
-          if (leftIsParameter === rightIsParameter) return undefined;
-          const excludedNode = leftIsParameter ? callbackExpression.right : callbackExpression.left;
+          const matchesElement = (expression: ts.Expression): boolean => parsedRelation.kind === "set-from-array"
+            ? ts.isIdentifier(expression) && expression.text === parameter
+            : ts.isElementAccessExpression(expression) && ts.isIdentifier(expression.expression)
+              && expression.expression.text === parameter && !!expression.argumentExpression
+              && ts.isNumericLiteral(expression.argumentExpression) && expression.argumentExpression.text === "0";
+          const leftMatches = matchesElement(callbackExpression.left);
+          const rightMatches = matchesElement(callbackExpression.right);
+          if (leftMatches === rightMatches) return undefined;
+          const excludedNode = leftMatches ? callbackExpression.right : callbackExpression.left;
           const excluded = normalizeRefinementExpression(excludedNode, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues, checker);
           if (!excluded) return undefined;
-          writePath(abstract, [], {
+          const argument = expandLocalSnapshots(resolveCurrentState(excluded));
+          writePath(abstract, [], parsedRelation.kind === "set-from-array" ? {
             kind: "method", receiver: readPath(abstract, []), name: "exclude",
-            arguments: [{ kind: "call", name: "Set", arguments: [expandLocalSnapshots(resolveCurrentState(excluded))] }],
-          });
+            arguments: [{ kind: "call", name: "Set", arguments: [argument] }],
+          } : { kind: "method", receiver: readPath(abstract, []), name: "remove", arguments: [argument] });
           continue;
         }
         const [target, ...fields] = actionFieldPath(node.left, receiver, substitutions) ?? [];
