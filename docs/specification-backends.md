@@ -173,6 +173,10 @@ count grows quadratically with integer state count. When both states have
 constant integer initializers, it also generates coefficient-1 equality/order
 templates at their initial difference, such as `left === right + 2`. General
 coefficients, polyhedra, and collection relations remain unsupported.
+Same-shaped Set, Map, and record pairs have a separate equality-only template
+pool behind `synthesizeCollectionStrengtheningProperties` and
+`--synthesize-collection-strengthening`. Subset, quantified, and field-level
+relational templates remain unsupported.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
@@ -271,6 +275,7 @@ pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
 pnpm uneffect-spec lint examples/spec.ts --discover-strengthening
 pnpm uneffect-spec lint examples/spec.ts --synthesize-strengthening
 pnpm uneffect-spec lint examples/spec.ts --synthesize-relational-strengthening
+pnpm uneffect-spec lint examples/spec.ts --synthesize-collection-strengthening
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In

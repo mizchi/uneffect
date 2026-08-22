@@ -817,6 +817,29 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes equality invariants for collection state pairs", async () => {
+    const temporal = parseSpec("collection-strengthening.ts", `/* uneffect:
+      state left: Set<int>
+      state right: Set<int>
+      init left = Set(1)
+      init right = Set(1)
+      action growTogether: left' = left.union(Set(3)), right' = right.union(Set(3))
+      action corruptMalformed: left' = left.union(Set(2))
+      action_when corruptMalformed: left.contains(9) && !right.contains(9)
+      action impossible: left' = left
+      action_when impossible: left.contains(2) && !right.contains(2)
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:left === right>",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int
