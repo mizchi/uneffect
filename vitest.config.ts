@@ -1,11 +1,16 @@
 import { defineConfig } from "vitest/config";
+import { ciTestTiers, resolveCiTestIncludes, type CiTestTier } from "./ci/test-tiers.js";
+
+const requestedTier = process.env.UNEFFECT_CI_TIER as CiTestTier | undefined;
+if (requestedTier && !(requestedTier in ciTestTiers)) throw new Error(`unknown UNEFFECT_CI_TIER: ${requestedTier}`);
+const tierIncludes = resolveCiTestIncludes(requestedTier, process.argv);
 
 export default defineConfig({
   test: {
     // Vitest 4 no longer excludes the compiled outDir in this project by
     // default. The TypeScript sources are authoritative; testing dist as a
     // second stale suite doubles solver load and can execute old schemas.
-    include: ["**/*.test.ts"],
+    include: tierIncludes ? [...tierIncludes] : ["**/*.test.ts"],
     exclude: ["dist/**", "node_modules/**"],
     // Several integration tests spawn Quint/Z3. Bounding workers avoids CPU
     // oversubscription turning the default 5s timeout into nondeterministic CI failures.

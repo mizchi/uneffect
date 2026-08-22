@@ -15,14 +15,23 @@ check:
     cargo fmt --all --check
     cargo test --workspace
 
+ci-fast:
+    pnpm exec tsc -p tsconfig.json --noEmit
+    UNEFFECT_CI_TIER=fast pnpm vitest run
+    cargo fmt --all --check
+    cargo test --workspace
+
 formal:
     pnpm vitest run test/formal-models.test.ts
 
 formal-z3:
-    pnpm vitest run test/contracts.test.ts test/invariant-ir.test.ts test/spec-backends.test.ts
+    UNEFFECT_CI_TIER=z3 pnpm vitest run
 
 formal-quint:
-    pnpm vitest run test/formal-models.test.ts test/temporal-compose.test.ts test/ownership.test.ts
+    UNEFFECT_CI_TIER=quint pnpm vitest run
+
+formal-integration:
+    UNEFFECT_CI_TIER=integration pnpm vitest run
 
 formal-realtime:
     pnpm vitest run test/spec-backends.test.ts -t "guarded real-time"

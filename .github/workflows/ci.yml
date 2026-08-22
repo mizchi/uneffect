@@ -41,20 +41,7 @@ jobs:
           tar -xzf "$archive" -C "$bin_dir" just
           echo "$bin_dir" >> "$GITHUB_PATH"
       - run: pnpm install --frozen-lockfile
-      - &install-quint-evaluator
-        name: Install pinned Quint evaluator without GitHub API discovery
-        run: |
-          archive="$RUNNER_TEMP/quint-evaluator.tar.gz"
-          destination="$HOME/.quint/rust-evaluator-$QUINT_EVALUATOR_VERSION"
-          curl --fail --location --retry 3 --output "$archive" "https://github.com/informalsystems/quint/releases/download/evaluator%2F$QUINT_EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz"
-          echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check
-          install -d "$destination"
-          tar -xzf "$archive" -C "$destination"
-      - name: Install Z3 CLI
-        run: sudo apt-get update && sudo apt-get install --yes z3
-      - name: Warm Quint evaluator cache without worker races
-        run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
-      - run: just check
+      - run: just ci-fast
       - run: just build
       - run: just package-check
 
@@ -68,7 +55,6 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - *install-just
       - run: pnpm install --frozen-lockfile
-      - *install-quint-evaluator
       - name: Install Z3 CLI
         run: sudo apt-get update && sudo apt-get install --yes z3
       - run: just formal-z3
@@ -83,10 +69,37 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - *install-just
       - run: pnpm install --frozen-lockfile
-      - *install-quint-evaluator
+      - &install-quint-evaluator
+        name: Install pinned Quint evaluator without GitHub API discovery
+        run: |
+          archive="$RUNNER_TEMP/quint-evaluator.tar.gz"
+          destination="$HOME/.quint/rust-evaluator-$QUINT_EVALUATOR_VERSION"
+          curl --fail --location --retry 3 --output "$archive" "https://github.com/informalsystems/quint/releases/download/evaluator%2F$QUINT_EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz"
+          echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check
+          install -d "$destination"
+          tar -xzf "$archive" -C "$destination"
       - name: Warm Quint evaluator cache without worker races
         run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-quint
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        with: { version: 10.15.0 }
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with: { node-version: 24, cache: pnpm }
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with: { distribution: temurin, java-version: "21" }
+      - *install-just
+      - run: pnpm install --frozen-lockfile
+      - *install-quint-evaluator
+      - name: Install Z3 CLI
+        run: sudo apt-get update && sudo apt-get install --yes z3
+      - name: Warm Quint evaluator cache without worker races
+        run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
+      - run: just formal-integration
 
   exhaustive:
     runs-on: ubuntu-latest
