@@ -572,34 +572,43 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.forEachChild(node, visit);
     };
     visit(ownerNode.body);
-    const escapedAliases = new Map<ts.Symbol, { resource: ResourceBinding; alias: string; assignmentSpan: { start: number; end: number } }>();
-    const collectResourceAliases = (node: ts.Node): void => {
-      if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
-      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left) && ts.isIdentifier(node.right)) {
-        const resource = resourceSymbols.get(checker.getSymbolAtLocation(node.right)!);
-        const aliasSymbol = checker.getSymbolAtLocation(node.left);
-        if (resource && aliasSymbol) escapedAliases.set(aliasSymbol, { resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
-      }
-      ts.forEachChild(node, collectResourceAliases);
-    };
-    collectResourceAliases(ownerNode.body);
+    type ResourceAliasFact = { resource: ResourceBinding; alias: string; assignmentSpan: { start: number; end: number } };
+    const escapedAliases = new Map<ts.Symbol, ResourceAliasFact>();
     const reportedAliasUses = new Set<ts.Symbol>();
-    const collectDisposedAliasUses = (node: ts.Node): void => {
+    const aliasFact = (expression: ts.Expression | undefined): ResourceAliasFact | undefined => {
+      if (!expression || !ts.isIdentifier(expression)) return undefined;
+      const symbol = checker.getSymbolAtLocation(expression);
+      const resource = symbol && resourceSymbols.get(symbol);
+      return resource ? { resource, alias: expression.text, assignmentSpan: { start: expression.getStart(source), end: expression.getEnd() } }
+        : symbol ? escapedAliases.get(symbol) : undefined;
+    };
+    const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
+      if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(node.left)) {
+        const symbol = checker.getSymbolAtLocation(node.left), fact = aliasFact(node.right);
+        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+        else if (symbol && !isConditionalExecution(node)) escapedAliases.delete(symbol);
+        if (!ts.isIdentifier(node.right)) collectDisposedAliasFlow(node.right);
+        return;
+      }
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        const symbol = checker.getSymbolAtLocation(node.name), fact = aliasFact(node.initializer);
+        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+        if (node.initializer && !ts.isIdentifier(node.initializer)) collectDisposedAliasFlow(node.initializer);
+        return;
+      }
       if (ts.isIdentifier(node)) {
         const symbol = checker.getSymbolAtLocation(node), escaped = symbol && escapedAliases.get(symbol);
-        const writeOnly = ts.isBinaryExpression(node.parent) && node.parent.left === node && node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken;
         const declarationName = ts.isVariableDeclaration(node.parent) && node.parent.name === node;
-        if (symbol && escaped && writeOnly && node.parent.getStart(source) !== escaped.assignmentSpan.start && node.getStart(source) >= escaped.resource.scopeEnd) escapedAliases.delete(symbol);
-        if (symbol && escaped && !reportedAliasUses.has(symbol) && !writeOnly && !declarationName && node.getStart(source) >= escaped.resource.scopeEnd) {
+        if (symbol && escaped && !reportedAliasUses.has(symbol) && !declarationName && node.getStart(source) >= escaped.resource.scopeEnd) {
           const alias: ResourceAliasEscape = { owner, resource: escaped.resource.binding, alias: escaped.alias, assignmentSpan: escaped.assignmentSpan, useSpan: { start: node.getStart(source), end: node.getEnd() } };
           resourceAliases.push(alias); reportedAliasUses.add(symbol);
           diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
         }
       }
-      ts.forEachChild(node, collectDisposedAliasUses);
+      ts.forEachChild(node, collectDisposedAliasFlow);
     };
-    collectDisposedAliasUses(ownerNode.body);
+    collectDisposedAliasFlow(ownerNode.body);
     const uniqueGroups = [...new Set(bindingGroups.values())];
     for (const group of uniqueGroups) {
       const symbols = new Set([...bindingGroups].filter(([, value]) => value === group).map(([symbol]) => symbol));

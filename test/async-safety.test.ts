@@ -1455,4 +1455,84 @@ describe("async error and explicit resource safety", () => {
       functionName: "cleared", kind: "disposed-resource-use",
     }));
   });
+
+  it("propagates disposed resource identity through local alias chains", () => {
+    const result = analyzeAsyncSafety("transitive-resource-alias.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken() {
+        let first: Resource | undefined
+        let second: Resource | undefined
+        {
+          await using resource = open()
+          first = resource
+          second = first
+          await Promise.resolve()
+        }
+        second?.send()
+      }
+      async function killed() {
+        let first: Resource | undefined
+        let second: Resource | undefined
+        {
+          await using resource = open()
+          first = resource
+          second = first
+          await Promise.resolve()
+        }
+        second = undefined
+        second?.send()
+      }
+      async function killedUpstream() {
+        let first: Resource | undefined
+        let second: Resource | undefined
+        {
+          await using resource = open()
+          first = resource
+          await Promise.resolve()
+        }
+        first = undefined
+        second = first
+        second?.send()
+      }
+      async function usedThenKilled() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+          await Promise.resolve()
+        }
+        alias?.send()
+        alias = undefined
+      }
+      async function conditionallyKilled(clear: boolean) {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+          await Promise.resolve()
+        }
+        if (clear) alias = undefined
+        alias?.send()
+      }
+    `);
+    expect(result.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "broken", resource: "resource", alias: "second",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "broken", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "killed", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "killedUpstream", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "usedThenKilled", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "conditionallyKilled", kind: "disposed-resource-use",
+    }));
+  });
 });
