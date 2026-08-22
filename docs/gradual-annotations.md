@@ -133,16 +133,17 @@ Updates themselves remain syntactic in this API. This check covers transition
 updates and this early-return guard fragment, not arbitrary control flow.
 
 `validateRefinementInvariantBodies` checks the adjacent safety-property
-functions. A supported implementation is exactly one `return` whose expression
-uses runtime scalar fields, integer/boolean literals, arithmetic, strict
+functions. A supported implementation consists of zero or more immutable local
+`const` declarations followed by exactly one `return`. Initializers and the
+returned expression may use runtime scalar fields, integer/boolean literals, arithmetic, strict
 equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
 exactly equal the temporal property AST. Loose JavaScript equality is rejected
-because coercion would make the correspondence unsound. Local declarations,
-calls, mutation, collections, and merely logically equivalent but differently
+because coercion would make the correspondence unsound. Calls, mutable local
+declarations, mutation, collections, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous
 `validateRefinementInvariantBodiesWithZ3` path discharges such a mismatch only
 when Z3 proves the two normalized boolean expressions equivalent over all typed
-states. It does not make local declarations, calls, mutation, or collections
+states. It does not make calls, mutable declarations, mutation, or collections
 supported, and it preserves `unknown` as a diagnostic. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still

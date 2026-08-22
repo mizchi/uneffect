@@ -50,8 +50,9 @@ describe("Z3-backed refinement expression equivalence", () => {
       /* uneffect: refinement counter@1 action increment */
       export function increment(runtime: Runtime) { runtime.value += helper() }
       /* uneffect: refinement counter@1 invariant guarded */
-      export function guarded(runtime: Runtime) { const ok = !runtime.armed; return ok || runtime.value > 0 }
+      export function guarded(runtime: Runtime) { const ok = helperBool(runtime); return ok || runtime.value > 0 }
       declare function helper(): number
+      declare function helperBool(runtime: Runtime): boolean
     `;
     const spec = parseSpec("counter.ts", source).temporal;
     expect(await validateRefinementActionBodiesWithZ3("counter.ts", source, "counter", spec)).toContainEqual(

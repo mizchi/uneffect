@@ -192,11 +192,31 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([
       expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "guarded" }),
-      expect.objectContaining({ code: "unsupported-invariant-body", modelName: "unsupported", exportName: "unsupported" }),
       expect.objectContaining({ code: "unsupported-invariant-body", modelName: "strictZero", exportName: "strictZero" }),
       expect.objectContaining({ code: "missing-invariant-binding", modelName: "missing" }),
       expect.objectContaining({ code: "unknown-invariant-binding", modelName: "stale", exportName: "stale" }),
     ]);
+  });
+
+  it("proves immutable local scalar aliases in invariant bodies", () => {
+    const source = `/* uneffect:
+      state value: int
+      state armed: bool
+      init value = 0
+      init armed = false
+      temporal guarded: !armed || value > 0
+    */
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 invariant guarded */
+      export function guarded(runtime: Runtime) {
+        const enabled = runtime.armed;
+        const positive = runtime.value > 0;
+        return !enabled || positive;
+      }
+    `;
+    expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([]);
   });
 
   it("proves create/observe state projection and reports transformed or swapped fields", () => {

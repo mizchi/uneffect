@@ -374,9 +374,27 @@ export function validateRefinementInvariantBodies(
     const implementation = functions.get(exportName);
     const runtimeParameter = implementation?.parameters[0];
     const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
-    const statement = implementation?.body?.statements.length === 1 ? implementation.body.statements[0] : undefined;
-    const actual = receiver && statement && ts.isReturnStatement(statement) && statement.expression
-      ? normalizeRefinementExpression(statement.expression, receiver, new Map(), stateNames)
+    const statements = implementation?.body ? [...implementation.body.statements] : [];
+    const returned = statements.pop();
+    const substitutions = new Map<string, ts.Expression>();
+    let supportedLocals = true;
+    for (const statement of statements) {
+      if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
+        supportedLocals = false;
+        break;
+      }
+      for (const declaration of statement.declarationList.declarations) {
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer
+          || !normalizeRefinementExpression(declaration.initializer, receiver ?? "", substitutions, stateNames)) {
+          supportedLocals = false;
+          break;
+        }
+        substitutions.set(declaration.name.text, declaration.initializer);
+      }
+      if (!supportedLocals) break;
+    }
+    const actual = receiver && supportedLocals && returned && ts.isReturnStatement(returned) && returned.expression
+      ? normalizeRefinementExpression(returned.expression, receiver, substitutions, stateNames)
       : undefined;
     if (!actual) {
       diagnostics.push({ code: "unsupported-invariant-body", adapterName, modelName: property.name, exportName, message: `${exportName} is not a single supported scalar return predicate` });

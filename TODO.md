@@ -127,10 +127,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar invariant predicates without weakening unsupported-body diagnostics.
+      - [x] Normalize immutable local scalar constants and alias chains in invariant bindings without evaluating calls.
       - [x] Prove supported create/observe adapters preserve every model state field by name, including transparent local-class construction and destructured observation.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
         - [ ] Extend action-body refinement beyond the current straight-line scalar fragment to general branches, loops, multi-write sequencing, collections, and imported/interprocedural calls. Scalar guard equivalence is now solver-proven opt-in.
-        - [ ] Extend invariant-body refinement beyond normalized scalar predicates to local constants, helpers, and collections. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
+        - [ ] Extend invariant-body refinement beyond normalized scalar predicates and immutable local constants to helpers and collections. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
         - [ ] Extend create/observe refinement beyond identity field projections to explicit abstraction relations, nested records/collections, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
