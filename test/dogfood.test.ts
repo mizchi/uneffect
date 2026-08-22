@@ -25,7 +25,7 @@ describe("Uneffect dogfood", () => {
     const brokenFile = "examples/dogfood/retry-attempt-escape.ts";
     const broken = analyzeAsyncSafety(brokenFile, readFileSync(brokenFile, "utf8"));
     expect(broken.resourceAliases).toContainEqual(expect.objectContaining({
-      owner: "brokenRetry", resource: "attempt", alias: "retryState.forwardedAttempt",
+      owner: "brokenRetry", resource: "attempt", alias: "forwardedState.active.forwardedAttempt",
     }));
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",

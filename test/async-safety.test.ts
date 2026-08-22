@@ -1607,4 +1607,86 @@ describe("async error and explicit resource safety", () => {
       functionName: "conditionallyCleared", kind: "disposed-resource-use",
     }));
   });
+
+  it("tracks nested resource slots through local aggregate-root aliases", () => {
+    const result = analyzeAsyncSafety("nested-aggregate-resource-alias.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function nestedEscape() {
+        const state: { retry: { current?: Resource } } = { retry: {} }
+        {
+          await using resource = open()
+          state.retry.current = resource
+        }
+        state.retry.current?.send()
+      }
+      async function rootAliasEscape() {
+        const state: { retry: { current?: Resource } } = { retry: {} }
+        const forwarded = state
+        const finalState = forwarded
+        {
+          await using resource = open()
+          finalState.retry["current"] = resource
+        }
+        state.retry.current?.send()
+      }
+      async function clearedThroughRootAlias() {
+        const state: { retry: { current?: Resource } } = { retry: {} }
+        const forwarded = state
+        {
+          await using resource = open()
+          state.retry.current = resource
+        }
+        forwarded.retry.current = undefined
+        state.retry.current?.send()
+      }
+      async function clearedParent() {
+        const state: { retry: { current?: Resource } } = { retry: {} }
+        {
+          await using resource = open()
+          state.retry.current = resource
+        }
+        state.retry = {}
+        state.retry.current?.send()
+      }
+      async function reassignedRootAlias() {
+        const state: { current?: Resource } = {}
+        let forwarded = state
+        forwarded = {}
+        {
+          await using resource = open()
+          forwarded.current = resource
+        }
+        state.current?.send()
+      }
+      async function conditionallyReassignedRootAlias(clear: boolean) {
+        const state: { current?: Resource } = {}
+        let forwarded = state
+        {
+          await using resource = open()
+          forwarded.current = resource
+        }
+        if (clear) forwarded = {}
+        state.current?.send()
+      }
+    `);
+    expect(result.resourceAliases).toContainEqual(expect.objectContaining({
+      owner: "nestedEscape", resource: "resource", alias: "state.retry.current",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "rootAliasEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedThroughRootAlias", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedParent", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "reassignedRootAlias", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "conditionallyReassignedRootAlias", kind: "disposed-resource-use",
+    }));
+  });
 });

@@ -339,6 +339,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Diagnose direct outer-variable aliases used after their `using` resource's lexical disposal scope.
     - [x] Propagate resource identity through source-ordered local alias chains with conservative conditional kills.
     - [x] Track resource escape through static property and literal-index slots on local aggregate roots, including alias propagation and unconditional kills.
+    - [x] Canonicalize nested static access paths across local aggregate-root alias chains and invalidate descendant facts when a parent slot is overwritten.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

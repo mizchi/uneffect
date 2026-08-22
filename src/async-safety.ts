@@ -575,21 +575,43 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     type ResourceAliasFact = { resource: ResourceBinding; alias: string; assignmentSpan: { start: number; end: number } };
     const escapedAliases = new Map<ts.Symbol, ResourceAliasFact>();
     const escapedAggregateAliases = new Map<ts.Symbol, Map<string, ResourceAliasFact>>();
+    const aggregateRootAliases = new Map<ts.Symbol, ts.Symbol>();
     const reportedAliasUses = new Set<ts.Symbol | string>();
     type StaticSlot = { root: ts.Symbol; key: string; alias: string };
-    const staticSlot = (expression: ts.Expression): StaticSlot | undefined => {
-      if (ts.isPropertyAccessExpression(expression)) {
-        const root = ts.isIdentifier(expression.expression) ? checker.getSymbolAtLocation(expression.expression) : undefined;
-        return root ? { root, key: JSON.stringify(expression.name.text), alias: expression.getText(source) } : undefined;
+    const resolveAggregateRoot = (symbol: ts.Symbol): ts.Symbol => {
+      const seen = new Set<ts.Symbol>();
+      let current = symbol;
+      while (!seen.has(current)) {
+        seen.add(current);
+        const next = aggregateRootAliases.get(current);
+        if (!next) break;
+        current = next;
       }
-      if (ts.isElementAccessExpression(expression) && ts.isIdentifier(expression.expression) && expression.argumentExpression) {
+      return current;
+    };
+    const staticAccessPath = (expression: ts.Expression): { root: ts.Symbol; segments: string[] } | undefined => {
+      if (ts.isIdentifier(expression)) {
+        const symbol = checker.getSymbolAtLocation(expression);
+        return symbol ? { root: resolveAggregateRoot(symbol), segments: [] } : undefined;
+      }
+      if (ts.isPropertyAccessExpression(expression)) {
+        const parent = staticAccessPath(expression.expression);
+        return parent ? { root: parent.root, segments: [...parent.segments, JSON.stringify(expression.name.text)] } : undefined;
+      }
+      if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
         const argument = expression.argumentExpression;
         if (!ts.isStringLiteralLike(argument) && !ts.isNumericLiteral(argument)) return undefined;
-        const root = checker.getSymbolAtLocation(expression.expression);
-        const key = ts.isStringLiteralLike(argument) ? JSON.stringify(argument.text) : `#${argument.text}`;
-        return root ? { root, key, alias: expression.getText(source) } : undefined;
+        const parent = staticAccessPath(expression.expression);
+        return parent ? { root: parent.root, segments: [...parent.segments, JSON.stringify(argument.text)] } : undefined;
       }
       return undefined;
+    };
+    const staticSlot = (expression: ts.Expression): StaticSlot | undefined => {
+      if (!ts.isPropertyAccessExpression(expression) && !ts.isElementAccessExpression(expression)) return undefined;
+      const path = staticAccessPath(expression);
+      return path && path.segments.length > 0
+        ? { root: path.root, key: path.segments.join("/"), alias: expression.getText(source) }
+        : undefined;
     };
     const aliasFact = (expression: ts.Expression | undefined): ResourceAliasFact | undefined => {
       if (!expression) return undefined;
@@ -616,13 +638,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const symbol = checker.getSymbolAtLocation(node.left);
           if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
           else if (symbol && !isConditionalExecution(node)) escapedAliases.delete(symbol);
+          const rightSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
+          if (symbol && rightSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(rightSymbol));
+          else if (symbol && !isConditionalExecution(node)) aggregateRootAliases.delete(symbol);
         } else {
           const slot = staticSlot(node.left);
           if (slot && fact) {
             const slots = escapedAggregateAliases.get(slot.root) ?? new Map<string, ResourceAliasFact>();
+            for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
             slots.set(slot.key, { resource: fact.resource, alias: slot.alias, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
             escapedAggregateAliases.set(slot.root, slots);
-          } else if (slot && !isConditionalExecution(node)) escapedAggregateAliases.get(slot.root)?.delete(slot.key);
+          } else if (slot && !isConditionalExecution(node)) {
+            const slots = escapedAggregateAliases.get(slot.root);
+            if (slots) for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
+          }
         }
         if (!ts.isIdentifier(node.right)) collectDisposedAliasFlow(node.right);
         return;
@@ -630,6 +659,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const symbol = checker.getSymbolAtLocation(node.name), fact = aliasFact(node.initializer);
         if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+        const initializerSymbol = node.initializer && ts.isIdentifier(node.initializer) ? checker.getSymbolAtLocation(node.initializer) : undefined;
+        if (symbol && initializerSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(initializerSymbol));
         if (node.initializer && !ts.isIdentifier(node.initializer)) collectDisposedAliasFlow(node.initializer);
         return;
       }
