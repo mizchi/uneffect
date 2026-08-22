@@ -6,6 +6,7 @@
   action clearSubscribers: subscribers' = Set()
   temporal primarySubscribed: subscribers.contains(1)
   temporal hasSubscribers: subscribers.size() > 0
+  temporal allSubscriberIdsPositive: subscribers.forall(id => id > 0)
   abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds)
 */
 
@@ -55,4 +56,12 @@ export function primarySubscribed(runtime: RoutingRuntime): boolean {
 /* uneffect: refinement routingState@1 invariant hasSubscribers */
 export function hasSubscribers(runtime: RoutingRuntime): boolean {
   return runtime.routing.activeSubscriberIds.length > 0;
+}
+
+/* uneffect: refinement routingState@1 invariant allSubscriberIdsPositive */
+export function allSubscriberIdsPositive(runtime: RoutingRuntime): boolean {
+  return runtime.routing.activeSubscriberIds.every((id) => {
+    const minimum = 0;
+    return id > minimum;
+  });
 }

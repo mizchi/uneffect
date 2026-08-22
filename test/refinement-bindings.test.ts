@@ -933,6 +933,7 @@ describe("annotated refinement bindings", () => {
       action clearSubscribers: subscribers' = Set()
       temporal primaryPresent: subscribers.contains(1)
       temporal nonEmpty: subscribers.size() > 0
+      temporal allPositive: subscribers.forall(id => id > 0)
       abstraction arraySet@1 subscribers = Set(routing.activeSubscriberIds)
     */
       interface ModelState { subscribers: Set<number> }
@@ -951,6 +952,8 @@ describe("annotated refinement bindings", () => {
       export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.some(id => { return (id === 1) }) }
       /* uneffect: refinement arraySet@1 invariant nonEmpty */
       export function nonEmpty(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.length > 0 }
+      /* uneffect: refinement arraySet@1 invariant allPositive */
+      export function allPositive(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.every(id => { const minimum = 0; return id > minimum }) }
     `;
     try {
       writeFileSync(fileName, source);
@@ -1010,6 +1013,14 @@ describe("annotated refinement bindings", () => {
       });
       expect(validateRefinementInvariantBodiesInProgram(wrongInvariantProgram, fileName, "arraySet", spec)).toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryPresent" }),
+      );
+      const mutableQuantifierLocal = source.replace("const minimum = 0", "let minimum = 0");
+      writeFileSync(fileName, mutableQuantifierLocal);
+      const mutableQuantifierProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(mutableQuantifierProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allPositive" }),
       );
       const wrongType = source.replace("activeSubscriberIds: number[]", "activeSubscriberIds: boolean[]");
       writeFileSync(fileName, wrongType);

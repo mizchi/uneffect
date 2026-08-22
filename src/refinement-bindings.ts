@@ -441,12 +441,24 @@ function normalizeRefinementExpression(
       const collection = normalizeRefinementExpression(from, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
       const parameter = callback.parameters[0]!.name.text;
       const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
-      const callbackExpression = ts.isBlock(callback.body)
-        ? callback.body.statements.length === 1 && ts.isReturnStatement(callback.body.statements[0]!)
-          ? callback.body.statements[0]!.expression : undefined
-        : callback.body;
+      const callbackSubstitutions = new Map(substitutions);
+      let callbackExpression: ts.Expression | undefined;
+      if (ts.isBlock(callback.body)) {
+        const statements = [...callback.body.statements];
+        const returned = statements.pop();
+        if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
+        for (const statement of statements) {
+          if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+          for (const declaration of statement.declarationList.declarations) {
+            if (!ts.isIdentifier(declaration.name) || !declaration.initializer
+              || !normalizeRefinementExpression(declaration.initializer, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)) return undefined;
+            callbackSubstitutions.set(declaration.name.text, declaration.initializer);
+          }
+        }
+        callbackExpression = returned.expression;
+      } else callbackExpression = callback.body;
       const body = callbackExpression
-        ? normalizeRefinementExpression(callbackExpression, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)
+        ? normalizeRefinementExpression(callbackExpression, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)
         : undefined;
       if (collection && body) return {
         kind: "method", receiver: collection, name: node.expression.name.text === "some" ? "exists" : "forall",
