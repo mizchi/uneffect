@@ -113,6 +113,10 @@ unguarded temporal lookup is rejected as a partial operation. Changing either ob
 `invariant-expression-mismatch`. Z3 mismatch discharge consumes the retained
 normalized AST rather than reparsing the runtime-oriented diagnostic text, so
 collection spellings such as JavaScript `.has` cannot crash the verifier.
+The same adapter proves the authority subset
+`Array.from(owners).every(owner => allowedOwners.has(owner))` against temporal
+`owners.forall(owner => allowedOwners.contains(owner))`. Replacing the bound
+member with a constant is a negative control and fails refinement.
 
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,

@@ -216,6 +216,28 @@ function builtinCollectionKind(checker: ts.TypeChecker | undefined, node: ts.Exp
   return visit(checker.getTypeAtLocation(node));
 }
 
+function isDeclarationFileSymbol(checker: ts.TypeChecker | undefined, node: ts.Node, name: string): boolean {
+  if (!checker) return false;
+  let symbol = checker.getSymbolAtLocation(node);
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  return symbol?.getName() === name
+    && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+}
+
+function replaceRefinementName(expression: TemporalExpression, from: string, to: string): TemporalExpression {
+  if (expression.kind === "name") return expression.name === from ? { kind: "name", name: to } : expression;
+  if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+  if (expression.kind === "unary") return { ...expression, operand: replaceRefinementName(expression.operand, from, to) };
+  if (expression.kind === "binary") return { ...expression, left: replaceRefinementName(expression.left, from, to), right: replaceRefinementName(expression.right, from, to) };
+  if (expression.kind === "conditional") return { ...expression, condition: replaceRefinementName(expression.condition, from, to), whenTrue: replaceRefinementName(expression.whenTrue, from, to), whenFalse: replaceRefinementName(expression.whenFalse, from, to) };
+  if (expression.kind === "array") return { ...expression, elements: expression.elements.map((item) => replaceRefinementName(item, from, to)) };
+  if (expression.kind === "record") return { ...expression, ...(expression.base ? { base: replaceRefinementName(expression.base, from, to) } : {}), fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, replaceRefinementName(value, from, to)])) };
+  if (expression.kind === "field") return { ...expression, receiver: replaceRefinementName(expression.receiver, from, to) };
+  if (expression.kind === "lambda") return expression.parameter === from ? expression : { ...expression, body: replaceRefinementName(expression.body, from, to) };
+  if (expression.kind === "call") return { ...expression, arguments: expression.arguments.map((item) => replaceRefinementName(item, from, to)) };
+  return { ...expression, receiver: replaceRefinementName(expression.receiver, from, to), arguments: expression.arguments.map((item) => replaceRefinementName(item, from, to)) };
+}
+
 function refinementFieldPath(
   target: ts.Expression,
   receiver: string,
@@ -320,6 +342,28 @@ function normalizeRefinementExpression(
       fields[name] = value;
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === "every" && node.arguments.length === 1
+    && isDeclarationFileSymbol(checker, node.expression.name, "every")) {
+    const from = node.expression.expression;
+    const callback = node.arguments[0];
+    if (ts.isCallExpression(from) && ts.isPropertyAccessExpression(from.expression)
+      && ts.isIdentifier(from.expression.expression) && from.expression.expression.text === "Array"
+      && from.expression.name.text === "from" && from.arguments.length === 1
+      && isDeclarationFileSymbol(checker, from.expression.name, "from")
+      && builtinCollectionKind(checker, from.arguments[0]!) === "Set"
+      && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
+      && ts.isIdentifier(callback.parameters[0]!.name) && !ts.isBlock(callback.body)) {
+      const collection = normalizeRefinementExpression(from.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+      const parameter = callback.parameters[0]!.name.text;
+      const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
+      const body = normalizeRefinementExpression(callback.body, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
+      if (collection && body) return {
+        kind: "method", receiver: collection, name: "forall",
+        arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
+      };
+    }
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
     && node.expression.name.text === "has" && node.arguments.length === 1) {

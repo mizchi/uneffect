@@ -355,19 +355,23 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const validateProjection = futureApi("validateRefinementStateProjectionInProgram");
     const validateActions = futureApi("validateRefinementActionBodiesInProgramWithZ3");
     const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgramWithZ3");
+    const validateInvariantsWithoutTypes = futureApi("validateRefinementInvariantBodies");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-lease-"));
     const fileName = join(directory, "lease.ts");
     const source = `/* uneffect:
       state owners: Set<int>
+      state allowedOwners: Set<int>
       state epochs: Map<int, int>
       init owners = Set(1)
+      init allowedOwners = Set(1, 2)
       init epochs = Map([[1, 1]])
       action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1)
       temporal ownerPresent: owners.contains(1)
       temporal epochRegistered: epochs.keys().contains(1)
       temporal initialEpoch: epochs.keys().contains(1) && epochs.get(1) === 1
+      temporal ownersAllowed: owners.forall(owner => allowedOwners.contains(owner))
     */
-      interface Runtime { owners: Set<number>; epochs: Map<number, number> }
+      interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number> }
       /* uneffect: refinement lease@1 create */
       export function createLease(initial: Runtime): Runtime { return initial }
       /* uneffect: refinement lease@1 observe */
@@ -380,11 +384,16 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       export function epochRegistered(runtime: Runtime) { return runtime.epochs.has(1) }
       /* uneffect: refinement lease@1 invariant initialEpoch */
       export function initialEpoch(runtime: Runtime) { return runtime.epochs.has(1) && runtime.epochs.get(1) === 1 }
+      /* uneffect: refinement lease@1 invariant ownersAllowed */
+      export function ownersAllowed(runtime: Runtime) { return Array.from(runtime.owners).every(owner => runtime.allowedOwners.has(owner)) }
     `;
     try {
       writeFileSync(fileName, source);
       const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       const spec = (parseSpec(fileName, source) as { temporal: unknown }).temporal;
+      expect(validateInvariantsWithoutTypes(fileName, source, "lease", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "ownersAllowed" }),
+      );
       expect(validateProjection(program, fileName, "lease", spec)).toEqual([]);
       await expect(validateActions(program, fileName, "lease", spec)).resolves.toEqual([]);
       await expect(validateInvariants(program, fileName, "lease", spec)).resolves.toEqual([]);
@@ -406,6 +415,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenValueProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenValueProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "initialEpoch" }),
+      );
+      const brokenAuthority = source.replace("runtime.allowedOwners.has(owner)", "runtime.allowedOwners.has(2)");
+      writeFileSync(fileName, brokenAuthority);
+      const brokenAuthorityProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenAuthorityProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "ownersAllowed" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });

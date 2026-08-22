@@ -162,6 +162,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Normalize native `Set.has(value)` and `Set.size` predicates to temporal `contains` and `size`, while retaining mismatched members as refinement diagnostics.
           - [x] Normalize TypeChecker-identified builtin `Map.has(key)` to temporal `map.keys().contains(key)` and verify it in the collection-backed lease acceptance adapter.
           - [x] Support TypeChecker-identified builtin `Map.get(key)` only against a conjunctively membership-guarded temporal lookup, with Quint, runtime, replay, and Z3 lowering.
+          - [x] Normalize TypeChecker-identified `Array.from(Set).every` subset predicates to temporal `Set.forall` with capture-safe callback binding.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
