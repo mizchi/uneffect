@@ -149,8 +149,14 @@ function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): Tempo
     if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
     return [{ name: `${left.name} === ${right.name}`, expression: `${left.name} === ${right.name}` }];
   }));
-  const setViews = collections.flatMap(({ name, type }) => type.kind === "set" ? [{ name, type }]
-    : type.kind === "map" && type.key !== "never" ? [{ name: `${name}.keys()`, type: { kind: "set", element: type.key } as const }] : []);
+  const setViews = collections.flatMap(({ name, type }) => {
+    if (type.kind === "set") return [{ name, type }];
+    if (type.kind !== "map") return [];
+    return [
+      ...(type.key !== "never" ? [{ name: `${name}.keys()`, type: { kind: "set", element: type.key } as const }] : []),
+      ...(type.value === "int" || type.value === "bool" ? [{ name: `${name}.values()`, type: { kind: "set", element: type.value } as const }] : []),
+    ];
+  });
   candidates.push(...setViews.flatMap((left, leftIndex) => setViews.slice(leftIndex + 1).flatMap((right) => {
     if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
     return [

@@ -115,6 +115,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
     - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.
     - [x] Treat finite `Map.keys()` domains, including record-nested maps, as derived Set views for directional subset synthesis.
+    - [x] Treat scalar finite `Map.values()` domains as derived Set views without generalizing unsupported composite values.
     - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.

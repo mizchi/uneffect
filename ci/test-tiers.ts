@@ -28,7 +28,6 @@ export const ciTestTiers = {
   quint: [
     "test/async-patterns.test.ts",
     "test/formal-models.test.ts",
-    "test/node-lease.test.ts",
     "test/ownership.test.ts",
     "test/promise-chains.test.ts",
     "test/temporal-compose.test.ts",
@@ -38,6 +37,7 @@ export const ciTestTiers = {
     "test/async-safety.test.ts",
     "test/dogfood.test.ts",
     "test/evidence-optimizer.test.ts",
+    "test/node-lease.test.ts",
     "test/spec-backends.test.ts",
   ],
 } as const;

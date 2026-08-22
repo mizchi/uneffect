@@ -889,19 +889,23 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
-  it("synthesizes subset invariants from Map key domains to Set authority", async () => {
-    const temporal = parseSpec("map-key-subset-strengthening.ts", `/* uneffect:
+  it("synthesizes subset invariants from Map key and scalar value domains", async () => {
+    const temporal = parseSpec("map-domain-subset-strengthening.ts", `/* uneffect:
       state allocated: Set<int>
+      state allowedOwners: Set<int>
       state owners: Map<int, int>
       state armed: bool
       init allocated = Set(1, 2)
+      init allowedOwners = Set(10, 20)
       init owners = Map([[1, 10]])
       init armed = false
       action assignAllocated: owners' = owners.put(2, 20)
-      action_when assignAllocated: allocated.contains(2)
+      action_when assignAllocated: allocated.contains(2) && allowedOwners.contains(20)
       action arm: armed' = true
-      action impossible: armed' = armed
-      action_when impossible: armed && owners.keys().contains(2) && !allocated.contains(2)
+      action impossibleResource: armed' = armed
+      action_when impossibleResource: armed && owners.keys().contains(2) && !allocated.contains(2)
+      action impossibleOwner: armed' = armed
+      action_when impossibleOwner: armed && owners.values().contains(20) && !allowedOwners.contains(20)
     */`).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
@@ -909,8 +913,13 @@ describe("spec IR and generated verifier programs", () => {
     });
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
-      name: "impossible",
+      name: "impossibleResource",
       relatedName: "<synth:owners.keys() subset allocated>",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossibleOwner",
+      relatedName: "<synth:owners.values() subset allowedOwners>",
     }));
   });
 

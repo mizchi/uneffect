@@ -14,6 +14,13 @@ that does not provision that verifier.
 | `integration` | Z3, Quint, and Java/TLC | End-to-end acceptance, dogfood, evidence import, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
 
+Files that exercise both verifier APIs belong to `integration`, even when one
+backend dominates most test cases. The Node Lease suite is intentionally in
+that tier because it runs Quint subprocesses and Z3 reachability in the same
+application model. Its two-pass strengthening case has an explicit 60-second
+per-test ceiling; this bounds slow shared-runner execution without weakening
+the solver obligations or skipping either pass.
+
 Set `UNEFFECT_CI_TIER` to select a tier through Vitest. A generated property
 test may launch a child Vitest process with an explicit `.test.ts` path. That
 explicit selection takes precedence over an inherited tier, preventing the

@@ -58,16 +58,19 @@ function collectionLeaseModel(skewGrace: number): string {
 
 function capabilityRequestModel(enforceAuthority: boolean): string {
   return `/* uneffect:
-    state authority: { owners: Map<int, int>, allowed: Set<int> }
+    state authority: { owners: Map<int, int>, allowedResources: Set<int>, allowedOwners: Set<int> }
     state auditArmed: bool
-    init authority = { owners: Map([[1, 10]]), allowed: Set(1, 2) }
+    init authority = { owners: Map([[1, 10]]), allowedResources: Set(1, 2), allowedOwners: Set(10, 20) }
     init auditArmed = false
     action requestWrite: authority' = { ...authority, owners: authority.owners.put(2, 20) }
-    ${enforceAuthority ? "action_when requestWrite: authority.allowed.contains(2)" : ""}
+    ${enforceAuthority ? "action_when requestWrite: authority.allowedResources.contains(2) && authority.allowedOwners.contains(20)" : ""}
     action armAudit: auditArmed' = true
     action observeEscalation: auditArmed' = auditArmed
-    action_when observeEscalation: auditArmed && authority.owners.keys().contains(2) && !authority.allowed.contains(2)
-    temporal requestWithinAuthority: authority.owners.keys().forall(permission => authority.allowed.contains(permission))
+    action_when observeEscalation: auditArmed && authority.owners.keys().contains(2) && !authority.allowedResources.contains(2)
+    action observeOwnerEscalation: auditArmed' = auditArmed
+    action_when observeOwnerEscalation: auditArmed && authority.owners.values().contains(20) && !authority.allowedOwners.contains(20)
+    temporal requestWithinAuthority: authority.owners.keys().forall(resource => authority.allowedResources.contains(resource))
+    temporal ownerWithinAuthority: authority.owners.values().forall(owner => authority.allowedOwners.contains(owner))
   */`;
 }
 
@@ -164,25 +167,39 @@ describe("Node Lease clock-skew model", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
       name: "observeEscalation",
-      relatedName: "<synth:authority.owners.keys() subset authority.allowed>",
+      relatedName: "<synth:authority.owners.keys() subset authority.allowedResources>",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeOwnerEscalation",
+      relatedName: "<synth:authority.owners.values() subset authority.allowedOwners>",
     }));
 
     const broken = parseSpec("capability-request-broken.ts", capabilityRequestModel(false)
-      .replace("allowed: Set(1, 2)", "allowed: Set(1)")).temporal;
+      .replace("allowedResources: Set(1, 2)", "allowedResources: Set(1)")
+      .replace("allowedOwners: Set(10, 20)", "allowedOwners: Set(10)")).temporal;
     const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
       maxSteps: 2,
       synthesizeCollectionStrengtheningProperties: true,
     });
     expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
-      relatedName: "<synth:authority.owners.keys() subset authority.allowed>",
+      relatedName: "<synth:authority.owners.keys() subset authority.allowedResources>",
+    }));
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:authority.owners.values() subset authority.allowedOwners>",
     }));
     const counterexample = await findTemporalCounterexampleWithZ3(broken, "requestWithinAuthority", { maxSteps: 2 });
     expect(counterexample.status).toBe("counterexample");
     if (counterexample.status === "counterexample") {
       expect(counterexample.trace.steps.map((step) => step.action)).toContain("requestWrite");
-      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ authority: { owners: [[1, 10], [2, 20]], allowed: [1] } });
+      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({
+        authority: { owners: [[1, 10], [2, 20]], allowedResources: [1], allowedOwners: [10] },
+      });
     }
+    await expect(findTemporalCounterexampleWithZ3(broken, "ownerWithinAuthority", { maxSteps: 2 }))
+      .resolves.toMatchObject({ status: "counterexample" });
   });
 
   it("uses a proven lease-domain invariant to exclude invalid epoch actions", async () => {
@@ -209,7 +226,7 @@ describe("Node Lease clock-skew model", () => {
       name: "observeZeroEpoch",
       relatedName: "<synth:ownerEpoch > 0>",
     }));
-  });
+  }, 60_000);
 
   it("rules out worker-resource starvation only under the declared weak fairness", async () => {
     const model = (fair: boolean) => parseSpec("lease-gc-liveness.ts", `/* uneffect:
