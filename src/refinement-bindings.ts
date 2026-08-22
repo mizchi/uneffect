@@ -275,6 +275,31 @@ function normalizeRefinementExpression(
     const whenFalse = normalizeRefinementExpression(node.whenFalse, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
     return condition && whenTrue && whenFalse ? { kind: "conditional", condition, whenTrue, whenFalse } : undefined;
   }
+  if (ts.isObjectLiteralExpression(node)) {
+    let base: TemporalExpression | undefined;
+    const fields: Record<string, TemporalExpression> = {};
+    for (let index = 0; index < node.properties.length; index++) {
+      const property = node.properties[index]!;
+      if (ts.isSpreadAssignment(property)) {
+        if (index !== 0 || base) return undefined;
+        base = normalizeRefinementExpression(property.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+        if (!base) return undefined;
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(property)) {
+        const value = normalizeRefinementExpression(property.name, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+        if (!value || Object.hasOwn(fields, property.name.text)) return undefined;
+        fields[property.name.text] = value;
+        continue;
+      }
+      if (!ts.isPropertyAssignment(property)) return undefined;
+      const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+      const value = normalizeRefinementExpression(property.initializer, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+      if (!name || !value || Object.hasOwn(fields, name)) return undefined;
+      fields[name] = value;
+    }
+    return { kind: "record", ...(base ? { base } : {}), fields };
+  }
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
     const name = node.expression.text;
     const helper = helpers.get(name);

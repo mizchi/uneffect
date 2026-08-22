@@ -46,7 +46,10 @@ export function observeLeaseRuntime(runtime: LeaseState): LeaseState {
 
 /* uneffect: refinement leaseProjection@1 action renew */
 export function renewLeaseEpoch(runtime: LeaseState): void {
-  runtime.lease.epoch++;
+  runtime.lease = {
+    ...runtime.lease,
+    epoch: runtime.lease.epoch + 1,
+  };
 }
 
 /* uneffect: refinement leaseProjection@1 action takeover */

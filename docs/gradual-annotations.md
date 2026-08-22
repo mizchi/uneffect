@@ -118,6 +118,11 @@ expression AST. A nested scalar member mutation such as
 produce an action mismatch. Sequential writes to distinct members are merged
 into one record update, while reads of an already-written member observe its
 symbolic new value. Record field order is ignored during refinement comparison.
+Whole-record assignment may use a TypeScript object literal with zero or one
+leading spread, such as
+`runtime.lease = { ...runtime.lease, epoch: runtime.lease.epoch + 1 }`.
+Additional or non-leading spreads, methods, accessors, and unresolved spread
+sources remain non-proofs rather than being approximated.
 It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`

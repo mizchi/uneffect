@@ -301,6 +301,26 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("normalizes an immutable object-spread action assignment", () => {
+    const source = `/* uneffect:
+      state lease: { owner: int, epoch: int }
+      init lease = { owner: 1, epoch: 0 }
+      action renew: lease' = { ...lease, epoch: lease.epoch + 1 }
+    */
+      interface Runtime { lease: { owner: number; epoch: number } }
+      /* uneffect: refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
+      /* uneffect: refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lease@1 action renew */
+      export function renew(runtime: Runtime) { runtime.lease = { ...runtime.lease, epoch: runtime.lease.epoch + 1 } }
+    `;
+    expect(validateRefinementActionBodies("immutable-action.ts", source, "lease", parseSpec("immutable-action.ts", source).temporal)).toEqual([]);
+
+    const wrongSpread = source.replace("...runtime.lease", "...runtime.otherLease");
+    expect(validateRefinementActionBodies("wrong-spread.ts", wrongSpread, "lease", parseSpec("wrong-spread.ts", wrongSpread).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "renew" }),
+    );
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

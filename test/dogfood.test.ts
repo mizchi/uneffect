@@ -26,7 +26,7 @@ describe("Uneffect dogfood", () => {
     expect(validateRefinementStateProjection(fileName, broken, "leaseProjection", temporal)).toContainEqual(
       expect.objectContaining({ code: "observe-state-mismatch", field: "lease" }),
     );
-    const wrongTransition = source.replace("runtime.lease.epoch++;", "runtime.lease.owner++;");
+    const wrongTransition = source.replace("epoch: runtime.lease.epoch + 1,", "owner: runtime.lease.owner + 1,");
     expect(await validateRefinementActionBodiesWithZ3(fileName, wrongTransition, "leaseProjection", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "renew", target: "lease" }),
     );

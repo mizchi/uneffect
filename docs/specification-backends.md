@@ -233,8 +233,9 @@ predicates remain unsupported.
 record boundary. Both hydrate and snapshot wrappers reconstruct the complete
 `owner`/`epoch`/`valid` record, while the negative case removes `valid` and is
 reported as an observe projection mismatch. Its `renew` transition also proves
-that the concrete nested epoch increment refines the model's immutable record
-update; incrementing `owner` instead is reported as an action mismatch. The
+that a concrete TypeScript object-spread replacement refines the model's
+immutable record update; replacing the epoch override with owner is reported as
+an action mismatch. The
 `takeover` transition updates owner and epoch in two TypeScript statements and
 is normalized to one order-independent temporal record update. Omitting either
 member write fails refinement.

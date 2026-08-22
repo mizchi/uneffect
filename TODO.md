@@ -131,6 +131,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.
       - [x] Lower a nested scalar member assignment, compound assignment, or increment into an immutable temporal record update and detect redirected writes.
       - [x] Merge sequential writes to distinct nested record members into one immutable update while preserving same-member data dependencies; compare record fields independent of source order.
+      - [x] Normalize direct immutable TypeScript object-literal assignments with one leading state spread into temporal record updates; reject unresolved or later spreads.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
