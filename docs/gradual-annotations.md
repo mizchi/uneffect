@@ -120,8 +120,14 @@ write is rejected as well as a missing or different write. Branches, loops,
 multiple sequential writes to one state field, imported calls, recursive calls,
 collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
-This check currently covers transition updates, not create/observe correctness,
-action guards, or invariant-function equivalence.
+For a guarded model action, the implementation may begin with
+`if (!(predicate)) return`; the positive predicate is normalized and must
+exactly match `action_when`. Missing, different, and unexpected guards are
+separate diagnostics. The false path therefore stutters and the true path is
+checked by the same update proof. Other branching forms and logically
+equivalent but differently shaped guards remain unsupported. This check covers
+transition updates and this early-return guard fragment, not arbitrary control
+flow or solver-proven predicate equivalence.
 
 `validateRefinementInvariantBodies` checks the adjacent safety-property
 functions. A supported implementation is exactly one `return` whose expression

@@ -211,15 +211,16 @@ a proved implementation-to-model refinement.
 `examples/dogfood/telemetry-routing-accounting.ts` opts into arity four and
 checks that every attempted telemetry item is classified as delivered, dropped,
 or buffered. Its negative test removes the buffered-counter update, after which
-the conservation candidate is rejected. The neighboring TypeScript class is
-still only a reviewable implementation: Uneffect does not yet prove that its
-computed-property update refines the declared temporal actions. It does bind
-create, observe, every action, and the invariant through refinement annotations;
+the conservation candidate is rejected. The neighboring TypeScript class and
+adapter exercise the supported scalar refinement fragment rather than a general
+implementation proof. They bind create, observe, every action, and the invariant
+through refinement annotations;
 the dogfood coverage check catches missing and stale model names. Its
 straight-line action bodies are also checked against the model assignments:
 literal calls to `record` are locally specialized, including the computed
-outcome-field write. Create/observe and invariant-body equivalence remain
-outside the action proof. The adjacent single-return invariant function is now
+outcome-field write. The guarded observation action enforces its exact
+`action_when` predicate with a negated early return before the stuttering body.
+The adjacent single-return invariant function is
 also checked by exact normalized scalar-AST equivalence. Create and observe are
 additionally checked as independent identity field projections: the transparent
 local-class `Object.assign` construction and destructured observation preserve

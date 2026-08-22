@@ -265,4 +265,38 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unsupported-invariant-body", modelName: "nonNegative" }),
     ]);
   });
+
+  it("requires guarded model actions to enforce the same early-return predicate", () => {
+    const model = `/* uneffect:
+      state value: int
+      state armed: bool
+      init value = 0
+      init armed = false
+      action increment: value' = value + 1
+      action_when increment: armed && value > 0
+    */`;
+    const safe = `${model}
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.value > 0)) return; runtime.value++ }
+    `;
+    expect(validateRefinementActionBodies("safe.ts", safe, "counter", parseSpec("safe.ts", safe).temporal)).toEqual([]);
+
+    const missing = safe.replace("if (!(runtime.armed && runtime.value > 0)) return; ", "");
+    expect(validateRefinementActionBodies("missing.ts", missing, "counter", parseSpec("missing.ts", missing).temporal)).toEqual([
+      expect.objectContaining({ code: "missing-action-guard", modelName: "increment" }),
+    ]);
+
+    const mismatch = safe.replace("runtime.value > 0", "runtime.value >= 0");
+    expect(validateRefinementActionBodies("mismatch.ts", mismatch, "counter", parseSpec("mismatch.ts", mismatch).temporal)).toEqual([
+      expect.objectContaining({ code: "action-guard-mismatch", modelName: "increment", expected: "armed && value > 0", actual: "armed && value >= 0" }),
+    ]);
+
+    const unexpected = safe.replace("      action_when increment: armed && value > 0\n", "");
+    expect(validateRefinementActionBodies("unexpected.ts", unexpected, "counter", parseSpec("unexpected.ts", unexpected).temporal)).toEqual([
+      expect.objectContaining({ code: "unexpected-action-guard", modelName: "increment", expected: "<none>", actual: "armed && value > 0" }),
+    ]);
+  });
 });

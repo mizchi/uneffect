@@ -54,6 +54,11 @@ parsing, binding coverage, five actions, one invariant, transparent local-class
 construction, and destructured observation; it does not include a TypeChecker
 or runtime validation of the adapter input objects.
 
+After adding exact early-return guard comparison to the telemetry observation
+action, the same complete scalar-refinement benchmark measured 0.6436 ms mean
+over 777 samples (1.16% RME). This includes normalization and comparison of the
+four-field accounting guard as well as the previously measured boundaries.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

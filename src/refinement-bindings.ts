@@ -40,7 +40,10 @@ export interface RefinementBindingCoverageDiagnostic {
   message: string;
 }
 
-export type RefinementActionDiagnosticCode = "missing-action-binding" | "unknown-action-binding" | "unsupported-action-body" | "action-update-mismatch";
+export type RefinementActionDiagnosticCode =
+  | "missing-action-binding" | "unknown-action-binding"
+  | "missing-action-guard" | "unexpected-action-guard" | "action-guard-mismatch"
+  | "unsupported-action-body" | "action-update-mismatch";
 
 export interface RefinementActionDiagnostic {
   code: RefinementActionDiagnosticCode;
@@ -242,6 +245,20 @@ export function validateRefinementActionBodies(
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
+  const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
+  const earlyReturnGuard = (body: ts.Block, receiver: string): { guard?: TemporalExpression; updates: ts.Block } => {
+    const first = body.statements[0];
+    if (!first || !ts.isIfStatement(first) || first.elseStatement) return { updates: body };
+    const returns = ts.isReturnStatement(first.thenStatement)
+      ? !first.thenStatement.expression
+      : ts.isBlock(first.thenStatement) && first.thenStatement.statements.length === 1
+        && ts.isReturnStatement(first.thenStatement.statements[0]!) && !first.thenStatement.statements[0]!.expression;
+    const condition = unwrap(first.expression);
+    if (!returns || !ts.isPrefixUnaryExpression(condition) || condition.operator !== ts.SyntaxKind.ExclamationToken) return { updates: body };
+    const guard = normalizeRefinementExpression(unwrap(condition.operand), receiver, new Map(), stateNames);
+    return guard ? { guard, updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
+  };
+
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -302,7 +319,16 @@ export function validateRefinementActionBodies(
     const runtimeParameter = implementation?.parameters[0];
     const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
     const runtimeType = runtimeParameter?.type && ts.isTypeReferenceNode(runtimeParameter.type) && ts.isIdentifier(runtimeParameter.type.typeName) ? runtimeParameter.type.typeName.text : undefined;
-    const updates = implementation?.body && receiver ? collect(implementation.body, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map()) : undefined;
+    const guardedBody = implementation?.body && receiver ? earlyReturnGuard(implementation.body, receiver) : undefined;
+    const actualGuard = guardedBody?.guard;
+    if (action.guard && !actualGuard) {
+      diagnostics.push({ code: "missing-action-guard", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: "<missing>", message: `${exportName} does not enforce model action guard ${action.guard.expression}` });
+    } else if (!action.guard && actualGuard) {
+      diagnostics.push({ code: "unexpected-action-guard", adapterName, modelName: action.name, exportName, expected: "<none>", actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces an early-return guard absent from model action ${action.name}` });
+    } else if (action.guard && actualGuard && JSON.stringify(action.guard.expressionAst) !== JSON.stringify(actualGuard)) {
+      diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
+    }
+    const updates = guardedBody && receiver ? collect(guardedBody.updates, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map()) : undefined;
     if (!updates) {
       diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
       continue;
