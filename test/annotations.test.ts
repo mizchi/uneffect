@@ -35,6 +35,12 @@ describe("Uneffect annotation marker", () => {
       .toEqual(['Path<"$TEMP">']);
   });
 
+  it("recognizes a versioned abstraction relation", () => {
+    const source = "/* uneffect: abstraction routing@1 subscribers = activeSubscriberIds */";
+    expect(extractAnnotations(source, "abstraction")).toEqual(["routing@1 subscribers = activeSubscriberIds"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
   it("recognizes explicit Promise rejection ownership transfer", () => {
     const source = "/* uneffect: consumes_rejection 0, 2 */";
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0, 2"]);

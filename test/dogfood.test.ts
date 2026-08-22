@@ -14,6 +14,29 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("refines renamed application state through an explicit abstraction relation", async () => {
+    const fileName = "examples/dogfood/renamed-routing-state.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    });
+    expect(validateRefinementBindingCoverage(fileName, source, "routingState", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "routingState", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "routingState", temporal)).toEqual([]);
+
+    const wrongAction = source.replace("activeSubscriberIds.add(2)", "activeSubscriberIds.add(3)");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, wrongAction, "routingState", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
+    );
+    const wrongObservation = source.replace("subscribers: runtime.activeSubscriberIds", "subscribers: new Set<number>()");
+    expect(validateRefinementStateProjection(fileName, wrongObservation, "routingState", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-observe-body" }),
+    );
+  });
+
   it("refines Node Lease authority Set/Map mutations", async () => {
     const fileName = "examples/dogfood/lease-authority-refinement.ts";
     const source = readFileSync(fileName, "utf8");

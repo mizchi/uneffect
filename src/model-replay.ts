@@ -26,6 +26,7 @@ export interface ModelRefinementAdapter<Runtime, State extends object = ModelSta
   schema: "uneffect-refinement-adapter/v1";
   name: string;
   version: string;
+  abstractions?: Readonly<Record<string, string>>;
   create(initialState: State): Runtime | Promise<Runtime>;
   observe(runtime: Runtime): State | Promise<State>;
   actions: Record<string, (runtime: Runtime, step: ModelCounterexampleStep<State>) => void | Promise<void>>;

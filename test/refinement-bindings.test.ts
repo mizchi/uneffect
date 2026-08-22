@@ -769,6 +769,108 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("proves an explicit scalar abstraction relation across concrete field names", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-scalar-abstraction-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state owner: int
+      init owner = 1
+      action transfer: owner' = owner + 1
+      temporal validOwner: owner >= 0
+      abstraction lease@1 owner = ownerId
+    */
+      interface ModelState { owner: number }
+      interface Runtime { ownerId: number }
+      /* uneffect: refinement lease@1 create */
+      export function create(initial: ModelState): Runtime { return { ownerId: initial.owner } }
+      /* uneffect: refinement lease@1 observe */
+      export function observe(runtime: Runtime): ModelState { return { owner: runtime.ownerId } }
+      /* uneffect: refinement lease@1 action transfer */
+      export function transfer(runtime: Runtime): void { runtime.ownerId++ }
+      /* uneffect: refinement lease@1 invariant validOwner */
+      export function validOwner(runtime: Runtime): boolean { return runtime.ownerId >= 0 }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(fileName, source).temporal;
+      expect(validateRefinementStateProjectionInProgram(program, fileName, "lease", spec)).toEqual([]);
+      expect(validateRefinementActionBodiesInProgram(program, fileName, "lease", spec)).toEqual([]);
+      expect(validateRefinementInvariantBodiesInProgram(program, fileName, "lease", spec)).toEqual([]);
+      const redirected = source.replace("owner: runtime.ownerId", "owner: runtime.ownerId + 1");
+      writeFileSync(fileName, redirected);
+      const redirectedProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(redirectedProgram, fileName, "lease", parseSpec(fileName, redirected).temporal)).toContainEqual(
+        expect.objectContaining({ code: "observe-state-mismatch", field: "owner", expected: "owner", actual: "owner + 1" }),
+      );
+      const wrongAction = source.replace("runtime.ownerId++", "runtime.ownerId += 2");
+      writeFileSync(fileName, wrongAction);
+      const wrongActionProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongActionProgram, fileName, "lease", parseSpec(fileName, wrongAction).temporal)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "transfer", target: "owner", expected: "owner + 1", actual: "owner + 2" }),
+      );
+      const wrongType = source.replace("interface Runtime { ownerId: number }", "interface Runtime { ownerId: boolean }");
+      writeFileSync(fileName, wrongType);
+      const wrongTypeProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(wrongTypeProgram, fileName, "lease", parseSpec(fileName, wrongType).temporal)).toContainEqual(
+        expect.objectContaining({ code: "create-type-mismatch", field: "owner" }),
+      );
+      const staleAbstraction = source.replace("abstraction lease@1", "abstraction lease@2");
+      writeFileSync(fileName, staleAbstraction);
+      const staleAbstractionProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(() => validateRefinementStateProjectionInProgram(staleAbstractionProgram, fileName, "lease", parseSpec(fileName, staleAbstraction).temporal))
+        .toThrow(/version 2, expected 1/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refines a renamed builtin Set through projection, action, and invariant checks", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-set-abstraction-"));
+    const fileName = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      action admit: owners' = owners.union(Set(2))
+      temporal initialOwnerPresent: owners.contains(1)
+      abstraction routing@1 owners = activeUserIds
+    */
+      interface ModelState { owners: Set<number> }
+      interface Runtime { activeUserIds: Set<number> }
+      /* uneffect: refinement routing@1 create */
+      export function create(initial: ModelState): Runtime { return { activeUserIds: initial.owners } }
+      /* uneffect: refinement routing@1 observe */
+      export function observe(runtime: Runtime): ModelState { return { owners: runtime.activeUserIds } }
+      /* uneffect: refinement routing@1 action admit */
+      export function admit(runtime: Runtime): void { runtime.activeUserIds.add(2) }
+      /* uneffect: refinement routing@1 invariant initialOwnerPresent */
+      export function initialOwnerPresent(runtime: Runtime): boolean { return runtime.activeUserIds.has(1) }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(fileName, source).temporal;
+      expect(buildRefinementBindingManifest(fileName, source, "routing").abstractions).toEqual({ owners: "activeUserIds" });
+      expect(validateRefinementStateProjectionInProgram(program, fileName, "routing", spec)).toEqual([]);
+      expect(validateRefinementActionBodiesInProgram(program, fileName, "routing", spec)).toEqual([]);
+      expect(validateRefinementInvariantBodiesInProgram(program, fileName, "routing", spec)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves imported create and observe wrappers only in the Program-backed path", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-projection-"));
     const helperFile = join(directory, "projection.ts");

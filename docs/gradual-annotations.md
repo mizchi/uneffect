@@ -37,7 +37,8 @@ directive = effect_decl
           | invariant_decl
           | returns_decl
           | assert_decl
-          | refinement_decl ;
+          | refinement_decl
+          | abstraction_decl ;
 
 Function-summary temporal contracts add `temporal_requires`, `temporal_ensures`, `temporal_modifies`, `temporal_throws`, `temporal_rejects`, `temporal_suspends true`, and `temporal_cancellable true`. Once suspension introduced a concrete progress question, the grammar also gained `temporal_eventually name: predicate` and per-summary `temporal_fair weak|strong`. These lower to Quint `eventually` and weak/strong action fairness; they are still TypeScript-style source expressions rather than embedded Quint.
 
@@ -58,6 +59,8 @@ refinement_decl = "refinement", identifier, "@", version,
                   ( "create" | "observe"
                   | "action", identifier
                   | "invariant", identifier ) ;
+abstraction_decl = "abstraction", identifier, "@", version,
+                   identifier, "=", identifier ;
 
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name
@@ -101,6 +104,26 @@ the normalized trace step. The extractor never evaluates annotation text.
 Build tooling can either resolve the manifest against already-loaded exports or
 emit a reviewable module containing direct namespace references. Normal
 TypeScript checking remains responsible for the concrete state/runtime types.
+
+An implementation may use a different top-level field name from the temporal
+model by declaring an explicit, version-matched abstraction relation:
+
+```ts
+/* uneffect:
+  state subscribers: Set<int>
+  abstraction routingState@1 subscribers = activeSubscriberIds
+*/
+```
+
+The left side is a temporal state field and the right side is its concrete
+runtime field. The relation is one-to-one. The Program-backed checker verifies
+the abstract create parameter and observe result, the concrete create result
+and observe parameter, and then canonicalizes action updates and invariant
+reads through the same relation. Unknown fields, duplicate mappings, stale
+adapter versions, `any`/`unknown`, and incompatible scalar or builtin
+collection types are rejected. This first slice supports top-level field
+renaming only; computed projections, conversions, nested path mappings, and
+many-to-one relations remain explicit non-proofs.
 
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to

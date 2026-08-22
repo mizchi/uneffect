@@ -24,6 +24,7 @@ export interface RefinementBindingManifest {
   version: string;
   create: string;
   observe: string;
+  abstractions: Record<string, string>;
   actions: Record<string, string>;
   invariants: Record<string, string>;
 }
@@ -137,8 +138,29 @@ export function buildRefinementBindingManifest(fileName: string, text: string, a
   };
   return {
     schema: "uneffect-refinement-bindings/v1", fileName, adapterName, version: bindings[0]!.version,
-    create: singleton("create"), observe: singleton("observe"), actions: named("action"), invariants: named("invariant"),
+    create: singleton("create"), observe: singleton("observe"),
+    abstractions: Object.fromEntries(parseAbstractionRelations(text, adapterName, bindings[0]!.version)),
+    actions: named("action"), invariants: named("invariant"),
   };
+}
+
+function parseAbstractionRelations(
+  text: string,
+  adapterName: string,
+  version: string,
+  stateNames?: ReadonlySet<string>,
+): Map<string, string> {
+  const abstraction = new Map<string, string>();
+  for (const value of extractAnnotations(text, "abstraction")) {
+    const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s+([A-Za-z_$][\w$]*)\s*=\s*([A-Za-z_$][\w$]*)$/.exec(value);
+    if (!match) throw new Error(`invalid abstraction relation: ${value}`);
+    if (match[1] !== adapterName) continue;
+    if (match[2] !== version) throw new Error(`abstraction relation ${match[1]} has version ${match[2]}, expected ${version}`);
+    if (stateNames && !stateNames.has(match[3]!)) throw new Error(`abstraction relation refers to unknown model state ${match[3]}`);
+    if (abstraction.has(match[3]!) || [...abstraction.values()].includes(match[4]!)) throw new Error(`duplicate abstraction relation for ${match[3]} or ${match[4]}`);
+    abstraction.set(match[3]!, match[4]!);
+  }
+  return abstraction;
 }
 
 /** Checks structural coverage only; it does not prove that implementation bodies refine model transitions. */
@@ -473,6 +495,19 @@ function validateRefinementActionBodiesInSource(
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
+  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
+  const expressionStateNames = new Set([...stateNames, ...concreteToAbstract.keys()]);
+  const canonicalize = (expression: TemporalExpression): TemporalExpression => {
+    let result = expression;
+    for (const [concrete, abstract] of concreteToAbstract) result = replaceRefinementName(result, concrete, abstract);
+    return result;
+  };
+  const actionFieldPath = (node: ts.Expression, receiver: string, substitutions: ReadonlyMap<string, ts.Expression>): string[] | undefined => {
+    const path = refinementFieldPath(node, receiver, substitutions);
+    if (!path?.[0]) return path;
+    return [concreteToAbstract.get(path[0]) ?? path[0], ...path.slice(1)];
+  };
   const diagnostics: RefinementActionDiagnostic[] = [];
 
   const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
@@ -504,8 +539,8 @@ function validateRefinementActionBodiesInSource(
         && ts.isReturnStatement(first.thenStatement.statements[0]!) && !first.thenStatement.statements[0]!.expression;
     const condition = unwrap(first.expression);
     if (!returns || !ts.isPrefixUnaryExpression(condition) || condition.operator !== ts.SyntaxKind.ExclamationToken) return { updates: body };
-    const guard = normalizeRefinementExpression(unwrap(condition.operand), receiver, new Map(), stateNames);
-    return guard ? { guard, updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
+    const guard = normalizeRefinementExpression(unwrap(condition.operand), receiver, new Map(), expressionStateNames);
+    return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
   const collect = (
@@ -531,7 +566,10 @@ function validateRefinementActionBodiesInSource(
       return expression;
     };
     const resolveCurrentState = (expression: TemporalExpression): TemporalExpression => {
-      if (expression.kind === "name") return updates.get(expression.name) ?? expression;
+      if (expression.kind === "name") {
+        const name = concreteToAbstract.get(expression.name) ?? expression.name;
+        return updates.get(name) ?? { kind: "name", name };
+      }
       if (expression.kind === "unary") return { ...expression, operand: resolveCurrentState(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: resolveCurrentState(expression.left), right: resolveCurrentState(expression.right) };
       if (expression.kind === "conditional") return { ...expression, condition: resolveCurrentState(expression.condition), whenTrue: resolveCurrentState(expression.whenTrue), whenFalse: resolveCurrentState(expression.whenFalse) };
@@ -596,7 +634,7 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isIfStatement(statement)) {
-        const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+        const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
         if (!normalizedCondition) return undefined;
         const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
         const before = new Map(updates);
@@ -619,7 +657,7 @@ function validateRefinementActionBodiesInSource(
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
         for (const declaration of statement.declarationList.declarations) {
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer || localValues.has(declaration.name.text)) return undefined;
-          const value = normalizeRefinementExpression(declaration.initializer, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const value = normalizeRefinementExpression(declaration.initializer, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!value) return undefined;
           localValues.set(declaration.name.text, expandLocalSnapshots(resolveCurrentState(value)));
         }
@@ -642,7 +680,7 @@ function validateRefinementActionBodiesInSource(
         if (!receiverMatches) return undefined;
         const helperLocals = new Map<string, TemporalExpression>();
         for (let index = 1; index < helper.parameters.length; index++) {
-          const argument = normalizeRefinementExpression(node.arguments[index]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const argument = normalizeRefinementExpression(node.arguments[index]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!argument) return undefined;
           helperLocals.set((helper.parameters[index]!.name as ts.Identifier).text, expandLocalSnapshots(resolveCurrentState(argument)));
         }
@@ -652,7 +690,7 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-        const [target, ...fields] = refinementFieldPath(node.expression.expression, receiver, substitutions) ?? [];
+        const [target, ...fields] = actionFieldPath(node.expression.expression, receiver, substitutions) ?? [];
         let targetType = target ? stateTypes.get(target) : undefined;
         for (const field of fields) {
           if (!targetType || typeof targetType === "string" || targetType.kind !== "record") { targetType = undefined; break; }
@@ -669,7 +707,7 @@ function validateRefinementActionBodiesInSource(
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "delete" && node.arguments.length === 1
           && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")
           && isBuiltinCollectionReceiver(node.expression.expression, targetType.kind)) {
-          const item = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const item = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!item) return undefined;
           const argument = expandLocalSnapshots(resolveCurrentState(item));
           writePath(target, fields, targetType.kind === "set"
@@ -680,7 +718,7 @@ function validateRefinementActionBodiesInSource(
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "add"
           && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1
           && isBuiltinCollectionReceiver(node.expression.expression, "set")) {
-          const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!element) return undefined;
           writePath(target, fields, {
             kind: "method", receiver: readPath(target, fields), name: "union",
@@ -691,8 +729,8 @@ function validateRefinementActionBodiesInSource(
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "set"
           && typeof targetType !== "string" && targetType.kind === "map" && node.arguments.length === 2
           && isBuiltinCollectionReceiver(node.expression.expression, "map")) {
-          const key = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
-          const value = normalizeRefinementExpression(node.arguments[1]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          const key = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
+          const value = normalizeRefinementExpression(node.arguments[1]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!key || !value) return undefined;
           writePath(target, fields, {
             kind: "method", receiver: readPath(target, fields), name: "put",
@@ -717,15 +755,15 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
         if (node.operator !== ts.SyntaxKind.PlusPlusToken && node.operator !== ts.SyntaxKind.MinusMinusToken) return undefined;
-        const [target, ...fields] = refinementFieldPath(node.operand, receiver, substitutions) ?? [];
+        const [target, ...fields] = actionFieldPath(node.operand, receiver, substitutions) ?? [];
         if (!target || !stateNames.has(target)) return undefined;
         writePath(target, fields, { kind: "binary", operator: node.operator === ts.SyntaxKind.PlusPlusToken ? "add" : "subtract", left: readPath(target, fields), right: { kind: "integer", value: "1" } });
         continue;
       }
       if (ts.isBinaryExpression(node)) {
-        const [target, ...fields] = refinementFieldPath(node.left, receiver, substitutions) ?? [];
+        const [target, ...fields] = actionFieldPath(node.left, receiver, substitutions) ?? [];
         if (!target || !stateNames.has(target)) return undefined;
-        const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+        const right = normalizeRefinementExpression(node.right, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
         if (!right) return undefined;
         const resolvedRight = expandLocalSnapshots(resolveCurrentState(right));
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) writePath(target, fields, resolvedRight);
@@ -844,6 +882,14 @@ function validateRefinementInvariantBodiesInSource(
     ? collectProgramHelperFunctions(source, checker)
     : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
+  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
+  const expressionStateNames = new Set([...stateNames, ...concreteToAbstract.keys()]);
+  const canonicalize = (expression: TemporalExpression): TemporalExpression => {
+    let result = expression;
+    for (const [concrete, abstract] of concreteToAbstract) result = replaceRefinementName(result, concrete, abstract);
+    return result;
+  };
   const diagnostics: RefinementInvariantDiagnostic[] = [];
   for (const property of spec.properties) {
     const exportName = manifest.invariants[property.name];
@@ -865,7 +911,7 @@ function validateRefinementInvariantBodiesInSource(
       }
       for (const declaration of statement.declarationList.declarations) {
         if (!ts.isIdentifier(declaration.name) || !declaration.initializer
-          || !normalizeRefinementExpression(declaration.initializer, receiver ?? "", substitutions, stateNames, functions, new Set(), new Map(), checker)) {
+          || !normalizeRefinementExpression(declaration.initializer, receiver ?? "", substitutions, expressionStateNames, functions, new Set(), new Map(), checker)) {
           supportedLocals = false;
           break;
         }
@@ -873,9 +919,10 @@ function validateRefinementInvariantBodiesInSource(
       }
       if (!supportedLocals) break;
     }
-    const actual = receiver && supportedLocals && returned && ts.isReturnStatement(returned) && returned.expression
-      ? normalizeRefinementExpression(returned.expression, receiver, substitutions, stateNames, functions, new Set(), new Map(), checker)
+    const normalized = receiver && supportedLocals && returned && ts.isReturnStatement(returned) && returned.expression
+      ? normalizeRefinementExpression(returned.expression, receiver, substitutions, expressionStateNames, functions, new Set(), new Map(), checker)
       : undefined;
+    const actual = normalized ? canonicalize(normalized) : undefined;
     if (!actual) {
       diagnostics.push({ code: "unsupported-invariant-body", adapterName, modelName: property.name, exportName, message: `${exportName} is not a single supported scalar return predicate` });
       continue;
@@ -1046,6 +1093,8 @@ function validateRefinementStateProjectionInSource(
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
+  const abstraction = parseAbstractionRelations(text, adapterName, manifest.version, stateNames);
+  const concreteToAbstract = new Map([...abstraction].map(([abstract, concrete]) => [concrete, abstract]));
   const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
 
   const extract = (
@@ -1083,7 +1132,9 @@ function validateRefinementStateProjectionInSource(
       }
       if (!ts.isPropertyAccessExpression(node)) return undefined;
       const base = accessPath(node.expression);
-      return base ? [...base, node.name.text] : undefined;
+      if (!base) return undefined;
+      if (base.length === 0 && role === "observe") return [concreteToAbstract.get(node.name.text) ?? node.name.text];
+      return [...base, node.name.text];
     };
     const pathExpression = (path: readonly string[]): TemporalExpression | undefined => {
       const [root, ...fields] = path;
@@ -1093,7 +1144,13 @@ function validateRefinementStateProjectionInSource(
     const normalizeProjectionExpression = (node: ts.Expression): TemporalExpression | undefined => {
       const path = accessPath(node);
       if (path) return pathExpression(path);
-      if (!ts.isObjectLiteralExpression(node)) return normalizeRefinementExpression(node, receiver, new Map(), stateNames);
+      if (!ts.isObjectLiteralExpression(node)) {
+        let normalized = normalizeRefinementExpression(node, receiver, new Map(), new Set([...stateNames, ...concreteToAbstract.keys()]));
+        for (const [concrete, abstract] of concreteToAbstract) {
+          if (normalized) normalized = replaceRefinementName(normalized, concrete, abstract);
+        }
+        return normalized;
+      }
       const fields: Record<string, TemporalExpression> = {};
       for (const property of node.properties) {
         if (!ts.isPropertyAssignment(property)) return undefined;
@@ -1152,7 +1209,8 @@ function validateRefinementStateProjectionInSource(
         continue;
       }
       if (!ts.isPropertyAssignment(property)) return undefined;
-      const field = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+      const propertyName = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) ? property.name.text : undefined;
+      const field = propertyName && role === "create" ? concreteToAbstract.get(propertyName) ?? propertyName : propertyName;
       if (!field || !stateNames.has(field)) return undefined;
       const alias = ts.isIdentifier(property.initializer) ? aliases.get(property.initializer.text) : undefined;
       let value = alias
@@ -1169,17 +1227,34 @@ function validateRefinementStateProjectionInSource(
 
   const diagnostics: RefinementStateProjectionDiagnostic[] = [];
   const expectedStateType: TemporalValueType = { kind: "record", fields: Object.fromEntries(spec.states.map(({ name, type }) => [name, type])) };
+  const concreteStateMismatch = (actual: ts.Type, location: ts.Node): readonly string[] | undefined => {
+    if ((actual.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return [];
+    if ((actual.flags & ts.TypeFlags.Object) === 0 && !actual.isIntersection()) return [];
+    for (const { name, type } of spec.states) {
+      const concreteName = abstraction.get(name) ?? name;
+      const property = actual.getProperty(concreteName);
+      if (!property) return [name];
+      const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+      const mismatch = typescriptTemporalShapeMismatch(checker!, checker!.getTypeOfSymbolAtLocation(property, declaration), type, declaration, [name]);
+      if (mismatch) return mismatch;
+    }
+    return undefined;
+  };
   for (const role of ["create", "observe"] as const) {
     const exportName = manifest[role];
     const implementation = functions.get(exportName);
     if (checker && implementation) {
       const parameter = implementation.parameters[0];
       const parameterMismatch = parameter
-        ? typescriptTemporalShapeMismatch(checker, checker.getTypeAtLocation(parameter), expectedStateType, parameter)
+        ? role === "create"
+          ? typescriptTemporalShapeMismatch(checker, checker.getTypeAtLocation(parameter), expectedStateType, parameter)
+          : concreteStateMismatch(checker.getTypeAtLocation(parameter), parameter)
         : [];
       const signature = checker.getSignatureFromDeclaration(implementation);
       const returnMismatch = signature
-        ? typescriptTemporalShapeMismatch(checker, checker.getReturnTypeOfSignature(signature), expectedStateType, implementation)
+        ? role === "observe"
+          ? typescriptTemporalShapeMismatch(checker, checker.getReturnTypeOfSignature(signature), expectedStateType, implementation)
+          : concreteStateMismatch(checker.getReturnTypeOfSignature(signature), implementation)
         : [];
       const mismatch = parameterMismatch ?? returnMismatch;
       if (mismatch) {
@@ -1251,6 +1326,7 @@ export function createAnnotatedRefinementAdapter<State extends object = ModelSta
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
   return {
     schema: "uneffect-refinement-adapter/v1", name: manifest.adapterName, version: manifest.version,
+    abstractions: manifest.abstractions,
     create: callable(exports, manifest.create), observe: callable(exports, manifest.observe),
     actions: Object.fromEntries(Object.entries(manifest.actions).map(([name, binding]) => [name, callable(exports, binding)])),
     invariants: Object.fromEntries(Object.entries(manifest.invariants).map(([name, binding]) => [name, callable(exports, binding)])),
@@ -1261,5 +1337,5 @@ export function createAnnotatedRefinementAdapter<State extends object = ModelSta
 export function generateRefinementAdapterModule(fileName: string, text: string, moduleSpecifier: string, adapterName: string): string {
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
   const record = (entries: Record<string, string>) => `{ ${Object.entries(entries).map(([name, binding]) => `${JSON.stringify(name)}: implementation.${binding}`).join(", ")} }`;
-  return `import * as implementation from ${JSON.stringify(moduleSpecifier)}\n\nexport const ${adapterName}RefinementAdapter = {\n  schema: "uneffect-refinement-adapter/v1",\n  name: ${JSON.stringify(adapterName)},\n  version: ${JSON.stringify(manifest.version)},\n  create: implementation.${manifest.create},\n  observe: implementation.${manifest.observe},\n  actions: ${record(manifest.actions)},\n  invariants: ${record(manifest.invariants)},\n} as const\n`;
+  return `import * as implementation from ${JSON.stringify(moduleSpecifier)}\n\nexport const ${adapterName}RefinementAdapter = {\n  schema: "uneffect-refinement-adapter/v1",\n  name: ${JSON.stringify(adapterName)},\n  version: ${JSON.stringify(manifest.version)},\n  abstractions: ${JSON.stringify(manifest.abstractions)},\n  create: implementation.${manifest.create},\n  observe: implementation.${manifest.observe},\n  actions: ${record(manifest.actions)},\n  invariants: ${record(manifest.invariants)},\n} as const\n`;
 }
