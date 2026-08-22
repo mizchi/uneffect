@@ -436,6 +436,15 @@ describe("annotated refinement bindings", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementActionBodiesInProgram(program, mainFile, "authority", spec)).toEqual([]);
+      const namespaceSource = source
+        .replace('import { addOwner as applyOwner } from "./helper.js"\n      const ownerOperation = applyOwner', 'import * as OwnerOperations from "./helper.js"')
+        .replace("ownerOperation(runtime, 2)", "OwnerOperations.addOwner(runtime, 2)");
+      writeFileSync(mainFile, namespaceSource);
+      const namespaceProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(namespaceProgram, mainFile, "authority", spec)).toEqual([]);
+      writeFileSync(mainFile, source);
       writeFileSync(mainFile, source.replace("const ownerOperation", "let ownerOperation"));
       const mutableAliasProgram = ts.createProgram([mainFile, helperFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,

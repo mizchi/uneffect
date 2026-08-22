@@ -253,7 +253,9 @@ subclasses and same-shaped user types. Its Node Lease dogfood also resolves an
 aliased import through a two-level helper graph before proving an owner-removal
 transition. The imported function is reached through an immutable local
 function-value alias; changing that alias to `let` makes the body a deliberate
-non-proof. The syntax-only API deliberately leaves that imported call
+non-proof. A separate transition exercises direct namespace-import selection;
+storing that selected property in another alias remains unsupported. The
+syntax-only API deliberately leaves those imported calls
 unsupported.
 
 For finite state products, bounded exploration can itself become complete.

@@ -1,4 +1,5 @@
 import { revokeOwner } from "./lease-authority-operations.js";
+import * as LeaseAuthorityOperations from "./lease-authority-operations.js";
 
 const revokeOwnerOperation = revokeOwner;
 
@@ -12,6 +13,7 @@ const revokeOwnerOperation = revokeOwner;
   action revokeOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(1)) }
   action retireEpoch: authority' = { ...authority, epochs: authority.epochs.remove(1) }
   action revokeImportedOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(1)) }
+  action revokeNamespacedOwner: authority' = { ...authority, owners: authority.owners.exclude(Set(1)) }
 */
 
 export interface LeaseAuthorityRuntime {
@@ -64,4 +66,9 @@ export function retireLeaseEpoch(runtime: LeaseAuthorityRuntime): void {
 /* uneffect: refinement leaseAuthority@1 action revokeImportedOwner */
 export function revokeImportedLeaseOwner(runtime: LeaseAuthorityRuntime): void {
   revokeOwnerOperation(runtime, 1);
+}
+
+/* uneffect: refinement leaseAuthority@1 action revokeNamespacedOwner */
+export function revokeNamespacedLeaseOwner(runtime: LeaseAuthorityRuntime): void {
+  LeaseAuthorityOperations.revokeOwner(runtime, 1);
 }

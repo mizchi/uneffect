@@ -341,9 +341,10 @@ function validateRefinementActionBodiesInSource(
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
-  const resolveFunction = (expression: ts.Identifier, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
-    if (!checker) return functions.get(expression.text);
-    let symbol = checker.getSymbolAtLocation(expression);
+  const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
+    if (!checker) return ts.isIdentifier(expression) ? functions.get(expression.text) : undefined;
+    let symbol = checker.getSymbolAtLocation(expression)
+      ?? (ts.isPropertyAccessExpression(expression) ? checker.getSymbolAtLocation(expression.name) : undefined);
     if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
     if (!symbol || seen.has(symbol)) return undefined;
     const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
@@ -506,7 +507,8 @@ function validateRefinementActionBodiesInSource(
       }
       if (!ts.isExpressionStatement(statement) && !terminalReturn) return undefined;
       const node = ts.isReturnStatement(statement) ? statement.expression! : statement.expression;
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      if (ts.isCallExpression(node) && (ts.isIdentifier(node.expression)
+        || checker !== undefined && ts.isPropertyAccessExpression(node.expression) && resolveFunction(node.expression) !== undefined)) {
         const helperName = node.expression.getText();
         const helper = resolveFunction(node.expression);
         const callKey = helper ? `function:${helper.getSourceFile().fileName}:${helper.pos}` : `function:${helperName}`;
