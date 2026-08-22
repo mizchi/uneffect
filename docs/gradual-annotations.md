@@ -153,9 +153,12 @@ value)`. Exact same-array `entries.filter(entry => entry[0] !== key)` refines
 refines `map.keys().contains(key)`. The Program-backed checker verifies the
 tuple arity and key/value types. `entries.length = 0` refines Map clearing and
 `entries.length` refines Map size; temporal `size()` is valid for both Set and
-Map receivers. Value filtering, entry replacement, value
-lookup, duplicate-key ordering, and general iterable conversions are not yet
-proofs.
+Map receivers. An exact builtin
+`entries.find(entry => entry[0] === key)![1]` value read refines
+`map.get(key)`. The temporal predicate must still guard that partial lookup
+with `map.keys().contains(key)`; the TypeScript non-null assertion is erased
+syntax, not proof evidence. Value filtering, entry replacement, duplicate-key
+ordering, and general iterable conversions are not yet proofs.
 
 Builtin `entries.every(entry => predicate(entry[1]))` and `some` are projected
 to temporal Map value `forall`/`exists` when the callback does not otherwise

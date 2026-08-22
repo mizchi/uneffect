@@ -313,7 +313,13 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
   if (expression.kind === "conditional") return { ...expression, condition: canonicalizeAbstractionExpression(expression.condition, abstraction), whenTrue: canonicalizeAbstractionExpression(expression.whenTrue, abstraction), whenFalse: canonicalizeAbstractionExpression(expression.whenFalse, abstraction) };
   if (expression.kind === "array") return { ...expression, elements: expression.elements.map((item) => canonicalizeAbstractionExpression(item, abstraction)) };
   if (expression.kind === "record") return { ...expression, ...(expression.base ? { base: canonicalizeAbstractionExpression(expression.base, abstraction) } : {}), fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, canonicalizeAbstractionExpression(value, abstraction)])) };
-  if (expression.kind === "field") return { ...expression, receiver: canonicalizeAbstractionExpression(expression.receiver, abstraction) };
+  if (expression.kind === "field") {
+    const fieldReceiver = canonicalizeAbstractionExpression(expression.receiver, abstraction);
+    if (expression.name === "1" && fieldReceiver.kind === "method" && fieldReceiver.name === "get"
+      && fieldReceiver.receiver.kind === "name"
+      && parseAbstractionValue(abstraction.get(fieldReceiver.receiver.name) ?? fieldReceiver.receiver.name).kind === "map-from-entries") return fieldReceiver;
+    return { ...expression, receiver: fieldReceiver };
+  }
   if (expression.kind === "lambda") return { ...expression, body: canonicalizeAbstractionExpression(expression.body, abstraction) };
   if (expression.kind === "call") return { ...expression, arguments: expression.arguments.map((item) => canonicalizeAbstractionExpression(item, abstraction)) };
   const receiver = canonicalizeAbstractionExpression(expression.receiver, abstraction);
@@ -419,6 +425,7 @@ function normalizeRefinementExpression(
   checker?: ts.TypeChecker,
 ): TemporalExpression | undefined {
   if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+  if (ts.isNonNullExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
   if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
   if (ts.isIdentifier(node)) {
@@ -478,6 +485,28 @@ function normalizeRefinementExpression(
       fields[name] = value;
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
+  }
+  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+    && node.expression.name.text === "find" && node.arguments.length === 1
+    && isDeclarationFileSymbol(checker, node.expression.name, "find")) {
+    const from = node.expression.expression, callback = node.arguments[0];
+    const fromType = checker?.getTypeAtLocation(from), fromSymbol = fromType?.getSymbol() ?? fromType?.aliasSymbol;
+    const builtinArray = fromSymbol?.getName() === "Array"
+      && (fromSymbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+    if (builtinArray && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
+      && ts.isIdentifier(callback.parameters[0]!.name) && !ts.isBlock(callback.body)) {
+      const collection = normalizeRefinementExpression(from, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+      const parameter = callback.parameters[0]!.name.text;
+      const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
+      const body = normalizeRefinementExpression(callback.body, receiver, substitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
+      const isKey = (value: TemporalExpression): boolean => value.kind === "field" && value.name === "0"
+        && value.receiver.kind === "name" && (value.receiver.name === parameter || value.receiver.name === `\u0000local:${parameter}`);
+      const exactKeyPredicate = body?.kind === "binary" && body.operator === "eq" && isKey(body.left) !== isKey(body.right);
+      if (collection && body?.kind === "binary" && exactKeyPredicate) {
+        const leftIsKey = isKey(body.left);
+        return { kind: "method", receiver: collection, name: "get", arguments: [leftIsKey ? body.right : body.left] };
+      }
+    }
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
     && (node.expression.name.text === "keys" || node.expression.name.text === "values")

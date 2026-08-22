@@ -1065,6 +1065,7 @@ describe("annotated refinement bindings", () => {
       action clearEpochs: epochs' = Map([])
       action upsertPrimary: epochs' = epochs.put(1, 5)
       temporal primaryPresent: epochs.keys().contains(1)
+      temporal primaryZero: epochs.keys().contains(1) && epochs.get(1) === 0
       temporal nonEmpty: epochs.size() > 0
       temporal nonNegative: epochs.values().forall(epoch => epoch >= 0)
       abstraction mapEntries@1 epochs = Map(storage.epochEntries)
@@ -1088,6 +1089,11 @@ describe("annotated refinement bindings", () => {
       }
       /* uneffect: refinement mapEntries@1 invariant primaryPresent */
       export function primaryPresent(runtime: Runtime): boolean { return runtime.storage.epochEntries.some(entry => entry[0] === 1) }
+      /* uneffect: refinement mapEntries@1 invariant primaryZero */
+      export function primaryZero(runtime: Runtime): boolean {
+        return runtime.storage.epochEntries.some(entry => entry[0] === 1)
+          && runtime.storage.epochEntries.find(entry => entry[0] === 1)![1] === 0
+      }
       /* uneffect: refinement mapEntries@1 invariant nonEmpty */
       export function nonEmpty(runtime: Runtime): boolean { return runtime.storage.epochEntries.length > 0 }
       /* uneffect: refinement mapEntries@1 invariant nonNegative */
@@ -1134,6 +1140,22 @@ describe("annotated refinement bindings", () => {
       });
       expect(validateRefinementInvariantBodiesInProgram(wrongLookupProgram, fileName, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryPresent" }),
+      );
+      const wrongValueLookup = source.replace("find(entry => entry[0] === 1)![1]", "find(entry => entry[0] === 2)![1]");
+      writeFileSync(fileName, wrongValueLookup);
+      const wrongValueLookupProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(wrongValueLookupProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryZero" }),
+      );
+      const unsupportedValueLookup = source.replace("find(entry => entry[0] === 1)![1]", "find(entry => entry[1] === 0)![1]");
+      writeFileSync(fileName, unsupportedValueLookup);
+      const unsupportedValueLookupProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(unsupportedValueLookupProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "primaryZero" }),
       );
       const wrongClear = source.replace("epochEntries.length = 0", "epochEntries.length = 1");
       writeFileSync(fileName, wrongClear);
