@@ -1129,4 +1129,66 @@ describe("async error and explicit resource safety", () => {
     expect(recoveredSkip).toBe("completion");
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("correlates switch handler cases and their abrupt completion", () => {
+    const result = analyzeAsyncSafety("switch-handler.ts", `
+      async function run(mode: "retry" | "fail" | "ignore") {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          switch (mode) {
+            case "retry":
+              await Promise.resolve("retry").then(value => value)
+              return
+            case "fail":
+              await Promise.resolve("fail").then(value => value)
+              throw error
+            default:
+              return
+          }
+        }
+      }
+    `);
+    const statement = result.controlStatements[0]!;
+    const retry = result.promises.find((item) => item.source.includes('"retry"'))!;
+    const fail = result.promises.find((item) => item.source.includes('"fail"'))!;
+    expect(retry.controlConditions).toHaveLength(1);
+    expect(fail.controlConditions).toHaveLength(2);
+    expect(fail.controlConditions[0]).toEqual({ id: retry.controlConditions[0]!.id, expected: false });
+    expect(statement.completionPaths.map((path) => path.completion)).toEqual(["return", "throw", "return"]);
+    const quint = generateUnifiedAsyncQuint("switch_handler", result, "run");
+    const failResume = new RegExp(`action catch_await_${fail.promiseChain}_resume = all \\{[\\s\\S]*?completion' = ([^,]+),`).exec(quint)?.[1]?.trim();
+    expect(failResume).toBe("1");
+    expect(quint).toContain(`action skip_handler_await_${retry.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("retains top-level switch fallthrough and break completion", () => {
+    const result = analyzeAsyncSafety("switch-fallthrough-handler.ts", `
+      declare function note(value: string): void
+      async function run(mode: "prepare" | "fail" | "ignore") {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          switch (mode) {
+            case "prepare":
+              note("prepared")
+            case "fail":
+              throw error
+            default:
+              break
+          }
+          note("continued")
+        }
+      }
+    `);
+    const paths = result.controlStatements[0]!.completionPaths;
+    expect(paths.map((path) => path.completion)).toEqual(["throw", "throw", "normal"]);
+    expect(paths[0]!.controlConditions).toHaveLength(1);
+    expect(paths[1]!.controlConditions).toHaveLength(2);
+    const quint = generateUnifiedAsyncQuint("switch_fallthrough_handler", result, "run");
+    expect(quint).toContain("action catch_statement_0_path_0");
+    expect(quint).toContain("action catch_statement_0_path_2");
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

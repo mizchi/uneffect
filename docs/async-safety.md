@@ -452,6 +452,12 @@ share the same condition identity, use correlated then/else skip transitions,
 and apply abrupt completion only on the selected path. Top-level rethrows and a
 single analyzed awaited handler failure do propagate to the nearest enclosing
 catch, including through a normally completing inner finally region.
+Handler `switch` cases use an ordered boolean decision chain: a selected case
+requires earlier cases not to match, while default requires every case not to
+match. Top-level fallthrough and unlabeled break contribute the corresponding
+completion paths. An awaited operation reached both by direct case entry and
+by fallthrough still needs disjunctive control paths; the current Promise
+observation stores one conjunction and does not claim that case yet.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.

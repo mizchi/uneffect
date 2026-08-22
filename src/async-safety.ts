@@ -141,6 +141,15 @@ function enclosingFunctionName(node: ts.Node): string {
 function lineAt(source: ts.SourceFile, position: number): number {
   return source.getLineAndCharacterOfPosition(position).line + 1;
 }
+function switchControlConditions(owner: string, source: ts.SourceFile, clause: ts.CaseOrDefaultClause): AsyncControlCondition[] {
+  const switchStatement = clause.parent.parent;
+  if (!ts.isSwitchStatement(switchStatement)) return [];
+  const cases = switchStatement.caseBlock.clauses.filter(ts.isCaseClause);
+  const id = (index: number): string => `${owner}@switch:${switchStatement.getStart(source)}:case:${index}`;
+  if (ts.isDefaultClause(clause)) return cases.map((_, index) => ({ id: id(index), expected: false }));
+  const selected = cases.indexOf(clause);
+  return cases.slice(0, selected).map((_, index) => ({ id: id(index), expected: false })).concat({ id: id(selected), expected: true });
+}
 function isPromiseLike(checker: ts.TypeChecker, expression: ts.Expression): boolean {
   const type = checker.getTypeAtLocation(expression);
   if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return false;
@@ -406,6 +415,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
         if (!ts.isIfStatement(parent) || child === parent.expression) continue;
         conditions.unshift({ id: `${owner}@if:${parent.getStart(source)}`, expected: child === parent.thenStatement });
+        continue;
+      }
+      for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
+        if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) conditions.unshift(...switchControlConditions(owner, source, parent));
       }
       return conditions;
     };
@@ -717,6 +730,26 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               ...execute(current.thenStatement, [...conditions, { id, expected: true }]),
               ...(current.elseStatement ? execute(current.elseStatement, [...conditions, { id, expected: false }]) : [{ controlConditions: [...conditions, { id, expected: false }], completion: "normal" as const }]),
             ];
+          }
+          if (ts.isSwitchStatement(current)) {
+            const clauses = current.caseBlock.clauses;
+            const selectedPaths = clauses.flatMap((clause, clauseIndex) => {
+              const statements: ts.Statement[] = [];
+              let stopped = false;
+              for (let index = clauseIndex; index < clauses.length && !stopped; index++) for (const child of clauses[index]!.statements) {
+                if (ts.isBreakStatement(child) && !child.label) { stopped = true; break; }
+                statements.push(child);
+              }
+              return executeStatements(statements, [...conditions, ...switchControlConditions(owner, source, clause)]);
+            });
+            if (!clauses.some(ts.isDefaultClause)) {
+              const cases = clauses.filter(ts.isCaseClause);
+              selectedPaths.push({
+                controlConditions: [...conditions, ...cases.map((_, index) => ({ id: `${owner}@switch:${current.getStart(source)}:case:${index}`, expected: false }))],
+                completion: "normal",
+              });
+            }
+            return selectedPaths;
           }
           return [{ controlConditions: conditions, completion: "normal" }];
         };
