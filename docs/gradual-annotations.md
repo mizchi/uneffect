@@ -208,8 +208,10 @@ matching arity. The syntax-only API is limited to same-file declarations. A
 TypeScript Program may instead be passed to
 `validateRefinementInvariantBodiesInProgram` (or its `WithZ3` variant); this
 resolves imported helpers and reassignment-free `const` function aliases by
-symbol identity. Mutable aliases, ambiguous lexical call names, recursion,
-direct namespace-property calls, dynamic dispatch,
+symbol identity. Direct namespace-import selections such as
+`Predicates.valid(runtime.epoch)` are also accepted when the selected property
+resolves to a function declaration. Mutable aliases, ambiguous lexical call
+names, recursion, ordinary object methods, dynamic dispatch,
 statement-bearing helpers, mutable local
 declarations, mutation, collections, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous

@@ -692,6 +692,35 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("resolves direct namespace-import invariant helpers in the Program path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-namespace-invariant-"));
+    const helperFile = join(directory, "predicate.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      temporal valid: epoch >= 0
+    */
+      import * as Predicates from "./predicate.js"
+      interface Runtime { epoch: number }
+      /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 invariant valid */
+      export function invariant(runtime: Runtime) { return Predicates.valid(runtime.epoch) }
+    `;
+    try {
+      writeFileSync(helperFile, `export function valid(epoch: number): boolean { return epoch >= 0 }`);
+      writeFileSync(mainFile, source);
+      const spec = parseSpec(mainFile, source).temporal;
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(program, mainFile, "counter", spec)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("proves create/observe state projection and reports transformed or swapped fields", () => {
     const model = `/* uneffect:
       state left: int

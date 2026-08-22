@@ -300,8 +300,8 @@ function normalizeRefinementExpression(
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
   }
-  if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-    const name = node.expression.text;
+  if (ts.isCallExpression(node) && (ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression))) {
+    const name = ts.isIdentifier(node.expression) ? node.expression.text : node.expression.getText();
     const helper = helpers.get(name);
     if (!helper?.body || activeHelpers.has(name) || helper.parameters.length !== node.arguments.length
       || helper.body.statements.length !== 1) return undefined;
@@ -705,10 +705,10 @@ function collectProgramHelperFunctions(source: ts.SourceFile, checker: ts.TypeCh
   const scanned = new Set<ts.FunctionDeclaration>();
   const scan = (root: ts.Node): void => {
     const visit = (node: ts.Node): void => {
-      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      if (ts.isCallExpression(node) && (ts.isIdentifier(node.expression) || ts.isPropertyAccessExpression(node.expression))) {
         const helper = resolveProgramFunction(checker, node.expression);
         if (helper) {
-          const name = node.expression.text;
+          const name = ts.isIdentifier(node.expression) ? node.expression.text : node.expression.getText();
           const existing = functions.get(name);
           if (existing && existing !== helper) { functions.delete(name); ambiguous.add(name); }
           else if (!ambiguous.has(name)) functions.set(name, helper);
