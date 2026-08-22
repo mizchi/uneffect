@@ -25,13 +25,13 @@ formal:
     pnpm vitest run test/formal-models.test.ts
 
 formal-z3:
-    UNEFFECT_CI_TIER=z3 pnpm vitest run
+    pnpm tsx ci/run-test-tiers.ts z3
 
 formal-quint:
-    UNEFFECT_CI_TIER=quint pnpm vitest run
+    pnpm tsx ci/run-test-tiers.ts quint
 
 formal-integration:
-    UNEFFECT_CI_TIER=integration pnpm vitest run
+    pnpm tsx ci/run-test-tiers.ts integration
 
 formal-realtime:
     pnpm vitest run test/spec-backends.test.ts -t "guarded real-time"

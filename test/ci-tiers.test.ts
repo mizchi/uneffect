@@ -36,5 +36,10 @@ describe("CI test tier manifest", () => {
     expect(packageJson.scripts.check).toContain("tsx ci/run-test-tiers.ts");
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
+    expect(runner).toContain('tier === "fast" ? [undefined] : ciTestTiers[tier]');
+    const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
+    expect(justfile).toContain("tsx ci/run-test-tiers.ts z3");
+    expect(justfile).toContain("tsx ci/run-test-tiers.ts quint");
+    expect(justfile).toContain("tsx ci/run-test-tiers.ts integration");
   });
 });
