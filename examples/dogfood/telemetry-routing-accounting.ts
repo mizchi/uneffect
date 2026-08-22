@@ -12,7 +12,7 @@
   action deliver: delivered' = delivered + 1, attempted' = attempted + 1
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
-  action armAudit: auditArmed' = true
+  action armAudit: auditArmed' = attempted > 0 ? true : auditArmed
   action observeLostOutcome: auditArmed' = auditArmed
   action_when observeLostOutcome: auditArmed && delivered + dropped + buffered < attempted
   temporal allAttemptsHaveOneOutcome: delivered + dropped + buffered === attempted
@@ -62,7 +62,9 @@ export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runti
 export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */
-export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void { runtime.auditArmed = true; }
+export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void {
+  if (runtime.attempted > 0) runtime.auditArmed = true;
+}
 
 /* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
 export function observeLostTelemetryOutcome(runtime: TelemetryRoutingAccounting): void {

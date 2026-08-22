@@ -360,6 +360,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
   }
   if (expression.kind === "unary") return expression.operator === "not" ? "bool" : "int";
   if (expression.kind === "binary") return ["add", "subtract", "multiply", "divide", "modulo"].includes(expression.operator) ? "int" : "bool";
+  if (expression.kind === "conditional") return z3TemporalType(expression.whenTrue, symbols);
   if (expression.kind === "call" && expression.name === "Set") {
     if (expression.arguments.length === 0) return { kind: "set", element: "never" };
     return { kind: "set", element: z3TemporalType(expression.arguments[0]!, symbols) };
@@ -422,6 +423,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
     }
     if (expression.kind === "unary") visit(expression.operand);
     else if (expression.kind === "binary") { visit(expression.left); visit(expression.right); }
+    else if (expression.kind === "conditional") { visit(expression.condition); visit(expression.whenTrue); visit(expression.whenFalse); }
     else if (expression.kind === "array") expression.elements.forEach(visit);
     else if (expression.kind === "record") { if (expression.base) visit(expression.base); Object.values(expression.fields).forEach(visit); }
     else if (expression.kind === "field") visit(expression.receiver);
@@ -439,6 +441,7 @@ function supportsZ3Expression(expression: TemporalExpression): boolean {
   if (expression.kind === "method" && expression.name === "size") return false;
   if (expression.kind === "unary") return supportsZ3Expression(expression.operand);
   if (expression.kind === "binary") return supportsZ3Expression(expression.left) && supportsZ3Expression(expression.right);
+  if (expression.kind === "conditional") return supportsZ3Expression(expression.condition) && supportsZ3Expression(expression.whenTrue) && supportsZ3Expression(expression.whenFalse);
   if (expression.kind === "array") return expression.elements.every(supportsZ3Expression);
   if (expression.kind === "record") {
     if (expression.base && !supportsZ3Expression(expression.base)) return false;
@@ -469,6 +472,7 @@ function temporalToSmt(
   if (expression.kind === "integer") return expression.value;
   if (expression.kind === "boolean") return String(expression.value);
   if (expression.kind === "unary") return expression.operator === "not" ? `(not ${temporalToSmt(expression.operand, resolveName, symbols, undefined, boundName)})` : `(- ${temporalToSmt(expression.operand, resolveName, symbols, undefined, boundName)})`;
+  if (expression.kind === "conditional") return `(ite ${temporalToSmt(expression.condition, resolveName, symbols, undefined, boundName)} ${temporalToSmt(expression.whenTrue, resolveName, symbols, expected, boundName)} ${temporalToSmt(expression.whenFalse, resolveName, symbols, expected, boundName)})`;
   if (expression.kind === "call" && expression.name === "Set") {
     const type = expression.arguments.length === 0 ? expected : z3TemporalType(expression, symbols);
     if (!type || typeof type === "string" || type.kind !== "set" || !supportsZ3SemanticType(type)) throw new Error("Z3 Set literals require a scalar Set type");
@@ -1040,6 +1044,7 @@ function referencedNames(expression: TemporalExpression, names = new Set<string>
   if (expression.kind === "name" && !bound.has(expression.name)) names.add(expression.name);
   else if (expression.kind === "unary") referencedNames(expression.operand, names, bound);
   else if (expression.kind === "binary") { referencedNames(expression.left, names, bound); referencedNames(expression.right, names, bound); }
+  else if (expression.kind === "conditional") { referencedNames(expression.condition, names, bound); referencedNames(expression.whenTrue, names, bound); referencedNames(expression.whenFalse, names, bound); }
   else if (expression.kind === "lambda") referencedNames(expression.body, names, new Set([...bound, expression.parameter]));
   else if (expression.kind === "array") expression.elements.forEach((element) => referencedNames(element, names, bound));
   else if (expression.kind === "call") expression.arguments.forEach((argument) => referencedNames(argument, names, bound));

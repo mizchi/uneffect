@@ -160,6 +160,11 @@ function evaluateTemporalExpression(expression: TemporalExpression, state: Tempo
     return -Number(operand);
   }
   if (expression.kind === "lambda") throw new Error("temporal lambda cannot be evaluated outside a quantifier");
+  if (expression.kind === "conditional") {
+    return evaluateTemporalExpression(expression.condition, state) === true
+      ? evaluateTemporalExpression(expression.whenTrue, state)
+      : evaluateTemporalExpression(expression.whenFalse, state);
+  }
   const left = evaluateTemporalExpression(expression.left, state), right = evaluateTemporalExpression(expression.right, state);
   switch (expression.operator) {
     case "eq": return left === right;

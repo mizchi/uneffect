@@ -127,6 +127,12 @@ Immutable scalar `const` declarations snapshot the symbolic value at their
 declaration point, so the conventional three-step temporary-variable swap is
 proved against simultaneous model assignments. `let`, `var`, destructuring,
 calls, and unsupported initializer expressions remain non-proofs.
+Scalar `if`/`else` statements are evaluated from a copy of the incoming
+symbolic state and merged field-by-field as conditional expressions. An omitted
+`else` is a stuttering branch. The same conditional IR parses TypeScript ternary
+syntax in model expressions, emits JavaScript ternaries and Quint `if/else`, is
+evaluated during trace replay, and lowers to SMT `ite`. Branch-local abrupt
+completion and non-scalar branch state are still unsupported.
 For a guarded model action, the implementation may begin with
 `if (!(predicate)) return`; the positive predicate is normalized and must
 exactly match `action_when` in the synchronous fast path. Missing, different, and unexpected guards are

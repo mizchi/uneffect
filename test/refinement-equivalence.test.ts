@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseSpec } from "../src/spec-ir.js";
 import { validateRefinementActionBodiesWithZ3, validateRefinementInvariantBodiesWithZ3 } from "../src/refinement-bindings.js";
+import { checkTemporalExpressionEquivalenceWithZ3 } from "../src/spec-lint.js";
+import { parseTemporalExpression } from "../src/temporal-expressions.js";
 
 const prelude = `/* uneffect:
   state value: int
@@ -17,6 +19,15 @@ interface Runtime { value: number; armed: boolean }
 `;
 
 describe("Z3-backed refinement expression equivalence", () => {
+  it("proves conditional expressions through SMT ite lowering", async () => {
+    const spec = parseSpec("conditional.ts", prelude).temporal;
+    await expect(checkTemporalExpressionEquivalenceWithZ3(
+      spec,
+      parseTemporalExpression("armed ? value > 0 : value === 0"),
+      parseTemporalExpression("(!armed && value === 0) || (armed && value > 0)"),
+    )).resolves.toEqual({ status: "equivalent", backend: "z3" });
+  });
+
   it("accepts logically equivalent invariant and guard syntax", async () => {
     const source = `${prelude}
       /* uneffect: refinement counter@1 action increment */

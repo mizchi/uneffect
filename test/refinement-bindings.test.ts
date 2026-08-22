@@ -177,6 +177,23 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("composes an if branch into a conditional model update", () => {
+    const source = `/* uneffect:
+      state value: int
+      state armed: bool
+      init value = 0
+      init armed = false
+      action maybeIncrement: value' = armed ? value + 1 : value
+    */
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action maybeIncrement */
+      export function maybeIncrement(runtime: Runtime) { if (runtime.armed) runtime.value++ }
+    `;
+    expect(validateRefinementActionBodies("conditional.ts", source, "counter", parseSpec("conditional.ts", source).temporal)).toEqual([]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:
@@ -198,7 +215,7 @@ describe("annotated refinement bindings", () => {
       /* uneffect: refinement routing@1 action conditional */ export function conditional(runtime: Runtime) { if (runtime.delivered === 0) runtime.delivered++ }
     `;
     expect(validateRefinementActionBodies("routing.ts", source, "routing", parseSpec("routing.ts", source).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "conditional", exportName: "conditional" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "conditional", exportName: "conditional", actual: "delivered === 0 ? delivered + 1 : delivered" }),
     ]);
   });
 

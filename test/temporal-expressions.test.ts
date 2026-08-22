@@ -19,6 +19,15 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(generateQuintExpression(expression)).toBe("epoch + 1 <= limit or ready");
   });
 
+  it("parses, types, and emits conditional temporal expressions", () => {
+    const expression = parseTemporalExpression("armed ? value + 1 : value");
+    const symbols = new Map([["armed", "bool"], ["value", "int"]] as const);
+    expect(typeCheckTemporalExpression(expression, symbols)).toBe("int");
+    expect(generateRuntimeAssertionExpression(expression)).toBe("armed ? value + 1 : value");
+    expect(generateQuintExpression(expression)).toBe("if (armed) value + 1 else value");
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("armed ? value : false"), symbols)).toThrow(/matching branch types/);
+  });
+
   it("rejects calls, untyped property access, and loose equality", () => {
     expect(() => parseTemporalExpression("check(value)")).toThrow(/unsupported temporal expression/);
     expect(() => typeCheckTemporalExpression(parseTemporalExpression("state.value === 1"), new Map([["state", "int"]]))).toThrow(/field access requires a record/);

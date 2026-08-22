@@ -240,6 +240,12 @@ function normalizeRefinementExpression(
     const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
     return operator && left && right ? { kind: "binary", operator, left, right } : undefined;
   }
+  if (ts.isConditionalExpression(node)) {
+    const condition = normalizeRefinementExpression(node.condition, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    const whenTrue = normalizeRefinementExpression(node.whenTrue, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    const whenFalse = normalizeRefinementExpression(node.whenFalse, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    return condition && whenTrue && whenFalse ? { kind: "conditional", condition, whenTrue, whenFalse } : undefined;
+  }
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
     const name = node.expression.text;
     const helper = helpers.get(name);
@@ -300,15 +306,40 @@ export function validateRefinementActionBodies(
       }
       if (expression.kind === "unary") return { ...expression, operand: expandLocalSnapshots(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: expandLocalSnapshots(expression.left), right: expandLocalSnapshots(expression.right) };
+      if (expression.kind === "conditional") return { ...expression, condition: expandLocalSnapshots(expression.condition), whenTrue: expandLocalSnapshots(expression.whenTrue), whenFalse: expandLocalSnapshots(expression.whenFalse) };
       return expression;
     };
     const resolveCurrentState = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name") return updates.get(expression.name) ?? expression;
       if (expression.kind === "unary") return { ...expression, operand: resolveCurrentState(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: resolveCurrentState(expression.left), right: resolveCurrentState(expression.right) };
+      if (expression.kind === "conditional") return { ...expression, condition: resolveCurrentState(expression.condition), whenTrue: resolveCurrentState(expression.whenTrue), whenFalse: resolveCurrentState(expression.whenFalse) };
       return expression;
     };
     for (const statement of body.statements) {
+      if (ts.isIfStatement(statement)) {
+        const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+        if (!normalizedCondition) return undefined;
+        const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
+        const asBlock = (branch: ts.Statement | undefined): ts.Block => !branch
+          ? ts.factory.createBlock([], true)
+          : ts.isBlock(branch) ? branch : ts.factory.createBlock([branch], true);
+        const before = new Map(updates);
+        const whenTrue = collect(asBlock(statement.thenStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));
+        const whenFalse = collect(asBlock(statement.elseStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));
+        if (!whenTrue || !whenFalse) return undefined;
+        updates.clear();
+        for (const name of stateNames) {
+          const original = { kind: "name", name } as TemporalExpression;
+          const trueValue = whenTrue.get(name) ?? original;
+          const falseValue = whenFalse.get(name) ?? original;
+          const merged: TemporalExpression = JSON.stringify(trueValue) === JSON.stringify(falseValue)
+            ? trueValue
+            : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
+          if (JSON.stringify(merged) !== JSON.stringify(original)) updates.set(name, merged);
+        }
+        continue;
+      }
       if (ts.isVariableStatement(statement)) {
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
         for (const declaration of statement.declarationList.declarations) {

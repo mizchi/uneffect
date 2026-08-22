@@ -10,6 +10,7 @@ export type TemporalExpression =
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
   | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "forall" | "size" | "put" | "keys" | "values"; arguments: TemporalExpression[] }
+  | { kind: "conditional"; condition: TemporalExpression; whenTrue: TemporalExpression; whenFalse: TemporalExpression }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
 
@@ -162,6 +163,13 @@ export function typeCheckTemporalExpression(
     if (typeCheckTemporalExpression(predicate.body, scoped) !== "bool") throw new Error("temporal forall requires a boolean predicate");
     return "bool";
   }
+  if (expression.kind === "conditional") {
+    if (typeCheckTemporalExpression(expression.condition, symbols) !== "bool") throw new Error("temporal conditional requires a boolean condition");
+    const whenTrue = typeCheckTemporalExpression(expression.whenTrue, symbols);
+    const whenFalse = typeCheckTemporalExpression(expression.whenFalse, symbols);
+    if (!temporalTypesCompatible(whenTrue, whenFalse)) throw new Error("temporal conditional requires matching branch types");
+    return whenTrue;
+  }
   if (expression.kind === "unary") {
     const operand = typeCheckTemporalExpression(expression.operand, symbols);
     const expected = expression.operator === "not" ? "bool" : "int";
@@ -215,6 +223,7 @@ function convert(node: ts.Expression): TemporalExpression {
     return { kind: "record", ...(base ? { base } : {}), fields };
   }
   if (ts.isPropertyAccessExpression(node)) return { kind: "field", receiver: convert(node.expression), name: node.name.text };
+  if (ts.isConditionalExpression(node)) return { kind: "conditional", condition: convert(node.condition), whenTrue: convert(node.whenTrue), whenFalse: convert(node.whenFalse) };
   if (ts.isArrowFunction(node) && node.parameters.length === 1 && ts.isIdentifier(node.parameters[0]!.name) && !ts.isBlock(node.body)) {
     return { kind: "lambda", parameter: node.parameters[0]!.name.text, body: convert(node.body) };
   }
@@ -271,6 +280,7 @@ const runtimeBinary: Record<TemporalBinaryOperator, string> = {
 };
 
 function precedence(expression: TemporalExpression): number {
+  if (expression.kind === "conditional") return 0;
   if (expression.kind !== "binary") return 100;
   if (expression.operator === "or") return 1;
   if (expression.operator === "and") return 2;
@@ -316,6 +326,12 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
     if (expression.name === "contains") return `${receiver}.has(${emit(expression.arguments[0]!, backend)})`;
     if (expression.name === "union") return `new Set([...${receiver}, ...${emit(expression.arguments[0]!, backend)}])`;
     return `Array.from(${receiver}).every(${emit(expression.arguments[0]!, backend)})`;
+  }
+  if (expression.kind === "conditional") {
+    const value = backend === "quint"
+      ? `if (${emit(expression.condition, backend)}) ${emit(expression.whenTrue, backend)} else ${emit(expression.whenFalse, backend)}`
+      : `${emit(expression.condition, backend, 1)} ? ${emit(expression.whenTrue, backend)} : ${emit(expression.whenFalse, backend)}`;
+    return parent > 0 ? `(${value})` : value;
   }
   if (expression.kind === "unary") {
     const operand = emit(expression.operand, backend, 100);
