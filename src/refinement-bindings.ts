@@ -352,8 +352,8 @@ function normalizeRefinementExpression(
     if (collection) return { kind: "method", receiver: collection, name: node.expression.name.text, arguments: [] };
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-    && node.expression.name.text === "every" && node.arguments.length === 1
-    && isDeclarationFileSymbol(checker, node.expression.name, "every")) {
+    && (node.expression.name.text === "every" || node.expression.name.text === "some") && node.arguments.length === 1
+    && isDeclarationFileSymbol(checker, node.expression.name, node.expression.name.text)) {
     const from = node.expression.expression;
     const callback = node.arguments[0];
     if (ts.isCallExpression(from) && ts.isPropertyAccessExpression(from.expression)
@@ -385,7 +385,7 @@ function normalizeRefinementExpression(
       } else callbackExpression = callback.body;
       const body = normalizeRefinementExpression(callbackExpression, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
       if (collection && supportedCollection && body) return {
-        kind: "method", receiver: collection, name: "forall",
+        kind: "method", receiver: collection, name: node.expression.name.text === "some" ? "exists" : "forall",
         arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
       };
     }

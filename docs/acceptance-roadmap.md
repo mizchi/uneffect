@@ -129,6 +129,10 @@ with a single-return callback block proves
 an immutable callback-local alias for `lease.epoch` preserves the proof.
 Changing that alias declaration from `const` to `let` remains an explicit
 unsupported non-proof.
+The lease corpus also binds `Array.from(runtime.owners).some(...)` to a
+temporal `Set.exists` invariant. A changed witness predicate is rejected as an
+invariant-expression mismatch rather than accepted from the initial state
+alone.
 
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,

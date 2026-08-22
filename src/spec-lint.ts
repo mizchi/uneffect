@@ -383,7 +383,7 @@ function z3TemporalType(expression: TemporalExpression, symbols: ReadonlyMap<str
       if (expression.name === "values") return { kind: "set", element: receiver.value };
     }
     if (expression.name === "union" || expression.name === "exclude") return receiver;
-    if (expression.name === "contains" || expression.name === "forall") return "bool";
+    if (expression.name === "contains" || expression.name === "forall" || expression.name === "exists") return "bool";
     if (expression.name === "size") return "int";
   }
   throw new Error("this temporal value type is not supported by the Z3 lint backend");
@@ -554,6 +554,13 @@ function temporalToSmt(
       const scoped = new Map(symbols);
       scoped.set(predicate.parameter, receiverType.element === "never" ? "int" : receiverType.element);
       return `(forall ((${predicate.parameter} ${smtSort(receiverType.element)})) (=> (select ${receiver} ${predicate.parameter}) ${temporalToSmt(predicate.body, resolveName, scoped, undefined, predicate.parameter)}))`;
+    }
+    if (expression.name === "exists") {
+      const predicate = expression.arguments[0];
+      if (!predicate || predicate.kind !== "lambda") throw new Error("Z3 Set exists requires a lambda");
+      const scoped = new Map(symbols);
+      scoped.set(predicate.parameter, receiverType.element === "never" ? "int" : receiverType.element);
+      return `(exists ((${predicate.parameter} ${smtSort(receiverType.element)})) (and (select ${receiver} ${predicate.parameter}) ${temporalToSmt(predicate.body, resolveName, scoped, undefined, predicate.parameter)}))`;
     }
     throw new Error(`Z3 Set method \`${expression.name}\` is not supported`);
   }

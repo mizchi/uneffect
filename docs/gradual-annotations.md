@@ -234,6 +234,11 @@ reassignment-free `const` declarations; their initializers are normalized in
 declaration order and may refer to the bound element or earlier constants.
 `let`/`var`, mutation, non-declaration statements, and abrupt control flow
 remain unsupported.
+The same collection views accept existential predicates: builtin
+`Array.from(setOrMapView).some(predicate)` normalizes to temporal `exists` and
+is checked by the Quint, runtime-assertion, and Z3 backends. As with `every`,
+method identity is resolved through the TypeChecker rather than trusted by
+spelling.
 The
 syntax-only API and custom/shadowed `Array.from`, `keys`, `values`, or `every` methods remain
 unsupported rather than being trusted by spelling.

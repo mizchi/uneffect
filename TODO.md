@@ -166,6 +166,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Extend the same quantified refinement to TypeChecker-identified builtin `Map.keys()` and `Map.values()` iterator views.
           - [x] Refine record-valued Map iterator field predicates and accept only expression callbacks or a block containing one direct return.
           - [x] Expand declaration-ordered immutable `const` aliases in quantified callback blocks while rejecting mutable locals and general statements.
+          - [x] Normalize TypeChecker-identified `Array.from(Set|Map views).some` existential predicates and lower `exists` consistently to Quint, runtime assertions, and Z3.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.

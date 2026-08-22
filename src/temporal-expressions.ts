@@ -9,7 +9,7 @@ export type TemporalExpression =
   | { kind: "field"; receiver: TemporalExpression; name: string }
   | { kind: "lambda"; parameter: string; body: TemporalExpression }
   | { kind: "call"; name: "Set" | "Map"; arguments: TemporalExpression[] }
-  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "size" | "put" | "remove" | "get" | "keys" | "values"; arguments: TemporalExpression[] }
+  | { kind: "method"; receiver: TemporalExpression; name: "contains" | "union" | "exclude" | "forall" | "exists" | "size" | "put" | "remove" | "get" | "keys" | "values"; arguments: TemporalExpression[] }
   | { kind: "conditional"; condition: TemporalExpression; whenTrue: TemporalExpression; whenFalse: TemporalExpression }
   | { kind: "unary"; operator: "not" | "negate"; operand: TemporalExpression }
   | { kind: "binary"; operator: TemporalBinaryOperator; left: TemporalExpression; right: TemporalExpression };
@@ -190,10 +190,10 @@ export function typeCheckTemporalExpression(
       return receiver;
     }
     const predicate = expression.arguments[0];
-    if (expression.arguments.length !== 1 || !predicate || predicate.kind !== "lambda") throw new Error("temporal forall requires one arrow predicate");
+    if (expression.arguments.length !== 1 || !predicate || predicate.kind !== "lambda") throw new Error(`temporal ${expression.name} requires one arrow predicate`);
     const scoped = new Map(symbols);
     scoped.set(predicate.parameter, receiver.element === "never" ? "int" : receiver.element);
-    if (typeCheckTemporalExpression(predicate.body, scoped) !== "bool") throw new Error("temporal forall requires a boolean predicate");
+    if (typeCheckTemporalExpression(predicate.body, scoped) !== "bool") throw new Error(`temporal ${expression.name} requires a boolean predicate`);
     return "bool";
   }
   if (expression.kind === "conditional") {
@@ -263,7 +263,7 @@ function convert(node: ts.Expression): TemporalExpression {
   if (ts.isCallExpression(node)) {
     if (ts.isIdentifier(node.expression) && (node.expression.text === "Set" || node.expression.text === "Map")) return { kind: "call", name: node.expression.text, arguments: node.arguments.map(convert) };
     if (ts.isPropertyAccessExpression(node.expression)) {
-      if (!["contains", "union", "exclude", "forall", "size", "put", "remove", "get", "keys", "values"].includes(node.expression.name.text)) {
+      if (!["contains", "union", "exclude", "forall", "exists", "size", "put", "remove", "get", "keys", "values"].includes(node.expression.name.text)) {
         throw new Error(`unsupported temporal method \`${node.expression.name.text}\``);
       }
       return { kind: "method", receiver: convert(node.expression.expression), name: node.expression.name.text as Extract<TemporalExpression, { kind: "method" }>["name"], arguments: node.arguments.map(convert) };
@@ -362,7 +362,7 @@ function emit(expression: TemporalExpression, backend: "quint" | "runtime", pare
     if (expression.name === "contains") return `${receiver}.has(${emit(expression.arguments[0]!, backend)})`;
     if (expression.name === "union") return `new Set([...${receiver}, ...${emit(expression.arguments[0]!, backend)}])`;
     if (expression.name === "exclude") return `new Set([...${receiver}].filter(_uneffect_item => !${emit(expression.arguments[0]!, backend)}.has(_uneffect_item)))`;
-    return `Array.from(${receiver}).every(${emit(expression.arguments[0]!, backend)})`;
+    return `Array.from(${receiver}).${expression.name === "exists" ? "some" : "every"}(${emit(expression.arguments[0]!, backend)})`;
   }
   if (expression.kind === "conditional") {
     const value = backend === "quint"

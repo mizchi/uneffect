@@ -9,6 +9,7 @@ import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTempora
 import { parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { extractAnnotations } from "../src/annotations.js";
 import { createDefaultTemporalDomainRegistry, createPhysicalClockDomain } from "../src/temporal-domains.js";
+import { generateRuntimeAssertionExpression } from "../src/temporal-expressions.js";
 
 const hasJava = spawnSync("java", ["-version"], { encoding: "utf8" }).status === 0;
 
@@ -125,6 +126,32 @@ describe("spec IR and generated verifier programs", () => {
     expect(result.status, result.stdout + result.stderr).toBe(0);
     await expect(findTemporalCounterexampleWithZ3(temporal, "ownersAreNodes")).resolves.toEqual({ status: "safe-within-bound", depth: 8 });
     await expect(lintTemporalSpecWithZ3(temporal)).resolves.toEqual([]);
+  });
+
+  it("lowers finite existential collection predicates across backends", async () => {
+    const temporal = parseSpec("collection-exists.ts", `/* uneffect:
+      state owners: Set<int>
+      state epochs: Map<int, int>
+      init owners = Set(1)
+      init epochs = Map([[1, 2]])
+      action stay: owners' = owners, epochs' = epochs
+      temporal hasPositiveOwner: owners.exists(owner => owner > 0)
+      temporal hasKnownEpoch: epochs.values().exists(epoch => epoch === 2)
+    */`).temporal;
+    const quint = generateQuint("collection_exists", temporal);
+    expect(quint).toContain("owners.exists(owner => owner > 0)");
+    expect(quint).toContain("epochs.keys().map(_uneffect_key => epochs.get(_uneffect_key)).exists(epoch => epoch == 2)");
+    expect(generateRuntimeAssertionExpression(temporal.properties[0]!.expressionAst))
+      .toBe("Array.from(owners).some(owner => owner > 0)");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-collection-exists-"));
+    const path = join(directory, "exists.qnt");
+    writeFileSync(path, quint);
+    const result = spawnSync("pnpm", ["exec", "quint", "run", path, "--invariant=hasPositiveOwner", "--max-steps=2", "--max-samples=20"], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    await expect(lintTemporalReachabilityWithZ3(temporal, { maxSteps: 1 })).resolves.not.toContainEqual(
+      expect.objectContaining({ code: "unsupported-backend-domain" }),
+    );
   });
 
   it("semantically lints scalar-element Set predicates and extracts complete finite traces with Z3", async () => {

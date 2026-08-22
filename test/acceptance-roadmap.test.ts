@@ -375,6 +375,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       temporal epochKeysKnown: epochs.keys().forall(owner => owner === 1 || owner === 2)
       temporal validLeases: leases.values().forall(lease => !lease.valid || lease.epoch > 0)
       temporal ownersAllowed: owners.forall(owner => allowedOwners.contains(owner))
+      temporal hasOwnerOne: owners.exists(owner => owner === 1)
     */
       interface LeaseRecord { epoch: number; valid: boolean }
       interface Runtime { owners: Set<number>; allowedOwners: Set<number>; epochs: Map<number, number>; leases: Map<number, LeaseRecord> }
@@ -400,6 +401,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       }
       /* uneffect: refinement lease@1 invariant ownersAllowed */
       export function ownersAllowed(runtime: Runtime) { return Array.from(runtime.owners).every(owner => runtime.allowedOwners.has(owner)) }
+      /* uneffect: refinement lease@1 invariant hasOwnerOne */
+      export function hasOwnerOne(runtime: Runtime) { return Array.from(runtime.owners).some(owner => owner === 1) }
     `;
     try {
       writeFileSync(fileName, source);
@@ -444,6 +447,15 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenValuesProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenValuesProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "epochsNonNegative" }),
+      );
+      const brokenExistential = source.replace(
+        "Array.from(runtime.owners).some(owner => owner === 1)",
+        "Array.from(runtime.owners).some(owner => owner === 2)",
+      );
+      writeFileSync(fileName, brokenExistential);
+      const brokenExistentialProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenExistentialProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "hasOwnerOne" }),
       );
       const brokenLeaseField = source.replace(
         "return Array.from(runtime.leases.values()).every(lease => { return !lease.valid || lease.epoch > 0 })",
