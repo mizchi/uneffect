@@ -7,7 +7,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 5 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 6 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -48,7 +48,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     }));
   });
 
-  it("preserves conditional Promise and resource execution in schema v4", async () => {
+  it("preserves correlated control conditions in schema v5", async () => {
     const result = await compareUneffectFrontends({ files: { "conditional.ts": `
       interface Resource { [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
@@ -60,9 +60,9 @@ describe("TypeScript/Corsa neutral projection parity", () => {
       }
     ` } });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
-    expect(result.typescriptIr.schemaVersion).toBe(4);
-    expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true }));
-    expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true }));
+    expect(result.typescriptIr.schemaVersion).toBe(5);
+    expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] }));
+    expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] }));
   });
 
   it("preserves nested SuppressedError payload order across frontends", async () => {

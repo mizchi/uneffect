@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 4;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -99,7 +99,15 @@ pub struct CorsaPromiseObservation {
     pub observation: String,
     pub catches_rejection: bool,
     pub conditional: bool,
+    pub control_conditions: Vec<CorsaControlCondition>,
     pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaControlCondition {
+    pub id: String,
+    pub expected: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -120,6 +128,7 @@ pub struct CorsaResourceScope {
     pub owner_async: bool,
     pub asynchronous: bool,
     pub conditional: bool,
+    pub control_conditions: Vec<CorsaControlCondition>,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -270,6 +279,7 @@ pub struct NormalizedPromiseObservation {
     pub observation: String,
     pub catches_rejection: bool,
     pub conditional: bool,
+    pub control_conditions: Vec<CorsaControlCondition>,
     pub start: u32,
     pub end: u32,
 }
@@ -293,6 +303,7 @@ pub struct NormalizedResourceScope {
     pub owner_async: bool,
     pub asynchronous: bool,
     pub conditional: bool,
+    pub control_conditions: Vec<CorsaControlCondition>,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -384,6 +395,7 @@ impl NativeFrontendProgram {
                     observation: item.observation.clone(),
                     catches_rejection: item.catches_rejection,
                     conditional: item.conditional,
+                    control_conditions: item.control_conditions.clone(),
                     start: item.span.start,
                     end: item.span.end,
                 })
@@ -409,6 +421,7 @@ impl NativeFrontendProgram {
                     owner_async: item.owner_async,
                     asynchronous: item.asynchronous,
                     conditional: item.conditional,
+                    control_conditions: item.control_conditions.clone(),
                     acquisition_index: item.acquisition_index,
                     scope_id: item.scope_id.clone(),
                     scope_depth: item.scope_depth,
@@ -488,6 +501,29 @@ fn effect_payloads(text: &str) -> Vec<&str> {
         }
     }
     values
+}
+
+fn validate_control_conditions(
+    conditions: &[CorsaControlCondition],
+) -> Result<(), CorsaFrontendError> {
+    let mut seen = BTreeMap::new();
+    for condition in conditions {
+        if condition.id.trim().is_empty() {
+            return Err(CorsaFrontendError("control condition id is empty".into()));
+        }
+        if let Some(previous) = seen.insert(condition.id.as_str(), condition.expected) {
+            let detail = if previous == condition.expected {
+                "duplicate"
+            } else {
+                "contradictory"
+            };
+            return Err(CorsaFrontendError(format!(
+                "{detail} control condition {}",
+                condition.id
+            )));
+        }
+    }
+    Ok(())
 }
 
 pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFrontendError> {
@@ -574,6 +610,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
         }
     }
     for resource in &file.resource_scopes {
+        validate_control_conditions(&resource.control_conditions)?;
         match (resource.protocol_symbol, resource.protocol_kind) {
             (Some(id), Some(kind))
                 if protocol_symbols
@@ -591,6 +628,9 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
                 ));
             }
         }
+    }
+    for observation in &file.promise_observations {
+        validate_control_conditions(&observation.control_conditions)?;
     }
     for owner in file
         .promise_observations

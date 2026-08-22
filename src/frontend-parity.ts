@@ -6,14 +6,14 @@ import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from 
 
 export interface CompareUneffectFrontendsOptions { files: Record<string, string>; corsaSchemaVersion?: number }
 export interface NormalizedFrontendIr {
-  schemaVersion: 4;
+  schemaVersion: 5;
   functions: Array<{ name: string; effects: string[] }>;
   calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
   orderedEvents: Array<{ kind: "call"; caller: string; callee: string; start: number; end: number }>;
-  promiseObservations: Array<{ owner: string; source: string; observation: string; catchesRejection: boolean; conditional: boolean; start: number; end: number }>;
+  promiseObservations: Array<{ owner: string; source: string; observation: string; catchesRejection: boolean; conditional: boolean; controlConditions: Array<{ id: string; expected: boolean }>; start: number; end: number }>;
   rejectionOwnership: Array<{ owner: string; binding: string; status: string; observations: string[]; start: number; end: number }>;
   protocolSymbols: Array<{ id: number; kind: "sync" | "async"; fileName: string; start: number; end: number }>;
-  resourceScopes: Array<{ owner: string; binding: string; ownerAsync: boolean; asynchronous: boolean; conditional: boolean; acquisitionIndex: number; scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean; disposalFailureType: string; protocolSymbol: number | null; protocolKind: "sync" | "async" | null; start: number; end: number }>;
+  resourceScopes: Array<{ owner: string; binding: string; ownerAsync: boolean; asynchronous: boolean; conditional: boolean; controlConditions: Array<{ id: string; expected: boolean }>; acquisitionIndex: number; scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean; disposalFailureType: string; protocolSymbol: number | null; protocolKind: "sync" | "async" | null; start: number; end: number }>;
   disposals: Array<{ owner: string; binding: string; order: number; asynchronous: boolean; scopeId: string; scopeDepth: number; disposalPoint: number; failureKind: string; failureType: string; catchesFailure: boolean; escapingFailure: string; exits: string[] }>;
   suppressedErrors: Array<{ owner: string; payload: ResourceError }>;
 }
@@ -72,7 +72,7 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
     const async = analyzeAsyncSafety(fileName, text);
     for (const item of async.promises) {
       const owner = idsByName.get(item.owner); if (!owner) continue;
-      promiseObservations.push({ owner, source: item.source, observation: item.observation, catchesRejection: item.catchesRejection, conditional: item.conditional,
+      promiseObservations.push({ owner, source: item.source, observation: item.observation, catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions,
         span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
     }
     for (const item of async.promiseBindings) {
@@ -91,7 +91,7 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
         protocolSymbol = protocolIds.get(key) ?? protocolSymbols.length + 1;
         if (!protocolIds.has(key)) { protocolIds.set(key, protocolSymbol); protocolSymbols.push({ id: protocolSymbol, kind: item.disposalProtocol.kind, fileName: item.disposalProtocol.fileName, span: { start, end } }); }
       }
-      resourceScopes.push({ owner, binding: item.binding, ownerAsync: item.ownerAsync, asynchronous: item.asynchronous, conditional: item.conditional,
+      resourceScopes.push({ owner, binding: item.binding, ownerAsync: item.ownerAsync, asynchronous: item.asynchronous, conditional: item.conditional, controlConditions: item.controlConditions,
         acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: byteOffset(text, item.scopeEnd),
         catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol,
         protocolKind: item.disposalProtocol?.kind ?? null,
@@ -122,7 +122,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     functions.push({ name: node.name.text, effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 4);
+  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 5);
   const protocolSymbols = input.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
   const names = new Map(input.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
   const calls = input.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
@@ -138,11 +138,11 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   const orderedEvents = input.calls.map((call) => ({ kind: "call" as const, caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end }))
     .sort((left, right) => left.start - right.start || left.end - right.end);
   const promiseObservations = input.promiseObservations.map((item: any) => ({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
-    catchesRejection: item.catchesRejection, conditional: item.conditional, start: item.span.start, end: item.span.end }));
+    catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions, start: item.span.start, end: item.span.end }));
   const rejectionOwnership = input.rejectionOwnership.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
     observations: item.observations, start: item.span.start, end: item.span.end }));
   const resourceScopes = input.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
-    asynchronous: item.asynchronous, conditional: item.conditional, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
+    asynchronous: item.asynchronous, conditional: item.conditional, controlConditions: item.controlConditions, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
     catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol: item.protocolSymbol,
     protocolKind: item.protocolKind, start: item.span.start, end: item.span.end }));
   const disposals = input.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
@@ -150,7 +150,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
     escapingFailure: item.escapingFailure, exits: item.exits }));
   const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
-  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 4, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 5, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], { input: JSON.stringify(input), encoding: "utf8", timeout: 30_000 });
   if (execution.error || execution.status !== 0) return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {

@@ -4,7 +4,7 @@ Uneffect's implementation layer is replaceable; its frontend and proof contracts
 
 ## Corsa interchange
 
-The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v4 consumes:
+The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v5 consumes:
 
 - stable symbol IDs and declaration kinds (`function`, `method`, `arrow`, callback, overload),
 - TypeScript type text and selected overload signatures,
@@ -14,14 +14,15 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 - Promise observations and rejection-ownership records,
 - resource scopes and reverse-order synchronous/asynchronous disposal records,
 - exact nested resource failure payloads corresponding to `SuppressedError` chains.
-- conditional-execution flags on Promise observations and resource acquisitions,
+- conditional-execution flags plus ordered control-condition IDs and polarity
+  on Promise observations and resource acquisitions,
 - disposal protocol symbols as stable IDs with a `sync`/`async` role, and
   resource-to-protocol edges validated for existence and matching role.
 
 Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; Rust does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
-reference side emits schema-v4 mapper records, the Rust
+reference side emits schema-v5 mapper records, the Rust
 `uneffect-corsa-normalize` binary consumes them, and both sides are compared as
 the same normalized functions, transitive inferred effect sets, resolved local
 call edges, source-ordered call events, Promise ownership records, resource
@@ -39,7 +40,7 @@ file extensions, return generated TypeScript plus source-span mappings, and do
 not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
-them to Rust native rules. A schema-v4 exporter at that bridge remains the P6
+them to Rust native rules. A schema-v5 exporter at that bridge remains the P6
 production integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
 semantic parity.

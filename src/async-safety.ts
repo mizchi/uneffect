@@ -5,12 +5,17 @@ import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicEx
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 
 export type PromiseObservationKind = "await" | "return" | "catch" | "then-rejection" | "ignored" | "floating";
+export interface AsyncControlCondition {
+  id: string;
+  expected: boolean;
+}
 export interface PromiseObservation {
   owner: string;
   source: string;
   observation: PromiseObservationKind;
   catchesRejection: boolean;
   conditional: boolean;
+  controlConditions: AsyncControlCondition[];
   promiseChain?: number;
   span: { start: number; end: number };
 }
@@ -27,6 +32,7 @@ export interface ResourceBinding {
   binding: string;
   asynchronous: boolean;
   conditional: boolean;
+  controlConditions: AsyncControlCondition[];
   acquisitionIndex: number;
   scopeId: string;
   scopeDepth: number;
@@ -379,7 +385,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visitFunction = (ownerNode: ts.FunctionLikeDeclaration): void => {
     if (!ownerNode.body) return;
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [];
+    const controlConditions = (node: ts.Node): AsyncControlCondition[] => {
+      const conditions: AsyncControlCondition[] = [];
+      let child = node;
+      for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
+        if (!ts.isIfStatement(parent) || child === parent.expression) continue;
+        conditions.unshift({ id: `${owner}@if:${parent.getStart(source)}`, expected: child === parent.thenStatement });
+      }
+      return conditions;
+    };
     const isConditionalExecution = (node: ts.Node): boolean => {
+      if (controlConditions(node).length > 0) return true;
       let child = node;
       for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
         if (ts.isIfStatement(parent) && child !== parent.expression) return true;
@@ -422,7 +438,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       return undefined;
     };
     const observe = (expression: ts.Expression, observation: PromiseObservationKind, catchesRejection: boolean): void => {
-      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), span: { start: expression.getStart(source), end: expression.getEnd() } });
+      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), controlConditions: controlConditions(expression), span: { start: expression.getStart(source), end: expression.getEnd() } });
       if (observation === "floating") diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, expression.getStart(source)), kind: "floating-promise", severity: "error", message: `${owner} has a floating Promise whose rejection is not observed; await, return, catch, or explicitly void it` });
     };
     const visit = (node: ts.Node): void => {
@@ -454,7 +470,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const protocol = disposableProperties(checker, declaration.initializer);
           const selectedProtocol = asynchronous ? protocol.asyncSymbol ?? protocol.syncSymbol : protocol.syncSymbol;
           const protocolDeclaration = selectedProtocol?.declarations?.[0];
-          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
+          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), controlConditions: controlConditions(declaration), acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
             disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
@@ -817,15 +833,24 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const afterCatchPc = catchPc + catchStatements.length, finallyPc = afterCatchPc + 1;
   const cleanupPc = finallyPc + finallyStatements.length, completePc = cleanupPc + disposals.length;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
+  const branchIds = [...new Set([...resources.flatMap((item) => item.controlConditions), ...awaited.flatMap((item) => item.controlConditions)].map((condition) => condition.id))];
+  const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
+  const conditionGuards = (conditions: readonly AsyncControlCondition[]): string[] => conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 1 : 0}`);
+  const conditionMismatch = (conditions: readonly AsyncControlCondition[]): string | undefined => conditions.length
+    ? conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 0 : 1}`).join(" or ")
+    : undefined;
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
+  branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`));
   lines.push("", "  action init = all {", "    pc' = 0,", "    completion' = 0,", "    broken' = false,");
+  branchIds.forEach((_, index) => lines.push(`    branch_${index}' = -1,`));
   resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`));
   lines.push("  }");
   const actions: string[] = [];
   const emit = (name: string, guards: string[], updates = new Map<string, string>()): void => {
     actions.push(name);
     lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`);
+    branchIds.forEach((_, index) => lines.push(`    branch_${index}' = ${updates.get(`branch_${index}`) ?? `branch_${index}`},`));
     resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`));
     lines.push("  }");
   };
@@ -845,12 +870,19 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"]]));
     }
   };
+  branchIds.forEach((_, index) => {
+    emit(`choose_branch_${index}_true`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "1"]]));
+    emit(`choose_branch_${index}_false`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "0"]]));
+  });
   normalLayout.forEach(({ event, pc }, eventIndex) => {
     const next = normalLayout[eventIndex + 1]?.pc ?? finallyPc;
     if (event.kind === "acquire") {
-      emit(`acquire_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
-      emit(`acquire_fail_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
-      if (resources[event.index]!.conditional) emit(`skip_acquire_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(next)]]));
+      const resource = resources[event.index]!;
+      const guards = [`pc == ${pc}`, ...conditionGuards(resource.controlConditions)];
+      emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
+      emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
+      const mismatch = conditionMismatch(resource.controlConditions);
+      if (resource.conditional) emit(`skip_acquire_${labels[event.index]}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
       return;
     }
     if (event.kind === "dispose") {
@@ -859,11 +891,13 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     }
     const observation = awaited[event.index]!;
     const chain = observation.promiseChain!;
-    emit(`promise_${chain}_fulfill`, [`pc == ${pc}`], new Map([["pc", String(pc + 1)]]));
+    const guards = [`pc == ${pc}`, ...conditionGuards(observation.controlConditions)];
+    emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
     const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
-    emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${pc}`], rejectionUpdates);
-    if (observation.conditional) emit(`skip_await_${chain}`, [`pc == ${pc}`], new Map([["pc", String(next)]]));
+    emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
+    const mismatch = conditionMismatch(observation.controlConditions);
+    if (observation.conditional) emit(`skip_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
     const isLast = event.index === awaited.length - 1;
     const resumeName = awaited.length === 1
       ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"

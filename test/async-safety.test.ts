@@ -733,12 +733,34 @@ describe("async error and explicit resource safety", () => {
         await Promise.resolve("outside").then(value => value)
       }
     `);
-    expect(result.resources[0]).toMatchObject({ binding: "resource", conditional: true });
+    expect(result.resources[0]).toMatchObject({ binding: "resource", conditional: true, controlConditions: [{ expected: true }] });
     const inside = result.promises.find((item) => item.source.includes('"inside"'))!;
-    expect(inside).toMatchObject({ conditional: true });
+    expect(inside).toMatchObject({ conditional: true, controlConditions: result.resources[0]!.controlConditions });
     const quint = generateUnifiedAsyncQuint("conditional_resource", result, "run");
+    expect(quint).toContain("var branch_0: int");
+    expect(quint).toMatch(/action acquire_resource = all \{\s*pc == \d+,\s*branch_0 == 1,/);
     expect(quint).toContain("action skip_acquire_resource");
-    expect(quint).toContain(`action skip_await_${inside.promiseChain}`);
+    expect(quint).toMatch(new RegExp(`action skip_await_${inside.promiseChain} = all \\{\\s*pc == \\d+,\\s*branch_0 == 0,`));
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("uses opposite polarity of one branch choice for then and else awaits", () => {
+    const result = analyzeAsyncSafety("if-else-await.ts", `
+      async function run(enabled: boolean) {
+        if (enabled) {
+          await Promise.resolve("then").then(value => value)
+        } else {
+          await Promise.resolve("else").then(value => value)
+        }
+      }
+    `);
+    const thenAwait = result.promises.find((item) => item.source.includes('"then"'))!;
+    const elseAwait = result.promises.find((item) => item.source.includes('"else"'))!;
+    expect(thenAwait.controlConditions).toEqual([{ id: expect.any(String), expected: true }]);
+    expect(elseAwait.controlConditions).toEqual([{ id: thenAwait.controlConditions[0]!.id, expected: false }]);
+    const quint = generateUnifiedAsyncQuint("if_else_await", result, "run");
+    expect(quint).toMatch(new RegExp(`action promise_${thenAwait.promiseChain}_fulfill = all \\{\\s*pc == \\d+,\\s*branch_0 == 1,`));
+    expect(quint).toMatch(new RegExp(`action promise_${elseAwait.promiseChain}_fulfill = all \\{\\s*pc == \\d+,\\s*branch_0 == 0,`));
     expect(run(quint).status).toBe(0);
   }, 10_000);
 

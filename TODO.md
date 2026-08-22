@@ -282,7 +282,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 ## P8 — Async/resource model hardening
 
-- [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v4 Corsa contract validates protocol-symbol edges and conditional execution; production Context Mapper emission remains tracked in P6.)
+- [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v5 Corsa contract validates protocol-symbol edges and correlated control conditions; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.
   - [x] Cover typed aliases, interface inheritance, intersections, and generic constraints in the TypeChecker frontend.
 - [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model.
@@ -296,7 +296,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Dispose a resource whose complete nested scope precedes the first modeled await before entering that await.
     - [x] Route a caught scope-exit disposal failure through the concrete catch sequence and resume a following straight-line await.
     - [x] Place straight-line resource acquisitions between surrounding awaits by source position instead of front-loading every acquisition.
-    - [x] Preserve conditional acquisition/await as optional transitions and carry the classification through Corsa schema v4; branch correlation and joins remain conservative.
+    - [x] Preserve conditional acquisition/await as optional transitions and carry the classification through Corsa schema v4.
+    - [x] Correlate nested `if` then/else operations through shared condition identity/polarity and carry it through validated Corsa schema v5; loop and general CFG joins remain conservative.
     - [x] Preserve top-level catch/finally `return` and `throw` completion so abrupt handlers do not fall through to later awaits.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

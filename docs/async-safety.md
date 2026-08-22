@@ -446,9 +446,12 @@ boundaries, and early lexical disposal in one source-position event sequence.
 Consequently a resource declared between two awaits is neither acquired before
 the first await nor delayed until after the second. An acquisition nested in a
 conditional or zero-iteration loop, and an await in the same regions, receive
-explicit optional transitions. This is a conservative may-path abstraction:
-the choices are not yet correlated by a shared branch predicate, so proof-grade
-path-sensitive joins still require the general CFG lowering.
+explicit optional transitions. Operations under the same `if` share a stable
+control-condition identity; Quint chooses its boolean value once, and then/else
+operations require opposite polarity. Nested `if` operations carry the ordered
+conjunction of enclosing choices. Zero-iteration loops and other conditional
+constructs still use independent conservative may choices, so general
+path-sensitive joins remain outside this lowering.
 
 ```sh
 just spec-resource-quint examples/resources.ts
