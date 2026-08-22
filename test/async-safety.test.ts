@@ -1007,4 +1007,50 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain(`else ${outerCatchEntry}`);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("sequences multiple awaited chains in one catch statement", () => {
+    const result = analyzeAsyncSafety("multi-await-handler.ts", `
+      async function run() {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          return [
+            await Promise.resolve("first").then(value => value),
+            await Promise.resolve("second").then(value => value),
+          ]
+        }
+      }
+    `);
+    const first = result.promises.find((item) => item.source.includes('"first"'))!;
+    const second = result.promises.find((item) => item.source.includes('"second"'))!;
+    const quint = generateUnifiedAsyncQuint("multi_await_handler", result, "run");
+    const firstResumeTarget = new RegExp(`action catch_await_${first.promiseChain}_resume = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const secondEntry = new RegExp(`action promise_${second.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(firstResumeTarget).toBe(secondEntry);
+    expect(quint).not.toContain(`action skip_await_${second.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("sequences multiple awaited chains in one finally statement", () => {
+    const result = analyzeAsyncSafety("multi-await-finally.ts", `
+      declare function note(...values: unknown[]): void
+      async function run() {
+        try {
+          await Promise.resolve("try").then(value => value)
+        } finally {
+          note(
+            await Promise.resolve("first").then(value => value),
+            await Promise.resolve("second").then(value => value),
+          )
+        }
+      }
+    `);
+    const first = result.promises.find((item) => item.source.includes('"first"'))!;
+    const second = result.promises.find((item) => item.source.includes('"second"'))!;
+    const quint = generateUnifiedAsyncQuint("multi_await_finally", result, "run");
+    const firstResumeTarget = new RegExp(`action finally_await_${first.promiseChain}_resume = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const secondEntry = new RegExp(`action promise_${second.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(firstResumeTarget).toBe(secondEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

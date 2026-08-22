@@ -835,13 +835,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     | { kind: "acquire"; index: number; position: number }
     | { kind: "await"; index: number; position: number }
     | { kind: "dispose"; index: number; position: number };
-  const awaitInStatement = (statement: AsyncControlStatement): number | undefined => {
-    const index = awaited.findIndex((observation) => observation.span.start >= statement.span.start && observation.span.end <= statement.span.end);
-    return index >= 0 ? index : undefined;
-  };
+  const awaitsInStatement = (statement: AsyncControlStatement): number[] => awaited
+    .map((observation, index) => ({ observation, index }))
+    .filter(({ observation }) => observation.span.start >= statement.span.start && observation.span.end <= statement.span.end)
+    .map(({ index }) => index);
   const handlerAwaitIndexes = new Set([...catchStatements, ...finallyStatements].flatMap((statement) => {
-    const index = awaitInStatement(statement);
-    return index === undefined ? [] : [index];
+    return awaitsInStatement(statement);
   }));
   const normalEvents: NormalEvent[] = [
     ...resources.map((resource, index): NormalEvent => ({ kind: "acquire", index, position: resource.span.start })),
@@ -863,17 +862,17 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const catchPc = nextPc;
     const catchLayout = regionCatch.map((statement) => {
       const pc = nextPc;
-      const awaitIndex = awaitInStatement(statement);
-      nextPc += awaitIndex === undefined ? 1 : 2;
-      return { statement, pc, awaitIndex };
+      const awaitIndexes = awaitsInStatement(statement);
+      nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
+      return { statement, pc, awaitIndexes };
     });
     const afterCatchPc = nextPc++;
     const finallyPc = nextPc;
     const finallyLayout = regionFinally.map((statement) => {
       const pc = nextPc;
-      const awaitIndex = awaitInStatement(statement);
-      nextPc += awaitIndex === undefined ? 1 : 2;
-      return { statement, pc, awaitIndex };
+      const awaitIndexes = awaitsInStatement(statement);
+      nextPc += awaitIndexes.length === 0 ? 1 : awaitIndexes.length * 2;
+      return { statement, pc, awaitIndexes };
     });
     return { region, catchPc, catchLayout, afterCatchPc, finallyPc, finallyLayout };
   });
@@ -987,10 +986,14 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
     const finalEntry = layout.finallyLayout.length ? layout.finallyPc : exceptionalTarget(layout.region);
     const afterRegion = continuationPc(layout.region.fullSpan.end);
-    layout.catchLayout.forEach(({ statement, pc, awaitIndex }, index) => {
+    layout.catchLayout.forEach(({ statement, pc, awaitIndexes }, index) => {
       const next = layout.catchLayout[index + 1]?.pc ?? layout.afterCatchPc;
-      if (awaitIndex !== undefined) {
-        emitHandlerAwait("catch", awaited[awaitIndex]!, pc, next, statement.completion, finalEntry);
+      if (awaitIndexes.length > 0) {
+        awaitIndexes.forEach((awaitIndex, awaitOrder) => {
+          const awaitPc = pc + awaitOrder * 2;
+          const awaitNext = awaitOrder + 1 < awaitIndexes.length ? awaitPc + 2 : next;
+          emitHandlerAwait("catch", awaited[awaitIndex]!, awaitPc, awaitNext, awaitOrder + 1 === awaitIndexes.length ? statement.completion : "normal", finalEntry);
+        });
         return;
       }
       const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? next : finalEntry)]]);
@@ -999,13 +1002,20 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     });
     const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
     emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
-    layout.finallyLayout.forEach(({ statement, pc, awaitIndex }, index) => {
+    layout.finallyLayout.forEach(({ statement, pc, awaitIndexes }, index) => {
       const following = layout.finallyLayout[index + 1]?.pc;
       const next = following ?? `if (completion == 0) ${afterRegion} else ${exceptionalTarget(layout.region)}`;
-      if (awaitIndex !== undefined) {
-        const chain = awaited[awaitIndex]!.promiseChain!;
-        emitHandlerAwait("finally", awaited[awaitIndex]!, pc, following ?? afterRegion, statement.completion, exceptionalTarget(layout.region), following === undefined && statement.completion === "normal" ? ["completion == 0"] : []);
-        if (following === undefined && statement.completion === "normal") emit(`finally_await_${chain}_resume_abrupt`, [`pc == ${pc + 1}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
+      if (awaitIndexes.length > 0) {
+        awaitIndexes.forEach((awaitIndex, awaitOrder) => {
+          const awaitPc = pc + awaitOrder * 2;
+          const isLastAwait = awaitOrder + 1 === awaitIndexes.length;
+          const awaitNext = isLastAwait ? following ?? afterRegion : awaitPc + 2;
+          const completion = isLastAwait ? statement.completion : "normal";
+          const chain = awaited[awaitIndex]!.promiseChain!;
+          const pendingCompletion = isLastAwait && following === undefined && completion === "normal";
+          emitHandlerAwait("finally", awaited[awaitIndex]!, awaitPc, awaitNext, completion, exceptionalTarget(layout.region), pendingCompletion ? ["completion == 0"] : []);
+          if (pendingCompletion) emit(`finally_await_${chain}_resume_abrupt`, [`pc == ${awaitPc + 1}`, "completion != 0"], new Map([["pc", String(exceptionalTarget(layout.region))]]));
+        });
         return;
       }
       const target = statement.completion === "normal" ? next : statement.completion === "return" ? cleanupPc : exceptionalTarget(layout.region);

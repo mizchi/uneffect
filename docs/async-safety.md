@@ -441,11 +441,12 @@ catch statement sequence. Without a finally region, catch completion resumes
 the first later straight-line await. A top-level `return` or `throw` statement
 in catch/finally records an abrupt completion and bypasses unreachable handler
 statements and later awaits. A top-level handler statement containing one
-analyzed awaited chain receives dedicated terminal and resume states. Catch
+analyzed awaited chain receives dedicated terminal and resume states; multiple
+analyzed awaits in the same top-level statement are sequenced left-to-right. Catch
 await rejection preserves an enclosing finally edge before escaping; normal
 finally completion resumes the first following outer await. Abrupt completion
-nested inside handler branches, multiple awaits in one statement, and general
-handler joins still require the statement-level CFG. Top-level rethrows and a
+nested inside handler branches and general handler joins still require the
+statement-level CFG. Top-level rethrows and a
 single analyzed awaited handler failure do propagate to the nearest enclosing
 catch, including through a normally completing inner finally region.
 
