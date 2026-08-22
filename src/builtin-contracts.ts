@@ -22,7 +22,7 @@ export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number }
+export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number; family: "timeout" | "immediate" | "animation-frame" }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
 export interface AbortAnyBuiltinOperation { kind: "abort-any"; signalsArgument: number }
@@ -131,11 +131,11 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     trusted({ symbol: { module: "global", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
     trusted({ symbol: { module: "node:timers", export: "setImmediate" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "check" } }),
     trusted({ symbol: { module: "global", export: "requestAnimationFrame" }, operation: { kind: "timer", callbackArgument: 0, repeats: false, queue: "animation-frame" } }),
-    trusted({ symbol: { module: "global", export: "cancelAnimationFrame" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
-    trusted({ symbol: { module: "global", export: "clearTimeout" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
-    trusted({ symbol: { module: "global", export: "clearInterval" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
-    trusted({ symbol: { module: "global", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
-    trusted({ symbol: { module: "node:timers", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0 } }),
+    trusted({ symbol: { module: "global", export: "cancelAnimationFrame" }, operation: { kind: "timer-clear", handleArgument: 0, family: "animation-frame" } }),
+    trusted({ symbol: { module: "global", export: "clearTimeout" }, operation: { kind: "timer-clear", handleArgument: 0, family: "timeout" } }),
+    trusted({ symbol: { module: "global", export: "clearInterval" }, operation: { kind: "timer-clear", handleArgument: 0, family: "timeout" } }),
+    trusted({ symbol: { module: "global", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0, family: "immediate" } }),
+    trusted({ symbol: { module: "node:timers", export: "clearImmediate" }, operation: { kind: "timer-clear", handleArgument: 0, family: "immediate" } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.timeout" }, operation: { kind: "abort-timeout", delayArgument: 0 } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.abort" }, operation: { kind: "abort-static", reasonArgument: 0 } }),
     trusted({ symbol: { module: "global", export: "AbortSignal.any" }, operation: { kind: "abort-any", signalsArgument: 0 } }),

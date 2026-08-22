@@ -72,8 +72,14 @@ cancellation, not fully symbolically executed.
 
 Direct timer registrations also retain a `handleKind` of `number`, `object`, or
 `unknown` from the resolved TypeScript return type. This distinguishes common
-DOM and Node handle representations in neutral IR. Cross-host cancellation
-compatibility is still not proven.
+DOM and Node handle representations in neutral IR. Cancellation is checked
+separately by semantic family: `clearTimeout`/`clearInterval` can discharge a
+timeout/interval regardless of whether its host-visible handle is numeric or a
+Node object, `clearImmediate` only discharges an Immediate, and
+`cancelAnimationFrame` only discharges an animation-frame request. An
+incompatible clear call is retained with `compatible: false` and cannot make a
+callback initially cancelled. Passing handles across actual realms or host
+APIs remains outside this family-level proof.
 
 ## Promise combinators
 

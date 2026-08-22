@@ -349,6 +349,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Model direct synchronous `TaskController` construction and literal `setPriority` changes as ordered dynamic-priority transitions; propagate the final priority to `scheduler.yield`, while explicit `postTask` priority remains immutable.
     - [x] Add an initial Node callback-checkpoint profile for `process.nextTick`, V8 microtasks, timers, and `setImmediate`, with CLI/project verification and a broken-order oracle. ESM top-level and complete libuv phase/I/O semantics remain open.
     - [x] Merge definitely queued Promise reactions and `queueMicrotask` jobs into the Node V8 microtask FIFO below the next-tick queue.
+    - [x] Match cancellation by semantic handle family: timeout/interval, Immediate, and animation-frame; incompatible clear APIs no longer prove cancellation, while Node object and browser numeric timeout handles remain the same family.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

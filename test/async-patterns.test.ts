@@ -98,6 +98,41 @@ describe("builtin async temporal patterns", () => {
     expect(generateWebEventLoopQuint("timer_alias", model)).toContain("callback_0_pending' = false");
   });
 
+  it("does not discharge cancellation with an incompatible timer API family", () => {
+    const model = analyzeAsyncPatterns("timer-family.ts", `
+      function schedule() {
+        const timeout = setTimeout(() => {}, 10)
+        const immediate = setImmediate(() => {})
+        clearImmediate(timeout)
+        clearTimeout(immediate)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "timeout", handleFamily: "timeout" },
+      { handle: "immediate", handleFamily: "immediate" },
+    ]);
+    expect(model.cancellations).toMatchObject([
+      { handle: "timeout", clearFamily: "immediate", compatible: false, timer: undefined },
+      { handle: "immediate", clearFamily: "timeout", compatible: false, timer: undefined },
+    ]);
+    const quint = generateNodeEventLoopQuint("timer_family", model);
+    expect(quint).toMatch(/callback_0_pending' = true/);
+    expect(quint).toMatch(/callback_1_pending' = true/);
+  });
+
+  it("links clearImmediate only to an Immediate handle", () => {
+    const model = analyzeAsyncPatterns("clear-immediate.ts", `
+      function schedule() {
+        const immediate = setImmediate(() => {})
+        clearImmediate(immediate)
+      }
+    `);
+    expect(model.cancellations).toContainEqual(expect.objectContaining({
+      handle: "immediate", timer: 0, clearFamily: "immediate", compatible: true, definite: true,
+    }));
+    expect(generateNodeEventLoopQuint("clear_immediate", model)).toMatch(/callback_0_pending' = false/);
+  });
+
   it("keeps timer identity through aliases when the source binding is reassigned", () => {
     const model = analyzeAsyncPatterns("timer-reassignment.ts", `
       function job() {}

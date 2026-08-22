@@ -15,6 +15,7 @@ export interface TimerPattern {
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
+  handleFamily?: "timeout" | "immediate" | "animation-frame";
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
@@ -51,6 +52,8 @@ export interface TimerCancellation {
   handle: string;
   timer?: number;
   definite: boolean;
+  clearFamily?: "timeout" | "immediate" | "animation-frame";
+  compatible?: boolean;
   span: { start: number; end: number };
 }
 
@@ -506,6 +509,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             queue: operation.queue,
             handle: declaration,
             handleKind: timerHandleKind(node),
+            handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : operation.queue === "animation-frame" ? "animation-frame" : undefined,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           if (declaration) handleTargets.set(declaration, timerIndex);
@@ -608,7 +612,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isIfStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)
               || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isConditionalExpression(current)) definite = false;
           }
-          cancellations.push({ owner: ownerName, handle, timer: handleNode && ts.isIdentifier(handleNode) ? handleTargets.get(handleNode.text) : undefined, definite, span: { start: node.getStart(source), end: node.getEnd() } });
+          const candidate = handleNode && ts.isIdentifier(handleNode) ? handleTargets.get(handleNode.text) : undefined;
+          const compatible = candidate !== undefined && timers[candidate]?.handleFamily === operation.family;
+          cancellations.push({ owner: ownerName, handle, timer: compatible ? candidate : undefined, definite, clearFamily: operation.family, compatible, span: { start: node.getStart(source), end: node.getEnd() } });
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
           const array = iterable ? expandStaticArray(iterable) : undefined;
@@ -649,8 +655,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   visit(source);
   for (const cancellation of cancellations) {
     if (cancellation.timer !== undefined) continue;
-    const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle);
-    if (timer >= 0) cancellation.timer = timer;
+    const timer = timers.findIndex((item) => item.owner === cancellation.owner && item.handle === cancellation.handle && item.handleFamily === cancellation.clearFamily);
+    if (timer >= 0) {
+      cancellation.timer = timer;
+      cancellation.compatible = true;
+    }
   }
   for (const timer of timers) {
     if (timer.kind !== "scheduler-yield" || timer.enqueuedBy === undefined) continue;
