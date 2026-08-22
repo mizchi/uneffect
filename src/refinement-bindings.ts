@@ -311,7 +311,11 @@ function normalizeRefinementExpression(
       if (!ts.isIdentifier(argument)) return argument;
       if (seen.has(argument.text)) return undefined;
       const replacement = substitutions.get(argument.text);
-      return replacement ? resolveArgument(replacement, new Set([...seen, argument.text])) : argument;
+      if (!replacement) return argument;
+      // Identically named parameters in different helper scopes are not an
+      // alias cycle: the replacement is the caller's runtime receiver.
+      if (ts.isIdentifier(replacement) && replacement.text === argument.text) return replacement;
+      return resolveArgument(replacement, new Set([...seen, argument.text]));
     };
     const nested = new Map<string, ts.Expression>();
     for (let index = 0; index < helper.parameters.length; index++) {

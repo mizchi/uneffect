@@ -5,6 +5,10 @@ export interface TelemetryOutcomeCounts {
   attempted: number;
 }
 
+function observedOutcomeCount(runtime: TelemetryOutcomeCounts): number {
+  return runtime.delivered + runtime.dropped + runtime.buffered;
+}
+
 export function hasExactlyOneOutcome(runtime: TelemetryOutcomeCounts): boolean {
-  return runtime.delivered + runtime.dropped + runtime.buffered === runtime.attempted;
+  return observedOutcomeCount(runtime) === runtime.attempted;
 }

@@ -654,6 +654,44 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("preserves runtime object parameters through imported invariant helper layers", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-object-invariant-"));
+    const helperFile = join(directory, "predicate.ts");
+    const mainFile = join(directory, "main.ts");
+    const helper = `
+      interface Runtime { delivered: number; dropped: number; attempted: number }
+      function outcomes(runtime: Runtime): number { return runtime.delivered + runtime.dropped }
+      export function balanced(runtime: Runtime): boolean { return outcomes(runtime) === runtime.attempted }
+    `;
+    const source = `/* uneffect:
+      state delivered: int
+      state dropped: int
+      state attempted: int
+      init delivered = 0
+      init dropped = 0
+      init attempted = 0
+      temporal balanced: delivered + dropped === attempted
+    */
+      import { balanced as importedBalanced } from "./predicate.js"
+      interface Runtime { delivered: number; dropped: number; attempted: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 invariant balanced */
+      export function invariant(runtime: Runtime) { return importedBalanced(runtime) }
+    `;
+    try {
+      writeFileSync(helperFile, helper);
+      writeFileSync(mainFile, source);
+      const spec = parseSpec(mainFile, source).temporal;
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(program, mainFile, "accounting", spec)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("proves create/observe state projection and reports transformed or swapped fields", () => {
     const model = `/* uneffect:
       state left: int

@@ -217,9 +217,8 @@ Z3 variants discharge a normalized mismatch only
 when Z3 proves the two normalized boolean expressions equivalent over all typed
 states. They do not make statement-bearing helpers, mutable declarations,
 mutation, or collections supported, and preserve `unknown` as a diagnostic.
-Multi-layer scalar argument substitution is supported; object-valued parameter
-substitution across multiple imported helper layers remains a conservative
-non-proof. Missing and stale invariant bindings are
+Multi-layer scalar and runtime-object argument substitution is supported for
+this single-return fragment. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still
 outside point-state invariant binding.

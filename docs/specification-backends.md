@@ -223,7 +223,8 @@ same-file action helper, exercising acyclic direct-call composition. The guarded
 `action_when` predicate with a negated early return before the stuttering body.
 The adjacent single-return invariant function reaches its predicate through an
 immutable alias to an imported helper. The Program-backed refinement validator
-resolves that symbol and then checks exact normalized scalar-AST equivalence;
+resolves that symbol, follows its private outcome-count helper while preserving
+the runtime-object argument, and checks exact normalized scalar-AST equivalence;
 the syntax-only API deliberately cannot prove this boundary. Create and observe are
 additionally checked as independent identity field projections: the transparent
 local-class `Object.assign` construction and destructured observation preserve
