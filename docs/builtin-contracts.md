@@ -6,6 +6,13 @@ The prototype exposes a `FrontendSymbolAdapter` boundary and a TypeScript implem
 
 The standalone analyzer and CLI also construct a TypeScript Program; there is no fallback recognizer based on callee source text. Array/Map/Set mutation methods are declaration-symbol overlays, so a user-defined method named `push` is not classified as an Array mutation.
 
+A builtin contract may carry more than one semantic projection. In the current
+Node slice, callback overloads of `node:fs.readFile`, `writeFile`, and
+`copyFile` still emit `FsRead`/`FsWrite`, while their final callback argument
+also becomes a poll-phase job in the Node temporal model. The sync and
+`node:fs/promises` symbols retain only their applicable effect/Promise
+semantics.
+
 ## Contract lookup
 
 String matching such as `callee.getText() === "document.createElement"` is insufficient because of shadowing, aliases, inheritance, and overloads. The native frontend must resolve a call to a stable symbol key:

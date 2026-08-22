@@ -15,6 +15,8 @@ export interface FsBuiltinOperation {
   readPathArgument?: number;
   writePathArgument?: number;
   mutateArgument?: number;
+  callbackArgumentFromEnd?: number;
+  callbackQueue?: "poll";
 }
 
 export interface StaticEffectBuiltinOperation { kind: "effect"; effect: string }
@@ -87,15 +89,19 @@ const fsWriteNames = [
 
 function fsBuiltinContracts(module: string): BuiltinContract[] {
   const contracts: BuiltinContract[] = [];
+  const callbackOperation = (name: string): Pick<FsBuiltinOperation, "callbackArgumentFromEnd" | "callbackQueue"> =>
+    module === "node:fs" && ["readFile", "writeFile", "copyFile"].includes(name)
+      ? { callbackArgumentFromEnd: 1, callbackQueue: "poll" }
+      : {};
   for (const name of fsReadNames) contracts.push(trusted({
     symbol: { module, export: name },
-    operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0 },
+    operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0, ...callbackOperation(name) },
   }));
   for (const name of fsWriteNames) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, writePathArgument: 0 },
+    symbol: { module, export: name }, operation: { kind: "fs", read: false, write: true, writePathArgument: 0, ...callbackOperation(name) },
   }));
   for (const name of ["copyFile", "copyFileSync", "cp", "cpSync"]) contracts.push(trusted({
-    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1 },
+    symbol: { module, export: name }, operation: { kind: "fs", read: true, write: true, readPathArgument: 0, writePathArgument: 1, ...callbackOperation(name) },
   }));
   for (const name of ["read", "readSync"]) contracts.push(trusted({
     symbol: { module, export: name }, operation: { kind: "fs", read: true, write: false, mutateArgument: 1 },

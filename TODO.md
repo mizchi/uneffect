@@ -354,6 +354,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Enqueue statically resolved nested `process.nextTick` and `queueMicrotask` jobs when their parent Node callback runs instead of treating them as initially pending.
     - [x] Enqueue nested `setImmediate` registrations dynamically and defer an Immediate created inside any executing callback to the next event-loop iteration.
     - [x] Normalize static Node `setTimeout`/`setInterval` delays to the documented signed-32-bit timer range and integer semantics without changing Web or abort-timeout models.
+    - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for `node:fs.readFile`, `writeFile`, and `copyFile`; remaining callback APIs and readiness/order details remain open.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

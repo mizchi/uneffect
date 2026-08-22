@@ -63,6 +63,13 @@ advances only when the close boundary starts the next bounded
 iteration. A phase-fault oracle is rejected by the same invariant. This phase
 numbering is Uneffect IR, not a public numeric API from Node.
 
+Callback overloads of TypeChecker-resolved `node:fs.readFile`, `writeFile`,
+and `copyFile` retain their existing filesystem capability contract and also
+create an externally completed poll job. Completion is nondeterministic; once
+ready, the callback can run only in phase `2` and returns through the ordinary
+checkpoint. Promise and synchronous fs variants do not receive this callback
+projection.
+
 A statically resolved nested `setImmediate` is also registered dynamically.
 An Immediate created inside any executing callback receives a next-iteration
 due time and cannot run in the current iteration, matching Node's documented
@@ -78,8 +85,8 @@ This host-specific normalization does not apply to Web timers or
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
 microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded
-from this callback-checkpoint profile. The poll and close phases currently
-carry sequencing state only: poll/I/O readiness and close callbacks,
+from this callback-checkpoint profile. Poll callbacks other than the three
+listed fs operations, poll ordering/readiness details, close callbacks,
 pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import { analyzeEffects } from "../src/effects.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const source = `
@@ -1064,6 +1065,26 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/callback_2_due' = 1,/);
     expect(quint).toMatch(/callback_3_due' = 1,/);
     expect(quint).toMatch(/callback_4_due' = 1,/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("keeps node:fs authority while scheduling callback APIs in the poll phase", () => {
+    const source = `
+      import { readFile } from "node:fs"
+      /* uneffect: effect FsRead<"settings.json"> */
+      function load() {
+        readFile("settings.json", "utf8", () => queueMicrotask(() => undefined))
+      }
+    `;
+    const model = analyzeAsyncPatterns("node-fs-poll.ts", source);
+    expect(analyzeEffects("node-fs-poll.ts", source)).toEqual([]);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_fs_poll", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 });

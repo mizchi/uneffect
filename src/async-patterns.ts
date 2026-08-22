@@ -11,7 +11,7 @@ export interface TimerPattern {
   delay?: number;
   recursive: boolean;
   repeats: boolean;
-  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "check";
+  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "poll" | "check";
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
@@ -25,6 +25,7 @@ export interface TimerPattern {
   abortTimer?: number;
   abortComposition?: number;
   externalAbortSignal?: boolean;
+  externallyReady?: boolean;
   span: { start: number; end: number };
 }
 
@@ -254,6 +255,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       const operation = adapter.resolveCall(node)?.operation;
       if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") {
         const callback = resolveCallback(node.arguments[operation.callbackArgument]);
+        if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
+      } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
+        const callback = resolveCallback(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd]);
         if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
       }
       if (!operation) {
@@ -525,6 +529,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           });
           if (declaration) handleTargets.set(declaration, timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
+        } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
+          const callbackNode = node.arguments[node.arguments.length - operation.callbackArgumentFromEnd];
+          const timerIndex = timers.length;
+          timers.push({
+            owner: ownerName,
+            callback: callbackNode?.getText(source) ?? "<unknown>",
+            delay: 0,
+            recursive: false,
+            repeats: false,
+            queue: operation.callbackQueue,
+            externallyReady: true,
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+          collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
@@ -658,7 +676,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (ts.isFunctionLike(node) && "body" in node && node.body) {
       const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
       const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
-      const scheduledCallback = Boolean(parentCall && (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node);
+      const scheduledCallback = Boolean(parentCall && (
+        ((operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node)
+        || (operation?.kind === "fs" && operation.callbackArgumentFromEnd && parentCall.arguments[parentCall.arguments.length - operation.callbackArgumentFromEnd] === node)
+      ));
       if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration) && !invokedSignalFactories.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }
     ts.forEachChild(node, visit);
@@ -819,13 +840,14 @@ export function generateNodeEventLoopQuint(
     || (timer.handleFamily !== "timeout" && (!Number.isFinite(timer.delay) || timer.delay < 0))) {
     throw new Error(`${timer.owner}: Node event-loop model requires a supported static delay`);
   }
-  const supported = model.timers.flatMap((timer, index) => ["next-tick", "microtask", "timer", "check"].includes(timer.queue) ? [index] : []);
+  const supported = model.timers.flatMap((timer, index) => ["next-tick", "microtask", "timer", "poll", "check"].includes(timer.queue) ? [index] : []);
   const nodeDelay = (timer: TimerPattern): number => timer.handleFamily === "timeout"
     ? !Number.isFinite(timer.delay!) || timer.delay! < 1 || timer.delay! > 2_147_483_647 ? 1 : Math.trunc(timer.delay!)
     : timer.delay!;
   const nextTicks = supported.filter((index) => model.timers[index]!.queue === "next-tick");
   const microtasks = supported.filter((index) => model.timers[index]!.queue === "microtask");
   const timers = supported.filter((index) => model.timers[index]!.queue === "timer");
+  const polls = supported.filter((index) => model.timers[index]!.queue === "poll");
   const checks = supported.filter((index) => model.timers[index]!.queue === "check");
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
@@ -844,7 +866,7 @@ export function generateNodeEventLoopQuint(
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
-    lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
+    lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined && !timer.externallyReady},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -867,6 +889,9 @@ export function generateNodeEventLoopQuint(
       updates.set(`callback_${child}_due`, "clock + 1");
     });
   };
+  polls.forEach((index) => action(`complete_poll_${index}`, [
+    `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
+  ], new Map([[`callback_${index}_pending`, "true"]])));
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
   const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
   nextTicks.forEach((index, order) => {
@@ -938,18 +963,21 @@ export function generateNodeEventLoopQuint(
       ["wrong_phase", phaseViolation(phase)],
     ]);
     enqueueNodeChildren(index, updates);
-    action(timer.queue === "check" ? `run_check_${index}` : `run_timer_${index}`, [
+    action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : `run_timer_${index}`, [
       ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
       ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
       ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
     ], updates);
   };
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
+  polls.forEach((index, order) => macro(index, polls.slice(0, order), 2));
   checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
   action("advance_timers_to_poll", [
     ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
   ], new Map([["node_phase", "2"], ["wrong_phase", phaseViolation(1)]]));
-  action("advance_poll_to_check", phaseGuard(2), new Map([["node_phase", "3"], ["wrong_phase", phaseViolation(2)]]));
+  action("advance_poll_to_check", [
+    ...phaseGuard(2), ...polls.map((index) => `not(callback_${index}_pending)`),
+  ], new Map([["node_phase", "3"], ["wrong_phase", phaseViolation(2)]]));
   action("advance_check_to_close", [
     ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
   ], new Map([["node_phase", "4"], ["wrong_phase", phaseViolation(3)]]));
