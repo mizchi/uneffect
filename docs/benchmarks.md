@@ -455,3 +455,15 @@ alias measured 1.134 ms on the warm Program over 442 samples (1.64% relative
 margin of error). This is slightly below the preceding 1.204 ms observation
 and does not indicate a regression, but the context-sensitive wrapper walk
 still dominates the sub-millisecond direct-boundary results.
+
+## Collection refinement receiver identity
+
+On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured
+0.1080 ms mean for the syntax-only refinement validator and 0.0800 ms for the
+validator over an already warm TypeScript Program. The latter resolved builtin
+receiver symbols through aliases and generic constraints while rejecting a Set
+subclass in the corresponding correctness test. The apparent 1.35x advantage
+does not mean TypeChecker setup is free: this benchmark deliberately excludes
+Program construction and compares repeated validation after a compiler or
+Corsa frontend has already produced semantic state. Cold project setup should
+be measured separately before selecting the strict path for a standalone CLI.

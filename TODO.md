@@ -135,7 +135,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Lower type-matched native `Set.add` and `Map.set` calls, including record-nested collections, to immutable temporal `union(Set(...))` and `put(...)` updates.
       - [x] Lower type-matched native `Set.clear` and `Map.clear` calls to exact empty collection replacements without assuming a finite deletion universe.
       - [x] Lower native `Set.delete` to temporal set difference and `Map.delete` to typed key removal across runtime, replay, Quint, and Z3 backends.
-      - [x] Add a TypeChecker-backed action-refinement path that accepts only builtin `Set`/`Map` receiver identities and rejects subclasses or same-shaped lookalikes.
+      - [x] Add a TypeChecker-backed action-refinement path that accepts builtin `Set`/`Map` receiver identities through aliases and generic constraints while rejecting subclasses or same-shaped lookalikes.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.

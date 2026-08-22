@@ -366,6 +366,19 @@ describe("annotated refinement bindings", () => {
       /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
       /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.owners.add(2) }
     `;
+    const aliased = `${model}
+      type Owners = Set<number>
+      interface Runtime { owners: Owners }
+      /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.owners.add(2) }
+    `;
+    const constrained = `${model}
+      interface Runtime<T extends Set<number>> { owners: T }
+      /* uneffect: refinement authority@1 create */ export function createAuthority<T extends Set<number>>(initial: Runtime<T>) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority<T extends Set<number>>(runtime: Runtime<T>) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function addOwner<T extends Set<number>>(runtime: Runtime<T>) { runtime.owners.add(2) }
+    `;
     const lookalike = `${model}
       class AuditSet<T> extends Set<T> { override add(value: T) { return super.add(value) } }
       interface Runtime { owners: AuditSet<number> }
@@ -382,6 +395,8 @@ describe("annotated refinement bindings", () => {
         return validateRefinementActionBodiesInProgram(program, fileName, "authority", parseSpec(fileName, source).temporal);
       };
       expect(verify("standard.ts", standard)).toEqual([]);
+      expect(verify("aliased.ts", aliased)).toEqual([]);
+      expect(verify("constrained.ts", constrained)).toEqual([]);
       expect(verify("lookalike.ts", lookalike)).toContainEqual(expect.objectContaining({
         code: "unsupported-action-body", modelName: "addOwner",
       }));

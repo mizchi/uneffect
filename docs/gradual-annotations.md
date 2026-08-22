@@ -138,7 +138,9 @@ trusts the annotated TypeScript boundary. Projects that already construct a
 TypeScript Program can use `validateRefinementActionBodiesInProgram` (or its
 `WithZ3` variant); that path requires the receiver type symbol itself to be the
 builtin declaration-file `Set` or `Map`, and conservatively rejects subclasses
-and structurally compatible lookalikes.
+and structurally compatible lookalikes. Transparent type aliases and generic
+constraints such as `T extends Set<number>` resolve to the builtin declaration
+and remain provable.
 It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`

@@ -343,11 +343,16 @@ function validateRefinementActionBodiesInSource(
 
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
     if (!checker) return true;
-    const type = checker.getTypeAtLocation(node);
-    const symbol = type.aliasSymbol ?? type.getSymbol();
     const expected = kind === "set" ? "Set" : "Map";
-    return symbol?.getName() === expected
-      && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+    const matches = (type: ts.Type, seen: ReadonlySet<ts.Type> = new Set()): boolean => {
+      if (seen.has(type)) return false;
+      const symbol = type.getSymbol() ?? type.aliasSymbol;
+      if (symbol?.getName() === expected
+        && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile)) return true;
+      const constraint = checker.getBaseConstraintOfType(type);
+      return !!constraint && constraint !== type && matches(constraint, new Set([...seen, type]));
+    };
+    return matches(checker.getTypeAtLocation(node));
   };
 
   const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;

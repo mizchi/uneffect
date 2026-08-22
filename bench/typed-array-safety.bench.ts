@@ -8,7 +8,7 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-validators.js";
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
-import { generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
@@ -43,6 +43,16 @@ const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetr
 const retryAttemptsSource = readFileSync(new URL("../examples/dogfood/retry-attempts.ts", import.meta.url), "utf8");
 const retryAttemptEscapeFile = "examples/dogfood/retry-attempt-escape.ts";
 const retryAttemptSlotFile = "examples/dogfood/retry-slots.ts";
+const leaseAuthorityFile = "examples/dogfood/lease-authority-refinement.ts";
+const leaseAuthoritySource = readFileSync(leaseAuthorityFile, "utf8");
+const leaseAuthoritySpec = parseSpec(leaseAuthorityFile, leaseAuthoritySource).temporal;
+const leaseAuthorityProgram = ts.createProgram([leaseAuthorityFile], {
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  types: ["node"],
+  noEmit: true,
+});
 const asyncSafetyCompilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.NodeNext,
@@ -68,6 +78,16 @@ compilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNe
   : defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
 const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerOptions, compilerHost);
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
+
+describe("refinement receiver identity", () => {
+  bench("syntax-only Node Lease collection actions", () => {
+    validateRefinementActionBodies(leaseAuthorityFile, leaseAuthoritySource, "leaseAuthority", leaseAuthoritySpec);
+  }, { time: 500, iterations: 20 });
+
+  bench("warm TypeChecker Node Lease collection actions", () => {
+    validateRefinementActionBodiesInProgram(leaseAuthorityProgram, leaseAuthorityFile, "leaseAuthority", leaseAuthoritySpec);
+  }, { time: 500, iterations: 20 });
+});
 
 describe("typed-array static verification", () => {
   bench("empty source", async () => {
