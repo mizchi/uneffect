@@ -11,6 +11,15 @@ scalar constant folding, a SHA-256-sized readonly U32 table, and repeated table
 reads. Results are local-machine observations, not portable pass/fail budgets.
 Compare results on the same machine and runtime before and after a change.
 
+The scaled-affine strengthening dogfood initially measured 3,412.12 ms for one
+sample because every candidate obligation constructed a fresh Z3 Context.
+Reusing one Context per reachability-lint invocation while retaining an
+independent Solver for every obligation reduced the same-machine mean to
+188.69 ms over three samples (5.43% relative margin of error), about an 18x
+improvement. This measures `2 * accepted <= byteBudget` template generation,
+induction checks, and reachability diagnostics together; it is not a general
+polyhedral benchmark.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

@@ -817,6 +817,30 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes small-coefficient affine strengthening invariants", async () => {
+    const temporal = parseSpec("scaled-affine-strengthening.ts", `/* uneffect:
+      state used: int
+      state capacity: int
+      state armed: bool
+      init used = 1
+      init capacity = 2
+      init armed = false
+      action allocateBalanced: used' = used + 1, capacity' = capacity + 2
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && 2 * used > capacity
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:2 * used === capacity>",
+    }));
+  });
+
   it("synthesizes equality invariants for collection state pairs", async () => {
     const temporal = parseSpec("collection-strengthening.ts", `/* uneffect:
       state left: Set<int>

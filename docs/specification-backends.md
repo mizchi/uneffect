@@ -158,25 +158,38 @@ With `discoverStrengtheningProperties: true` or CLI
 `--discover-strengthening`, every declared temporal property is considered as
 a candidate. Candidates are still admitted only after the same initialization
 and preservation proofs; rejected discovered candidates are silent, while an
-invalid explicitly requested hint is diagnostic. Uneffect does not yet
-synthesize new invariant expressions.
+invalid explicitly requested hint is diagnostic.
 `synthesizeStrengtheningProperties: true`, exposed as CLI
 `--synthesize-strengthening`, adds a deliberately small template pool:
 integer sign boundaries around zero and boolean polarity. Every generated
 candidate is subjected to the same init/preservation proof before use. This is
-useful for counters and epochs but is not relational, affine/polyhedral, or
-collection invariant synthesis.
+useful for counters and epochs; relational and collection templates remain
+separate opt-ins.
 Pairwise integer equality and ordering templates are available through the
 separate `synthesizeRelationalStrengtheningProperties` option and
 `--synthesize-relational-strengthening`. They are isolated because candidate
 count grows quadratically with integer state count. When both states have
-constant integer initializers, it also generates coefficient-1 equality/order
-templates at their initial difference, such as `left === right + 2`. General
-coefficients, polyhedra, and collection relations remain unsupported.
-Same-shaped Set, Map, and record pairs have a separate equality-only template
-pool behind `synthesizeCollectionStrengtheningProperties` and
-`--synthesize-collection-strengthening`. Subset, quantified, and field-level
-relational templates remain unsupported.
+constant integer initializers, it also generates equality/order templates at
+their initial affine boundary. The pool includes coefficient-1 offsets such as
+`left === right + 2` and the reduced small-coefficient pairs `(2,1)` and
+`(1,2)`, allowing relations such as `2 * used <= capacity`. Arbitrary
+coefficients, conjunction discovery, and general polyhedra remain unsupported.
+Same-shaped Set, Map, and record pairs have a separate equality template pool
+behind `synthesizeCollectionStrengtheningProperties` and
+`--synthesize-collection-strengthening`. The same opt-in recursively discovers
+Set fields and derives finite Set views from `Map.keys()` and scalar
+`Map.values()`, then proposes both subset directions. Composite Map values,
+arbitrary quantified predicates, and general field relations remain
+unsupported. Every candidate in every pool still requires independent init
+and transition-preservation proofs.
+
+`examples/dogfood/telemetry-capacity.ts` exercises the scaled fragment with a
+hand-authored batching model. The balanced action preserves
+`2 * accepted === byteBudget`; changing budget growth from two units to one
+removes the synthesized strengthening evidence and yields a one-step Z3
+counterexample to `withinCapacity`. The adjacent TypeScript class mirrors the
+model for review, but Uneffect does not yet prove an implementation-to-model
+refinement binding for these fields and updates.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

@@ -111,6 +111,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Opt in to synthesized integer-sign and boolean-polarity templates, admitting only candidates whose induction obligations pass.
     - [x] Opt in separately to pairwise integer equality/order templates so quadratic relational candidate growth is explicit.
     - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
+    - [x] Derive reduced small-coefficient `(2,1)` and `(1,2)` affine equality/order templates from constant initializers.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.
     - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
     - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.

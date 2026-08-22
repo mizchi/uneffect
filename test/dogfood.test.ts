@@ -8,8 +8,38 @@ import { analyzeAsyncPatterns, generateAsyncPatternsQuint, generateWebEventLoopQ
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
+import { parseSpec } from "../src/spec-ir.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 
 describe("Uneffect dogfood", () => {
+  it("proves a scaled telemetry capacity relation and catches unbalanced accounting", async () => {
+    const fileName = "examples/dogfood/telemetry-capacity.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeOverCapacity",
+      relatedName: "<synth:2 * accepted === byteBudget>",
+    }));
+
+    const brokenSource = source.replaceAll("byteBudget + 2", "byteBudget + 1").replaceAll("byteBudget += 2", "byteBudget += 1");
+    const broken = parseSpec(fileName, brokenSource).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:2 * accepted === byteBudget>",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(broken, "withinCapacity", { maxSteps: 1 }))
+      .resolves.toMatchObject({ status: "counterexample", depth: 1 });
+  });
+
   it("verifies a Node callback-checkpoint application model through the project API", async () => {
     const source = `
         import { nextTick } from "node:process"

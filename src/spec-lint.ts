@@ -121,14 +121,17 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
   const expressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => {
     const direct = [`${left.name} === ${right.name}`, `${left.name} <= ${right.name}`, `${left.name} >= ${right.name}`];
     const leftInitial = initialInteger(left.name), rightInitial = initialInteger(right.name);
-    if (leftInitial === undefined || rightInitial === undefined || leftInitial === rightInitial) return direct;
-    const difference = leftInitial - rightInitial;
-    const rightWithOffset = difference > 0n ? `${right.name} + ${difference}` : `${right.name} - ${-difference}`;
-    return [...direct,
-      `${left.name} === ${rightWithOffset}`,
-      `${left.name} <= ${rightWithOffset}`,
-      `${left.name} >= ${rightWithOffset}`,
-    ];
+    if (leftInitial === undefined || rightInitial === undefined) return direct;
+    const term = (coefficient: bigint, name: string) => coefficient === 1n ? name : `${coefficient} * ${name}`;
+    const affine = ([[1n, 1n], [2n, 1n], [1n, 2n]] as const).flatMap(([leftCoefficient, rightCoefficient]) => {
+      const difference = leftCoefficient * leftInitial - rightCoefficient * rightInitial;
+      if (leftCoefficient === 1n && rightCoefficient === 1n && difference === 0n) return [];
+      const rightTerm = term(rightCoefficient, right.name);
+      const rightWithOffset = difference > 0n ? `${rightTerm} + ${difference}` : difference < 0n ? `${rightTerm} - ${-difference}` : rightTerm;
+      const leftTerm = term(leftCoefficient, left.name);
+      return [`${leftTerm} === ${rightWithOffset}`, `${leftTerm} <= ${rightWithOffset}`, `${leftTerm} >= ${rightWithOffset}`];
+    });
+    return [...direct, ...affine];
   }));
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
@@ -491,14 +494,6 @@ async function check(spec: TemporalSpec, assertions: readonly string[]): Promise
   return String(await solver.check()) as "sat" | "unsat" | "unknown";
 }
 
-async function checkSmt(declarations: readonly string[], assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> {
-  const { Context } = await initZ3();
-  const context: any = new Context(`uneffect_spec_lint_${solverSequence++}`);
-  const solver = new context.Solver();
-  solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
-  return String(await solver.check()) as "sat" | "unsat" | "unknown";
-}
-
 export type TemporalCounterexampleResult =
   | { status: "counterexample"; depth: number; trace: ModelCounterexample }
   | { status: "safe-within-bound"; depth: number }
@@ -684,7 +679,14 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     `(and (= __uneffect_action_${index} ${actionIndex}) ${actionTransition(action, index)})`));
   const diagnostics: SpecLintDiagnostic[] = [];
   const completenessDepth = finiteStateCompletenessDepth(spec);
-  const initStatus = await checkSmt(declarations, init);
+  const { Context } = await initZ3();
+  const context: any = new Context(`uneffect_reachability_lint_${solverSequence++}`);
+  const checkAssertions = async (assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> => {
+    const solver = new context.Solver();
+    solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
+    return String(await solver.check()) as "sat" | "unsat" | "unknown";
+  };
+  const initStatus = await checkAssertions(init);
   const strengthening: TemporalSpec["properties"] = [];
   const explicitStrengthening = new Set(options.strengtheningProperties ?? []);
   const synthesized = [
@@ -705,8 +707,8 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       continue;
     }
     const invariantAt = (index: number) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols);
-    const established = await checkSmt(declarations, [...init, `(not ${invariantAt(0)})`]);
-    const preserved = await checkSmt(declarations, [invariantAt(0), step(0), `(not ${invariantAt(1)})`]);
+    const established = await checkAssertions([...init, `(not ${invariantAt(0)})`]);
+    const preserved = await checkAssertions([invariantAt(0), step(0), `(not ${invariantAt(1)})`]);
     if (established !== "unsat" || preserved !== "unsat") {
       if (!explicitStrengthening.has(name)) continue;
       diagnostics.push({
@@ -721,13 +723,13 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     ...strengthening.map((property) => [property]),
     ...(strengthening.length > 1 ? [strengthening] : []),
   ];
-  const enabledStatus = await checkSmt(declarations, [...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
+  const enabledStatus = await checkAssertions([...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
   if (enabledStatus === "unsat" && initStatus === "sat") diagnostics.push({
     code: "deadlocked-initial-state", name: "<init>", backend: "z3", depth: 0, message: "no action is enabled in any state satisfying init",
   });
   if (maxSteps >= 1 && enabledStatus === "sat") {
     const changes = disjoin(spec.states.map((state) => `(not (= ${at(state.name, 1)} ${at(state.name, 0)}))`));
-    if (await checkSmt(declarations, [...init, step(0), changes]) === "unsat") diagnostics.push({
+    if (await checkAssertions([...init, step(0), changes]) === "unsat") diagnostics.push({
       code: "no-state-progress-from-init", name: "<init>", backend: "z3", depth: 1,
       message: "actions are enabled at init, but no enabled initial transition can change temporal state",
     });
@@ -736,7 +738,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     for (let depth = 1; depth <= maxSteps; depth++) {
       const transitions = Array.from({ length: depth }, (_, index) => step(index));
       const noneEnabled = `(not ${disjoin(spec.actions.map((action) => guard(action, depth)))})`;
-      const status = await checkSmt(declarations, [...init, ...transitions, noneEnabled]);
+      const status = await checkAssertions([...init, ...transitions, noneEnabled]);
       if (status !== "sat") continue;
       diagnostics.push({
         code: "bounded-reachable-deadlock", name: "<deadlock>", backend: "z3", depth,
@@ -753,7 +755,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         const stutters = unchanged.length === 0 ? "true" : unchanged.length === 1 ? unchanged[0]! : `(and ${unchanged.join(" ")})`;
         return `(or (not ${guard(action, depth)}) ${stutters})`;
       });
-      const status = await checkSmt(declarations, [...init, ...transitions, enabled, ...actionCannotChange]);
+      const status = await checkAssertions([...init, ...transitions, enabled, ...actionCannotChange]);
       if (status !== "sat") continue;
       diagnostics.push({
         code: "bounded-no-state-progress", name: "<progress>", backend: "z3", depth,
@@ -780,7 +782,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         const premise = action.fairness === "weak" ? `(and ${enabled.join(" ")})` : `(or ${enabled.join(" ")})`;
         return [`(or (not ${premise}) (or ${occurs.join(" ")}))`];
       });
-      if (await checkSmt(declarations, [...init, ...transitions, ...loop, ...neverReached, ...fairness]) !== "sat") continue;
+      if (await checkAssertions([...init, ...transitions, ...loop, ...neverReached, ...fairness]) !== "sat") continue;
       diagnostics.push({
         code: "reachable-liveness-cycle", name: property.name, backend: "z3", depth, loopStart,
         message: `${property.name} is false along a reachable lasso of length ${depth} with loop start ${loopStart}, while all declared action fairness constraints hold`,
@@ -797,19 +799,19 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       const violation = `(not ${temporalToSmt(property.expressionAst, (name) => at(name, depth), symbols)})`;
       return `(and ${[...transitions, violation].join(" ")})`;
     });
-    if (await checkSmt(declarations, [...init, disjoin(violations)]) !== "unsat") continue;
+    if (await checkAssertions([...init, disjoin(violations)]) !== "unsat") continue;
     const relevantChanges = Array.from({ length: maxSteps }, (_, depth) => {
       const transitions = Array.from({ length: depth + 1 }, (_, index) => step(index));
       const changes = disjoin(references.map((name) => `(not (= ${at(name, depth + 1)} ${at(name, depth)}))`));
       return `(and ${[...transitions, changes].join(" ")})`;
     });
-    if (await checkSmt(declarations, [...init, disjoin(relevantChanges)]) === "unsat") {
+    if (await checkAssertions([...init, disjoin(relevantChanges)]) === "unsat") {
       diagnostics.push({
         code: "bounded-vacuous-property", name: property.name, backend: "z3", depth: maxSteps,
         message: `${property.name} holds within ${maxSteps} steps, but none of its referenced state can change on a reachable transition within that bound`,
       });
       const changesOnAnyTransition = disjoin(references.map((name) => `(not (= ${at(name, 1)} ${at(name, 0)}))`));
-      if (await checkSmt(declarations, [step(0), changesOnAnyTransition]) === "unsat") diagnostics.push({
+      if (await checkAssertions([step(0), changesOnAnyTransition]) === "unsat") diagnostics.push({
         code: "inductively-vacuous-property", name: property.name, backend: "z3", depth: 1,
         message: `${property.name} is vacuous without a bound: init establishes it and no transition can change any state it references`,
       });
@@ -817,7 +819,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         const invariant = properties.length === 1
           ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
           : `(and ${properties.map((candidate) => temporalToSmt(candidate.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
-        if (await checkSmt(declarations, [invariant, step(0), changesOnAnyTransition]) !== "unsat") continue;
+        if (await checkAssertions([invariant, step(0), changesOnAnyTransition]) !== "unsat") continue;
         const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
         diagnostics.push({
           code: "strengthened-vacuous-property", name: property.name, relatedName: propertyNames, backend: "z3", depth: 1,
@@ -833,7 +835,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       const transitions = Array.from({ length: depth }, (_, index) => step(index));
       prefixes.push(`(and ${[...transitions, guard(action, depth)].join(" ")})`);
     }
-    const result = await checkSmt(declarations, [...init, disjoin(prefixes)]);
+    const result = await checkAssertions([...init, disjoin(prefixes)]);
     if (result === "unsat") {
       diagnostics.push({
         code: "bounded-unreachable-action", name: action.name, backend: "z3", depth: maxSteps,
@@ -844,7 +846,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         message: `${action.name} is unreachable: the complete finite state space is covered by paths of at most ${completenessDepth} transitions`,
       });
       if (maxSteps >= 1) {
-        const induction = await checkSmt(declarations, [`(not ${guard(action, 0)})`, step(0), guard(action, 1)]);
+        const induction = await checkAssertions([`(not ${guard(action, 0)})`, step(0), guard(action, 1)]);
         if (induction === "unsat") diagnostics.push({
           code: "inductively-unreachable-action", name: action.name, backend: "z3", depth: 1,
           message: `${action.name} is unreachable: init excludes its guard and one-step induction preserves that exclusion across every transition`,
@@ -853,7 +855,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
           const invariantAt = (index: number) => properties.length === 1
             ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, index), symbols)
             : `(and ${properties.map((property) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols)).join(" ")})`;
-          if (await checkSmt(declarations, [invariantAt(0), step(0), guard(action, 1)]) !== "unsat") continue;
+          if (await checkAssertions([invariantAt(0), step(0), guard(action, 1)]) !== "unsat") continue;
           const propertyNames = properties.map((property) => property.name).join(" & ");
           diagnostics.push({
             code: "strengthened-unreachable-action", name: action.name, relatedName: propertyNames, backend: "z3", depth: 1,
