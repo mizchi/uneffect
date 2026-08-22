@@ -225,7 +225,7 @@ The adjacent single-return invariant function is
 also checked by exact normalized scalar-AST equivalence. Create and observe are
 additionally checked as independent identity field projections: the transparent
 local-class `Object.assign` construction and destructured observation preserve
-all five model state fields. General abstraction relations, runtime validation
+all five model state fields through same-file hydrate/snapshot wrappers. General abstraction relations, runtime validation
 of hostile object inputs, and solver-proven equivalence of differently shaped
 predicates remain unsupported.
 

@@ -41,15 +41,23 @@ export class TelemetryRoutingAccounting {
   }
 }
 
+function hydrateTelemetryRouting(initial: TelemetryRoutingState): TelemetryRoutingAccounting {
+  return Object.assign(new TelemetryRoutingAccounting(), initial);
+}
+
 /* uneffect: refinement telemetryRouting@1 create */
 export function createTelemetryRouting(initial: TelemetryRoutingState): TelemetryRoutingAccounting {
-  return Object.assign(new TelemetryRoutingAccounting(), initial);
+  return hydrateTelemetryRouting(initial);
+}
+
+function snapshotTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
+  const { delivered, dropped, buffered, attempted, auditArmed } = runtime;
+  return { delivered, dropped, buffered, attempted, auditArmed };
 }
 
 /* uneffect: refinement telemetryRouting@1 observe */
 export function observeTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
-  const { delivered, dropped, buffered, attempted, auditArmed } = runtime;
-  return { delivered, dropped, buffered, attempted, auditArmed };
+  return snapshotTelemetryRouting(runtime);
 }
 
 /* uneffect: refinement telemetryRouting@1 action deliver */

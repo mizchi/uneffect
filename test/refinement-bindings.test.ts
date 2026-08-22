@@ -409,6 +409,34 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("inlines acyclic same-file create and observe projection helpers", () => {
+    const model = `/* uneffect:
+      state left: int
+      state right: int
+      init left = 0
+      init right = 0
+    */`;
+    const safe = `${model}
+      interface State { left: number; right: number }
+      class Runtime { left = 0; right = 0 }
+      function hydrate(initial: State) { return Object.assign(new Runtime(), initial) }
+      function createRuntime(initial: State) { return hydrate(initial) }
+      function snapshot(runtime: Runtime) { const { left, right } = runtime; return { left, right } }
+      function observeRuntime(runtime: Runtime) { return snapshot(runtime) }
+      /* uneffect: refinement pair@1 create */ export function createPair(initial: State) { return createRuntime(initial) }
+      /* uneffect: refinement pair@1 observe */ export function observePair(runtime: Runtime) { return observeRuntime(runtime) }
+    `;
+    expect(validateRefinementStateProjection("projection-helper.ts", safe, "pair", parseSpec("projection-helper.ts", safe).temporal)).toEqual([]);
+
+    const recursive = safe.replace(
+      "function hydrate(initial: State) { return Object.assign(new Runtime(), initial) }",
+      "function hydrate(initial: State): Runtime { return createRuntime(initial) }",
+    );
+    expect(validateRefinementStateProjection("recursive-projection.ts", recursive, "pair", parseSpec("recursive-projection.ts", recursive).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-create-body", exportName: "createPair" }),
+    ]);
+  });
+
   it("does not accept arbitrary create or observe calls as a state projection", () => {
     const source = `
       /* uneffect:

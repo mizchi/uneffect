@@ -136,10 +136,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Normalize immutable local scalar constants and alias chains in invariant bindings without evaluating calls.
       - [x] Inline acyclic same-file single-return scalar invariant helper graphs with argument substitution; reject recursion and nonlocal calls.
       - [x] Prove supported create/observe adapters preserve every model state field by name, including transparent local-class construction and destructured observation.
+      - [x] Inline acyclic same-file single-argument create/observe helper graphs while preserving the identity projection proof; reject recursion and nonlocal calls.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
         - [ ] Extend action-body refinement beyond the current sequential scalar fragment, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic same-file direct helpers, and terminal returns to general loops, branch-local abrupt completion, collections, imported calls, aliases, and dynamic dispatch. Multi-write sequencing is composed symbolically and scalar guard equivalence is solver-proven opt-in.
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic same-file pure helper graphs to collections, imported helpers, aliases, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
-        - [ ] Extend create/observe refinement beyond identity field projections to explicit abstraction relations, nested records/collections, and TypeChecker-backed runtime shape evidence.
+        - [ ] Extend create/observe refinement beyond identity field projections and acyclic same-file wrappers to explicit abstraction relations, nested records/collections, imported helpers, aliases, dynamic dispatch, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

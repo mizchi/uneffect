@@ -611,7 +611,14 @@ export function validateRefinementStateProjection(
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const identity = () => new Map(spec.states.map(({ name }) => [name, { kind: "name", name } as TemporalExpression]));
 
-  const extract = (implementation: ts.FunctionDeclaration, role: "create" | "observe"): Map<string, TemporalExpression> | undefined => {
+  const extract = (
+    implementation: ts.FunctionDeclaration,
+    role: "create" | "observe",
+    activeHelpers: ReadonlySet<string> = new Set(),
+  ): Map<string, TemporalExpression> | undefined => {
+    const implementationName = implementation.name?.text;
+    if (!implementationName || activeHelpers.has(implementationName)) return undefined;
+    const nextActiveHelpers = new Set([...activeHelpers, implementationName]);
     const parameter = implementation.parameters[0];
     const receiver = parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : undefined;
     if (!receiver || !implementation.body || implementation.body.statements.length === 0) return undefined;
@@ -633,6 +640,13 @@ export function validateRefinementStateProjection(
     }
     const expression = returned.expression;
     if (ts.isIdentifier(expression) && expression.text === receiver) return identity();
+    if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)
+      && expression.arguments.length === 1 && ts.isIdentifier(expression.arguments[0]!)
+      && expression.arguments[0]!.text === receiver) {
+      const helper = functions.get(expression.expression.text);
+      if (!helper?.body || helper.parameters.length !== 1 || !ts.isIdentifier(helper.parameters[0]!.name)) return undefined;
+      return extract(helper, role, nextActiveHelpers);
+    }
     if (role === "create" && ts.isCallExpression(expression)
       && ts.isPropertyAccessExpression(expression.expression)
       && ts.isIdentifier(expression.expression.expression) && expression.expression.expression.text === "Object"
