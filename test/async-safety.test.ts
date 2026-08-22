@@ -700,4 +700,24 @@ describe("async error and explicit resource safety", () => {
     expect(catchContinuation).toBe(outerAwaitEntry);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("acquires a resource between the awaited chains surrounding its declaration", () => {
+    const result = analyzeAsyncSafety("acquire-between-awaits.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function run() {
+        await Promise.resolve("before").then(value => value)
+        await using resource = open()
+        await Promise.resolve("after").then(value => value)
+      }
+    `);
+    const awaited = result.promises.filter((item) => item.owner === "run" && item.observation === "await" && item.promiseChain !== undefined);
+    const quint = generateUnifiedAsyncQuint("acquire_between_awaits", result, "run");
+    const before = quint.indexOf(`action promise_${awaited[0]!.promiseChain}_fulfill`);
+    const acquire = quint.indexOf("action acquire_resource");
+    const after = quint.indexOf(`action promise_${awaited[1]!.promiseChain}_fulfill`);
+    expect(before).toBeLessThan(acquire);
+    expect(acquire).toBeLessThan(after);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

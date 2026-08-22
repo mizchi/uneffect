@@ -780,28 +780,24 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
-  const scheduledDisposals = new Set<number>();
-  const disposalBeforeFirstAwait = disposals.flatMap((disposal, disposalIndex) => {
-    if (disposal.disposalPoint >= awaited[0]!.span.start) return [];
-    scheduledDisposals.add(disposalIndex);
-    return [disposalIndex];
+  type NormalEvent =
+    | { kind: "acquire"; index: number; position: number }
+    | { kind: "await"; index: number; position: number }
+    | { kind: "dispose"; index: number; position: number };
+  const normalEvents: NormalEvent[] = [
+    ...resources.map((resource, index): NormalEvent => ({ kind: "acquire", index, position: resource.span.start })),
+    ...awaited.map((observation, index): NormalEvent => ({ kind: "await", index, position: observation.span.start })),
+    ...disposals.flatMap((disposal, index): NormalEvent[] =>
+      awaited.some((observation) => observation.span.start > disposal.disposalPoint)
+        ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
+        : []),
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, await: 1, dispose: 2 }[left.kind] - { acquire: 0, await: 1, dispose: 2 }[right.kind]));
+  let nextPc = 0;
+  const normalLayout = normalEvents.map((event) => {
+    const pc = nextPc;
+    nextPc += event.kind === "await" ? 2 : 1;
+    return { event, pc };
   });
-  const disposalAfterAwait = awaited.map((_, awaitIndex) => {
-    if (awaitIndex === awaited.length - 1) return [] as number[];
-    const nextAwaitStart = awaited[awaitIndex + 1]!.span.start;
-    return disposals.flatMap((disposal, disposalIndex) => {
-      if (scheduledDisposals.has(disposalIndex) || disposal.disposalPoint >= nextAwaitStart) return [];
-      scheduledDisposals.add(disposalIndex);
-      return [disposalIndex];
-    });
-  });
-  let nextPc = resources.length;
-  const preAwaitDisposalPcs = disposalBeforeFirstAwait.map((disposalIndex) => ({ disposalIndex, pc: nextPc++ }));
-  const awaitLayout = awaited.map((_, index) => ({
-    wait: nextPc++,
-    resume: nextPc++,
-    disposalPcs: disposalAfterAwait[index]!.map((disposalIndex) => ({ disposalIndex, pc: nextPc++ })),
-  }));
   const catchPc = nextPc;
   const afterCatchPc = catchPc + catchStatements.length, finallyPc = afterCatchPc + 1;
   const cleanupPc = finallyPc + finallyStatements.length, completePc = cleanupPc + disposals.length;
@@ -834,38 +830,36 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"]]));
     }
   };
-  resources.forEach((_, index) => {
-    emit(`acquire_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(index + 1)], [`acquired_${index}`, "true"]]));
-    emit(`acquire_fail_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
-  });
-  preAwaitDisposalPcs.forEach(({ disposalIndex, pc }, index) => {
-    const next = preAwaitDisposalPcs[index + 1]?.pc ?? awaitLayout[0]!.wait;
-    emitDisposal(disposalIndex, pc, next, "_scope_exit", disposals[disposalIndex]!.catchesFailure ? catchPc : cleanupPc);
-  });
-  awaited.forEach((observation, awaitIndex) => {
+  normalLayout.forEach(({ event, pc }, eventIndex) => {
+    const next = normalLayout[eventIndex + 1]?.pc ?? finallyPc;
+    if (event.kind === "acquire") {
+      emit(`acquire_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
+      emit(`acquire_fail_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
+      return;
+    }
+    if (event.kind === "dispose") {
+      emitDisposal(event.index, pc, next, "_scope_exit", disposals[event.index]!.catchesFailure ? catchPc : cleanupPc);
+      return;
+    }
+    const observation = awaited[event.index]!;
     const chain = observation.promiseChain!;
-    const { wait: waitPc, resume: resumePc, disposalPcs } = awaitLayout[awaitIndex]!;
-    emit(`promise_${chain}_fulfill`, [`pc == ${waitPc}`], new Map([["pc", String(resumePc)]]));
+    emit(`promise_${chain}_fulfill`, [`pc == ${pc}`], new Map([["pc", String(pc + 1)]]));
     const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
-    emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${waitPc}`], rejectionUpdates);
-    const isLast = awaitIndex === awaited.length - 1;
+    emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${pc}`], rejectionUpdates);
+    const isLast = event.index === awaited.length - 1;
     const resumeName = awaited.length === 1
       ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"
       : isLast ? `await_${chain}_resume_${finallyStatements.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
-    const nextAfterAwait = isLast ? finallyPc : awaitLayout[awaitIndex + 1]!.wait;
-    emit(resumeName, [`pc == ${resumePc}`], new Map([["pc", String(disposalPcs[0]?.pc ?? nextAfterAwait)]]));
-    disposalPcs.forEach(({ disposalIndex, pc }, index) => {
-      const next = disposalPcs[index + 1]?.pc ?? nextAfterAwait;
-      emitDisposal(disposalIndex, pc, next, "_scope_exit", disposals[disposalIndex]!.catchesFailure ? catchPc : cleanupPc);
-    });
+    emit(resumeName, [`pc == ${pc + 1}`], new Map([["pc", String(next)]]));
   });
   catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
   const catchEnd = catchStatements.reduce((end, statement) => Math.max(end, statement.span.end), -1);
   const continuationAwait = finallyStatements.length === 0 && catchEnd >= 0
     ? awaited.findIndex((observation) => observation.span.start > catchEnd)
     : -1;
-  const catchContinuationPc = continuationAwait >= 0 ? awaitLayout[continuationAwait]!.wait : finallyPc;
+  const continuationLayout = normalLayout.find(({ event }) => event.kind === "await" && event.index === continuationAwait);
+  const catchContinuationPc = continuationLayout?.pc ?? finallyPc;
   emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(catchContinuationPc)]]));
   finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));
   disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));

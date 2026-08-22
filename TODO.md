@@ -295,6 +295,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Dispose resources from a straight-line nested scope before a following outer await, while retaining idempotent final cleanup on failure paths.
     - [x] Dispose a resource whose complete nested scope precedes the first modeled await before entering that await.
     - [x] Route a caught scope-exit disposal failure through the concrete catch sequence and resume a following straight-line await.
+    - [x] Place straight-line resource acquisitions between surrounding awaits by source position instead of front-loading every acquisition.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

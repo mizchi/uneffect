@@ -432,11 +432,19 @@ explicit scope-exit transition before the following await. The final failure
 cleanup remains idempotent, so an already disposed resource is skipped while a
 rejection before that scope exit still disposes it. Resources in scopes with no
 modeled await are also released before the first later await. Resource
-acquisition interleaved after an await still requires the general CFG lowering.
+acquisition interleaved after an await is ordered in the same linear sequence.
 A disposal failure covered by the surrounding try region enters the retained
 catch statement sequence. Without a finally region, catch completion resumes
 the first later straight-line await. Catch termination and catch/finally joins
 with a later await still require statement-level CFG edges.
+
+The straight-line lowering orders resource acquisition, awaited-chain
+boundaries, and early lexical disposal in one source-position event sequence.
+Consequently a resource declared between two awaits is neither acquired before
+the first await nor delayed until after the second. An acquisition nested in a
+conditional or loop is still treated as unconditional by this linear sequence;
+that case remains explicitly outside proof-grade coverage until CFG joins carry
+the `acquired` state path-sensitively.
 
 ```sh
 just spec-resource-quint examples/resources.ts
