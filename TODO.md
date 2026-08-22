@@ -347,8 +347,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Refine thenable assimilation.
   - [x] Model self-resolution rejection, direct local throwing `then` getters, and direct local hostile thenables with first-call-wins settlement.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
-  - [ ] Resolve returned or dynamically selected thenables, imported call results, nested thenable resolution, and concrete Proxy trap behavior.
+  - [ ] Resolve dynamically selected thenables, exact nested thenable linkage, and general concrete Proxy trap behavior.
     - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
+    - [x] Preserve imported `PromiseLike` call results as conservative external assimilation nodes using their call-site type and span.
     - [x] Preserve conservative fulfill/reject/pending outcomes when a local thenable resolves to another thenable; exact nested symbol linkage remains open.
     - [x] Recognize a direct standard `Proxy` with an object-literal `get` trap whose only statement throws; conditional and forwarded traps remain dynamic.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.

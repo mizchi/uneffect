@@ -78,9 +78,9 @@ function analyzeExecutor(
   callback: ts.Expression | ts.MethodDeclaration | undefined,
   checker: ts.TypeChecker,
   source: ts.SourceFile,
-): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> & { adoptedSymbols: ts.Symbol[] } {
+): Pick<PromiseExecutorPattern, "events" | "possibleSettlements" | "mayRemainPending"> & { adoptedSymbols: ts.Symbol[]; adoptedExpressions: ts.Expression[] } {
   if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback) && !ts.isMethodDeclaration(callback)) || !callback.body) {
-    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, adoptedSymbols: [] };
+    return { events: [], possibleSettlements: ["fulfilled", "rejected", "assimilating"], mayRemainPending: true, adoptedSymbols: [], adoptedExpressions: [] };
   }
   const resolveParameter = callback.parameters[0]?.name;
   const rejectParameter = callback.parameters[1]?.name;
@@ -88,6 +88,7 @@ function analyzeExecutor(
   const rejectName = rejectParameter && ts.isIdentifier(rejectParameter) ? rejectParameter.text : undefined;
   const events: PromiseExecutorEvent[] = [];
   const adoptedSymbols: ts.Symbol[] = [];
+  const adoptedExpressions: ts.Expression[] = [];
   const unique = (paths: ExecutorPath[]): ExecutorPath[] => [...new Set(paths)];
   const expressionSettlement = (expression: ts.Expression): PromiseExecutorEvent | undefined => {
     if (!ts.isCallExpression(expression) || !ts.isIdentifier(expression.expression)) return undefined;
@@ -100,6 +101,7 @@ function analyzeExecutor(
       settlement = promiseLike ? "assimilating" : "fulfilled";
       const adopted = argument && promiseLike ? targetSymbol(checker, argument) : undefined;
       if (adopted) adoptedSymbols.push(adopted);
+      if (argument && promiseLike) adoptedExpressions.push(argument);
     }
     return { kind: name === resolveName ? "resolve" : "reject", settlement, span: { start: expression.getStart(source), end: expression.getEnd() } };
   };
@@ -139,6 +141,7 @@ function analyzeExecutor(
     possibleSettlements: paths.filter((path): path is PromiseExecutorSettlement => path !== "open"),
     mayRemainPending: paths.includes("open"),
     adoptedSymbols,
+    adoptedExpressions,
   };
 }
 
@@ -153,7 +156,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
   const checker = program.getTypeChecker(), executors: PromiseExecutorPattern[] = [], thenables: PromiseThenablePattern[] = [], chains: PromiseChainPattern[] = [];
   const executorBySymbol = new Map<ts.Symbol, number>();
   const thenableBySymbol = new Map<ts.Symbol, number>();
-  const pendingAdoptions: { executor: number; symbols: ts.Symbol[] }[] = [];
+  const pendingAdoptions: { executor: number; symbols: ts.Symbol[]; expressions: ts.Expression[] }[] = [];
   const thenablePattern = (
     expression: ts.Expression,
     seen = new Set<ts.Symbol>(),
@@ -244,13 +247,13 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const callback = node.arguments?.[0];
         const analyzed = analyzeExecutor(callback, checker, source);
         const index = executors.length;
-        const { adoptedSymbols, ...publicAnalysis } = analyzed;
+        const { adoptedSymbols, adoptedExpressions, ...publicAnalysis } = analyzed;
         executors.push({ owner: name, binding, callback: callback?.getText(source) ?? "<unknown>", synchronous: true, throwBecomesRejection: true, ...publicAnalysis, span: { start: node.getStart(source), end: node.getEnd() } });
         if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
           const symbol = targetSymbol(checker, node.parent.name);
           if (symbol) executorBySymbol.set(symbol, index);
         }
-        pendingAdoptions.push({ executor: index, symbols: adoptedSymbols });
+        pendingAdoptions.push({ executor: index, symbols: adoptedSymbols, expressions: adoptedExpressions });
       }
       ts.forEachChild(node, visit);
     };
@@ -324,6 +327,21 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       }
       return thenable === undefined ? [] : [thenable];
     }))];
+    for (const expression of pending.expressions) {
+      if (targetSymbol(checker, expression)) continue;
+      const type = checker.getTypeAtLocation(expression);
+      if (!checker.getPropertyOfType(type, "then")) continue;
+      const callTarget = ts.isCallExpression(expression) ? targetSymbol(checker, expression.expression) : undefined;
+      const external = callTarget?.declarations?.some((declaration) => declaration.getSourceFile() !== source) ?? false;
+      const thenable = thenables.length;
+      thenables.push({
+        owner: external ? "<external>" : enclosingOwner(expression), binding: expression.getText(source), thenAccess: "dynamic",
+        invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: external ? "external" : "local",
+        possibleSettlements: ["fulfilled", "rejected"], firstCallWins: true, mayRemainPending: true,
+        span: { start: expression.getStart(source), end: expression.getEnd() },
+      });
+      adoptedThenables.push(thenable);
+    }
     if (adoptedThenables.length === 1) executors[pending.executor]!.adoptedThenable = adoptedThenables[0];
   }
   const visitChains = (node: ts.Node): void => {

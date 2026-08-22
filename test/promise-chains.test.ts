@@ -169,6 +169,22 @@ describe("Promise state and reaction chains", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("retains an imported PromiseLike call result as external assimilation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-thenable-call-"));
+    try {
+      const external = join(directory, "external.ts"), main = join(directory, "main.ts");
+      writeFileSync(external, `export declare function operation(): PromiseLike<number>`);
+      writeFileSync(main, `import { operation } from "./external.js"; export function run() { const result = new Promise<number>(resolve => resolve(operation())); return result.catch(() => 0) }`);
+      const program = ts.createProgram([external, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const model = analyzePromiseChainsInProgram(program, program.getSourceFile(main)!);
+      expect(model.thenables).toContainEqual(expect.objectContaining({ binding: "operation()", provenance: "external", thenAccess: "dynamic" }));
+      expect(model.executors[0]).toMatchObject({ adoptedThenable: 0 });
+      const quint = generatePromiseChainsQuint("imported_call_thenable", model);
+      expect(quint).toContain("assimilate_0_thenable_0_fulfilled");
+      expect(quint).toContain("assimilate_0_thenable_0_rejected");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("resolves a thenable returned by a local factory before assimilation", () => {
     const model = analyzePromiseChains("returned-thenable.ts", `
       function hostile() {
