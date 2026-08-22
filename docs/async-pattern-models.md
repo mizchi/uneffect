@@ -147,6 +147,11 @@ Acquisition or step failure rejects every Promise combinator, including
 `allSettled`, before any yielded Promise reaction can settle the aggregate.
 Sparse literal holes are retained as `undefined` value slots, matching array
 iteration rather than being dropped.
+Local tuples frozen at the TypeScript level with `as const` are also flattened
+through `const` alias chains. A plain `const` array remains dynamic because
+`const` does not make its elements immutable. Casts through `any` can still
+violate TypeScript readonly guarantees and remain an explicit gradual-safety
+escape hatch.
 Direct conditional expressions are also bounded when both alternatives are
 finite arrays. The IR retains the source alternatives for each slot and joins
 differing value/thenable classifications to `unknown`, so both immediate

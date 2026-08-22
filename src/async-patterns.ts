@@ -154,14 +154,31 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return null;
   };
-  const expandStaticArray = (expression: ts.Expression): (ts.Expression | ts.OmittedExpression)[] | undefined => {
+  const expandStaticArray = (expression: ts.Expression, seen = new Set<ts.Symbol>()): (ts.Expression | ts.OmittedExpression)[] | undefined => {
     while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+    if (ts.isIdentifier(expression)) {
+      const symbol = resolvedSymbol(expression);
+      const declaration = symbol?.valueDeclaration;
+      if (!symbol || seen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration)
+        || !declaration.initializer || !ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+      let initializer = declaration.initializer;
+      while (ts.isParenthesizedExpression(initializer)) initializer = initializer.expression;
+      if (ts.isArrayLiteralExpression(initializer)) return undefined;
+      seen.add(symbol);
+      const expanded = expandStaticArray(initializer, seen);
+      seen.delete(symbol);
+      return expanded;
+    }
+    if (ts.isAsExpression(expression) && expression.type.getText(source) === "const") {
+      return expandStaticArray(expression.expression, seen);
+    }
     if (!ts.isArrayLiteralExpression(expression)) return undefined;
     const expanded: (ts.Expression | ts.OmittedExpression)[] = [];
     for (const element of expression.elements) {
       if (!ts.isSpreadElement(element)) expanded.push(element);
       else {
-        const nested = expandStaticArray(element.expression);
+        const nested = expandStaticArray(element.expression, seen);
         if (!nested) return undefined;
         expanded.push(...nested);
       }

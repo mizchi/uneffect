@@ -369,6 +369,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Classify non-literal/custom iterator execution as `InvokeUserCode`; retain unbounded dynamic cardinality as an explicit unsupported verifier boundary.
     - [x] Bound direct conditional array iterables of equal length slot-by-slot, joining differing branch kinds to conservative assimilation.
     - [x] Add one correlated choice and per-slot presence guards for direct finite conditional arrays of differing lengths.
+    - [x] Flatten immutable local `as const` tuple aliases and their spreads while keeping mutable `const` arrays dynamic.
     - [x] Preserve literal `Promise.reject` and direct `new Error` reasons in `Promise.any` input order and emit stable Quint artifact constants.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
 - [ ] Extend timer/event-loop ownership.

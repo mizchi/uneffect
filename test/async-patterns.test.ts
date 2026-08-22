@@ -795,10 +795,15 @@ describe("builtin async temporal patterns", () => {
     const model = analyzeAsyncPatterns("iterable-elements.ts", `
       declare const remote: PromiseLike<number>
       declare const dynamic: PromiseLike<number>[]
+      const local = [remote, 2] as const
+      const alias = local
+      const mutable = [remote]
       async function load() {
         await Promise.all([1, , remote])
         await Promise.all([...([remote])])
         await Promise.all([...dynamic])
+        await Promise.all([0, ...alias, 3])
+        await Promise.all([...mutable])
       }
     `);
     expect(model.combinators).toMatchObject([
@@ -808,6 +813,8 @@ describe("builtin async temporal patterns", () => {
         staticIterable: true,
       },
       { branches: ["remote"], branchKinds: ["thenable"], staticIterable: true },
+      { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
+      { branches: ["0", "remote", "2", "3"], branchKinds: ["value", "thenable", "value", "value"], staticIterable: true },
       { staticIterable: false, iteratorKind: "dynamic", iteratorEffects: ["InvokeUserCode"] },
     ]);
     const quint = generateAsyncPatternsQuint("iterable_elements", {
