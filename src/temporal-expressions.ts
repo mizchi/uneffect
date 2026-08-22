@@ -156,6 +156,11 @@ export function typeCheckTemporalExpression(
   }
   if (expression.kind === "method") {
     const receiver = typeCheckTemporalExpression(expression.receiver, symbols);
+    if (expression.name === "size") {
+      if (typeof receiver === "string" || (receiver.kind !== "set" && receiver.kind !== "map")) throw new Error("temporal size requires a Set or Map receiver");
+      if (expression.arguments.length !== 0) throw new Error("temporal size does not accept arguments");
+      return "int";
+    }
     if (expression.name === "put" || expression.name === "remove" || expression.name === "get" || expression.name === "keys" || expression.name === "values") {
       if (typeof receiver === "string" || receiver.kind !== "map") throw new Error(`temporal ${expression.name} requires a Map receiver`);
       if (expression.name === "keys" || expression.name === "values") {
@@ -174,10 +179,6 @@ export function typeCheckTemporalExpression(
       return receiver;
     }
     if (typeof receiver === "string" || receiver.kind !== "set") throw new Error(`temporal ${expression.name} requires a Set receiver`);
-    if (expression.name === "size") {
-      if (expression.arguments.length !== 0) throw new Error("temporal size does not accept arguments");
-      return "int";
-    }
     if (expression.name === "contains") {
       if (expression.arguments.length !== 1) throw new Error("temporal contains requires one matching element");
       const element = typeCheckTemporalExpression(expression.arguments[0]!, symbols);

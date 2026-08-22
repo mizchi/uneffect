@@ -287,7 +287,7 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
   if (concretePath) for (const [abstract, value] of abstraction) {
     const parsed = parseAbstractionValue(value);
     if (concretePath === parsed.path) return { kind: "name", name: abstract };
-    if (parsed.kind === "set-from-array" && concretePath === `${parsed.path}.length`) {
+    if ((parsed.kind === "set-from-array" || parsed.kind === "map-from-entries") && concretePath === `${parsed.path}.length`) {
       return { kind: "method", receiver: { kind: "name", name: abstract }, name: "size", arguments: [] };
     }
   }
@@ -906,7 +906,7 @@ function validateRefinementActionBodiesInSource(
           ? [...abstraction].find(([, value]) => {
               const parsed = parseAbstractionValue(value);
               return parsed.kind === "set-from-array" && (rawLeftPath === parsed.path || rawLeftPath === `${parsed.path}.length`)
-                || parsed.kind === "map-from-entries" && rawLeftPath === parsed.path;
+                || parsed.kind === "map-from-entries" && (rawLeftPath === parsed.path || rawLeftPath === `${parsed.path}.length`);
             })
           : undefined;
         if (computedArrayRelation) {
@@ -916,7 +916,9 @@ function validateRefinementActionBodiesInSource(
           if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return undefined;
           if (rawLeftPath === `${concretePath}.length`) {
             if (!ts.isNumericLiteral(node.right) || node.right.text !== "0") return undefined;
-            writePath(abstract, [], { kind: "call", name: "Set", arguments: [] });
+            writePath(abstract, [], parsedRelation.kind === "set-from-array"
+              ? { kind: "call", name: "Set", arguments: [] }
+              : { kind: "call", name: "Map", arguments: [{ kind: "array", elements: [] }] });
             continue;
           }
           if (!checker || !ts.isCallExpression(node.right) || !ts.isPropertyAccessExpression(node.right.expression)

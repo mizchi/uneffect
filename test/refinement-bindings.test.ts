@@ -1062,7 +1062,9 @@ describe("annotated refinement bindings", () => {
       init epochs = Map([[1, 0]])
       action addFallback: epochs' = epochs.put(2, 1)
       action removePrimary: epochs' = epochs.remove(1)
+      action clearEpochs: epochs' = Map([])
       temporal primaryPresent: epochs.keys().contains(1)
+      temporal nonEmpty: epochs.size() > 0
       abstraction mapEntries@1 epochs = Map(storage.epochEntries)
     */
       interface ModelState { epochs: Map<number, number> }
@@ -1075,8 +1077,12 @@ describe("annotated refinement bindings", () => {
       export function addFallback(runtime: Runtime): void { runtime.storage.epochEntries.push([2, 1]) }
       /* uneffect: refinement mapEntries@1 action removePrimary */
       export function removePrimary(runtime: Runtime): void { runtime.storage.epochEntries = runtime.storage.epochEntries.filter(entry => entry[0] !== 1) }
+      /* uneffect: refinement mapEntries@1 action clearEpochs */
+      export function clearEpochs(runtime: Runtime): void { runtime.storage.epochEntries.length = 0 }
       /* uneffect: refinement mapEntries@1 invariant primaryPresent */
       export function primaryPresent(runtime: Runtime): boolean { return runtime.storage.epochEntries.some(entry => entry[0] === 1) }
+      /* uneffect: refinement mapEntries@1 invariant nonEmpty */
+      export function nonEmpty(runtime: Runtime): boolean { return runtime.storage.epochEntries.length > 0 }
     `;
     try {
       writeFileSync(fileName, source);
@@ -1119,6 +1125,14 @@ describe("annotated refinement bindings", () => {
       });
       expect(validateRefinementInvariantBodiesInProgram(wrongLookupProgram, fileName, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "primaryPresent" }),
+      );
+      const wrongClear = source.replace("epochEntries.length = 0", "epochEntries.length = 1");
+      writeFileSync(fileName, wrongClear);
+      const wrongClearProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongClearProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "clearEpochs" }),
       );
       expect(validateRefinementActionBodies(fileName, source, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "addFallback" }),

@@ -91,6 +91,15 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(generateRuntimeAssertionExpression(mapExpression)).toBe("new Map([...epochs].filter(([_uneffect_key]) => _uneffect_key !== 2))");
   });
 
+  it("types and lowers Map size symmetrically with Set size", () => {
+    const mapType = { kind: "map", key: "int", value: "int" } as const;
+    const expression = parseTemporalExpression("epochs.size() > 0");
+    expect(typeCheckTemporalExpression(expression, new Map([["epochs", mapType]]))).toBe("bool");
+    expect(generateQuintExpression(expression)).toBe("epochs.size() > 0");
+    expect(generateRuntimeAssertionExpression(expression)).toBe("epochs.size > 0");
+    expect(() => typeCheckTemporalExpression(parseTemporalExpression("count.size() > 0"), new Map([["count", "int"]]))).toThrow(/Set or Map/);
+  });
+
   it("accepts typed guarded Map lookup and rejects unguarded partial lookup", () => {
     const mapType = { kind: "map", key: "int", value: "int" } as const;
     const guarded = parseTemporalExpression("epochs.keys().contains(1) && epochs.get(1) === 2");

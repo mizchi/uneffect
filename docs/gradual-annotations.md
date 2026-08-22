@@ -151,7 +151,9 @@ exact builtin `entries.push([key, value])` refines temporal `map.put(key,
 value)`. Exact same-array `entries.filter(entry => entry[0] !== key)` refines
 `map.remove(key)`, while builtin `entries.some(entry => entry[0] === key)`
 refines `map.keys().contains(key)`. The Program-backed checker verifies the
-tuple arity and key/value types. Value filtering, entry replacement, value
+tuple arity and key/value types. `entries.length = 0` refines Map clearing and
+`entries.length` refines Map size; temporal `size()` is valid for both Set and
+Map receivers. Value filtering, entry replacement, value
 lookup, duplicate-key ordering, and general iterable conversions are not yet
 proofs.
 

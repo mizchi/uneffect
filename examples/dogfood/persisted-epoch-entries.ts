@@ -3,7 +3,9 @@
   init epochs = Map([[1, 0]])
   action addFallback: epochs' = epochs.put(2, 1)
   action removePrimary: epochs' = epochs.remove(1)
+  action clearEpochs: epochs' = Map([])
   temporal primaryPresent: epochs.keys().contains(1)
+  temporal hasEpochs: epochs.size() > 0
   abstraction persistedEpochs@1 epochs = Map(storage.epochEntries)
 */
 
@@ -35,7 +37,17 @@ export function removePrimaryEpoch(runtime: PersistedEpochRuntime): void {
   runtime.storage.epochEntries = runtime.storage.epochEntries.filter((entry) => entry[0] !== 1);
 }
 
+/* uneffect: refinement persistedEpochs@1 action clearEpochs */
+export function clearPersistedEpochs(runtime: PersistedEpochRuntime): void {
+  runtime.storage.epochEntries.length = 0;
+}
+
 /* uneffect: refinement persistedEpochs@1 invariant primaryPresent */
 export function primaryEpochPresent(runtime: PersistedEpochRuntime): boolean {
   return runtime.storage.epochEntries.some((entry) => entry[0] === 1);
+}
+
+/* uneffect: refinement persistedEpochs@1 invariant hasEpochs */
+export function hasPersistedEpochs(runtime: PersistedEpochRuntime): boolean {
+  return runtime.storage.epochEntries.length > 0;
 }
