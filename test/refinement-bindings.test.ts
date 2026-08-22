@@ -331,7 +331,7 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementInvariantBodies("counter.ts", source, "counter", parseSpec("counter.ts", source).temporal)).toEqual([]);
   });
 
-  it("inlines one local pure invariant helper without trusting recursive or external calls", () => {
+  it("inlines an acyclic local pure invariant helper graph without trusting recursive calls", () => {
     const model = `/* uneffect:
       state value: int
       state armed: bool
@@ -342,9 +342,10 @@ describe("annotated refinement bindings", () => {
     const safe = `${model}
       interface Runtime { value: number; armed: boolean }
       function isGuarded(state: Runtime) { return !state.armed || state.value > 0 }
+      function remainsSafe(state: Runtime) { return isGuarded(state) }
       /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
       /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
-      /* uneffect: refinement counter@1 invariant guarded */ export function guarded(runtime: Runtime) { return isGuarded(runtime) }
+      /* uneffect: refinement counter@1 invariant guarded */ export function guarded(runtime: Runtime) { return remainsSafe(runtime) }
     `;
     expect(validateRefinementInvariantBodies("safe.ts", safe, "counter", parseSpec("safe.ts", safe).temporal)).toEqual([]);
 

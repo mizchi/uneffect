@@ -249,15 +249,23 @@ function normalizeRefinementExpression(
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
     const name = node.expression.text;
     const helper = helpers.get(name);
-    if (!helper?.body || activeHelpers.size > 0 || activeHelpers.has(name) || helper.parameters.length !== node.arguments.length
+    if (!helper?.body || activeHelpers.has(name) || helper.parameters.length !== node.arguments.length
       || helper.body.statements.length !== 1) return undefined;
     const returned = helper.body.statements[0];
     if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
-    const nested = new Map(substitutions);
+    const resolveArgument = (argument: ts.Expression, seen: ReadonlySet<string> = new Set()): ts.Expression | undefined => {
+      if (!ts.isIdentifier(argument)) return argument;
+      if (seen.has(argument.text)) return undefined;
+      const replacement = substitutions.get(argument.text);
+      return replacement ? resolveArgument(replacement, new Set([...seen, argument.text])) : argument;
+    };
+    const nested = new Map<string, ts.Expression>();
     for (let index = 0; index < helper.parameters.length; index++) {
       const parameter = helper.parameters[index]!;
       if (!ts.isIdentifier(parameter.name)) return undefined;
-      nested.set(parameter.name.text, node.arguments[index]!);
+      const argument = resolveArgument(node.arguments[index]!);
+      if (!argument) return undefined;
+      nested.set(parameter.name.text, argument);
     }
     return normalizeRefinementExpression(returned.expression, receiver, nested, stateNames, helpers, new Set([...activeHelpers, name]), symbolicSubstitutions);
   }

@@ -162,10 +162,11 @@ functions. A supported implementation consists of zero or more immutable local
 returned expression may use runtime scalar fields, integer/boolean literals, arithmetic, strict
 equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
 exactly equal the temporal property AST. Loose JavaScript equality is rejected
-because coercion would make the correspondence unsound. A direct call to a
-same-file function declaration is inlined only when it has exactly one
-expression-bearing `return`, identifier parameters, matching arity, and no
-recursive cycle. Imported/external calls, statement-bearing helpers, mutable local
+because coercion would make the correspondence unsound. An acyclic graph of
+direct calls to same-file function declarations is inlined only when every
+helper has exactly one expression-bearing `return`, identifier parameters, and
+matching arity. Imported/external calls, aliases, dynamic dispatch,
+statement-bearing helpers, mutable local
 declarations, mutation, collections, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous
 `validateRefinementInvariantBodiesWithZ3` path discharges such a mismatch only
