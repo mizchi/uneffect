@@ -42,6 +42,10 @@ but make `ownerEpoch !== 0` non-inductive over arbitrary typed states. Uneffect
 first proves `ownerEpochPositive` at init and across every transition, then
 uses it to prove `observeZeroEpoch` unreachable without a depth bound. A hint
 that fails either proof obligation is diagnosed and never trusted.
+The opt-in sign-template synthesizer reaches the same result after removing
+the declared property: it generates `<synth:ownerEpoch > 0>`, proves it, and
+uses it as the strengthening invariant. This is evidence for the epoch/counter
+use case only; relational lease invariants still need explicit declarations.
 
 This is not a proof of a Node implementation. The lifecycle abstraction covers
 renewal, delayed completion, GC, in-flight writes, CAS failure, and crashes as

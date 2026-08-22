@@ -151,6 +151,19 @@ describe("Node Lease clock-skew model", () => {
       name: "observeZeroEpoch",
       relatedName: "ownerEpochPositive",
     }));
+    const withoutDeclaredEpochInvariant = parseSpec(
+      "lease-synthesized-strengthening.ts",
+      leaseLifecycleModel(true).replace("temporal ownerEpochPositive: ownerEpoch > 0", ""),
+    ).temporal;
+    const synthesized = await lintTemporalReachabilityWithZ3(withoutDeclaredEpochInvariant, {
+      maxSteps: 3,
+      synthesizeStrengtheningProperties: true,
+    });
+    expect(synthesized).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeZeroEpoch",
+      relatedName: "<synth:ownerEpoch > 0>",
+    }));
   });
 
   it("extracts the collection-valued Node Lease violation with Z3 finite observation", async () => {

@@ -1,5 +1,5 @@
 import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
-import type { TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
+import { parseTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
 import { init as initZ3 } from "z3-solver";
 import { createHash } from "node:crypto";
@@ -94,6 +94,19 @@ function finiteStateCompletenessDepth(spec: TemporalSpec): number | undefined {
     if (states > BigInt(Number.MAX_SAFE_INTEGER)) return undefined;
   }
   return Math.max(0, Number(states) - 1);
+}
+
+function synthesizedStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
+  return spec.states.flatMap((state) => {
+    const expressions = state.type === "int"
+      ? [`${state.name} < 0`, `${state.name} <= 0`, `${state.name} >= 0`, `${state.name} > 0`]
+      : state.type === "bool" ? [state.name, `!${state.name}`] : [];
+    return expressions.map((expression) => ({
+      name: `<synth:${expression}>`,
+      expression,
+      expressionAst: parseTemporalExpression(expression),
+    }));
+  });
 }
 
 type MapType = Extract<TemporalValueType, { kind: "map" }> & { key: "int" | "bool"; value: TemporalValueType };
@@ -577,7 +590,7 @@ export async function findTemporalCounterexampleWithZ3(
 }
 
 /** Bounded transition reachability. An unreachable result is only a depth-bounded finding. */
-export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean } = {}): Promise<SpecLintDiagnostic[]> {
+export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options: { maxSteps?: number; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean } = {}): Promise<SpecLintDiagnostic[]> {
   if (spec.states.length === 0 && spec.actions.length === 0) return [];
   if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
@@ -609,12 +622,15 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const initStatus = await checkSmt(declarations, init);
   const strengthening: TemporalSpec["properties"] = [];
   const explicitStrengthening = new Set(options.strengtheningProperties ?? []);
+  const synthesized = options.synthesizeStrengtheningProperties ? synthesizedStrengtheningProperties(spec) : [];
+  const synthesizedByName = new Map(synthesized.map((property) => [property.name, property]));
   const strengtheningNames = new Set([
     ...explicitStrengthening,
     ...(options.discoverStrengtheningProperties ? spec.properties.map((property) => property.name) : []),
+    ...synthesized.map((property) => property.name),
   ]);
   for (const name of strengtheningNames) {
-    const property = spec.properties.find((candidate) => candidate.name === name);
+    const property = spec.properties.find((candidate) => candidate.name === name) ?? synthesizedByName.get(name);
     if (!property) {
       diagnostics.push({ code: "unknown-strengthening-property", name, backend: "z3", message: `strengthening property ${name} is not declared` });
       continue;
@@ -870,12 +886,13 @@ export function lintSpec(fileName: string, text: string): { spec: ParsedSpec; di
 }
 
 /** Parse source and combine cheap syntactic lint with solver-backed semantic lint. */
-export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
+export async function lintSpecWithZ3(fileName: string, text: string, options: { reachabilitySteps?: number | false; strengtheningProperties?: readonly string[]; discoverStrengtheningProperties?: boolean; synthesizeStrengtheningProperties?: boolean } = {}): Promise<{ spec: ParsedSpec; diagnostics: SpecLintDiagnostic[] }> {
   const result = lintSpec(fileName, text);
   const reachability = options.reachabilitySteps === false ? [] : await lintTemporalReachabilityWithZ3(result.spec.temporal, {
     maxSteps: options.reachabilitySteps ?? 8,
     strengtheningProperties: options.strengtheningProperties,
     discoverStrengtheningProperties: options.discoverStrengtheningProperties,
+    synthesizeStrengtheningProperties: options.synthesizeStrengtheningProperties,
   });
   return {
     spec: result.spec,

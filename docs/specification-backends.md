@@ -160,6 +160,12 @@ a candidate. Candidates are still admitted only after the same initialization
 and preservation proofs; rejected discovered candidates are silent, while an
 invalid explicitly requested hint is diagnostic. Uneffect does not yet
 synthesize new invariant expressions.
+`synthesizeStrengtheningProperties: true`, exposed as CLI
+`--synthesize-strengthening`, adds a deliberately small template pool:
+integer sign boundaries around zero and boolean polarity. Every generated
+candidate is subjected to the same init/preservation proof before use. This is
+useful for counters and epochs but is not relational, affine/polyhedral, or
+collection invariant synthesis.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
@@ -256,6 +262,7 @@ just spec-lint examples/spec.ts
 # Direct CLI form when selected temporal properties are proof hints:
 pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
 pnpm uneffect-spec lint examples/spec.ts --discover-strengthening
+pnpm uneffect-spec lint examples/spec.ts --synthesize-strengthening
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In
