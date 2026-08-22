@@ -37,8 +37,12 @@ full checks and individual CI jobs. Z3's process-local WASM heap can approach
 2 GiB; merely scheduling files serially in one process still allowed an early
 suite to corrupt the heap and make later Node Lease checks time out with
 `memory access out of bounds`. Per-file process isolation releases the WASM
-heap after every suite. GitHub still runs independent capability-tier jobs in
-parallel, so this bounds memory without collapsing CI-level parallelism.
+heap after every suite. A solver-dense file can opt into per-test process
+isolation; `node-lease.test.ts` does so because several independent bounded Z3
+queries were enough to exhaust one file process on GitHub. A manifest test
+keeps those selectors synchronized with every declared test. GitHub still runs
+independent capability-tier jobs in parallel, so this bounds memory without
+collapsing CI-level parallelism.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds

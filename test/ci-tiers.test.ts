@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciTestTiers, resolveCiTestIncludes } from "../ci/test-tiers.js";
+import { ciIsolatedTestNames, ciTestTiers, resolveCiTestIncludes } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -37,9 +37,18 @@ describe("CI test tier manifest", () => {
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
     expect(runner).toContain('tier === "fast" ? [undefined] : ciTestTiers[tier]');
+    expect(runner).toContain("ciIsolatedTestNames[file]");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts z3");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts quint");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts integration");
+  });
+
+  it("keeps per-test process isolation selectors synchronized with their files", () => {
+    for (const [file, selected] of Object.entries(ciIsolatedTestNames)) {
+      const source = readFileSync(join(process.cwd(), file), "utf8");
+      const declared = [...source.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]);
+      expect(selected, file).toEqual(declared);
+    }
   });
 });
