@@ -435,8 +435,11 @@ modeled await are also released before the first later await. Resource
 acquisition interleaved after an await is ordered in the same linear sequence.
 A disposal failure covered by the surrounding try region enters the retained
 catch statement sequence. Without a finally region, catch completion resumes
-the first later straight-line await. Catch termination and catch/finally joins
-with a later await still require statement-level CFG edges.
+the first later straight-line await. A top-level `return` or `throw` statement
+in catch/finally records an abrupt completion and bypasses unreachable handler
+statements and later awaits. Abrupt completion nested inside handler branches,
+and catch/finally joins containing awaited statements, still require the
+general statement-level CFG.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.

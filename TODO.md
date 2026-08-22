@@ -297,6 +297,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Route a caught scope-exit disposal failure through the concrete catch sequence and resume a following straight-line await.
     - [x] Place straight-line resource acquisitions between surrounding awaits by source position instead of front-loading every acquisition.
     - [x] Preserve conditional acquisition/await as optional transitions and carry the classification through Corsa schema v4; branch correlation and joins remain conservative.
+    - [x] Preserve top-level catch/finally `return` and `throw` completion so abrupt handlers do not fall through to later awaits.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

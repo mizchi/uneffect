@@ -82,6 +82,7 @@ export interface AsyncControlStatement {
   owner: string;
   region: "catch" | "finally";
   order: number;
+  completion: "normal" | "return" | "throw";
   source: string;
   span: { start: number; end: number };
 }
@@ -651,8 +652,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visit = (node: ts.Node): void => {
     if (ts.isTryStatement(node)) {
       const owner = enclosingFunctionName(node);
-      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ owner, region: "catch", order, source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
-      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ owner, region: "finally", order, source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
+      node.catchClause?.block.statements.forEach((statement, order) => controlStatements.push({ owner, region: "catch", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
+      node.finallyBlock?.statements.forEach((statement, order) => controlStatements.push({ owner, region: "finally", order, completion: completion(statement), source: statement.getText(source), span: { start: statement.getStart(source), end: statement.getEnd() } }));
     }
     if (ts.isFunctionLike(node) && "body" in node && node.body) visitFunction(node as ts.FunctionLikeDeclaration);
     ts.forEachChild(node, visit);
@@ -868,15 +870,25 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       : isLast ? `await_${chain}_resume_${finallyStatements.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
     emit(resumeName, [`pc == ${pc + 1}`], new Map([["pc", String(next)]]));
   });
-  catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
+  catchStatements.forEach((statement, index) => {
+    const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? catchPc + index + 1 : statement.completion === "return" ? finallyPc : cleanupPc)]]);
+    if (statement.completion === "throw") updates.set("completion", "1");
+    emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], updates);
+  });
   const catchEnd = catchStatements.reduce((end, statement) => Math.max(end, statement.span.end), -1);
-  const continuationAwait = finallyStatements.length === 0 && catchEnd >= 0
+  const catchTerminates = catchStatements.some((statement) => statement.completion !== "normal");
+  const continuationAwait = !catchTerminates && finallyStatements.length === 0 && catchEnd >= 0
     ? awaited.findIndex((observation) => observation.span.start > catchEnd)
     : -1;
   const continuationLayout = normalLayout.find(({ event }) => event.kind === "await" && event.index === continuationAwait);
   const catchContinuationPc = continuationLayout?.pc ?? finallyPc;
   emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(catchContinuationPc)]]));
-  finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));
+  finallyStatements.forEach((statement, index) => {
+    const updates = new Map<string, string>([["pc", String(statement.completion === "normal" ? finallyPc + index + 1 : cleanupPc)]]);
+    if (statement.completion === "return") updates.set("completion", "0");
+    if (statement.completion === "throw") updates.set("completion", "1");
+    emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], updates);
+  });
   disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
   emit("finish_fulfilled", [`pc == ${completePc}`, "completion == 0"], new Map([["pc", "-2"]]));
   emit("finish_rejected", [`pc == ${completePc}`, "completion != 0"], new Map([["pc", "-1"]]));

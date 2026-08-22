@@ -741,4 +741,25 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain(`action skip_await_${inside.promiseChain}`);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("does not resume an outer await after a return from catch", () => {
+    const result = analyzeAsyncSafety("catch-return.ts", `
+      async function run() {
+        try {
+          await Promise.reject(new Error("fail"))
+        } catch (error) {
+          return "recovered"
+        }
+        await Promise.resolve("unreachable").then(value => value)
+      }
+    `);
+    expect(result.controlStatements).toContainEqual(expect.objectContaining({ region: "catch", completion: "return" }));
+    const outerObservation = result.promises.find((item) => item.owner === "run" && item.source.includes('"unreachable"') && item.promiseChain !== undefined)!;
+    const quint = generateUnifiedAsyncQuint("catch_return_exit", result, "run");
+    const catchTarget = /action catch_statement_0 = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const outerAwait = new RegExp(`action promise_${outerObservation.promiseChain}_fulfill = all \\{\\s*pc == (-?\\d+),`).exec(quint)?.[1];
+    expect(catchTarget).toBeDefined();
+    expect(catchTarget).not.toBe(outerAwait);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });
