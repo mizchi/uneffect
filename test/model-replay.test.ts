@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
+import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, readModelCounterexample, replayModelCounterexample, writeModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 
 interface LeaseState {
@@ -173,6 +176,23 @@ Finished in 00s [violation] Found an issue.
     expect(result).toMatchObject({ status: "replayed", matchedSteps: 2, violations: [{ invariant: "singleWriter", step: 2 }] });
     expect(result.adapterDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(result.traceDigest).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("persists normalized model counterexamples and rejects stale or malformed artifacts", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-model-counterexample-"));
+    const path = join(directory, "lease.json");
+    const trace = createModelCounterexample({ backend: "z3", modelHash: "lease-v1", initialState: initial, steps: [
+      { action: "takeoverB", before: initial, after: afterTakeover },
+    ] });
+    try {
+      writeModelCounterexample(path, trace);
+      expect(readModelCounterexample(path, { expectedModelHash: "lease-v1" })).toEqual(trace);
+      expect(() => readModelCounterexample(path, { expectedModelHash: "lease-v2" })).toThrow(/model hash mismatch/);
+      writeFileSync(path, JSON.stringify({ ...trace, schema: "uneffect-model-counterexample/v0" }));
+      expect(() => readModelCounterexample(path)).toThrow(/unsupported counterexample schema/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("reports the first implementation/model state mismatch without claiming replay", async () => {

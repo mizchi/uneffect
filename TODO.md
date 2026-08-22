@@ -198,10 +198,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Generate finite `BoundedMap<K, V, N>` values with JSON-safe key/value columns, native-Map materialization, lookup/membership/size SMT constraints, and shrinking.
         - [x] Generate optional object-valued fields with one shared parent presence bit across nested leaves.
       - [x] Minimize a shared structural-size objective and confirm minimality with repeated strict-bound SAT checks instead of trusting nonlinear `Optimize` results.
-- [ ] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
+- [x] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Optionally persist minimized failures from standalone generated Vitest files and replay the artifact before newly generated candidates.
   - [x] Replay model-checker counterexamples through TypeScript refinement adapters.
+    - [x] Atomically persist normalized model traces and validate schema, backend, continuity, and expected model hash before replay.
     - [x] Define a versioned normalized model trace and replay explicit action/observation/invariant adapters with step-local mismatch artifacts.
     - [x] Parse Quint `run --mbt --out-itf` violation traces, including safe ITF big integers, into normalized traces automatically.
     - [x] Extract shortest bounded temporal-Z3 counterexamples with explicit action selectors into normalized traces automatically.

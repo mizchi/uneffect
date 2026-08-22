@@ -1,4 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import type { TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import type { TemporalSpec } from "./spec-ir.js";
 
@@ -79,6 +81,48 @@ export function createModelCounterexample<State extends object>(input: Omit<Mode
     expectedBefore = step.after;
   }
   return trace;
+}
+
+export interface ReadModelCounterexampleOptions { expectedModelHash?: string }
+
+/** Atomically persists a JSON-safe normalized model trace for later adapter replay. */
+export function writeModelCounterexample<State extends object>(path: string, trace: ModelCounterexample<State>): void {
+  const normalized = createModelCounterexample({
+    backend: trace.backend, modelHash: trace.modelHash, initialState: trace.initialState, steps: trace.steps,
+  });
+  mkdirSync(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(temporary, `${JSON.stringify(normalized, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    renameSync(temporary, path);
+  } catch (error) {
+    try { unlinkSync(temporary); } catch {}
+    throw error;
+  }
+}
+
+/** Loads and validates a persisted trace, optionally rejecting stale model evidence. */
+export function readModelCounterexample<State extends object = ModelState>(
+  path: string,
+  options: ReadModelCounterexampleOptions = {},
+): ModelCounterexample<State> {
+  const raw: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (!raw || typeof raw !== "object") throw new Error("model counterexample artifact must be an object");
+  const artifact = raw as Record<string, unknown>;
+  if (artifact.schema !== "uneffect-model-counterexample/v1") throw new Error(`unsupported counterexample schema: ${String(artifact.schema)}`);
+  if (!(["quint", "tlc", "z3", "manual"] as const).includes(artifact.backend as any)) throw new Error(`unsupported counterexample backend: ${String(artifact.backend)}`);
+  if (typeof artifact.modelHash !== "string" || artifact.modelHash.length === 0) throw new Error("model counterexample artifact has no model hash");
+  if (options.expectedModelHash !== undefined && artifact.modelHash !== options.expectedModelHash) {
+    throw new Error(`model hash mismatch: artifact has ${artifact.modelHash}, expected ${options.expectedModelHash}`);
+  }
+  if (!artifact.initialState || typeof artifact.initialState !== "object" || Array.isArray(artifact.initialState)) throw new Error("model counterexample artifact has no object initial state");
+  if (!Array.isArray(artifact.steps)) throw new Error("model counterexample artifact has no step array");
+  return createModelCounterexample({
+    backend: artifact.backend as ModelCounterexample<State>["backend"],
+    modelHash: artifact.modelHash,
+    initialState: artifact.initialState as State,
+    steps: artifact.steps as ModelCounterexampleStep<State>[],
+  });
 }
 
 function normalizeItfValue(value: unknown): ModelValue {

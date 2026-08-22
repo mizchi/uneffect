@@ -39,6 +39,24 @@ named action, compares every resulting observation, and records invariant
 violations by step. A missing action, adapter exception, or state mismatch is
 not reported as a successful replay.
 
+Normalized traces can be persisted and replayed in a later process:
+
+```ts
+writeModelCounterexample(".uneffect/counterexamples/lease.json", trace)
+
+const persisted = readModelCounterexample(
+  ".uneffect/counterexamples/lease.json",
+  { expectedModelHash: "sha256-of-generated-model" },
+)
+const result = await replayModelCounterexample(persisted, adapter)
+```
+
+Writes use a same-directory temporary file and atomic rename. Both writing and
+reading revalidate JSON-safe state and step continuity. Reading additionally
+validates the artifact schema, backend, and optional expected model hash, so a
+counterexample from an older generated model is reported as stale instead of
+being silently replayed.
+
 Quint integration uses its machine-readable path rather than scraping console
 text:
 
