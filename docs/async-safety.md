@@ -504,10 +504,14 @@ Returning a `using` or `await using` resource is a distinct boundary error:
 explicit resource management disposes it while completing the function, before
 the caller receives the return value. The frontend records direct, local-alias,
 object-property/shorthand, spread, conditional, and array return escapes in
-`resourceEscapes` and emits `disposed-resource-escape`. Returning unrelated
-data after using the resource remains valid. Closure captures, calls that may
-retain an argument, and arbitrary class/container construction are not yet
-claimed as return-escape proofs.
+`resourceEscapes` and emits `disposed-resource-escape`. It also scans a directly
+returned function or a reassignment-free local `const` callback initializer for
+captured resource symbols, including callbacks wrapped in returned objects or
+arrays, and records `via: "returned-closure"`. Returning unrelated data after
+using the resource, or invoking a callback only within the resource scope,
+remains valid. Calls that may retain an argument, mutable callback selection,
+and arbitrary class/container construction are not yet claimed as escape
+proofs.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

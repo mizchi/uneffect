@@ -371,3 +371,10 @@ measured 0.0678 ms mean over 7,374 samples (0.31% relative margin of error).
 This covers the neutral Set/Map/lambda AST and code generation but deliberately
 excludes Quint startup and model exploration; it is a frontend/lowering
 baseline only.
+
+Detecting retry-resource use-after-dispose, returned-value escape, and returned
+closure capture measured 125.35 ms mean over 20 cold samples (1.99% relative
+margin of error). TypeScript Program construction alone measured 89.30 ms,
+while the same analysis over a warm Program measured 0.389 ms over 1,287
+samples. The cold number is therefore dominated by compiler setup; the warm
+measurement is the relevant baseline for eventual compiler/Corsa integration.

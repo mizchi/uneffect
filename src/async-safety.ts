@@ -76,7 +76,7 @@ export interface ResourceAliasEscape {
 export interface ResourceEscape {
   owner: string;
   resource: string;
-  via: "return";
+  via: "return" | "returned-closure";
   span: { start: number; end: number };
 }
 export interface AsyncSafetyDiagnostic {
@@ -677,24 +677,64 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       resourceAliases.push(alias); reportedAliasUses.add(identity);
       diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
     };
-    const returnedResourceFact = (expression: ts.Expression): ResourceAliasFact | undefined => {
+    const capturedResourceFact = (node: ts.Node): ResourceAliasFact | undefined => {
+      if (ts.isShorthandPropertyAssignment(node)) {
+        const fact = symbolAliasFact(checker.getShorthandAssignmentValueSymbol(node), node.name.text, node);
+        if (fact) return fact;
+      }
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
+        const fact = aliasFact(node);
+        if (fact) return fact;
+      }
+      if (ts.isIdentifier(node)) {
+        const fact = aliasFact(node);
+        if (fact) return fact;
+      }
+      let found: ResourceAliasFact | undefined;
+      ts.forEachChild(node, (child) => { if (!found) found = capturedResourceFact(child); });
+      return found;
+    };
+    type ReturnedResource = { fact: ResourceAliasFact; via: ResourceEscape["via"] };
+    const returnedResourceFact = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ReturnedResource | undefined => {
       const direct = aliasFact(expression);
-      if (direct) return direct;
+      if (direct) return { fact: direct, via: "return" };
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
         || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
-        || ts.isNonNullExpression(expression)) return returnedResourceFact(expression.expression);
-      if (ts.isConditionalExpression(expression)) return returnedResourceFact(expression.whenTrue) ?? returnedResourceFact(expression.whenFalse);
+        || ts.isNonNullExpression(expression)) return returnedResourceFact(expression.expression, seen);
+      if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+        const fact = capturedResourceFact(expression.body);
+        return fact ? { fact, via: "returned-closure" } : undefined;
+      }
+      if (ts.isIdentifier(expression)) {
+        const symbol = checker.getSymbolAtLocation(expression);
+        const declaration = symbol?.valueDeclaration;
+        if (symbol && !seen.has(symbol) && declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+          && ts.isVariableDeclarationList(declaration.parent)
+          && (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) !== 0) {
+          return returnedResourceFact(declaration.initializer, new Set(seen).add(symbol));
+        }
+      }
+      if (ts.isConditionalExpression(expression)) return returnedResourceFact(expression.whenTrue, seen) ?? returnedResourceFact(expression.whenFalse, seen);
       if (ts.isObjectLiteralExpression(expression)) for (const property of expression.properties) {
-        const fact = ts.isShorthandPropertyAssignment(property) ? symbolAliasFact(checker.getShorthandAssignmentValueSymbol(property), property.name.text, property)
-          : ts.isPropertyAssignment(property) ? returnedResourceFact(property.initializer)
-            : ts.isSpreadAssignment(property) ? returnedResourceFact(property.expression)
+        const returned = ts.isShorthandPropertyAssignment(property) ? (() => {
+          const symbol = checker.getShorthandAssignmentValueSymbol(property);
+          const fact = symbolAliasFact(symbol, property.name.text, property);
+          if (fact) return { fact, via: "return" as const };
+          const declaration = symbol?.valueDeclaration;
+          if (!symbol || seen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+            || !ts.isVariableDeclarationList(declaration.parent)
+            || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0) return undefined;
+          return returnedResourceFact(declaration.initializer, new Set(seen).add(symbol));
+        })()
+          : ts.isPropertyAssignment(property) ? returnedResourceFact(property.initializer, seen)
+            : ts.isSpreadAssignment(property) ? returnedResourceFact(property.expression, seen)
               : undefined;
-        if (fact) return fact;
+        if (returned) return returned;
       }
       if (ts.isArrayLiteralExpression(expression)) for (const element of expression.elements) {
         if (ts.isExpression(element)) {
-          const fact = returnedResourceFact(element);
-          if (fact) return fact;
+          const returned = returnedResourceFact(element, seen);
+          if (returned) return returned;
         }
       }
       return undefined;
@@ -702,10 +742,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
       if (ts.isReturnStatement(node) && node.expression) {
-        const escaped = returnedResourceFact(node.expression);
-        if (escaped) {
-          resourceEscapes.push({ owner, resource: escaped.resource.binding, via: "return", span: { start: node.getStart(source), end: node.getEnd() } });
-          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${escaped.resource.binding} escapes through return but is disposed before the caller receives it` });
+        const returned = returnedResourceFact(node.expression);
+        if (returned) {
+          resourceEscapes.push({ owner, resource: returned.fact.resource.binding, via: returned.via, span: { start: node.getStart(source), end: node.getEnd() } });
+          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${returned.fact.resource.binding} escapes through ${returned.via === "returned-closure" ? "a returned closure" : "return"} but is disposed before the caller can use it` });
         }
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {

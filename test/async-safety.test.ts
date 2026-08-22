@@ -1823,4 +1823,42 @@ describe("async error and explicit resource safety", () => {
       functionName: "safe", kind: "disposed-resource-escape",
     }));
   });
+
+  it("rejects returned closures that capture lexical resources", () => {
+    const result = analyzeAsyncSafety("returned-resource-closure.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function directClosure() {
+        await using resource = open()
+        return () => resource.send()
+      }
+      async function aliasedClosure() {
+        await using resource = open()
+        const forwarded = resource
+        const callback = function () { forwarded.send() }
+        return callback
+      }
+      async function aggregateClosure() {
+        await using resource = open()
+        return { run: () => resource.send() }
+      }
+      async function safeImmediateClosure() {
+        await using resource = open()
+        const callback = () => resource.send()
+        callback()
+        return { ok: true }
+      }
+    `);
+    for (const functionName of ["directClosure", "aliasedClosure", "aggregateClosure"]) {
+      expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+        owner: functionName, resource: "resource", via: "returned-closure",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName, kind: "disposed-resource-escape",
+      }));
+    }
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safeImmediateClosure", kind: "disposed-resource-escape",
+    }));
+  });
 });

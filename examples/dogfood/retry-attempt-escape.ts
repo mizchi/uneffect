@@ -24,3 +24,9 @@ export async function brokenAttemptFactory(): Promise<{ attempt: Attempt }> {
   await using attempt = openAttempt();
   return { attempt };
 }
+
+export async function brokenDeferredAttempt(): Promise<{ flush(): void }> {
+  await using attempt = openAttempt();
+  const flush = () => attempt.flush();
+  return { flush };
+}

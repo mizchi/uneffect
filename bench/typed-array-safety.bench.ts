@@ -431,7 +431,7 @@ describe("typed-array static verification", () => {
     generateUnifiedAsyncQuint("retry_attempts", result, "flushWithRetry");
   }, { time: 500, iterations: 20 });
 
-  bench("detect retry resource use and return escapes", () => {
+  bench("detect retry resource use, value, and closure escapes", () => {
     const program = createAsyncSafetyBenchmarkProgram();
     analyzeAsyncSafetyInProgram(program, program.getSourceFile(retryAttemptEscapeFile)!);
   }, { time: 500, iterations: 20 });

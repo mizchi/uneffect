@@ -344,6 +344,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve computed resource-slot keys through reassignment-free local `const` string/number aliases while keeping mutable keys unknown.
     - [x] Resolve exported `const` resource-slot keys through named import aliases, barrel re-exports, and namespace imports in the Program frontend.
     - [x] Reject direct, aliased, object, and array returns of lexical resources that are disposed before the caller receives them.
+    - [x] Reject returned direct/aliased/aggregate closures that capture a lexical resource and can run only after its disposal.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
