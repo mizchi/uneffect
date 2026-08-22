@@ -217,24 +217,27 @@ function normalizeRefinementExpression(
   stateNames: ReadonlySet<string>,
   helpers: ReadonlyMap<string, ts.FunctionDeclaration> = new Map(),
   activeHelpers: ReadonlySet<string> = new Set(),
+  symbolicSubstitutions: ReadonlyMap<string, TemporalExpression> = new Map(),
 ): TemporalExpression | undefined {
-  if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers);
+  if (ts.isParenthesizedExpression(node)) return normalizeRefinementExpression(node.expression, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
   if (ts.isNumericLiteral(node) && /^\d+$/.test(node.text)) return { kind: "integer", value: node.text };
   if (node.kind === ts.SyntaxKind.TrueKeyword || node.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: node.kind === ts.SyntaxKind.TrueKeyword };
   if (ts.isIdentifier(node)) {
+    const symbolic = symbolicSubstitutions.get(node.text);
+    if (symbolic) return { kind: "name", name: `\u0000local:${node.text}` };
     const replacement = substitutions.get(node.text);
-    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames, helpers, activeHelpers) : undefined;
+    return replacement ? normalizeRefinementExpression(replacement, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions) : undefined;
   }
   const field = refinementFieldName(node, receiver, substitutions);
   if (field && stateNames.has(field)) return { kind: "name", name: field };
   if (ts.isPrefixUnaryExpression(node) && (node.operator === ts.SyntaxKind.MinusToken || node.operator === ts.SyntaxKind.ExclamationToken)) {
-    const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames, helpers, activeHelpers);
+    const operand = normalizeRefinementExpression(node.operand, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
     return operand ? { kind: "unary", operator: node.operator === ts.SyntaxKind.ExclamationToken ? "not" : "negate", operand } : undefined;
   }
   if (ts.isBinaryExpression(node)) {
     const operator = temporalBinaryOperators.get(node.operatorToken.kind);
-    const left = normalizeRefinementExpression(node.left, receiver, substitutions, stateNames, helpers, activeHelpers);
-    const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, helpers, activeHelpers);
+    const left = normalizeRefinementExpression(node.left, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
+    const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions);
     return operator && left && right ? { kind: "binary", operator, left, right } : undefined;
   }
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
@@ -250,7 +253,7 @@ function normalizeRefinementExpression(
       if (!ts.isIdentifier(parameter.name)) return undefined;
       nested.set(parameter.name.text, node.arguments[index]!);
     }
-    return normalizeRefinementExpression(returned.expression, receiver, nested, stateNames, helpers, new Set([...activeHelpers, name]));
+    return normalizeRefinementExpression(returned.expression, receiver, nested, stateNames, helpers, new Set([...activeHelpers, name]), symbolicSubstitutions);
   }
   return undefined;
 }
@@ -289,7 +292,16 @@ export function validateRefinementActionBodies(
     runtimeClass: ts.ClassDeclaration | undefined,
     substitutions: ReadonlyMap<string, ts.Expression>,
     updates: Map<string, TemporalExpression> = new Map(),
+    localValues: Map<string, TemporalExpression> = new Map(),
   ): Map<string, TemporalExpression> | undefined => {
+    const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
+      if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
+        return localValues.get(expression.name.slice("\u0000local:".length)) ?? expression;
+      }
+      if (expression.kind === "unary") return { ...expression, operand: expandLocalSnapshots(expression.operand) };
+      if (expression.kind === "binary") return { ...expression, left: expandLocalSnapshots(expression.left), right: expandLocalSnapshots(expression.right) };
+      return expression;
+    };
     const resolveCurrentState = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name") return updates.get(expression.name) ?? expression;
       if (expression.kind === "unary") return { ...expression, operand: resolveCurrentState(expression.operand) };
@@ -297,6 +309,16 @@ export function validateRefinementActionBodies(
       return expression;
     };
     for (const statement of body.statements) {
+      if (ts.isVariableStatement(statement)) {
+        if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+        for (const declaration of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(declaration.name) || !declaration.initializer || localValues.has(declaration.name.text)) return undefined;
+          const value = normalizeRefinementExpression(declaration.initializer, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          if (!value) return undefined;
+          localValues.set(declaration.name.text, expandLocalSnapshots(resolveCurrentState(value)));
+        }
+        continue;
+      }
       if (!ts.isExpressionStatement(statement)) return undefined;
       const node = statement.expression;
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
@@ -321,9 +343,9 @@ export function validateRefinementActionBodies(
       if (ts.isBinaryExpression(node)) {
         const target = refinementFieldName(node.left, receiver, substitutions);
         if (!target || !stateNames.has(target)) return undefined;
-        const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames);
+        const right = normalizeRefinementExpression(node.right, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
         if (!right) return undefined;
-        const resolvedRight = resolveCurrentState(right);
+        const resolvedRight = expandLocalSnapshots(resolveCurrentState(right));
         if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) updates.set(target, resolvedRight);
         else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
           updates.set(target, { kind: "binary", operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract", left: updates.get(target) ?? { kind: "name", name: target }, right: resolvedRight });

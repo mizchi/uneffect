@@ -123,6 +123,10 @@ Multiple writes are executed over a symbolic scalar state in TypeScript source
 order before comparison. This both proves cases such as two increments and
 rejects a naive two-assignment swap: temporal action assignments are
 simultaneous, whereas the second TypeScript assignment observes the first.
+Immutable scalar `const` declarations snapshot the symbolic value at their
+declaration point, so the conventional three-step temporary-variable swap is
+proved against simultaneous model assignments. `let`, `var`, destructuring,
+calls, and unsupported initializer expressions remain non-proofs.
 For a guarded model action, the implementation may begin with
 `if (!(predicate)) return`; the positive predicate is normalized and must
 exactly match `action_when` in the synchronous fast path. Missing, different, and unexpected guards are

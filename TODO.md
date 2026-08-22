@@ -124,6 +124,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
       - [x] Prove direct scalar action assignments, increments, stuttering, and one-level literal-specialized local class methods against temporal assignments.
       - [x] Compose repeated and cross-field scalar writes in TypeScript execution order before comparing them with simultaneous temporal updates.
+      - [x] Preserve immutable action-local scalar snapshots so temporary-variable swaps refine simultaneous model updates; keep mutable locals unsupported.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.

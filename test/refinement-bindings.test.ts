@@ -152,6 +152,31 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("preserves immutable action-local snapshots across later writes", () => {
+    const source = `/* uneffect:
+      state left: int
+      state right: int
+      init left = 1
+      init right = 2
+      action swap: left' = right, right' = left
+    */
+      interface Runtime { left: number; right: number }
+      /* uneffect: refinement pair@1 create */ export function createPair(initial: Runtime) { return initial }
+      /* uneffect: refinement pair@1 observe */ export function observePair(runtime: Runtime) { return runtime }
+      /* uneffect: refinement pair@1 action swap */
+      export function swap(runtime: Runtime) {
+        const previousLeft = runtime.left;
+        runtime.left = runtime.right;
+        runtime.right = previousLeft;
+      }
+    `;
+    expect(validateRefinementActionBodies("swap.ts", source, "pair", parseSpec("swap.ts", source).temporal)).toEqual([]);
+    const mutable = source.replace("const previousLeft", "let previousLeft");
+    expect(validateRefinementActionBodies("mutable-swap.ts", mutable, "pair", parseSpec("mutable-swap.ts", mutable).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "swap" }),
+    ]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:
