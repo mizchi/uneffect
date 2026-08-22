@@ -34,7 +34,10 @@ export function subscribeFallback(runtime: RoutingRuntime): void {
 
 /* uneffect: refinement routingState@1 action unsubscribePrimary */
 export function unsubscribePrimary(runtime: RoutingRuntime): void {
-  runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter((id) => id !== 1);
+  const primaryId = 1;
+  runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter((id) => {
+    return id !== primaryId;
+  });
 }
 
 /* uneffect: refinement routingState@1 action clearSubscribers */

@@ -41,13 +41,22 @@ describe("Uneffect dogfood", () => {
       expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "routingState", temporal)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "subscribeFallback", target: "subscribers" }),
       );
-      const unsupportedFilter = source.replace("id !== 1", "id > 1");
+      const unsupportedFilter = source.replace("id !== primaryId", "id > primaryId");
       writeFileSync(wrongFile, unsupportedFilter);
       const unsupportedFilterProgram = ts.createProgram([wrongFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(await validateRefinementActionBodiesInProgramWithZ3(unsupportedFilterProgram, wrongFile, "routingState", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "unsubscribePrimary" }),
+      );
+      const mutableFilterValue = source.replace("const primaryId = 1", "let primaryId = 1");
+      writeFileSync(wrongFile, mutableFilterValue);
+      const mutableFilterProgram = ts.createProgram([wrongFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(await validateRefinementActionBodiesInProgramWithZ3(mutableFilterProgram, wrongFile, "routingState", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "unsubscribePrimary" }),
       );
     } finally {

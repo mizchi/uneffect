@@ -944,7 +944,7 @@ describe("annotated refinement bindings", () => {
       /* uneffect: refinement arraySet@1 action admit */
       export function admit(runtime: Runtime): void { runtime.routing.activeSubscriberIds.push(2) }
       /* uneffect: refinement arraySet@1 action revokePrimary */
-      export function revokePrimary(runtime: Runtime): void { runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter(id => id !== 1) }
+      export function revokePrimary(runtime: Runtime): void { const primaryId = 1; runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter(id => id !== primaryId) }
       /* uneffect: refinement arraySet@1 action clearSubscribers */
       export function clearSubscribers(runtime: Runtime): void { runtime.routing.activeSubscriberIds.length = 0 }
       /* uneffect: refinement arraySet@1 invariant primaryPresent */
@@ -962,12 +962,26 @@ describe("annotated refinement bindings", () => {
       expect(validateRefinementStateProjectionInProgram(program, fileName, "arraySet", spec)).toEqual([]);
       expect(validateRefinementActionBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
       expect(validateRefinementInvariantBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
-      const wrongFilter = source.replace("id !== 1", "id > 1");
+      const blockFilter = source.replace("filter(id => id !== primaryId)", "filter(id => { return (id !== primaryId) })");
+      writeFileSync(fileName, blockFilter);
+      const blockFilterProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(blockFilterProgram, fileName, "arraySet", spec)).toEqual([]);
+      const wrongFilter = source.replace("id !== primaryId", "id > primaryId");
       writeFileSync(fileName, wrongFilter);
       const wrongFilterProgram = ts.createProgram([fileName], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementActionBodiesInProgram(wrongFilterProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "revokePrimary" }),
+      );
+      const mutableFilterValue = source.replace("const primaryId = 1", "let primaryId = 1");
+      writeFileSync(fileName, mutableFilterValue);
+      const mutableFilterProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(mutableFilterProgram, fileName, "arraySet", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "revokePrimary" }),
       );
       const wrongClear = source.replace("activeSubscriberIds.length = 0", "activeSubscriberIds.length = 1");

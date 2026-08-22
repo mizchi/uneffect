@@ -134,7 +134,9 @@ reads through the same relation. Unknown fields, duplicate mappings, stale
 adapter versions, `any`/`unknown`, and incompatible scalar or builtin
 collection types are rejected. The filter proof accepts only the builtin Array
 method, the same concrete array on both sides, one expression-bodied parameter,
-and strict inequality. Other computed conversions, array operations such as
+and strict inequality. A callback block containing one direct `return` and
+declaration-ordered immutable action-local snapshots are also accepted; mutable
+captures and general callback statements are not. Other computed conversions, array operations such as
 indexed writes/splice/pop or non-zero length assignment, dynamic property paths, and many-to-one
 relations remain explicit non-proofs.
 

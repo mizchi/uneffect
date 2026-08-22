@@ -849,13 +849,18 @@ function validateRefinementActionBodiesInSource(
             || refinementFieldPath(node.right.expression.expression, receiver, substitutions)?.join(".") !== concretePath) return undefined;
           const callback = node.right.arguments[0];
           if (!callback || !ts.isArrowFunction(callback) || callback.parameters.length !== 1
-            || !ts.isIdentifier(callback.parameters[0]!.name) || !ts.isBinaryExpression(callback.body)
-            || callback.body.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return undefined;
+            || !ts.isIdentifier(callback.parameters[0]!.name)) return undefined;
+          const callbackExpression = ts.isBlock(callback.body)
+            ? callback.body.statements.length === 1 && ts.isReturnStatement(callback.body.statements[0]!)
+              && callback.body.statements[0]!.expression ? unwrap(callback.body.statements[0]!.expression!) : undefined
+            : unwrap(callback.body);
+          if (!callbackExpression || !ts.isBinaryExpression(callbackExpression)
+            || callbackExpression.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return undefined;
           const parameter = callback.parameters[0]!.name.text;
-          const leftIsParameter = ts.isIdentifier(callback.body.left) && callback.body.left.text === parameter;
-          const rightIsParameter = ts.isIdentifier(callback.body.right) && callback.body.right.text === parameter;
+          const leftIsParameter = ts.isIdentifier(callbackExpression.left) && callbackExpression.left.text === parameter;
+          const rightIsParameter = ts.isIdentifier(callbackExpression.right) && callbackExpression.right.text === parameter;
           if (leftIsParameter === rightIsParameter) return undefined;
-          const excludedNode = leftIsParameter ? callback.body.right : callback.body.left;
+          const excludedNode = leftIsParameter ? callbackExpression.right : callbackExpression.left;
           const excluded = normalizeRefinementExpression(excludedNode, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues, checker);
           if (!excluded) return undefined;
           writePath(abstract, [], {
