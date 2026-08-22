@@ -405,6 +405,48 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("resolves imported direct action helpers only in the Program-backed path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-refinement-"));
+    const helperFile = join(directory, "helper.ts");
+    const mainFile = join(directory, "main.ts");
+    const helper = `
+      function insertOwner(runtime: { owners: Set<number> }, owner: number) { runtime.owners.add(owner) }
+      export function addOwner(runtime: { owners: Set<number> }, owner: number) { insertOwner(runtime, owner) }
+    `;
+    const source = `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      action addOwner: owners' = owners.union(Set(2))
+    */
+      import { addOwner as applyOwner } from "./helper.js"
+      interface Runtime { owners: Set<number> }
+      /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function add(runtime: Runtime) { applyOwner(runtime, 2) }
+    `;
+    try {
+      writeFileSync(helperFile, helper);
+      writeFileSync(mainFile, source);
+      const spec = parseSpec(mainFile, source).temporal;
+      expect(validateRefinementActionBodies(mainFile, source, "authority", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "addOwner",
+      }));
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(program, mainFile, "authority", spec)).toEqual([]);
+      writeFileSync(helperFile, `export function addOwner(runtime: { owners: Set<number> }, owner: number) { addOwner(runtime, owner) }`);
+      const recursiveProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(recursiveProgram, mainFile, "authority", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "addOwner",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

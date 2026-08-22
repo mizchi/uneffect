@@ -249,7 +249,10 @@ map key domain. Admitting or deleting the wrong owner, or clearing the wrong
 authority field, is detected as an authority action mismatch. The lightweight
 syntax API still trusts receiver identity at the annotated boundary; the
 Program-backed API resolves the receiver type symbol and rejects collection
-subclasses and same-shaped user types.
+subclasses and same-shaped user types. Its Node Lease dogfood also resolves an
+aliased import through a two-level helper graph before proving an owner-removal
+transition; the syntax-only API deliberately leaves that imported call
+unsupported.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

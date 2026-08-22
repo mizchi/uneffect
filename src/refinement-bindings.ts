@@ -341,6 +341,13 @@ function validateRefinementActionBodiesInSource(
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
+  const resolveFunction = (identifier: ts.Identifier): ts.FunctionDeclaration | undefined => {
+    if (!checker) return functions.get(identifier.text);
+    let symbol = checker.getSymbolAtLocation(identifier);
+    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+    return symbol?.declarations?.find(ts.isFunctionDeclaration);
+  };
+
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
     if (!checker) return true;
     const expected = kind === "set" ? "Set" : "Map";
@@ -490,8 +497,8 @@ function validateRefinementActionBodiesInSource(
       const node = ts.isReturnStatement(statement) ? statement.expression! : statement.expression;
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
         const helperName = node.expression.text;
-        const helper = functions.get(helperName);
-        const callKey = `function:${helperName}`;
+        const helper = resolveFunction(node.expression);
+        const callKey = helper ? `function:${helper.getSourceFile().fileName}:${helper.pos}` : `function:${helperName}`;
         if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
           || helper.parameters.length === 0 || helper.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) return undefined;
         const receiverArgument = node.arguments[0]!;

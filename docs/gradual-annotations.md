@@ -144,15 +144,17 @@ and remain provable.
 It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`
-write to the literal field. It also composes an acyclic graph of direct calls to
-same-file function declarations. The first helper argument must be the current
-runtime receiver; remaining scalar arguments are snapshotted symbolically at
-the call site. Recursive calls, imported helpers, aliases, and dynamic dispatch
-remain explicit non-proofs. Every model state is compared, so an extra runtime
+write to the literal field. It also composes an acyclic graph of direct helper
+calls. The syntax-only path limits these helpers to same-file declarations; the
+Program-backed path resolves aliased imports and further direct calls inside
+imported helpers by TypeChecker symbol identity. The first helper argument must
+be the current runtime receiver; remaining scalar arguments are snapshotted
+symbolically at the call site. Recursion, indirect function-value aliases,
+methods, and dynamic dispatch remain explicit non-proofs. Every model state is compared, so an extra runtime
 write is rejected as well as a missing or different write. A terminal void
 `return` and a terminal `return helper(runtime, ...)` are composed in root,
 helper, and local-method bodies. Nonterminal or branch-local abrupt completion,
-general loops, collection operations, and dynamic computed members produce
+general loops, unsupported collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
 Multiple writes are executed over a symbolic scalar state in TypeScript source
 order before comparison. This both proves cases such as two increments and

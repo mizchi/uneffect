@@ -467,3 +467,11 @@ does not mean TypeChecker setup is free: this benchmark deliberately excludes
 Program construction and compares repeated validation after a compiler or
 Corsa frontend has already produced semantic state. Cold project setup should
 be measured separately before selecting the strict path for a standalone CLI.
+
+After adding a ninth action implemented through an aliased import and a
+two-level helper graph, the same warm benchmark measured 0.1164 ms for the
+syntax path (which conservatively reports that imported action unsupported)
+and 0.0965 ms for the Program path (which proves it), over 4,294 and 5,183
+samples respectively. These timings compare the actual gradual behaviors, not
+equivalent proof strength; only the Program path establishes the imported
+transition.
