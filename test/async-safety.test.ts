@@ -1874,6 +1874,13 @@ describe("async error and explicit resource safety", () => {
         const forwarded = value
         register(forwarded)
       }
+      class Registry {
+        resource: Resource
+        /* uneffect: retains_resource 0 */
+        constructor(resource: Resource) { this.resource = resource }
+      }
+      function makeRegistry(value: Resource) { return new Registry(value) }
+      class Snapshot { constructor(resource: Resource) { resource.send() } }
       function broken() {
         using resource = open()
         const alias = resource
@@ -1887,9 +1894,18 @@ describe("async error and explicit resource safety", () => {
         using resource = open()
         retainAliasWrapper(resource)
       }
+      function brokenConstructor() {
+        using resource = open()
+        new Registry(resource)
+      }
+      function brokenFactory() {
+        using resource = open()
+        makeRegistry(resource)
+      }
       function safe() {
         using resource = open()
         inspect(resource)
+        new Snapshot(resource)
       }
       /* uneffect: retains_resource nope */
       declare function malformed(resource: Resource): void
@@ -1907,6 +1923,12 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
       owner: "brokenAliasWrapper", resource: "resource", via: "retaining-call",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "brokenConstructor", resource: "resource", via: "retaining-construction",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "brokenFactory", resource: "resource", via: "retaining-call",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "safe", kind: "disposed-resource-escape",

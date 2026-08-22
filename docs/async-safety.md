@@ -513,11 +513,12 @@ remains valid. A callee can declare `retains_resource` with zero-based parameter
 indices. Passing a resource or resolved local alias at that call records
 `via: "retaining-call"`; direct wrappers inherit retention when they forward a
 parameter, including through local `const` aliases, to another retaining
-boundary. Unknown unannotated calls remain
-unchecked to preserve gradual adoption. Retention through mutable local
-bindings inside the wrapper, mutable callback selection, arbitrary class/container
-construction, and externally implemented unannotated callees are not yet
-claimed as escape proofs.
+boundary. Annotated constructors record `via: "retaining-construction"`, and
+factory wrappers inherit that parameter summary. Unknown unannotated calls and
+constructors remain unchecked to preserve gradual adoption. Retention through
+mutable local bindings inside the wrapper, mutable callback selection,
+unannotated container construction, and externally implemented unannotated
+callees are not yet claimed as escape proofs.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

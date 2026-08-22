@@ -393,3 +393,10 @@ run measured 1.725 ms). Caching the inferred retention summary per resolved
 signature restored the stable warm mean to 0.505 ms over 990 samples (0.66%
 relative margin of error). The cache is scoped to one analysis invocation and
 therefore cannot reuse facts across different TypeScript Programs.
+
+Adding an annotated queue-entry constructor and a factory wrapper to the retry
+fixture measured 162.84 ms cold, 99.41 ms for Program construction, and 0.698
+ms for warm analysis (20 cold samples and 717 warm samples). Constructor and
+factory summary propagation therefore remains below one millisecond on the
+warm path in this fixture; the result is observational rather than a large
+class-graph performance bound.

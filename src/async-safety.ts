@@ -76,7 +76,7 @@ export interface ResourceAliasEscape {
 export interface ResourceEscape {
   owner: string;
   resource: string;
-  via: "return" | "returned-closure" | "retaining-call";
+  via: "return" | "returned-closure" | "retaining-call" | "retaining-construction";
   span: { start: number; end: number };
 }
 export interface AsyncSafetyDiagnostic {
@@ -274,7 +274,7 @@ function parseIndexedOwnershipContract(declaration: ts.SignatureDeclaration, dir
 
 function resourceRetentionParameters(
   checker: ts.TypeChecker,
-  call: ts.CallExpression,
+  call: ts.CallExpression | ts.NewExpression,
   cache: Map<ts.SignatureDeclaration, ReadonlySet<number>>,
   seen = new Set<ts.SignatureDeclaration>(),
 ): Set<number> {
@@ -304,8 +304,8 @@ function resourceRetentionParameters(
   };
   const visit = (node: ts.Node): void => {
     if (node !== signature.body && ts.isFunctionLike(node)) return;
-    if (ts.isCallExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, cache, nextSeen)) {
-      const argument = node.arguments[nestedIndex];
+    if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, cache, nextSeen)) {
+      const argument = node.arguments?.[nestedIndex];
       if (!argument) continue;
       const parameterIndex = parameterOrigin(argument);
       if (parameterIndex >= 0) retained.add(parameterIndex);
@@ -791,15 +791,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
-      if (ts.isCallExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
-        const argument = node.arguments[index];
+      if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
+        const argument = node.arguments?.[index];
         if (!argument) continue;
         const retained = aliasFact(argument);
         if (!retained) continue;
-        resourceEscapes.push({ owner, resource: retained.resource.binding, via: "retaining-call", span: { start: node.getStart(source), end: node.getEnd() } });
+        const via = ts.isNewExpression(node) ? "retaining-construction" : "retaining-call";
+        resourceEscapes.push({ owner, resource: retained.resource.binding, via, span: { start: node.getStart(source), end: node.getEnd() } });
         diagnostics.push({
           fileName: source.fileName, functionName: owner, line: lineAt(source, argument.getStart(source)), kind: "disposed-resource-escape", severity: "error",
-          message: `${retained.resource.binding} escapes through retaining call ${node.expression.getText(source)} argument ${index} and may be used after lexical disposal`,
+          message: `${retained.resource.binding} escapes through retaining ${ts.isNewExpression(node) ? "construction" : "call"} ${node.expression.getText(source)} argument ${index} and may be used after lexical disposal`,
         });
       }
       if (ts.isReturnStatement(node) && node.expression) {

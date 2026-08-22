@@ -227,3 +227,7 @@ infer the contract transitively by parameter symbol identity, including
 reassignment-free local `const` forwarding chains. This describes
 retention rather than ownership transfer: it neither suppresses disposal nor
 changes emitted JavaScript.
+
+The directive may annotate a class constructor as well. Direct construction is
+reported as `retaining-construction`; a function returning `new Registry(x)`
+inherits retention for `x`, so callers of an ordinary factory are checked too.

@@ -12,6 +12,13 @@ function registerRetryAttempt(attempt: Attempt): void {
   const queuedAttempt = attempt;
   registerAttempt(queuedAttempt);
 }
+class AttemptQueueEntry {
+  /* uneffect: retains_resource 0 */
+  constructor(readonly attempt: Attempt) {}
+}
+function createAttemptQueueEntry(attempt: Attempt): AttemptQueueEntry {
+  return new AttemptQueueEntry(attempt);
+}
 
 export async function brokenRetry(enabled: boolean): Promise<void> {
   let lastAttempt: Attempt | undefined;
@@ -40,4 +47,9 @@ export async function brokenDeferredAttempt(): Promise<{ flush(): void }> {
 export async function brokenRegisteredAttempt(): Promise<void> {
   await using attempt = openAttempt();
   registerRetryAttempt(attempt);
+}
+
+export async function brokenQueuedAttempt(): Promise<void> {
+  await using attempt = openAttempt();
+  createAttemptQueueEntry(attempt);
 }
