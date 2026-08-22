@@ -866,6 +866,29 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes subset invariants between Set fields in one record state", async () => {
+    const temporal = parseSpec("record-set-subset-strengthening.ts", `/* uneffect:
+      state authority: { requested: Set<int>, allowed: Set<int> }
+      state armed: bool
+      init authority = { requested: Set(1), allowed: Set(1, 2) }
+      init armed = false
+      action requestAllowed: authority' = { ...authority, requested: authority.requested.union(Set(2)) }
+      action_when requestAllowed: authority.allowed.contains(2)
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && authority.requested.contains(2) && !authority.allowed.contains(2)
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:authority.requested subset authority.allowed>",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int

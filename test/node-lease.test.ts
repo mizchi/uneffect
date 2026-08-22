@@ -58,18 +58,16 @@ function collectionLeaseModel(skewGrace: number): string {
 
 function capabilityRequestModel(enforceAuthority: boolean): string {
   return `/* uneffect:
-    state requested: Set<int>
-    state allowed: Set<int>
+    state authority: { requested: Set<int>, allowed: Set<int> }
     state auditArmed: bool
-    init requested = Set(1)
-    init allowed = Set(1, 2)
+    init authority = { requested: Set(1), allowed: Set(1, 2) }
     init auditArmed = false
-    action requestWrite: requested' = requested.union(Set(2))
-    ${enforceAuthority ? "action_when requestWrite: allowed.contains(2)" : ""}
+    action requestWrite: authority' = { ...authority, requested: authority.requested.union(Set(2)) }
+    ${enforceAuthority ? "action_when requestWrite: authority.allowed.contains(2)" : ""}
     action armAudit: auditArmed' = true
     action observeEscalation: auditArmed' = auditArmed
-    action_when observeEscalation: auditArmed && requested.contains(2) && !allowed.contains(2)
-    temporal requestWithinAuthority: requested.forall(permission => allowed.contains(permission))
+    action_when observeEscalation: auditArmed && authority.requested.contains(2) && !authority.allowed.contains(2)
+    temporal requestWithinAuthority: authority.requested.forall(permission => authority.allowed.contains(permission))
   */`;
 }
 
@@ -166,16 +164,16 @@ describe("Node Lease clock-skew model", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
       name: "observeEscalation",
-      relatedName: "<synth:requested subset allowed>",
+      relatedName: "<synth:authority.requested subset authority.allowed>",
     }));
 
     const broken = parseSpec("capability-request-broken.ts", capabilityRequestModel(false)
-      .replace("init allowed = Set(1, 2)", "init allowed = Set(1)" )).temporal;
+      .replace("allowed: Set(1, 2)", "allowed: Set(1)")).temporal;
     const counterexample = await findTemporalCounterexampleWithZ3(broken, "requestWithinAuthority", { maxSteps: 2 });
     expect(counterexample.status).toBe("counterexample");
     if (counterexample.status === "counterexample") {
       expect(counterexample.trace.steps.map((step) => step.action)).toContain("requestWrite");
-      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ requested: [1, 2], allowed: [1] });
+      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ authority: { requested: [1, 2], allowed: [1] } });
     }
   });
 

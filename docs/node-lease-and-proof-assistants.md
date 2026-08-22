@@ -48,8 +48,9 @@ uses it as the strengthening invariant. This is evidence for the epoch/counter
 use case only; relational lease invariants still need explicit declarations.
 
 The same proof pipeline now synthesizes both directions of subset candidates
-for same-element finite `Set` state pairs. A dogfood authority model proves
-`requested subset allowed` and uses it to rule out an armed escalation action.
+for same-element finite `Set` state pairs, including sets nested recursively in
+record fields. A dogfood authority model proves
+`authority.requested subset authority.allowed` and uses it to rule out an armed escalation action.
 Removing the authority check and narrowing the allowed set produces a bounded
 Z3 trace ending in `requested = Set(1, 2)` and `allowed = Set(1)`. Candidates
 are not assumptions: a direction is discarded unless Z3 proves it at init and

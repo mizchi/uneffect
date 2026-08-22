@@ -138,7 +138,13 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
 }
 
 function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
-  const collections = spec.states.filter((state) => typeof state.type !== "string");
+  const collections: Array<{ name: string; type: Exclude<TemporalValueType, "int" | "bool"> }> = [];
+  const collect = (name: string, type: TemporalValueType): void => {
+    if (typeof type === "string") return;
+    collections.push({ name, type });
+    if (type.kind === "record") for (const [field, fieldType] of Object.entries(type.fields)) collect(`${name}.${field}`, fieldType);
+  };
+  for (const state of spec.states) collect(state.name, state.type);
   return collections.flatMap((left, leftIndex) => collections.slice(leftIndex + 1).flatMap((right) => {
     if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
     const candidates = [{ name: `${left.name} === ${right.name}`, expression: `${left.name} === ${right.name}` }];

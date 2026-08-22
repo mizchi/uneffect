@@ -113,7 +113,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.
     - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
-    - [ ] Synthesize general affine/polyhedral, quantified, and field-correlated collection invariants.
+    - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.
+    - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
