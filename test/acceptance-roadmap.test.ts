@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import * as uneffect from "../src/index.js";
 
 type FutureApi = (...args: unknown[]) => unknown;
@@ -347,6 +348,48 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.obligations).toContainEqual(expect.objectContaining({ functionName: "write", kind: "u8-write", result: "verified" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "truncates", kind: "u8-write" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "unbounded", kind: "max-length" }));
+  });
+
+  it("refines a Set-backed lease implementation against its temporal actions and invariants", async () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateProjection = futureApi("validateRefinementStateProjectionInProgram");
+    const validateActions = futureApi("validateRefinementActionBodiesInProgramWithZ3");
+    const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgramWithZ3");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-lease-"));
+    const fileName = join(directory, "lease.ts");
+    const source = `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      action acquire: owners' = owners.union(Set(2))
+      temporal ownerPresent: owners.contains(1)
+    */
+      interface Runtime { owners: Set<number> }
+      /* uneffect: refinement lease@1 create */
+      export function createLease(initial: Runtime): Runtime { return initial }
+      /* uneffect: refinement lease@1 observe */
+      export function observeLease(runtime: Runtime): Runtime { return runtime }
+      /* uneffect: refinement lease@1 action acquire */
+      export function acquire(runtime: Runtime) { runtime.owners.add(2) }
+      /* uneffect: refinement lease@1 invariant ownerPresent */
+      export function ownerPresent(runtime: Runtime) { return runtime.owners.has(1) }
+    `;
+    try {
+      writeFileSync(fileName, source);
+      const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const spec = (parseSpec(fileName, source) as { temporal: unknown }).temporal;
+      expect(validateProjection(program, fileName, "lease", spec)).toEqual([]);
+      await expect(validateActions(program, fileName, "lease", spec)).resolves.toEqual([]);
+      await expect(validateInvariants(program, fileName, "lease", spec)).resolves.toEqual([]);
+
+      const broken = source.replace("runtime.owners.has(1)", "runtime.owners.has(2)");
+      writeFileSync(fileName, broken);
+      const brokenProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "ownerPresent" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("compares native Promise, Uneffect annotations, and Effect TS against the same observable contract", async () => {

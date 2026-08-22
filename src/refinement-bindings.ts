@@ -70,6 +70,11 @@ export interface RefinementInvariantDiagnostic {
   message: string;
 }
 
+const refinementMismatchExpressions = new WeakMap<object, {
+  expected: TemporalExpression;
+  actual: TemporalExpression;
+}>();
+
 export type Z3RefinementDiagnostic<T> = T & {
   backend?: "z3";
   equivalence?: "different" | "unknown";
@@ -780,11 +785,13 @@ function validateRefinementInvariantBodiesInSource(
       continue;
     }
     if (sameRefinementExpression(property.expressionAst, actual)) continue;
-    diagnostics.push({
+    const diagnostic: RefinementInvariantDiagnostic = {
       code: "invariant-expression-mismatch", adapterName, modelName: property.name, exportName,
       expected: formatRefinementExpression(property.expressionAst), actual: formatRefinementExpression(actual),
       message: `${exportName} returns ${formatRefinementExpression(actual)}, expected ${formatRefinementExpression(property.expressionAst)}`,
-    });
+    };
+    refinementMismatchExpressions.set(diagnostic, { expected: property.expressionAst, actual });
+    diagnostics.push(diagnostic);
   }
   const modelProperties = new Set(spec.properties.map(({ name }) => name));
   for (const [modelName, exportName] of Object.entries(manifest.invariants)) {
@@ -829,11 +836,10 @@ async function dischargeExpressionMismatchesWithZ3<T extends { code: string; exp
       discharged.push(diagnostic);
       continue;
     }
-    const result = await checkTemporalExpressionEquivalenceWithZ3(
-      spec,
-      parseTemporalExpression(diagnostic.expected),
-      parseTemporalExpression(diagnostic.actual),
-    );
+    const expressions = refinementMismatchExpressions.get(diagnostic);
+    const result = await checkTemporalExpressionEquivalenceWithZ3(spec,
+      expressions?.expected ?? parseTemporalExpression(diagnostic.expected),
+      expressions?.actual ?? parseTemporalExpression(diagnostic.actual));
     if (result.status === "equivalent") continue;
     discharged.push({
       ...diagnostic,

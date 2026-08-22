@@ -102,6 +102,14 @@ execution as constraint-preserving joint candidates.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 
+A Set-backed lease acceptance adapter now checks the complete refinement
+boundary: Program-backed create/observe types must match `Set<int>`, native
+`Set.add` must match the declared temporal action, and native `Set.has` must
+match the temporal membership invariant. Changing the observed member produces
+an `invariant-expression-mismatch`. Z3 mismatch discharge consumes the retained
+normalized AST rather than reparsing the runtime-oriented diagnostic text, so
+collection spellings such as JavaScript `.has` cannot crash the verifier.
+
 The adoption KPI is measured over a checked-in controlled corpus. The public
 machine-readable report includes false-positive and unknown-summary rates,
 annotation density, enforced boundaries, measured frontend and full project
