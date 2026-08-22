@@ -34,6 +34,7 @@ export interface PromiseCombinatorPattern {
   combinator: PromiseCombinator;
   branches: string[];
   branchKinds: ("value" | "thenable" | "unknown")[];
+  branchAlternatives?: string[][];
   staticIterable: boolean;
   iteratorKind: "array" | "local" | "dynamic";
   iteratorEffects: [] | ["InvokeUserCode"];
@@ -649,11 +650,24 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         } else if (operation?.kind === "promise-combinator") {
           const iterable = node.arguments[operation.iterableArgument];
           const array = iterable ? expandStaticArray(iterable) : undefined;
-          const local = array ? undefined : localIterable(iterable);
-          const staticIterable = Boolean(array || local);
+          let conditional = iterable;
+          while (conditional && ts.isParenthesizedExpression(conditional)) conditional = conditional.expression;
+          const conditionalArrays = conditional && ts.isConditionalExpression(conditional)
+            ? [expandStaticArray(conditional.whenTrue), expandStaticArray(conditional.whenFalse)] as const : undefined;
+          const equalConditionalArrays = conditionalArrays?.[0] && conditionalArrays[1]
+            && conditionalArrays[0].length === conditionalArrays[1].length ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
+          const boundedArray = array ?? equalConditionalArrays?.[0];
+          const local = boundedArray ? undefined : localIterable(iterable);
+          const staticIterable = Boolean(boundedArray || local);
           const branchNodes = local?.branches;
-          const branches = array ? array.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
-          const branchKinds = array ? array.map(branchKind) : branchNodes?.map(branchKind) ?? [];
+          const branchAlternatives = equalConditionalArrays?.[0].map((item, index) => [item, equalConditionalArrays[1][index]!]
+            .map((candidate) => ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText(source)));
+          const branches = branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
+            : boundedArray ? boundedArray.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
+          const branchKinds = equalConditionalArrays?.[0].map((item, index) => {
+            const kinds = [branchKind(item), branchKind(equalConditionalArrays[1][index]!)];
+            return kinds[0] === kinds[1] ? kinds[0]! : "unknown";
+          }) ?? (boundedArray ? boundedArray.map(branchKind) : branchNodes?.map(branchKind) ?? []);
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -663,8 +677,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, staticIterable,
-            iteratorKind: array ? "array" : local ? "local" : "dynamic", iteratorEffects: array ? [] : ["InvokeUserCode"],
+          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives } : {}), staticIterable,
+            iteratorKind: boundedArray ? "array" : local ? "local" : "dynamic", iteratorEffects: boundedArray ? [] : ["InvokeUserCode"],
             iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
             aggregateErrorReasons: operation.combinator === "any" && array ? array.map(rejectionReason) : undefined,
             awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });

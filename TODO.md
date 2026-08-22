@@ -365,8 +365,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Model throwing local iterator `next` accessors as acquisition failure and throwing `done`/`value` result accessors as step failure.
   - [x] Flatten nested array-literal spreads with exact cardinality and element order.
   - [x] Preserve `AggregateError.errors` slot order independently of Promise rejection order.
-  - [ ] Model conditional/imported custom iterables, iterator result getters, dynamic spread cardinality, and concrete aggregate rejection reasons.
+  - [ ] Model varying-cardinality/imported custom iterables, dynamic spread cardinality, and more concrete aggregate rejection reasons.
     - [x] Classify non-literal/custom iterator execution as `InvokeUserCode`; retain unbounded dynamic cardinality as an explicit unsupported verifier boundary.
+    - [x] Bound direct conditional array iterables of equal length slot-by-slot, joining differing branch kinds to conservative assimilation.
     - [x] Preserve literal `Promise.reject` and direct `new Error` reasons in `Promise.any` input order and emit stable Quint artifact constants.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
 - [ ] Extend timer/event-loop ownership.

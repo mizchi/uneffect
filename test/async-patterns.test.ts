@@ -831,6 +831,27 @@ describe("builtin async temporal patterns", () => {
     })).toThrow(/requires a statically bounded iterable/);
   }, 20_000);
 
+  it("bounds equal-length conditional array iterables slot by slot", () => {
+    const model = analyzeAsyncPatterns("conditional-iterable.ts", `
+      async function load(flag: boolean) {
+        await Promise.all(flag ? [Promise.resolve(1), 2] : [3, Promise.reject(new Error("x"))])
+        await Promise.all(flag ? [1] : [2, 3])
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      iteratorKind: "array",
+      branchKinds: ["unknown", "unknown"],
+      branchAlternatives: [["Promise.resolve(1)", "3"], ["2", "Promise.reject(new Error(\"x\"))"]],
+    });
+    expect(model.combinators[1]).toMatchObject({ staticIterable: false, iteratorKind: "dynamic" });
+    const quint = generateAsyncPatternsQuint("conditional_iterable", {
+      timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[0]!],
+    });
+    expect(quint).toContain("action assimilate_0_0");
+    expect(quint).toContain("action assimilate_0_1");
+  });
+
   it("models local iterator acquisition and generator step failures", () => {
     const model = analyzeAsyncPatterns("iterator-failures.ts", `
       const broken = {
