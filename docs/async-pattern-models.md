@@ -47,15 +47,17 @@ The initial Node 24 profile is available through
 use a separate next-tick queue, `queueMicrotask` uses the V8 microtask queue,
 and `setImmediate` uses a check queue. At an ordinary callback checkpoint the
 next-tick queue must drain before V8 microtasks, and both drain before another
-modeled timer/check callback. A broken option permits a microtask to overtake a
-pending next-tick callback and is rejected by `nodeEventLoopSafe`.
+modeled timer/check callback. Definitely queued Promise reactions share the
+same source-ordered V8 FIFO with `queueMicrotask` jobs. A broken option permits
+a V8 job to overtake a pending next-tick callback and is rejected by
+`nodeEventLoopSafe`.
 
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
 microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded
 from this callback-checkpoint profile. Poll/I/O readiness, close callbacks,
-pending callbacks, idle/prepare internals, recursive starvation, Promise
-reactions in the Node profile, and version/platform-dependent timer/check
+pending callbacks, idle/prepare internals, recursive starvation, dynamically
+created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.
 
 The model preserves reassignment-free local handle aliases and records direct

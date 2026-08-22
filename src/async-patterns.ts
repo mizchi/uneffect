@@ -793,6 +793,7 @@ export function generateNodeEventLoopQuint(
   moduleName: string,
   model: AsyncPatternModel,
   options: { allowMicrotaskBeforeNextTick?: boolean; allowMacroBeforeCheckpoint?: boolean } = {},
+  promiseModel?: PromiseChainModel,
 ): string {
   for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) {
     throw new Error(`${timer.owner}: Node event-loop model requires a static non-negative delay`);
@@ -802,16 +803,31 @@ export function generateNodeEventLoopQuint(
   const microtasks = supported.filter((index) => model.timers[index]!.queue === "microtask");
   const timers = supported.filter((index) => model.timers[index]!.queue === "timer");
   const checks = supported.filter((index) => model.timers[index]!.queue === "check");
+  const initialReactions = new Set<string>();
+  promiseModel?.chains.forEach((chain, chainIndex) => {
+    const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
+    if (chain.links.length && executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending) initialReactions.add(`${chainIndex}:0`);
+  });
+  const initialV8Jobs = [
+    ...microtasks.map((index) => ({ key: `callback:${index}`, span: model.timers[index]!.span.start })),
+    ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) =>
+      initialReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
+  ].sort((left, right) => left.span - right.span);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var wrong_checkpoint_order: bool"];
   supported.forEach((index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`));
+  promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
   lines.push("", "  action init = all {", "    clock' = 0,", "    wrong_checkpoint_order' = false,");
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
     lines.push(`    callback_${index}_pending' = ${!cancelled},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
   });
+  promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
+    lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
+  }));
   lines.push("  }");
-  const variables = ["clock", "wrong_checkpoint_order", ...supported.flatMap((index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`])];
+  const reactionVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`])) ?? [];
+  const variables = ["clock", "wrong_checkpoint_order", ...supported.flatMap((index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`]), ...reactionVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name);
@@ -825,17 +841,42 @@ export function generateNodeEventLoopQuint(
   ], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`]])));
   microtasks.forEach((index, order) => {
     const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
+    const key = `callback:${index}`;
+    const earlierV8 = initialV8Jobs.slice(0, initialV8Jobs.findIndex((job) => job.key === key)).map((job) =>
+      job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`
+        : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
     action(`drain_microtask_${index}`, [
       `callback_${index}_pending`,
       ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
-      ...microtasks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
+      ...earlierV8.map((pending) => `not(${pending})`),
     ], new Map([
       [`callback_${index}_pending`, "false"],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       ["wrong_checkpoint_order", pendingNextTick.join(" or ") || "false"],
     ]));
   });
-  const checkpointPending = [...nextTicks, ...microtasks].map((index) => `callback_${index}_pending`);
+  const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
+  promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
+    const key = `reaction:${chainIndex}:${stage}`;
+    const position = initialV8Jobs.findIndex((job) => job.key === key);
+    const earlierV8 = stage === 0 && position >= 0 ? initialV8Jobs.slice(0, position).map((job) =>
+      job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`
+        : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`) : [
+      ...microtasks.map((index) => `callback_${index}_pending`),
+      ...promiseModel.chains.flatMap((candidate, candidateIndex) => candidate.links.flatMap((__, candidateStage) =>
+        candidateIndex === chainIndex && candidateStage === stage ? [] : [`promise_reaction_${candidateIndex}_${candidateStage}_pending`])),
+    ];
+    const updates = new Map<string, string>([[`promise_reaction_${chainIndex}_${stage}_pending`, "false"], [`promise_reaction_${chainIndex}_${stage}_done`, "true"]]);
+    updates.set("wrong_checkpoint_order", pendingNextTick.join(" or ") || "false");
+    if (stage + 1 < chain.links.length) updates.set(`promise_reaction_${chainIndex}_${stage + 1}_pending`, "true");
+    action(`drain_promise_reaction_${chainIndex}_${stage}`, [
+      `promise_reaction_${chainIndex}_${stage}_pending`,
+      ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
+      ...earlierV8.map((pending) => `not(${pending})`),
+    ], updates);
+  }));
+  const reactionPending = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.map((_, stage) => `promise_reaction_${chainIndex}_${stage}_pending`)) ?? [];
+  const checkpointPending = [...nextTicks, ...microtasks].map((index) => `callback_${index}_pending`).concat(reactionPending);
   const macro = (index: number, earlier: number[]): void => {
     const timer = model.timers[index]!;
     action(timer.queue === "check" ? `run_check_${index}` : `run_timer_${index}`, [

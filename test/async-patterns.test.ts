@@ -923,4 +923,24 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
     expect(run(generateNodeEventLoopQuint("node_loop_broken", model, { allowMicrotaskBeforeNextTick: true }), "nodeEventLoopSafe").status).not.toBe(0);
   }, 20_000);
+
+  it("shares the Node V8 microtask FIFO between queueMicrotask and Promise reactions", () => {
+    const source = `
+      import { nextTick } from "node:process"
+      function schedule() {
+        const root = new Promise<number>((resolve) => resolve(1))
+        queueMicrotask(() => {})
+        root.then(() => 2)
+        nextTick(() => {})
+      }
+    `;
+    const patterns = analyzeAsyncPatterns("node-promise-loop.ts", source);
+    const promises = analyzePromiseChains("node-promise-loop.ts", source);
+    const quint = generateNodeEventLoopQuint("node_promise_loop", patterns, {}, promises);
+    expect(quint).toContain("action drain_microtask_0");
+    expect(quint).toContain("action drain_promise_reaction_0_0");
+    expect(quint).toMatch(/action drain_promise_reaction_0_0[\s\S]*not\(callback_0_pending\)/);
+    expect(quint).toMatch(/action drain_microtask_0[\s\S]*not\(callback_1_pending\)/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });

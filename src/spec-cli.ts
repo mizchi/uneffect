@@ -44,7 +44,7 @@ if (command === "ir") {
   process.stdout.write(generateWebEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
 } else if (command === "node-loop-quint") {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
-  process.stdout.write(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source)));
+  process.stdout.write(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
 } else {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
   process.stdout.write(generatePromiseChainsQuint(moduleName, analyzePromiseChains(fileName, source)));
