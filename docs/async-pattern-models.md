@@ -68,6 +68,13 @@ An Immediate created inside any executing callback receives a next-iteration
 due time and cannot run in the current iteration, matching Node's documented
 queue rule.
 
+For Node `Timeout`/`Interval` handles, the projection normalizes a static delay
+below `1`, above `2147483647`, or equal to the standard global `NaN` to `1`,
+and truncates other fractional delays,
+following the [Node timers contract](https://nodejs.org/docs/latest-v24.x/api/timers.html).
+This host-specific normalization does not apply to Web timers or
+`AbortSignal.timeout`.
+
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
 microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded

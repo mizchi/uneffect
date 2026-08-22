@@ -107,6 +107,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const symbol = checker.getSymbolAtLocation(node);
     return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
   };
+  const staticNumber = (expression: ts.Expression | undefined): number | undefined => {
+    if (!expression) return undefined;
+    if (ts.isNumericLiteral(expression)) return Number(expression.text);
+    if (ts.isPrefixUnaryExpression(expression) && ts.isNumericLiteral(expression.operand)) {
+      if (expression.operator === ts.SyntaxKind.MinusToken) return -Number(expression.operand.text);
+      if (expression.operator === ts.SyntaxKind.PlusToken) return Number(expression.operand.text);
+    }
+    if (ts.isIdentifier(expression) && expression.text === "NaN"
+      && resolvedSymbol(expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile)) return Number.NaN;
+    return undefined;
+  };
   const literalReason = (expression: ts.Expression): string | number | boolean | undefined => {
     if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return expression.text;
     if (ts.isNumericLiteral(expression)) return Number(expression.text);
@@ -503,7 +514,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           timers.push({
             owner: ownerName,
             callback,
-            delay: delayNode && ts.isNumericLiteral(delayNode) ? Number(delayNode.text) : operation.delayArgument === undefined ? 0 : undefined,
+            delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode),
             recursive: callback === ownerName,
             repeats: operation.repeats,
             queue: operation.queue,
@@ -804,10 +815,14 @@ export function generateNodeEventLoopQuint(
   options: { allowMicrotaskBeforeNextTick?: boolean; allowMacroBeforeCheckpoint?: boolean; allowWrongPhase?: boolean } = {},
   promiseModel?: PromiseChainModel,
 ): string {
-  for (const timer of model.timers) if (timer.delay === undefined || timer.delay < 0) {
-    throw new Error(`${timer.owner}: Node event-loop model requires a static non-negative delay`);
+  for (const timer of model.timers) if (timer.delay === undefined
+    || (timer.handleFamily !== "timeout" && (!Number.isFinite(timer.delay) || timer.delay < 0))) {
+    throw new Error(`${timer.owner}: Node event-loop model requires a supported static delay`);
   }
   const supported = model.timers.flatMap((timer, index) => ["next-tick", "microtask", "timer", "check"].includes(timer.queue) ? [index] : []);
+  const nodeDelay = (timer: TimerPattern): number => timer.handleFamily === "timeout"
+    ? !Number.isFinite(timer.delay!) || timer.delay! < 1 || timer.delay! > 2_147_483_647 ? 1 : Math.trunc(timer.delay!)
+    : timer.delay!;
   const nextTicks = supported.filter((index) => model.timers[index]!.queue === "next-tick");
   const microtasks = supported.filter((index) => model.timers[index]!.queue === "microtask");
   const timers = supported.filter((index) => model.timers[index]!.queue === "timer");
@@ -829,7 +844,7 @@ export function generateNodeEventLoopQuint(
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
-    lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -916,7 +931,7 @@ export function generateNodeEventLoopQuint(
     const updates = new Map<string, string>([
       [`callback_${index}_pending`, String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
-      [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`],
+      [`callback_${index}_due`, timer.repeats ? `clock + ${nodeDelay(timer)}` : `callback_${index}_due`],
       ["node_phase", "0"],
       ["resume_phase", String(phase)],
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],

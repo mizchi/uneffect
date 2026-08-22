@@ -1047,4 +1047,23 @@ describe("builtin async temporal patterns", () => {
     expect(timerQuint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock \+ 1/);
     expect(run(timerQuint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("normalizes static Node timeout delays to the documented integer range", () => {
+    const model = analyzeAsyncPatterns("node-delay.ts", `
+      function schedule() {
+        setTimeout(() => undefined, 0)
+        setTimeout(() => undefined, 1.9)
+        setTimeout(() => undefined, 2147483648)
+        setTimeout(() => undefined, -5)
+        setTimeout(() => undefined, NaN)
+      }
+    `);
+    const quint = generateNodeEventLoopQuint("node_delay", model);
+    expect(quint).toMatch(/callback_0_due' = 1,/);
+    expect(quint).toMatch(/callback_1_due' = 1,/);
+    expect(quint).toMatch(/callback_2_due' = 1,/);
+    expect(quint).toMatch(/callback_3_due' = 1,/);
+    expect(quint).toMatch(/callback_4_due' = 1,/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });

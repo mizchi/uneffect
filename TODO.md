@@ -353,6 +353,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add explicit checkpoint, timers, abstract poll, check, and close/next-iteration phase state to the Node profile, returning through a callback checkpoint after every modeled timer/immediate callback. Poll/I/O and close callbacks remain open.
     - [x] Enqueue statically resolved nested `process.nextTick` and `queueMicrotask` jobs when their parent Node callback runs instead of treating them as initially pending.
     - [x] Enqueue nested `setImmediate` registrations dynamically and defer an Immediate created inside any executing callback to the next event-loop iteration.
+    - [x] Normalize static Node `setTimeout`/`setInterval` delays to the documented signed-32-bit timer range and integer semantics without changing Web or abort-timeout models.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
