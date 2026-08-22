@@ -283,7 +283,11 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
   };
   const concretePath = expressionPath(expression)?.join(".");
   if (concretePath) for (const [abstract, value] of abstraction) {
-    if (concretePath === parseAbstractionValue(value).path) return { kind: "name", name: abstract };
+    const parsed = parseAbstractionValue(value);
+    if (concretePath === parsed.path) return { kind: "name", name: abstract };
+    if (parsed.kind === "set-from-array" && concretePath === `${parsed.path}.length`) {
+      return { kind: "method", receiver: { kind: "name", name: abstract }, name: "size", arguments: [] };
+    }
   }
   if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "name") return expression;
   if (expression.kind === "unary") return { ...expression, operand: canonicalizeAbstractionExpression(expression.operand, abstraction) };
@@ -822,6 +826,44 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isBinaryExpression(node)) {
+        const rawLeftPath = refinementFieldPath(node.left, receiver, substitutions)?.join(".");
+        const setArrayRelation = rawLeftPath
+          ? [...abstraction].find(([, value]) => {
+              const parsed = parseAbstractionValue(value);
+              return parsed.kind === "set-from-array" && (rawLeftPath === parsed.path || rawLeftPath === `${parsed.path}.length`);
+            })
+          : undefined;
+        if (setArrayRelation) {
+          const [abstract, relation] = setArrayRelation;
+          const concretePath = parseAbstractionValue(relation).path;
+          if (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return undefined;
+          if (rawLeftPath === `${concretePath}.length`) {
+            if (!ts.isNumericLiteral(node.right) || node.right.text !== "0") return undefined;
+            writePath(abstract, [], { kind: "call", name: "Set", arguments: [] });
+            continue;
+          }
+          if (!checker || !ts.isCallExpression(node.right) || !ts.isPropertyAccessExpression(node.right.expression)
+            || node.right.expression.name.text !== "filter" || node.right.arguments.length !== 1
+            || !isDeclarationFileSymbol(checker, node.right.expression.name, "filter")
+            || !isBuiltinArrayReceiver(node.right.expression.expression)
+            || refinementFieldPath(node.right.expression.expression, receiver, substitutions)?.join(".") !== concretePath) return undefined;
+          const callback = node.right.arguments[0];
+          if (!callback || !ts.isArrowFunction(callback) || callback.parameters.length !== 1
+            || !ts.isIdentifier(callback.parameters[0]!.name) || !ts.isBinaryExpression(callback.body)
+            || callback.body.operatorToken.kind !== ts.SyntaxKind.ExclamationEqualsEqualsToken) return undefined;
+          const parameter = callback.parameters[0]!.name.text;
+          const leftIsParameter = ts.isIdentifier(callback.body.left) && callback.body.left.text === parameter;
+          const rightIsParameter = ts.isIdentifier(callback.body.right) && callback.body.right.text === parameter;
+          if (leftIsParameter === rightIsParameter) return undefined;
+          const excludedNode = leftIsParameter ? callback.body.right : callback.body.left;
+          const excluded = normalizeRefinementExpression(excludedNode, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues, checker);
+          if (!excluded) return undefined;
+          writePath(abstract, [], {
+            kind: "method", receiver: readPath(abstract, []), name: "exclude",
+            arguments: [{ kind: "call", name: "Set", arguments: [expandLocalSnapshots(resolveCurrentState(excluded))] }],
+          });
+          continue;
+        }
         const [target, ...fields] = actionFieldPath(node.left, receiver, substitutions) ?? [];
         if (!target || !stateNames.has(target)) return undefined;
         const right = normalizeRefinementExpression(node.right, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);

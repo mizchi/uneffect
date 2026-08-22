@@ -172,6 +172,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.
           - [x] Extend one-to-one abstraction relations to non-overlapping dotted concrete property paths, including nested create reconstruction and Program-backed type traversal.
           - [x] Add a proof-directed `Set(arrayPath)` computed abstraction with builtin `Array.from`/`new Set` boundaries and `push`/`includes` action/invariant refinement.
+          - [x] Close the basic array-backed Set update/read fragment with exact builtin `filter(item => item !== value)`, `length = 0`, and `length` normalization while rejecting general callbacks and array mutations.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

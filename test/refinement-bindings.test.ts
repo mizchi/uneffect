@@ -929,7 +929,10 @@ describe("annotated refinement bindings", () => {
       state subscribers: Set<int>
       init subscribers = Set(1)
       action admit: subscribers' = subscribers.union(Set(2))
+      action revokePrimary: subscribers' = subscribers.exclude(Set(1))
+      action clearSubscribers: subscribers' = Set()
       temporal primaryPresent: subscribers.contains(1)
+      temporal nonEmpty: subscribers.size() > 0
       abstraction arraySet@1 subscribers = Set(routing.activeSubscriberIds)
     */
       interface ModelState { subscribers: Set<number> }
@@ -940,8 +943,14 @@ describe("annotated refinement bindings", () => {
       export function observe(runtime: Runtime): ModelState { return { subscribers: new Set(runtime.routing.activeSubscriberIds) } }
       /* uneffect: refinement arraySet@1 action admit */
       export function admit(runtime: Runtime): void { runtime.routing.activeSubscriberIds.push(2) }
+      /* uneffect: refinement arraySet@1 action revokePrimary */
+      export function revokePrimary(runtime: Runtime): void { runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter(id => id !== 1) }
+      /* uneffect: refinement arraySet@1 action clearSubscribers */
+      export function clearSubscribers(runtime: Runtime): void { runtime.routing.activeSubscriberIds.length = 0 }
       /* uneffect: refinement arraySet@1 invariant primaryPresent */
       export function primaryPresent(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.includes(1) }
+      /* uneffect: refinement arraySet@1 invariant nonEmpty */
+      export function nonEmpty(runtime: Runtime): boolean { return runtime.routing.activeSubscriberIds.length > 0 }
     `;
     try {
       writeFileSync(fileName, source);
@@ -953,6 +962,22 @@ describe("annotated refinement bindings", () => {
       expect(validateRefinementStateProjectionInProgram(program, fileName, "arraySet", spec)).toEqual([]);
       expect(validateRefinementActionBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
       expect(validateRefinementInvariantBodiesInProgram(program, fileName, "arraySet", spec)).toEqual([]);
+      const wrongFilter = source.replace("id !== 1", "id > 1");
+      writeFileSync(fileName, wrongFilter);
+      const wrongFilterProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongFilterProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "revokePrimary" }),
+      );
+      const wrongClear = source.replace("activeSubscriberIds.length = 0", "activeSubscriberIds.length = 1");
+      writeFileSync(fileName, wrongClear);
+      const wrongClearProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongClearProgram, fileName, "arraySet", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "clearSubscribers" }),
+      );
       const wrongAction = source.replace("activeSubscriberIds.push(2)", "activeSubscriberIds.push(3)");
       expect(validateRefinementActionBodies(fileName, wrongAction, "arraySet", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "admit" }),

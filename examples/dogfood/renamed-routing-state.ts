@@ -2,7 +2,10 @@
   state subscribers: Set<int>
   init subscribers = Set(1)
   action subscribeFallback: subscribers' = subscribers.union(Set(2))
+  action unsubscribePrimary: subscribers' = subscribers.exclude(Set(1))
+  action clearSubscribers: subscribers' = Set()
   temporal primarySubscribed: subscribers.contains(1)
+  temporal hasSubscribers: subscribers.size() > 0
   abstraction routingState@1 subscribers = Set(routing.activeSubscriberIds)
 */
 
@@ -29,7 +32,22 @@ export function subscribeFallback(runtime: RoutingRuntime): void {
   runtime.routing.activeSubscriberIds.push(2);
 }
 
+/* uneffect: refinement routingState@1 action unsubscribePrimary */
+export function unsubscribePrimary(runtime: RoutingRuntime): void {
+  runtime.routing.activeSubscriberIds = runtime.routing.activeSubscriberIds.filter((id) => id !== 1);
+}
+
+/* uneffect: refinement routingState@1 action clearSubscribers */
+export function clearSubscribers(runtime: RoutingRuntime): void {
+  runtime.routing.activeSubscriberIds.length = 0;
+}
+
 /* uneffect: refinement routingState@1 invariant primarySubscribed */
 export function primarySubscribed(runtime: RoutingRuntime): boolean {
   return runtime.routing.activeSubscriberIds.includes(1);
+}
+
+/* uneffect: refinement routingState@1 invariant hasSubscribers */
+export function hasSubscribers(runtime: RoutingRuntime): boolean {
+  return runtime.routing.activeSubscriberIds.length > 0;
 }
