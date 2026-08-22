@@ -272,25 +272,48 @@ function parseIndexedOwnershipContract(declaration: ts.SignatureDeclaration, dir
   return { indices, errors };
 }
 
-function resourceRetentionParameters(checker: ts.TypeChecker, call: ts.CallExpression, seen = new Set<ts.SignatureDeclaration>()): Set<number> {
+function resourceRetentionParameters(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  cache: Map<ts.SignatureDeclaration, ReadonlySet<number>>,
+  seen = new Set<ts.SignatureDeclaration>(),
+): Set<number> {
   const declaration = checker.getResolvedSignature(call)?.declaration;
   if (!declaration || declaration.kind === ts.SyntaxKind.JSDocSignature) return new Set();
   const signature = declaration as ts.SignatureDeclaration;
+  const cached = cache.get(signature);
+  if (cached) return new Set(cached);
   const retained = parseIndexedOwnershipContract(signature, "retains_resource").indices;
-  if (seen.has(signature) || !("body" in signature) || !signature.body) return retained;
+  if (!("body" in signature) || !signature.body) { cache.set(signature, retained); return retained; }
+  if (seen.has(signature)) return retained;
   const nextSeen = new Set(seen).add(signature);
   const parameterSymbols = signature.parameters.map((parameter) => checker.getSymbolAtLocation(parameter.name));
+  const parameterOrigin = (expression: ts.Expression, aliasSeen = new Set<ts.Symbol>()): number => {
+    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+      || ts.isNonNullExpression(expression)) expression = expression.expression;
+    if (!ts.isIdentifier(expression)) return -1;
+    const symbol = checker.getSymbolAtLocation(expression);
+    const parameterIndex = parameterSymbols.indexOf(symbol);
+    if (parameterIndex >= 0) return parameterIndex;
+    const declaration = symbol?.valueDeclaration;
+    if (!symbol || aliasSeen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+      || !ts.isVariableDeclarationList(declaration.parent)
+      || (ts.getCombinedNodeFlags(declaration.parent) & ts.NodeFlags.Const) === 0) return -1;
+    return parameterOrigin(declaration.initializer, new Set(aliasSeen).add(symbol));
+  };
   const visit = (node: ts.Node): void => {
     if (node !== signature.body && ts.isFunctionLike(node)) return;
-    if (ts.isCallExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, nextSeen)) {
+    if (ts.isCallExpression(node)) for (const nestedIndex of resourceRetentionParameters(checker, node, cache, nextSeen)) {
       const argument = node.arguments[nestedIndex];
-      if (!argument || !ts.isIdentifier(argument)) continue;
-      const parameterIndex = parameterSymbols.indexOf(checker.getSymbolAtLocation(argument));
+      if (!argument) continue;
+      const parameterIndex = parameterOrigin(argument);
       if (parameterIndex >= 0) retained.add(parameterIndex);
     }
     ts.forEachChild(node, visit);
   };
   visit(signature.body);
+  cache.set(signature, retained);
   return retained;
 }
 
@@ -431,6 +454,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
+  const resourceRetentionCache = new Map<ts.SignatureDeclaration, ReadonlySet<number>>();
   const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
@@ -767,7 +791,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
-      if (ts.isCallExpression(node)) for (const index of resourceRetentionParameters(checker, node)) {
+      if (ts.isCallExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
         const argument = node.arguments[index];
         if (!argument) continue;
         const retained = aliasFact(argument);

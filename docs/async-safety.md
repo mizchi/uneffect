@@ -512,9 +512,10 @@ using the resource, or invoking a callback only within the resource scope,
 remains valid. A callee can declare `retains_resource` with zero-based parameter
 indices. Passing a resource or resolved local alias at that call records
 `via: "retaining-call"`; direct wrappers inherit retention when they forward a
-parameter to another retaining boundary. Unknown unannotated calls remain
-unchecked to preserve gradual adoption. Retention through local aliases inside
-the wrapper, mutable callback selection, arbitrary class/container
+parameter, including through local `const` aliases, to another retaining
+boundary. Unknown unannotated calls remain
+unchecked to preserve gradual adoption. Retention through mutable local
+bindings inside the wrapper, mutable callback selection, arbitrary class/container
 construction, and externally implemented unannotated callees are not yet
 claimed as escape proofs.
 Labeled `break` and `continue` retain their target while

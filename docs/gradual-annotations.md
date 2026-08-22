@@ -223,6 +223,7 @@ declare function register(resource: Resource): void
 The zero-based indices identify arguments that may remain reachable after the
 call returns. Passing a `using` or `await using` binding, or a statically
 resolved local alias, to such a parameter is an escape error. Direct wrappers
-infer the contract transitively by parameter symbol identity. This describes
+infer the contract transitively by parameter symbol identity, including
+reassignment-free local `const` forwarding chains. This describes
 retention rather than ownership transfer: it neither suppresses disposal nor
 changes emitted JavaScript.

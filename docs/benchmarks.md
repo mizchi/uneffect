@@ -386,3 +386,10 @@ Program construction measured 93.33 ms, while warm analysis measured 0.504 ms
 over 994 samples. Transitive parameter-symbol retention therefore remains
 sub-millisecond in this fixture; this observation is not yet a large call-graph
 scaling guarantee.
+
+Forwarding the retained parameter through one reassignment-free local `const`
+alias initially measured 0.664 ms on the warm Program (a preceding pressured
+run measured 1.725 ms). Caching the inferred retention summary per resolved
+signature restored the stable warm mean to 0.505 ms over 990 samples (0.66%
+relative margin of error). The cache is scoped to one analysis invocation and
+therefore cannot reuse facts across different TypeScript Programs.

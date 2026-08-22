@@ -1870,6 +1870,10 @@ describe("async error and explicit resource safety", () => {
       declare function register(resource: Resource): void
       declare function inspect(resource: Resource): void
       function retainWrapper(value: Resource) { register(value) }
+      function retainAliasWrapper(value: Resource) {
+        const forwarded = value
+        register(forwarded)
+      }
       function broken() {
         using resource = open()
         const alias = resource
@@ -1878,6 +1882,10 @@ describe("async error and explicit resource safety", () => {
       function brokenWrapper() {
         using resource = open()
         retainWrapper(resource)
+      }
+      function brokenAliasWrapper() {
+        using resource = open()
+        retainAliasWrapper(resource)
       }
       function safe() {
         using resource = open()
@@ -1896,6 +1904,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
       owner: "brokenWrapper", resource: "resource", via: "retaining-call",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "brokenAliasWrapper", resource: "resource", via: "retaining-call",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "safe", kind: "disposed-resource-escape",

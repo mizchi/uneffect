@@ -9,7 +9,8 @@ declare function openAttempt(): Attempt;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
 function registerRetryAttempt(attempt: Attempt): void {
-  registerAttempt(attempt);
+  const queuedAttempt = attempt;
+  registerAttempt(queuedAttempt);
 }
 
 export async function brokenRetry(enabled: boolean): Promise<void> {
