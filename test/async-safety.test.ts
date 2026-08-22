@@ -658,4 +658,20 @@ describe("async error and explicit resource safety", () => {
     expect(quint.indexOf("action dispose_resume_inner_scope_exit")).toBeLessThan(quint.indexOf(`action promise_${awaited[1]!.promiseChain}_fulfill`));
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("disposes a synchronous inner scope before the first awaited chain", () => {
+    const result = analyzeAsyncSafety("scope-before-await.ts", `
+      interface Resource { [Symbol.dispose](): void }
+      declare function open(): Resource
+      async function run() {
+        { using inner = open() }
+        await Promise.resolve("outside").then(value => value)
+      }
+    `);
+    const awaited = result.promises.find((item) => item.owner === "run" && item.observation === "await" && item.promiseChain !== undefined)!;
+    const quint = generateUnifiedAsyncQuint("scope_before_await", result, "run");
+    expect(quint).toContain("action dispose_inner_scope_exit");
+    expect(quint.indexOf("action dispose_inner_scope_exit")).toBeLessThan(quint.indexOf(`action promise_${awaited.promiseChain}_fulfill`));
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

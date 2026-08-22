@@ -431,8 +431,8 @@ When a nested lexical scope ends between two such awaits, its disposal gets an
 explicit scope-exit transition before the following await. The final failure
 cleanup remains idempotent, so an already disposed resource is skipped while a
 rejection before that scope exit still disposes it. Resources in scopes with no
-modeled await and acquisition interleaved after an await still require the
-general CFG lowering.
+modeled await are also released before the first later await. Resource
+acquisition interleaved after an await still requires the general CFG lowering.
 
 ```sh
 just spec-resource-quint examples/resources.ts

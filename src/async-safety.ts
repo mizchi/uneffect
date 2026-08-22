@@ -781,6 +781,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
   const scheduledDisposals = new Set<number>();
+  const disposalBeforeFirstAwait = disposals.flatMap((disposal, disposalIndex) => {
+    if (disposal.disposalPoint >= awaited[0]!.span.start) return [];
+    scheduledDisposals.add(disposalIndex);
+    return [disposalIndex];
+  });
   const disposalAfterAwait = awaited.map((_, awaitIndex) => {
     if (awaitIndex === awaited.length - 1) return [] as number[];
     const nextAwaitStart = awaited[awaitIndex + 1]!.span.start;
@@ -791,6 +796,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     });
   });
   let nextPc = resources.length;
+  const preAwaitDisposalPcs = disposalBeforeFirstAwait.map((disposalIndex) => ({ disposalIndex, pc: nextPc++ }));
   const awaitLayout = awaited.map((_, index) => ({
     wait: nextPc++,
     resume: nextPc++,
@@ -831,6 +837,10 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   resources.forEach((_, index) => {
     emit(`acquire_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(index + 1)], [`acquired_${index}`, "true"]]));
     emit(`acquire_fail_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
+  });
+  preAwaitDisposalPcs.forEach(({ disposalIndex, pc }, index) => {
+    const next = preAwaitDisposalPcs[index + 1]?.pc ?? awaitLayout[0]!.wait;
+    emitDisposal(disposalIndex, pc, next, "_scope_exit", cleanupPc);
   });
   awaited.forEach((observation, awaitIndex) => {
     const chain = observation.promiseChain!;
