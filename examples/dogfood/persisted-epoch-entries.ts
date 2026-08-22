@@ -4,6 +4,7 @@
   action addFallback: epochs' = epochs.put(2, 1)
   action removePrimary: epochs' = epochs.remove(1)
   action clearEpochs: epochs' = Map([])
+  action upsertPrimary: epochs' = epochs.put(1, 5)
   temporal primaryPresent: epochs.keys().contains(1)
   temporal hasEpochs: epochs.size() > 0
   temporal nonNegativeEpochs: epochs.values().forall(epoch => epoch >= 0)
@@ -41,6 +42,12 @@ export function removePrimaryEpoch(runtime: PersistedEpochRuntime): void {
 /* uneffect: refinement persistedEpochs@1 action clearEpochs */
 export function clearPersistedEpochs(runtime: PersistedEpochRuntime): void {
   runtime.storage.epochEntries.length = 0;
+}
+
+/* uneffect: refinement persistedEpochs@1 action upsertPrimary */
+export function upsertPrimaryEpoch(runtime: PersistedEpochRuntime): void {
+  runtime.storage.epochEntries = runtime.storage.epochEntries.filter((entry) => entry[0] !== 1);
+  runtime.storage.epochEntries.push([1, 5]);
 }
 
 /* uneffect: refinement persistedEpochs@1 invariant primaryPresent */

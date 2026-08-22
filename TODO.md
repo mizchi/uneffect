@@ -180,6 +180,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Refine exact entry-array key filtering to temporal Map removal and exact key equality `some` predicates to Map key membership.
           - [x] Refine entry-array `length = 0`/`length` to Map clear/size and support typed temporal `Map.size()` across runtime and Quint lowering.
           - [x] Refine entry-array value-only `every`/`some` predicates to Map value quantifiers and compare lambda bodies alpha-equivalently.
+          - [x] Simplify a same-key entry-array filter-then-push upsert sequence to temporal `Map.put` while retaining different-key removals.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

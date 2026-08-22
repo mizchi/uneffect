@@ -1063,6 +1063,7 @@ describe("annotated refinement bindings", () => {
       action addFallback: epochs' = epochs.put(2, 1)
       action removePrimary: epochs' = epochs.remove(1)
       action clearEpochs: epochs' = Map([])
+      action upsertPrimary: epochs' = epochs.put(1, 5)
       temporal primaryPresent: epochs.keys().contains(1)
       temporal nonEmpty: epochs.size() > 0
       temporal nonNegative: epochs.values().forall(epoch => epoch >= 0)
@@ -1080,6 +1081,11 @@ describe("annotated refinement bindings", () => {
       export function removePrimary(runtime: Runtime): void { runtime.storage.epochEntries = runtime.storage.epochEntries.filter(entry => entry[0] !== 1) }
       /* uneffect: refinement mapEntries@1 action clearEpochs */
       export function clearEpochs(runtime: Runtime): void { runtime.storage.epochEntries.length = 0 }
+      /* uneffect: refinement mapEntries@1 action upsertPrimary */
+      export function upsertPrimary(runtime: Runtime): void {
+        runtime.storage.epochEntries = runtime.storage.epochEntries.filter(entry => entry[0] !== 1)
+        runtime.storage.epochEntries.push([1, 5])
+      }
       /* uneffect: refinement mapEntries@1 invariant primaryPresent */
       export function primaryPresent(runtime: Runtime): boolean { return runtime.storage.epochEntries.some(entry => entry[0] === 1) }
       /* uneffect: refinement mapEntries@1 invariant nonEmpty */
@@ -1144,6 +1150,25 @@ describe("annotated refinement bindings", () => {
       });
       expect(validateRefinementInvariantBodiesInProgram(wrongValueInvariantProgram, fileName, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "nonNegative" }),
+      );
+      const wrongUpsert = source.replace("push([1, 5])", "push([1, 6])");
+      writeFileSync(fileName, wrongUpsert);
+      const wrongUpsertProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(wrongUpsertProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "upsertPrimary", target: "epochs" }),
+      );
+      const differentKeyUpsert = source.replace(
+        "epochEntries.filter(entry => entry[0] !== 1)\n        runtime.storage.epochEntries.push([1, 5])",
+        "epochEntries.filter(entry => entry[0] !== 2)\n        runtime.storage.epochEntries.push([1, 5])",
+      );
+      writeFileSync(fileName, differentKeyUpsert);
+      const differentKeyUpsertProgram = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(differentKeyUpsertProgram, fileName, "mapEntries", spec)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "upsertPrimary", target: "epochs" }),
       );
       expect(validateRefinementActionBodies(fileName, source, "mapEntries", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "addFallback" }),

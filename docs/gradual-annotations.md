@@ -163,6 +163,11 @@ observe the tuple or its key. Lambda comparison is alpha-equivalent, so model
 and implementation parameter names need not match; free variables remain
 distinct.
 
+The common entry-array upsert sequence—filtering one key and then pushing a
+pair with the same key—is simplified to one temporal `put`. The simplification
+requires exact normalized key equality; filtering a different key preserves
+the preceding removal and therefore does not falsely refine a lone `put`.
+
 `validateRefinementBindingCoverage` compares a named adapter manifest with a
 parsed temporal model. It reports missing bindings and bindings that refer to
 removed action or invariant names. Liveness properties are excluded because an

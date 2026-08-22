@@ -876,9 +876,13 @@ function validateRefinementActionBodiesInSource(
           const key = normalizeRefinementExpression(node.arguments[0]!.elements[0]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           const value = normalizeRefinementExpression(node.arguments[0]!.elements[1]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!key || !value) return undefined;
+          const resolvedKey = expandLocalSnapshots(resolveCurrentState(key));
+          const current = readPath(target, []);
+          const putReceiver = current.kind === "method" && current.name === "remove" && current.arguments.length === 1
+            && sameRefinementExpression(current.arguments[0]!, resolvedKey) ? current.receiver : current;
           writePath(target, [], {
-            kind: "method", receiver: readPath(target, []), name: "put",
-            arguments: [expandLocalSnapshots(resolveCurrentState(key)), expandLocalSnapshots(resolveCurrentState(value))],
+            kind: "method", receiver: putReceiver, name: "put",
+            arguments: [resolvedKey, expandLocalSnapshots(resolveCurrentState(value))],
           });
           continue;
         }
