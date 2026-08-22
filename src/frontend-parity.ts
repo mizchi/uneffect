@@ -4,7 +4,12 @@ import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectExpression, splitTopLevel } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
 
-export interface CompareUneffectFrontendsOptions { files: Record<string, string>; corsaSchemaVersion?: number }
+export interface CompareUneffectFrontendsOptions {
+  files: Record<string, string>;
+  corsaSchemaVersion?: number;
+  /** Allows slower cold Rust builds while retaining a finite process boundary. */
+  corsaTimeoutMs?: number;
+}
 export interface NormalizedFrontendIr {
   schemaVersion: 6;
   functions: Array<{ name: string; effects: string[] }>;
@@ -151,7 +156,9 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     escapingFailure: item.escapingFailure, exits: item.exits }));
   const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
   const typescriptIr: NormalizedFrontendIr = { schemaVersion: 6, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
-  const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], { input: JSON.stringify(input), encoding: "utf8", timeout: 30_000 });
+  const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
+    input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
+  });
   if (execution.error || execution.status !== 0) return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {
     const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;

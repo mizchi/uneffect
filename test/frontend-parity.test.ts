@@ -2,6 +2,17 @@ import { describe, expect, it } from "vitest";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("TypeScript/Corsa neutral projection parity", () => {
+  it("keeps Corsa execution bounded and reports an explicit timeout", async () => {
+    const result = await compareUneffectFrontends({
+      files: { "timeout.ts": `export function run() {}` },
+      corsaTimeoutMs: 1,
+    });
+    expect(result.equivalent).toBe(false);
+    expect(result.schemaDrift).toContainEqual(expect.objectContaining({
+      frontend: "corsa", message: expect.stringContaining("ETIMEDOUT"),
+    }));
+  });
+
   it("normalizes UTF-8 trivia and reports schema drift instead of treating it as parity", async () => {
     const files = { "unicode.ts": `/* uneffect: effect FsRead<"$CWD/データ/**"> */ export function read() {}` };
     const matching = await compareUneffectFrontends({ files });
