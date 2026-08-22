@@ -326,20 +326,29 @@ function normalizeRefinementExpression(
   return undefined;
 }
 
-/** Proves a deliberately small, zero-runtime scalar update fragment against model actions. */
-export function validateRefinementActionBodies(
-  fileName: string,
+function validateRefinementActionBodiesInSource(
+  source: ts.SourceFile,
   text: string,
   adapterName: string,
   spec: TemporalSpec,
+  checker?: ts.TypeChecker,
 ): RefinementActionDiagnostic[] {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
   const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const classes = new Map(source.statements.filter(ts.isClassDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const diagnostics: RefinementActionDiagnostic[] = [];
+
+  const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
+    if (!checker) return true;
+    const type = checker.getTypeAtLocation(node);
+    const symbol = type.aliasSymbol ?? type.getSymbol();
+    const expected = kind === "set" ? "Set" : "Map";
+    return symbol?.getName() === expected
+      && (symbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+  };
 
   const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
   const earlyReturnGuard = (body: ts.Block, receiver: string): { guard?: TemporalExpression; updates: ts.Block } => {
@@ -505,14 +514,16 @@ export function validateRefinementActionBodies(
           targetType = targetType.fields[field];
         }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "clear" && node.arguments.length === 0
-          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")) {
+          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")
+          && isBuiltinCollectionReceiver(node.expression.expression, targetType.kind)) {
           writePath(target, fields, targetType.kind === "set"
             ? { kind: "call", name: "Set", arguments: [] }
             : { kind: "call", name: "Map", arguments: [{ kind: "array", elements: [] }] });
           continue;
         }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "delete" && node.arguments.length === 1
-          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")) {
+          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")
+          && isBuiltinCollectionReceiver(node.expression.expression, targetType.kind)) {
           const item = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
           if (!item) return undefined;
           const argument = expandLocalSnapshots(resolveCurrentState(item));
@@ -522,7 +533,8 @@ export function validateRefinementActionBodies(
           continue;
         }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "add"
-          && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1) {
+          && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1
+          && isBuiltinCollectionReceiver(node.expression.expression, "set")) {
           const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
           if (!element) return undefined;
           writePath(target, fields, {
@@ -532,7 +544,8 @@ export function validateRefinementActionBodies(
           continue;
         }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "set"
-          && typeof targetType !== "string" && targetType.kind === "map" && node.arguments.length === 2) {
+          && typeof targetType !== "string" && targetType.kind === "map" && node.arguments.length === 2
+          && isBuiltinCollectionReceiver(node.expression.expression, "map")) {
           const key = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
           const value = normalizeRefinementExpression(node.arguments[1]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
           if (!key || !value) return undefined;
@@ -623,6 +636,30 @@ export function validateRefinementActionBodies(
     diagnostics.push({ code: "unknown-action-binding", adapterName, modelName, exportName, message: `action refinement ${exportName} refers to unknown model action ${modelName}` });
   }
   return diagnostics;
+}
+
+/** Proves a deliberately small, zero-runtime scalar update fragment against model actions. */
+export function validateRefinementActionBodies(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementActionDiagnostic[] {
+  return validateRefinementActionBodiesInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), text, adapterName, spec,
+  );
+}
+
+/** Uses TypeScript symbol identity to reject collection-like subclasses and user-defined lookalikes. */
+export function validateRefinementActionBodiesInProgram(
+  program: ts.Program,
+  fileName: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementActionDiagnostic[] {
+  const source = program.getSourceFile(fileName);
+  if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
+  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker());
 }
 
 /** Proves a single-return, side-effect-free scalar predicate against temporal safety properties. */
@@ -719,6 +756,15 @@ export async function validateRefinementActionBodiesWithZ3(
   fileName: string, text: string, adapterName: string, spec: TemporalSpec,
 ): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
   return dischargeExpressionMismatchesWithZ3(validateRefinementActionBodies(fileName, text, adapterName, spec), "action-guard-mismatch", spec);
+}
+
+/** Combines TypeChecker-backed builtin identity checks with Z3 guard equivalence. */
+export async function validateRefinementActionBodiesInProgramWithZ3(
+  program: ts.Program, fileName: string, adapterName: string, spec: TemporalSpec,
+): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
+  return dischargeExpressionMismatchesWithZ3(
+    validateRefinementActionBodiesInProgram(program, fileName, adapterName, spec), "action-guard-mismatch", spec,
+  );
 }
 
 /** Proves normalized single-return invariant predicates by logical rather than syntactic equivalence. */

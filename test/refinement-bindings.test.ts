@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -348,6 +352,42 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("wrong-collection.ts", wrong, "authority", parseSpec("wrong-collection.ts", wrong).temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "addOwner", target: "authority" }),
     );
+  });
+
+  it("requires builtin collection receiver identity in the TypeChecker-backed path", () => {
+    const model = `/* uneffect:
+      state owners: Set<int>
+      init owners = Set(1)
+      action addOwner: owners' = owners.union(Set(2))
+    */`;
+    const standard = `${model}
+      interface Runtime { owners: Set<number> }
+      /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.owners.add(2) }
+    `;
+    const lookalike = `${model}
+      class AuditSet<T> extends Set<T> { override add(value: T) { return super.add(value) } }
+      interface Runtime { owners: AuditSet<number> }
+      /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
+      /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
+      /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.owners.add(2) }
+    `;
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-refinement-types-"));
+    try {
+      const verify = (name: string, source: string) => {
+        const fileName = join(directory, name);
+        writeFileSync(fileName, source);
+        const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+        return validateRefinementActionBodiesInProgram(program, fileName, "authority", parseSpec(fileName, source).temporal);
+      };
+      expect(verify("standard.ts", standard)).toEqual([]);
+      expect(verify("lookalike.ts", lookalike)).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "addOwner",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("specializes one local class method call and rejects unsupported control flow", () => {

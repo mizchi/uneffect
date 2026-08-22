@@ -133,10 +133,12 @@ without inventing a finite universe: `Set.delete(value)` lowers to
 `map.remove(key)` operation. Quint reconstructs the Map from its remaining key
 domain, and the Z3 encoding removes the key from the domain while canonicalizing
 its hidden value. Collection aliases and dynamically selected calls remain
-unsupported. As with the rest of this syntax-only
-validator, the annotated TypeScript boundary is trusted; TypeChecker-backed
-proof that the concrete receiver is the builtin rather than a subclass is not
-yet established.
+unsupported. The lightweight `validateRefinementActionBodies` entry point
+trusts the annotated TypeScript boundary. Projects that already construct a
+TypeScript Program can use `validateRefinementActionBodiesInProgram` (or its
+`WithZ3` variant); that path requires the receiver type symbol itself to be the
+builtin declaration-file `Set` or `Map`, and conservatively rejects subclasses
+and structurally compatible lookalikes.
 It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`

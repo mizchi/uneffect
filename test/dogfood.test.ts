@@ -11,15 +11,19 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
-import { validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
   it("refines Node Lease authority Set/Map mutations", async () => {
     const fileName = "examples/dogfood/lease-authority-refinement.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+    });
     expect(validateRefinementBindingCoverage(fileName, source, "leaseAuthority", temporal)).toEqual([]);
-    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "leaseAuthority", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "leaseAuthority", temporal)).toEqual([]);
     expect(validateRefinementStateProjection(fileName, source, "leaseAuthority", temporal)).toEqual([]);
 
     const wrong = source.replace("owners.add(2)", "owners.add(20)");

@@ -246,8 +246,10 @@ and `Map.set` calls refine immutable temporal `union` and `put` transitions;
 `Set.clear` and `Map.clear` refine exact empty-collection replacements.
 `Set.delete` refines Quint `exclude`, and `Map.delete` refines removal from the
 map key domain. Admitting or deleting the wrong owner, or clearing the wrong
-authority field, is detected as an authority action mismatch. Receiver identity is still trusted at the
-annotated boundary rather than proven with the TypeScript TypeChecker.
+authority field, is detected as an authority action mismatch. The lightweight
+syntax API still trusts receiver identity at the annotated boundary; the
+Program-backed API resolves the receiver type symbol and rejects collection
+subclasses and same-shaped user types.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
