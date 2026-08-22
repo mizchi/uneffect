@@ -20,6 +20,11 @@ improvement. This measures `2 * accepted <= byteBudget` template generation,
 induction checks, and reachability diagnostics together; it is not a general
 polyhedral benchmark.
 
+The three-counter telemetry accounting model measured 345.42 ms mean over two
+samples (3.84% RME) after adding bounded coefficient-1 conservation templates.
+This includes candidate generation plus independent Z3 initialization,
+preservation, and reachability obligations; it is not a parser-only benchmark.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

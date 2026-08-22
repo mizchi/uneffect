@@ -12,6 +12,35 @@ import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 
 describe("Uneffect dogfood", () => {
+  it("proves that every telemetry attempt has exactly one outcome", async () => {
+    const fileName = "examples/dogfood/telemetry-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeLostOutcome",
+      relatedName: "<synth:accepted + dropped === attempted>",
+    }));
+
+    const broken = parseSpec(fileName, source.replace(
+      "action drop: dropped' = dropped + 1, attempted' = attempted + 1",
+      "action drop: attempted' = attempted + 1",
+    )).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeLostOutcome",
+      relatedName: "<synth:accepted + dropped === attempted>",
+    }));
+  });
+
   it("proves a scaled telemetry capacity relation and catches unbalanced accounting", async () => {
     const fileName = "examples/dogfood/telemetry-capacity.ts";
     const source = readFileSync(fileName, "utf8");

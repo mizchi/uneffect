@@ -118,7 +118,7 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
     if (expression?.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -BigInt(expression.operand.value);
     return undefined;
   };
-  const expressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => {
+  const pairwiseExpressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => {
     const direct = [`${left.name} === ${right.name}`, `${left.name} <= ${right.name}`, `${left.name} >= ${right.name}`];
     const leftInitial = initialInteger(left.name), rightInitial = initialInteger(right.name);
     if (leftInitial === undefined || rightInitial === undefined) return direct;
@@ -133,6 +133,26 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
     });
     return [...direct, ...affine];
   }));
+  const withOffset = (left: string, right: string, difference: bigint): string => {
+    const rightWithOffset = difference > 0n ? `${right} + ${difference}` : difference < 0n ? `${right} - ${-difference}` : right;
+    return `${left} === ${rightWithOffset}`;
+  };
+  const conservationExpressions = integers.flatMap((first, firstIndex) =>
+    integers.slice(firstIndex + 1).flatMap((second, secondOffset) =>
+      integers.slice(firstIndex + secondOffset + 2).flatMap((third) => {
+        const firstInitial = initialInteger(first.name);
+        const secondInitial = initialInteger(second.name);
+        const thirdInitial = initialInteger(third.name);
+        if (firstInitial === undefined || secondInitial === undefined || thirdInitial === undefined) return [];
+        return [
+          withOffset(`${first.name} + ${second.name}`, third.name, firstInitial + secondInitial - thirdInitial),
+          withOffset(`${first.name} + ${third.name}`, second.name, firstInitial + thirdInitial - secondInitial),
+          withOffset(`${second.name} + ${third.name}`, first.name, secondInitial + thirdInitial - firstInitial),
+        ];
+      }),
+    ),
+  );
+  const expressions = [...new Set([...pairwiseExpressions, ...conservationExpressions])];
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
     expression,

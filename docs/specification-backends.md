@@ -174,6 +174,10 @@ their initial affine boundary. The pool includes coefficient-1 offsets such as
 `left === right + 2` and the reduced small-coefficient pairs `(2,1)` and
 `(1,2)`, allowing relations such as `2 * used <= capacity`. Arbitrary
 coefficients, conjunction discovery, and general polyhedra remain unsupported.
+The same opt-in includes bounded three-variable conservation equalities such
+as `accepted + dropped === attempted`, with an offset derived from constant
+initializers. Coefficients other than one and relations over four or more
+variables are not inferred by this template.
 Same-shaped Set, Map, and record pairs have a separate equality template pool
 behind `synthesizeCollectionStrengtheningProperties` and
 `--synthesize-collection-strengthening`. The same opt-in recursively discovers
@@ -190,6 +194,12 @@ removes the synthesized strengthening evidence and yields a one-step Z3
 counterexample to `withinCapacity`. The adjacent TypeScript class mirrors the
 model for review, but Uneffect does not yet prove an implementation-to-model
 refinement binding for these fields and updates.
+
+`examples/dogfood/telemetry-accounting.ts` applies the three-variable template
+to accepted, dropped, and attempted telemetry counts. Omitting the dropped
+counter update prevents the candidate from being admitted. As with the capacity
+example, the adjacent TypeScript class is reviewable correspondence rather than
+a proved implementation-to-model refinement.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite

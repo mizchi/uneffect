@@ -841,6 +841,33 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes three-variable conservation equalities", async () => {
+    const temporal = parseSpec("conservation-strengthening.ts", `/* uneffect:
+      state accepted: int
+      state rejected: int
+      state total: int
+      state armed: bool
+      init accepted = 0
+      init rejected = 0
+      init total = 0
+      init armed = false
+      action accept: accepted' = accepted + 1, total' = total + 1
+      action reject: rejected' = rejected + 1, total' = total + 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && accepted + rejected < total
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:accepted + rejected === total>",
+    }));
+  });
+
   it("synthesizes equality invariants for collection state pairs", async () => {
     const temporal = parseSpec("collection-strengthening.ts", `/* uneffect:
       state left: Set<int>

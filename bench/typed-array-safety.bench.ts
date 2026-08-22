@@ -226,6 +226,14 @@ describe("typed-array static verification", () => {
     });
   }, { time: 500, iterations: 1 });
 
+  bench("synthesize a three-counter conservation invariant", async () => {
+    const temporal = parseSpec("telemetry-accounting.ts", readFileSync(new URL("../examples/dogfood/telemetry-accounting.ts", import.meta.url), "utf8")).temporal;
+    await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+  }, { time: 500, iterations: 1 });
+
   bench("bounded vacuity lint for one frozen-state property", async () => {
     const temporal = parseSpec("vacuity.ts", `/* uneffect:
       state phase: int
