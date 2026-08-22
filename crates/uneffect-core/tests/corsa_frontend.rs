@@ -3,7 +3,7 @@ use uneffect_core::corsa::{CallbackTiming, CorsaSymbolKind, NativeEvidence, cons
 #[test]
 fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
     let program = consume_corsa_json(r#"{
-      "schemaVersion": 3,
+      "schemaVersion": 4,
       "fileId": 7,
       "compilerRevision": "typescript-go@deadbeef",
       "symbols": [
@@ -24,14 +24,14 @@ fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
 
 #[test]
 fn rejects_unknown_schema_and_dangling_symbol_edges() {
-    let unsupported = r#"{"schemaVersion":4,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[],"trivia":[],"protocolSymbols":[]}"#;
+    let unsupported = r#"{"schemaVersion":5,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[],"trivia":[],"protocolSymbols":[]}"#;
     assert!(
         consume_corsa_json(unsupported)
             .unwrap_err()
             .to_string()
             .contains("unsupported")
     );
-    let dangling = r#"{"schemaVersion":3,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[],"protocolSymbols":[]}"#;
+    let dangling = r#"{"schemaVersion":4,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[],"protocolSymbols":[]}"#;
     assert!(consume_corsa_json(dangling).is_err());
 }
 
@@ -40,11 +40,11 @@ fn validates_resource_disposal_protocol_symbol_identity() {
     let input = |protocol_symbol: u64, protocol_kind: &str| {
         format!(
             r#"{{
-      "schemaVersion":3,"fileId":1,"compilerRevision":"x",
+      "schemaVersion":4,"fileId":1,"compilerRevision":"x",
       "symbols":[{{"id":1,"name":"run","kind":"function","typeRepr":"() => void","overloads":[],"effectParameters":[],"span":{{"start":0,"end":1}}}}],
       "calls":[],"trivia":[],
       "protocolSymbols":[{{"id":7,"kind":"sync","fileName":"resource.ts","span":{{"start":2,"end":3}}}}],
-      "resourceScopes":[{{"owner":1,"binding":"resource","ownerAsync":false,"asynchronous":false,"acquisitionIndex":0,"scopeId":"scope","scopeDepth":0,"scopeEnd":10,"catchesFailure":false,"disposalFailureType":"Error","protocolSymbol":{protocol_symbol},"protocolKind":"{protocol_kind}","span":{{"start":4,"end":5}}}}]
+      "resourceScopes":[{{"owner":1,"binding":"resource","ownerAsync":false,"asynchronous":false,"conditional":false,"acquisitionIndex":0,"scopeId":"scope","scopeDepth":0,"scopeEnd":10,"catchesFailure":false,"disposalFailureType":"Error","protocolSymbol":{protocol_symbol},"protocolKind":"{protocol_kind}","span":{{"start":4,"end":5}}}}]
     }}"#
         )
     };

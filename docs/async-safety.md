@@ -442,9 +442,10 @@ The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.
 Consequently a resource declared between two awaits is neither acquired before
 the first await nor delayed until after the second. An acquisition nested in a
-conditional or loop is still treated as unconditional by this linear sequence;
-that case remains explicitly outside proof-grade coverage until CFG joins carry
-the `acquired` state path-sensitively.
+conditional or zero-iteration loop, and an await in the same regions, receive
+explicit optional transitions. This is a conservative may-path abstraction:
+the choices are not yet correlated by a shared branch predicate, so proof-grade
+path-sensitive joins still require the general CFG lowering.
 
 ```sh
 just spec-resource-quint examples/resources.ts

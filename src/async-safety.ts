@@ -10,6 +10,7 @@ export interface PromiseObservation {
   source: string;
   observation: PromiseObservationKind;
   catchesRejection: boolean;
+  conditional: boolean;
   promiseChain?: number;
   span: { start: number; end: number };
 }
@@ -25,6 +26,7 @@ export interface ResourceBinding {
   ownerAsync: boolean;
   binding: string;
   asynchronous: boolean;
+  conditional: boolean;
   acquisitionIndex: number;
   scopeId: string;
   scopeDepth: number;
@@ -376,6 +378,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visitFunction = (ownerNode: ts.FunctionLikeDeclaration): void => {
     if (!ownerNode.body) return;
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [];
+    const isConditionalExecution = (node: ts.Node): boolean => {
+      let child = node;
+      for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
+        if (ts.isIfStatement(parent) && child !== parent.expression) return true;
+        if ((ts.isWhileStatement(parent) || ts.isForStatement(parent) || ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && child === parent.statement) return true;
+        if (ts.isConditionalExpression(parent) && child !== parent.condition) return true;
+        if (ts.isBinaryExpression(parent) && child === parent.right && [ts.SyntaxKind.AmpersandAmpersandToken, ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(parent.operatorToken.kind)) return true;
+        if (ts.isCaseClause(parent) || ts.isDefaultClause(parent) || ts.isCatchClause(parent)) return true;
+      }
+      return false;
+    };
     const bindingGroups = new Map<ts.Symbol, PromiseBinding[]>();
     const localBindings: PromiseBinding[] = [];
     const registerBinding = (symbol: ts.Symbol, name: string, spanNode: ts.Node, existing?: PromiseBinding[]): void => {
@@ -408,7 +421,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       return undefined;
     };
     const observe = (expression: ts.Expression, observation: PromiseObservationKind, catchesRejection: boolean): void => {
-      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, span: { start: expression.getStart(source), end: expression.getEnd() } });
+      promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), span: { start: expression.getStart(source), end: expression.getEnd() } });
       if (observation === "floating") diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, expression.getStart(source)), kind: "floating-promise", severity: "error", message: `${owner} has a floating Promise whose rejection is not observed; await, return, catch, or explicitly void it` });
     };
     const visit = (node: ts.Node): void => {
@@ -440,7 +453,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const protocol = disposableProperties(checker, declaration.initializer);
           const selectedProtocol = asynchronous ? protocol.asyncSymbol ?? protocol.syncSymbol : protocol.syncSymbol;
           const protocolDeclaration = selectedProtocol?.declarations?.[0];
-          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
+          const resource: ResourceBinding = { owner, ownerAsync: Boolean(ownerNode.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.AsyncKeyword)), binding: declaration.name.text, asynchronous, conditional: isConditionalExecution(declaration), acquisitionIndex: ownedResources.length, ...resourceScope(ownerNode, declaration, source), initializerMayFail: true, disposalFailureType: disposalFailureType(selectedProtocol),
             disposalProtocol: protocolDeclaration ? { kind: protocol.asyncSymbol === selectedProtocol ? "async" : "sync", fileName: protocolDeclaration.getSourceFile().fileName, start: protocolDeclaration.getStart(), end: protocolDeclaration.getEnd() } : undefined,
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
@@ -835,6 +848,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (event.kind === "acquire") {
       emit(`acquire_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(next)], [`acquired_${event.index}`, "true"]]));
       emit(`acquire_fail_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
+      if (resources[event.index]!.conditional) emit(`skip_acquire_${labels[event.index]}`, [`pc == ${pc}`], new Map([["pc", String(next)]]));
       return;
     }
     if (event.kind === "dispose") {
@@ -847,6 +861,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, [`pc == ${pc}`], rejectionUpdates);
+    if (observation.conditional) emit(`skip_await_${chain}`, [`pc == ${pc}`], new Map([["pc", String(next)]]));
     const isLast = event.index === awaited.length - 1;
     const resumeName = awaited.length === 1
       ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"

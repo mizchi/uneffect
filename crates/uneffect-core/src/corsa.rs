@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 3;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,6 +98,7 @@ pub struct CorsaPromiseObservation {
     pub source: String,
     pub observation: String,
     pub catches_rejection: bool,
+    pub conditional: bool,
     pub span: SourceSpanDto,
 }
 
@@ -118,6 +119,7 @@ pub struct CorsaResourceScope {
     pub binding: String,
     pub owner_async: bool,
     pub asynchronous: bool,
+    pub conditional: bool,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -267,6 +269,7 @@ pub struct NormalizedPromiseObservation {
     pub source: String,
     pub observation: String,
     pub catches_rejection: bool,
+    pub conditional: bool,
     pub start: u32,
     pub end: u32,
 }
@@ -289,6 +292,7 @@ pub struct NormalizedResourceScope {
     pub binding: String,
     pub owner_async: bool,
     pub asynchronous: bool,
+    pub conditional: bool,
     pub acquisition_index: usize,
     pub scope_id: String,
     pub scope_depth: usize,
@@ -379,6 +383,7 @@ impl NativeFrontendProgram {
                     source: item.source.clone(),
                     observation: item.observation.clone(),
                     catches_rejection: item.catches_rejection,
+                    conditional: item.conditional,
                     start: item.span.start,
                     end: item.span.end,
                 })
@@ -403,6 +408,7 @@ impl NativeFrontendProgram {
                     binding: item.binding.clone(),
                     owner_async: item.owner_async,
                     asynchronous: item.asynchronous,
+                    conditional: item.conditional,
                     acquisition_index: item.acquisition_index,
                     scope_id: item.scope_id.clone(),
                     scope_depth: item.scope_depth,

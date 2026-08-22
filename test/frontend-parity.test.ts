@@ -7,7 +7,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 4 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 5 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -46,6 +46,23 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     expect(result.typescriptIr.disposals).toContainEqual(expect.objectContaining({
       owner: "run", binding: "resource", asynchronous: true, failureKind: "reject", exits: expect.arrayContaining(["return"]),
     }));
+  });
+
+  it("preserves conditional Promise and resource execution in schema v4", async () => {
+    const result = await compareUneffectFrontends({ files: { "conditional.ts": `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      export async function run(enabled: boolean) {
+        if (enabled) {
+          await using resource = open()
+          await Promise.resolve(1)
+        }
+      }
+    ` } });
+    expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
+    expect(result.typescriptIr.schemaVersion).toBe(4);
+    expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true }));
+    expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true }));
   });
 
   it("preserves nested SuppressedError payload order across frontends", async () => {

@@ -720,4 +720,25 @@ describe("async error and explicit resource safety", () => {
     expect(acquire).toBeLessThan(after);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("keeps conditional resource acquisition optional on the straight-line abstraction", () => {
+    const result = analyzeAsyncSafety("conditional-resource.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function run(enabled: boolean) {
+        if (enabled) {
+          await using resource = open()
+          await Promise.resolve("inside").then(value => value)
+        }
+        await Promise.resolve("outside").then(value => value)
+      }
+    `);
+    expect(result.resources[0]).toMatchObject({ binding: "resource", conditional: true });
+    const inside = result.promises.find((item) => item.source.includes('"inside"'))!;
+    expect(inside).toMatchObject({ conditional: true });
+    const quint = generateUnifiedAsyncQuint("conditional_resource", result, "run");
+    expect(quint).toContain("action skip_acquire_resource");
+    expect(quint).toContain(`action skip_await_${inside.promiseChain}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });
