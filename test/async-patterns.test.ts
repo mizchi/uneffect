@@ -984,4 +984,41 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action drain_microtask_0[\s\S]*not\(callback_1_pending\)/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("enqueues a nested Node microtask only after its parent callback runs", () => {
+    const model = analyzeAsyncPatterns("node-nested.ts", `
+      function schedule() {
+        setTimeout(() => queueMicrotask(() => undefined), 0)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_nested", model);
+    expect(quint).toMatch(/action init[\s\S]*callback_1_pending' = false/);
+    expect(quint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("enqueues nested nextTick work ahead of a sibling V8 microtask", () => {
+    const model = analyzeAsyncPatterns("node-nested-next-tick.ts", `
+      import { nextTick } from "node:process"
+      function schedule() {
+        setTimeout(() => {
+          nextTick(() => undefined)
+          queueMicrotask(() => undefined)
+        }, 0)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "timer" },
+      { queue: "next-tick", enqueuedBy: 0 },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_nested_next_tick", model);
+    expect(quint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true[\s\S]*callback_2_pending' = true/);
+    expect(quint).toMatch(/action drain_microtask_2[\s\S]*not\(callback_1_pending\)/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });

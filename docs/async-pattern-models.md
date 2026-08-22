@@ -56,7 +56,10 @@ The generated state machine makes the modeled host phase explicit:
 callback checkpoint (`0`), timers (`1`), abstract poll (`2`), check (`3`), and
 close/iteration boundary (`4`). Every modeled timer or immediate callback
 returns to phase `0`, drains next-tick and V8 jobs, and resumes its originating
-phase. Time advances only when the close boundary starts the next bounded
+phase. `process.nextTick` and `queueMicrotask` registrations found in a
+statically resolved callback body are initially absent and become pending only
+when that parent callback runs; the next-tick child then drains first. Time
+advances only when the close boundary starts the next bounded
 iteration. A phase-fault oracle is rejected by the same invariant. This phase
 numbering is Uneffect IR, not a public numeric API from Node.
 

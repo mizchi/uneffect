@@ -423,11 +423,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (node !== callback && ts.isFunctionLike(node)) return;
         if (ts.isCallExpression(node)) {
           const operation = adapter.resolveCall(node)?.operation;
-          if (operation?.kind === "timer" && operation.queue === "microtask") {
+          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick")) {
             const child = timers.length;
             const callbackNode = node.arguments[operation.callbackArgument];
             const childSource = node.getSourceFile();
-            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: "microtask", enqueuedBy: parent, span: { start: node.getStart(childSource), end: node.getEnd() } });
+            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: 0, recursive: false, repeats: false, queue: operation.queue, enqueuedBy: parent, span: { start: node.getStart(childSource), end: node.getEnd() } });
             collectNestedJobs(callbackNode, child, visited);
             return;
           } else if (operation?.kind === "scheduler-yield") {
@@ -818,7 +818,7 @@ export function generateNodeEventLoopQuint(
     if (chain.links.length && executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending) initialReactions.add(`${chainIndex}:0`);
   });
   const initialV8Jobs = [
-    ...microtasks.map((index) => ({ key: `callback:${index}`, span: model.timers[index]!.span.start })),
+    ...microtasks.flatMap((index) => model.timers[index]!.enqueuedBy === undefined ? [{ key: `callback:${index}`, span: model.timers[index]!.span.start }] : []),
     ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) =>
       initialReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
   ].sort((left, right) => left.span - right.span);
@@ -829,7 +829,7 @@ export function generateNodeEventLoopQuint(
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
-    lines.push(`    callback_${index}_pending' = ${!cancelled},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
+    lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined},`, `    callback_${index}_due' = ${timer.delay},`, `    callback_${index}_fires' = 0,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -844,29 +844,42 @@ export function generateNodeEventLoopQuint(
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
+  const enqueueNodeChildren = (parent: number, updates: Map<string, string>): void => {
+    [...nextTicks, ...microtasks].filter((index) => model.timers[index]!.enqueuedBy === parent)
+      .forEach((child) => updates.set(`callback_${child}_pending`, "true"));
+  };
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
   const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
-  nextTicks.forEach((index, order) => action(`drain_next_tick_${index}`, [
-    ...phaseGuard(0), `callback_${index}_pending`,
-    ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
-    ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
-  ], new Map([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]])));
+  nextTicks.forEach((index, order) => {
+    const updates = new Map<string, string>([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]]);
+    enqueueNodeChildren(index, updates);
+    action(`drain_next_tick_${index}`, [
+      ...phaseGuard(0), `callback_${index}_pending`,
+      ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
+      ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
+    ], updates);
+  });
   microtasks.forEach((index, order) => {
     const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
     const key = `callback:${index}`;
-    const earlierV8 = initialV8Jobs.slice(0, initialV8Jobs.findIndex((job) => job.key === key)).map((job) =>
+    const position = initialV8Jobs.findIndex((job) => job.key === key);
+    const earlierV8 = (position >= 0 ? initialV8Jobs.slice(0, position) : microtasks
+      .filter((candidate) => model.timers[candidate]!.enqueuedBy === model.timers[index]!.enqueuedBy && candidate < index)
+      .map((candidate) => ({ key: `callback:${candidate}` }))).map((job) =>
       job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`
         : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
-    action(`drain_microtask_${index}`, [
-      ...phaseGuard(0), `callback_${index}_pending`,
-      ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
-      ...earlierV8.map((pending) => `not(${pending})`),
-    ], new Map([
+    const updates = new Map<string, string>([
       [`callback_${index}_pending`, "false"],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${pendingNextTick.join(" or ") || "false"})`],
       ["wrong_phase", phaseViolation(0)],
-    ]));
+    ]);
+    enqueueNodeChildren(index, updates);
+    action(`drain_microtask_${index}`, [
+      ...phaseGuard(0), `callback_${index}_pending`,
+      ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
+      ...earlierV8.map((pending) => `not(${pending})`),
+    ], updates);
   });
   const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
@@ -896,11 +909,7 @@ export function generateNodeEventLoopQuint(
   ], new Map([["node_phase", "resume_phase"], ["wrong_phase", phaseViolation(0)]]));
   const macro = (index: number, earlier: number[], phase: number): void => {
     const timer = model.timers[index]!;
-    action(timer.queue === "check" ? `run_check_${index}` : `run_timer_${index}`, [
-      ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
-      ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
-      ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
-    ], new Map([
+    const updates = new Map<string, string>([
       [`callback_${index}_pending`, String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       [`callback_${index}_due`, timer.repeats ? `clock + ${timer.delay}` : `callback_${index}_due`],
@@ -908,7 +917,13 @@ export function generateNodeEventLoopQuint(
       ["resume_phase", String(phase)],
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],
       ["wrong_phase", phaseViolation(phase)],
-    ]));
+    ]);
+    enqueueNodeChildren(index, updates);
+    action(timer.queue === "check" ? `run_check_${index}` : `run_timer_${index}`, [
+      ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
+      ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
+      ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
+    ], updates);
   };
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
   checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
