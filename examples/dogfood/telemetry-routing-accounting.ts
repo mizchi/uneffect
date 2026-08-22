@@ -61,9 +61,13 @@ export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runti
 /* uneffect: refinement telemetryRouting@1 action buffer */
 export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }
 
+function armAuditAfterAttempt(runtime: TelemetryRoutingAccounting): void {
+  if (runtime.attempted > 0) runtime.auditArmed = true;
+}
+
 /* uneffect: refinement telemetryRouting@1 action armAudit */
 export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void {
-  if (runtime.attempted > 0) runtime.auditArmed = true;
+  armAuditAfterAttempt(runtime);
 }
 
 /* uneffect: refinement telemetryRouting@1 action observeLostOutcome */

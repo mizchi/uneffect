@@ -112,12 +112,16 @@ assignments implement the corresponding model transition.
 `validateRefinementActionBodies` adds a proof for a deliberately restricted
 zero-runtime fragment. It normalizes direct runtime-field assignment,
 `+=`/`-=`, increment/decrement, and omitted-field stuttering to the temporal
-expression AST. It can inline one local class method call when every argument
+expression AST. It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`
-write to the literal field. Every model state is compared, so an extra runtime
+write to the literal field. It also composes an acyclic graph of direct calls to
+same-file function declarations. The first helper argument must be the current
+runtime receiver; remaining scalar arguments are snapshotted symbolically at
+the call site. Recursive calls, imported helpers, aliases, and dynamic dispatch
+remain explicit non-proofs. Every model state is compared, so an extra runtime
 write is rejected as well as a missing or different write. Branches, loops,
-imported calls, recursive calls, collection operations, and dynamic computed members produce
+general loops, abrupt completion, collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
 Multiple writes are executed over a symbolic scalar state in TypeScript source
 order before comparison. This both proves cases such as two increments and

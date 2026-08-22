@@ -214,6 +214,32 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("inlines acyclic same-file action helpers and rejects recursion", () => {
+    const model = `/* uneffect:
+      state value: int
+      init value = 0
+      action addTwo: value' = value + 1 + 1
+    */`;
+    const safe = `${model}
+      interface Runtime { value: number }
+      function increment(runtime: Runtime, amount: number) { runtime.value += amount }
+      function add(runtime: Runtime, amount: number) { increment(runtime, amount) }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action addTwo */
+      export function addTwo(runtime: Runtime) { add(runtime, 1); add(runtime, 1) }
+    `;
+    expect(validateRefinementActionBodies("helper.ts", safe, "counter", parseSpec("helper.ts", safe).temporal)).toEqual([]);
+
+    const recursive = safe.replace(
+      "function increment(runtime: Runtime, amount: number) { runtime.value += amount }",
+      "function increment(runtime: Runtime, amount: number) { increment(runtime, amount) }",
+    );
+    expect(validateRefinementActionBodies("recursive-helper.ts", recursive, "counter", parseSpec("recursive-helper.ts", recursive).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addTwo" }),
+    ]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

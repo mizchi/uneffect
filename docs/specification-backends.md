@@ -218,7 +218,8 @@ through refinement annotations;
 the dogfood coverage check catches missing and stale model names. Its
 straight-line action bodies are also checked against the model assignments:
 literal calls to `record` are locally specialized, including the computed
-outcome-field write. The guarded observation action enforces its exact
+outcome-field write. The conditional audit transition is routed through a
+same-file action helper, exercising acyclic direct-call composition. The guarded observation action enforces its exact
 `action_when` predicate with a negated early return before the stuttering body.
 The adjacent single-return invariant function is
 also checked by exact normalized scalar-AST equivalence. Create and observe are

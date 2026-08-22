@@ -299,6 +299,7 @@ export function validateRefinementActionBodies(
     substitutions: ReadonlyMap<string, ts.Expression>,
     updates: Map<string, TemporalExpression> = new Map(),
     localValues: Map<string, TemporalExpression> = new Map(),
+    activeCalls: ReadonlySet<string> = new Set(),
   ): Map<string, TemporalExpression> | undefined => {
     const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
@@ -338,7 +339,7 @@ export function validateRefinementActionBodies(
         for (let value = start; value < end; value++) {
           const iterationSubstitutions = new Map(substitutions);
           iterationSubstitutions.set(loopName, ts.factory.createNumericLiteral(value));
-          if (!collect(asBlock(statement.statement), receiver, runtimeClass, iterationSubstitutions, updates, new Map(localValues))) return undefined;
+          if (!collect(asBlock(statement.statement), receiver, runtimeClass, iterationSubstitutions, updates, new Map(localValues), activeCalls)) return undefined;
         }
         continue;
       }
@@ -347,8 +348,8 @@ export function validateRefinementActionBodies(
         if (!normalizedCondition) return undefined;
         const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
         const before = new Map(updates);
-        const whenTrue = collect(asBlock(statement.thenStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));
-        const whenFalse = collect(asBlock(statement.elseStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues));
+        const whenTrue = collect(asBlock(statement.thenStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls);
+        const whenFalse = collect(asBlock(statement.elseStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls);
         if (!whenTrue || !whenFalse) return undefined;
         updates.clear();
         for (const name of stateNames) {
@@ -374,6 +375,28 @@ export function validateRefinementActionBodies(
       }
       if (!ts.isExpressionStatement(statement)) return undefined;
       const node = statement.expression;
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const helperName = node.expression.text;
+        const helper = functions.get(helperName);
+        const callKey = `function:${helperName}`;
+        if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
+          || helper.parameters.length === 0 || helper.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) return undefined;
+        const receiverArgument = node.arguments[0]!;
+        const substitutedReceiver = ts.isIdentifier(receiverArgument) ? substitutions.get(receiverArgument.text) : undefined;
+        const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
+          || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
+            || (substitutedReceiver !== undefined && ts.isIdentifier(substitutedReceiver) && substitutedReceiver.text === receiver));
+        if (!receiverMatches) return undefined;
+        const helperLocals = new Map<string, TemporalExpression>();
+        for (let index = 1; index < helper.parameters.length; index++) {
+          const argument = normalizeRefinementExpression(node.arguments[index]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);
+          if (!argument) return undefined;
+          helperLocals.set((helper.parameters[index]!.name as ts.Identifier).text, expandLocalSnapshots(resolveCurrentState(argument)));
+        }
+        const helperReceiver = (helper.parameters[0]!.name as ts.Identifier).text;
+        if (!collect(helper.body, helperReceiver, undefined, new Map(), updates, helperLocals, new Set([...activeCalls, callKey]))) return undefined;
+        continue;
+      }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
         && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === receiver && runtimeClass) {
         const methodName = node.expression.name.text;
@@ -383,7 +406,8 @@ export function validateRefinementActionBodies(
         method.parameters.forEach((parameter, index) => {
           if (ts.isIdentifier(parameter.name)) nestedSubstitutions.set(parameter.name.text, node.arguments[index]!);
         });
-        if (!collect(method.body, "this", runtimeClass, nestedSubstitutions, updates)) return undefined;
+        const callKey = `method:${runtimeClass.name?.text ?? "<anonymous>"}.${methodName}`;
+        if (activeCalls.has(callKey) || !collect(method.body, "this", runtimeClass, nestedSubstitutions, updates, new Map(localValues), new Set([...activeCalls, callKey]))) return undefined;
         continue;
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
