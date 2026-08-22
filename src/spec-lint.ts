@@ -139,12 +139,18 @@ function synthesizedRelationalStrengtheningProperties(spec: TemporalSpec): Tempo
 
 function synthesizedCollectionStrengtheningProperties(spec: TemporalSpec): TemporalSpec["properties"] {
   const collections = spec.states.filter((state) => typeof state.type !== "string");
-  const expressions = collections.flatMap((left, leftIndex) => collections.slice(leftIndex + 1).flatMap((right) =>
-    z3TypeKey(left.type) === z3TypeKey(right.type) ? [`${left.name} === ${right.name}`] : []));
-  return expressions.map((expression) => ({
-    name: `<synth:${expression}>`,
-    expression,
-    expressionAst: parseTemporalExpression(expression),
+  return collections.flatMap((left, leftIndex) => collections.slice(leftIndex + 1).flatMap((right) => {
+    if (z3TypeKey(left.type) !== z3TypeKey(right.type)) return [];
+    const candidates = [{ name: `${left.name} === ${right.name}`, expression: `${left.name} === ${right.name}` }];
+    if (typeof left.type !== "string" && left.type.kind === "set") candidates.push(
+      { name: `${left.name} subset ${right.name}`, expression: `${left.name}.forall(__uneffect_element => ${right.name}.contains(__uneffect_element))` },
+      { name: `${right.name} subset ${left.name}`, expression: `${right.name}.forall(__uneffect_element => ${left.name}.contains(__uneffect_element))` },
+    );
+    return candidates.map((candidate) => ({
+      name: `<synth:${candidate.name}>`,
+      expression: candidate.expression,
+      expressionAst: parseTemporalExpression(candidate.expression),
+    }));
   }));
 }
 

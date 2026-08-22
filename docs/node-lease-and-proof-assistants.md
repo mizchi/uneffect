@@ -47,6 +47,14 @@ the declared property: it generates `<synth:ownerEpoch > 0>`, proves it, and
 uses it as the strengthening invariant. This is evidence for the epoch/counter
 use case only; relational lease invariants still need explicit declarations.
 
+The same proof pipeline now synthesizes both directions of subset candidates
+for same-element finite `Set` state pairs. A dogfood authority model proves
+`requested subset allowed` and uses it to rule out an armed escalation action.
+Removing the authority check and narrowing the allowed set produces a bounded
+Z3 trace ending in `requested = Set(1, 2)` and `allowed = Set(1)`. Candidates
+are not assumptions: a direction is discarded unless Z3 proves it at init and
+across every action.
+
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker
 never crashes and the resource remains held. Declaring weak fairness for both
@@ -111,8 +119,10 @@ initial states, globally impossible guards, duplicate/subsumed properties,
 bounded reachability, deadlock, stuttering, and property vacuity. Implemented
 unbounded promotions require one-step induction, optionally under explicitly
 selected strengthening properties whose own induction obligations pass.
-Automatic invariant discovery, finite-state completeness, and general
-fairness/liveness diagnostics remain open.
+Automatic invariant discovery, finite-state completeness, bounded fair-lasso
+detection for `eventually`, and selected sign, relational, affine-offset, and
+collection templates are implemented. General polyhedral/quantified synthesis
+and nested temporal formulas remain open.
 
 Effect declarations remain equally important. The existing function/program
 effect checker diagnoses missing effects and unused upper-bound effects for its

@@ -840,6 +840,32 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes directional subset invariants for Set state pairs", async () => {
+    const temporal = parseSpec("set-subset-strengthening.ts", `/* uneffect:
+      state requested: Set<int>
+      state allowed: Set<int>
+      state armed: bool
+      init requested = Set(1)
+      init allowed = Set(1, 2)
+      init armed = false
+      action requestAllowed: requested' = requested.union(Set(2))
+      action_when requestAllowed: allowed.contains(2)
+      action expandAuthority: allowed' = allowed.union(Set(3))
+      action arm: armed' = true
+      action impossible: requested' = requested
+      action_when impossible: armed && requested.contains(2) && !allowed.contains(2)
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:requested subset allowed>",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int

@@ -112,7 +112,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Opt in separately to pairwise integer equality/order templates so quadratic relational candidate growth is explicit.
     - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.
-    - [ ] Synthesize general affine/polyhedral, subset, quantified, and field-correlated collection invariants.
+    - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
+    - [ ] Synthesize general affine/polyhedral, quantified, and field-correlated collection invariants.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -127,7 +128,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reuse proven initial-difference affine templates for frozen-state vacuity promotion.
     - [x] Reuse proven same-shaped collection equality templates for frozen-state vacuity promotion.
     - [x] Find bounded reachable lassos violating `temporal_eventually`, enforcing weak and strong action fairness on the loop before reporting an unbounded witness.
-    - [ ] Synthesize general affine/polyhedral/subset/quantified collection invariants and support nested/general temporal formulas beyond `eventually`.
+    - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support nested/general temporal formulas beyond `eventually`.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.

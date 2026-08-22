@@ -56,6 +56,23 @@ function collectionLeaseModel(skewGrace: number): string {
   */`;
 }
 
+function capabilityRequestModel(enforceAuthority: boolean): string {
+  return `/* uneffect:
+    state requested: Set<int>
+    state allowed: Set<int>
+    state auditArmed: bool
+    init requested = Set(1)
+    init allowed = Set(1, 2)
+    init auditArmed = false
+    action requestWrite: requested' = requested.union(Set(2))
+    ${enforceAuthority ? "action_when requestWrite: allowed.contains(2)" : ""}
+    action armAudit: auditArmed' = true
+    action observeEscalation: auditArmed' = auditArmed
+    action_when observeEscalation: auditArmed && requested.contains(2) && !allowed.contains(2)
+    temporal requestWithinAuthority: requested.forall(permission => allowed.contains(permission))
+  */`;
+}
+
 function runCollectionLease(skewGrace: number) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-node-lease-set-"));
   const path = join(directory, "lease-set.qnt");
@@ -140,6 +157,28 @@ function runLeaseLifecycle(fencedCommit: boolean) {
 }
 
 describe("Node Lease clock-skew model", () => {
+  it("dogfoods synthesized subset authority and catches an unchecked request", async () => {
+    const safe = parseSpec("capability-request-safe.ts", capabilityRequestModel(true)).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(safe, {
+      maxSteps: 2,
+      synthesizeCollectionStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeEscalation",
+      relatedName: "<synth:requested subset allowed>",
+    }));
+
+    const broken = parseSpec("capability-request-broken.ts", capabilityRequestModel(false)
+      .replace("init allowed = Set(1, 2)", "init allowed = Set(1)" )).temporal;
+    const counterexample = await findTemporalCounterexampleWithZ3(broken, "requestWithinAuthority", { maxSteps: 2 });
+    expect(counterexample.status).toBe("counterexample");
+    if (counterexample.status === "counterexample") {
+      expect(counterexample.trace.steps.map((step) => step.action)).toContain("requestWrite");
+      expect(counterexample.trace.steps.at(-1)?.after).toMatchObject({ requested: [1, 2], allowed: [1] });
+    }
+  });
+
   it("uses a proven lease-domain invariant to exclude invalid epoch actions", async () => {
     const temporal = parseSpec("lease-strengthening.ts", leaseLifecycleModel(true)).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
