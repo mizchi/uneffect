@@ -410,6 +410,7 @@ function combineCongruences(items: readonly { modulus: number; residue: number }
     return oldR === 1n || oldR === -1n ? ((oldS * oldR) % modulus + modulus) % modulus : undefined;
   };
   let modulus = BigInt(items[0]!.modulus), residue = BigInt(items[0]!.residue);
+  residue = ((residue % modulus) + modulus) % modulus;
   for (const item of items.slice(1)) {
     const nextModulus = BigInt(item.modulus), nextResidue = BigInt(item.residue), divisor = gcd(modulus, nextModulus);
     const difference = nextResidue - residue;
@@ -473,7 +474,7 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
       const read = (candidate: LogicExpression, other: LogicExpression): void => {
         if (candidate.kind !== "binary" || candidate.operator !== "mod") return;
         const variable = affineVariable(candidate.left), modulus = integerValue(candidate.right), residue = integerValue(other);
-        if (!variable || variable.offset !== 0 || modulus === undefined || modulus <= 0 || residue === undefined || residue < 0 || residue >= modulus) return;
+        if (!variable || variable.offset !== 0 || modulus === undefined || modulus <= 0 || residue === undefined || residue <= -modulus || residue >= modulus) return;
         const index = parameters.indexOf(variable.name);
         if (index >= 0 && typeof domains[index] === "string") congruences[index]!.push({ modulus, residue });
       };
@@ -482,10 +483,17 @@ function refinementHints(requires: readonly string[], parameters: readonly strin
     for (const expression of expressions) { addComparison(expression); addCongruence(expression); }
     if (alignCongruence) for (let index = 0; index < hints.length; index++) {
       const unique = [...new Map(congruences[index]!.map((item) => [`${item.modulus}:${item.residue}`, item])).values()];
+      const hasNegativeRemainder = unique.some((item) => item.residue < 0);
+      const hasPositiveRemainder = unique.some((item) => item.residue > 0);
+      if (hasNegativeRemainder && (unique.some((item) => item.residue > 0) || (bounds[index]!.upper ?? Infinity) >= 0)) continue;
+      if (hasPositiveRemainder && (bounds[index]!.upper ?? Infinity) < 0) continue;
       const congruence = combineCongruences(unique);
       if (!congruence) continue;
       const anchors = hints[index]!.length ? hints[index]!.map(Number) : [congruence.residue, congruence.residue + congruence.modulus];
-      const aligned = [congruence.residue, congruence.residue + congruence.modulus, ...anchors.flatMap((anchor) => {
+      const bases = hasNegativeRemainder
+        ? [congruence.residue - congruence.modulus, congruence.residue - 2 * congruence.modulus]
+        : [congruence.residue, congruence.residue + congruence.modulus];
+      const aligned = [...bases, ...anchors.flatMap((anchor) => {
         const below = congruence.residue + Math.floor((anchor - congruence.residue) / congruence.modulus) * congruence.modulus;
         return [below, below + congruence.modulus];
       })];

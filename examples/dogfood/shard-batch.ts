@@ -1,4 +1,4 @@
-import type { Nat } from "@mizchi/uneffect";
+import type { Int, Nat } from "@mizchi/uneffect";
 
 /* uneffect: requires shard >= 0 && shard < 1024 && shard % 16 === 0 */
 /* uneffect: ensures result >= 0 && result < 64 */
@@ -15,5 +15,11 @@ export function tenantShard(shard: Nat): Nat {
 /* uneffect: requires partition >= 0 && partition < 256 && partition % 4 === 1 && partition % 6 === 3 */
 /* uneffect: ensures result >= 0 */
 export function partitionRoute(partition: Nat): Nat {
+  return partition;
+}
+
+/* uneffect: requires partition >= -50 && partition < 0 && partition % 6 === -3 */
+/* uneffect: ensures result < 0 */
+export function signedPartitionRoute(partition: Int): Int {
   return partition;
 }

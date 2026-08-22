@@ -195,6 +195,32 @@ describe("property-test generation", () => {
     expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1, 48, 49]]);
   });
 
+  it("derives negative JavaScript remainder boundaries only in a negative range", () => {
+    const result = generateUneffectPropertyTests({ files: { "signed-partition.ts": `
+      type Int = number
+      /* uneffect: requires partition >= -50 && partition < 0 && partition % 6 === -3 */
+      /* uneffect: ensures result < 0 */
+      export function signed(partition: Int): Int { return partition }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[-45, -9, -3]]);
+
+    const unknownSign = generateUneffectPropertyTests({ files: { "unknown-sign.ts": `
+      type Int = number
+      /* uneffect: requires partition % 6 === -3 */
+      /* uneffect: ensures result !== 0 */
+      export function unknown(partition: Int): Int { return partition }
+    ` } });
+    expect(unknownSign.boundaries[0]?.generatorHints).toEqual([[]]);
+
+    const wrongSign = generateUneffectPropertyTests({ files: { "wrong-sign.ts": `
+      type Int = number
+      /* uneffect: requires partition >= -50 && partition < 0 && partition % 6 === 3 */
+      /* uneffect: ensures result < 0 */
+      export function wrong(partition: Int): Int { return partition }
+    ` } });
+    expect(wrongSign.boundaries[0]?.generatorHints).toEqual([[-50, -49, -2, -1]]);
+  });
+
   it("derives correlated tuples from affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
       type Int = number

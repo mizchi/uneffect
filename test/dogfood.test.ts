@@ -20,6 +20,7 @@ describe("Uneffect dogfood", () => {
     expect(result.boundaries.find((boundary) => boundary.functionName === "shardBatch")?.generatorHints).toEqual([[0, 16, 1008]]);
     expect(result.boundaries.find((boundary) => boundary.functionName === "tenantShard")?.generatorHints).toEqual([[0, 16, 100, 116]]);
     expect(result.boundaries.find((boundary) => boundary.functionName === "partitionRoute")?.generatorHints).toEqual([[9, 21, 249]]);
+    expect(result.boundaries.find((boundary) => boundary.functionName === "signedPartitionRoute")?.generatorHints).toEqual([[-45, -9, -3]]);
     expect(result.generatedFiles["examples/dogfood/shard-batch.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
   });
 

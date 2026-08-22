@@ -40,6 +40,11 @@ Generalized-CRT hint generation for 16 partition-routing contracts with
 The path uses exact BigInt arithmetic internally and only publishes a hint when
 the combined modulus and residue remain safe JavaScript integers.
 
+Signed-remainder hint generation for 16 negative-range partition contracts
+measured 1.1135 ms mean over 450 samples (1.64% RME). The benchmark includes
+range-sign validation and BigInt normalization before emitting JavaScript `%`
+compatible negative candidates.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |

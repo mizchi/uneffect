@@ -343,6 +343,15 @@ describe("typed-array static verification", () => {
     generateUneffectPropertyTests({ files: { "src/partition-routes.ts": `import type { Nat } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
   }, { time: 500, iterations: 20 });
 
+  bench("derive signed remainder hints for 16 negative partition contracts", () => {
+    const functions = Array.from({ length: 16 }, (_, index) => `
+      /* uneffect: requires partition >= ${-256 * (index + 1)} && partition < ${-256 * index} && partition % 6 === -3 */
+      /* uneffect: ensures result < 0 */
+      export function signedRoute${index}(partition: Int): Int { return partition }
+    `).join("\n");
+    generateUneffectPropertyTests({ files: { "src/signed-routes.ts": `import type { Int } from "@mizchi/uneffect"\n${functions}` }, shrinking: true });
+  }, { time: 500, iterations: 20 });
+
   bench("derive branched affine hints for 16 scalar contracts", () => {
     const functions = Array.from({ length: 16 }, (_, index) => `
       /* uneffect: requires (value + 2 >= ${index * 10} && value + 2 < ${index * 10 + 5}) || (value >= ${index * 10 + 20} && value < ${index * 10 + 25}) */

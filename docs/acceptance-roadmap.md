@@ -59,8 +59,11 @@ Ranges and congruences remain local to each disjunct through a DNF expansion
 bounded at 32 branches. Multiple compatible positive congruences are combined
 with generalized CRT, including non-coprime moduli; inconsistent systems and
 LCMs beyond JavaScript's safe-integer range fall back without synthesized
-aligned hints. Larger DNF expansions and negative modulus/residue semantics
-remain on runtime filtering or the opt-in Z3 path. For affine
+aligned hints. A negative remainder is normalized only when the branch proves
+the parameter is strictly negative, preserving JavaScript's dividend-signed
+`%` behavior. Unknown-sign negative remainders, mixed-sign remainder systems,
+negative moduli, and larger DNF expansions remain on runtime filtering or the
+opt-in Z3 path. For affine
 equalities between scalar parameters, such as
 `y === x + 1 && z === y + 2`, the generator propagates boundary hints through
 the relation graph and runs valid correlated tuples before Cartesian samples.
