@@ -102,11 +102,13 @@ execution as constraint-preserving joint candidates.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 
-A Set-backed lease acceptance adapter now checks the complete refinement
-boundary: Program-backed create/observe types must match `Set<int>`, native
-`Set.add` must match the declared temporal action, and native `Set.has` must
-match the temporal membership invariant. Changing the observed member produces
-an `invariant-expression-mismatch`. Z3 mismatch discharge consumes the retained
+A collection-backed lease acceptance adapter now checks the complete refinement
+boundary: Program-backed create/observe types must match `Set<int>` and
+`Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared
+temporal action, and native `Set.has`/`Map.has` must match the corresponding
+membership invariants. Map membership uses the backend-neutral canonical form
+`map.keys().contains(key)`. Changing either observed member produces an
+`invariant-expression-mismatch`. Z3 mismatch discharge consumes the retained
 normalized AST rather than reparsing the runtime-oriented diagnostic text, so
 collection spellings such as JavaScript `.has` cannot crash the verifier.
 

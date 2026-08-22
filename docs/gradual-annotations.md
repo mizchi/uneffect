@@ -212,9 +212,12 @@ symbol identity. Direct namespace-import selections such as
 `Predicates.valid(runtime.epoch)` are also accepted when the selected property
 resolves to a function declaration. Native `Set.has(value)` and the `Set.size`
 property normalize to temporal `set.contains(value)` and `set.size()`.
+In the Program-backed path, a builtin `Map.has(key)` receiver is distinguished
+by TypeChecker symbol identity and normalizes to the explicit temporal form
+`map.keys().contains(key)`.
 Receiver identity is established by the separately required Program-backed
 create/observe shape check; this predicate pass proves the expression mapping,
-not builtin symbol identity in isolation. Mutable aliases, ambiguous lexical call
+not every builtin symbol identity in isolation. Mutable aliases, ambiguous lexical call
 names, recursion, ordinary object methods, dynamic dispatch,
 statement-bearing helpers, mutable local
 declarations, mutation, other collection operations, and merely logically equivalent but differently

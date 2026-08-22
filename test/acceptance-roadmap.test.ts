@@ -359,19 +359,24 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const fileName = join(directory, "lease.ts");
     const source = `/* uneffect:
       state owners: Set<int>
+      state epochs: Map<int, int>
       init owners = Set(1)
-      action acquire: owners' = owners.union(Set(2))
+      init epochs = Map([[1, 1]])
+      action acquire: owners' = owners.union(Set(2)), epochs' = epochs.put(2, 1)
       temporal ownerPresent: owners.contains(1)
+      temporal epochRegistered: epochs.keys().contains(1)
     */
-      interface Runtime { owners: Set<number> }
+      interface Runtime { owners: Set<number>; epochs: Map<number, number> }
       /* uneffect: refinement lease@1 create */
       export function createLease(initial: Runtime): Runtime { return initial }
       /* uneffect: refinement lease@1 observe */
       export function observeLease(runtime: Runtime): Runtime { return runtime }
       /* uneffect: refinement lease@1 action acquire */
-      export function acquire(runtime: Runtime) { runtime.owners.add(2) }
+      export function acquire(runtime: Runtime) { runtime.owners.add(2); runtime.epochs.set(2, 1) }
       /* uneffect: refinement lease@1 invariant ownerPresent */
       export function ownerPresent(runtime: Runtime) { return runtime.owners.has(1) }
+      /* uneffect: refinement lease@1 invariant epochRegistered */
+      export function epochRegistered(runtime: Runtime) { return runtime.epochs.has(1) }
     `;
     try {
       writeFileSync(fileName, source);
@@ -386,6 +391,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       const brokenProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       await expect(validateInvariants(brokenProgram, fileName, "lease", spec)).resolves.toContainEqual(
         expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "ownerPresent" }),
+      );
+      const brokenMap = source.replace("runtime.epochs.has(1)", "runtime.epochs.has(2)");
+      writeFileSync(fileName, brokenMap);
+      const brokenMapProgram = ts.createProgram([fileName], { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      await expect(validateInvariants(brokenMapProgram, fileName, "lease", spec)).resolves.toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "epochRegistered" }),
       );
     } finally {
       rmSync(directory, { recursive: true, force: true });
