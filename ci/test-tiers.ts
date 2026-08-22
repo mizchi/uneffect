@@ -27,7 +27,6 @@ export const ciTestTiers = {
   ],
   quint: [
     "test/async-patterns.test.ts",
-    "test/async-safety.test.ts",
     "test/formal-models.test.ts",
     "test/node-lease.test.ts",
     "test/ownership.test.ts",
@@ -36,6 +35,7 @@ export const ciTestTiers = {
   ],
   integration: [
     "test/acceptance-roadmap.test.ts",
+    "test/async-safety.test.ts",
     "test/dogfood.test.ts",
     "test/evidence-optimizer.test.ts",
     "test/spec-backends.test.ts",

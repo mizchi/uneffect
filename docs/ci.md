@@ -3,7 +3,8 @@
 The CI test split is a capability partition, not a coverage reduction. The
 authoritative manifest is `ci/test-tiers.ts`; `test/ci-tiers.test.ts` fails when
 a `test/*.test.ts` file is missing from the manifest or appears in more than one
-tier.
+tier. It also rejects a directly spawned Z3 or Quint process assigned to a tier
+that does not provision that verifier.
 
 | Tier | Runtime dependencies | Purpose |
 | --- | --- | --- |

@@ -1,4 +1,4 @@
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ciTestTiers, resolveCiTestIncludes } from "../ci/test-tiers.js";
@@ -19,5 +19,13 @@ describe("CI test tier manifest", () => {
   it("lets an explicitly selected generated test escape an inherited parent tier", () => {
     expect(resolveCiTestIncludes("z3", ["vitest", "run"])).toEqual(ciTestTiers.z3);
     expect(resolveCiTestIncludes("z3", ["vitest", "run", "/tmp/generated.uneffect.test.ts"])).toBeUndefined();
+  });
+
+  it("does not place direct verifier subprocesses in a tier lacking that verifier", () => {
+    for (const [tier, files] of Object.entries(ciTestTiers)) for (const file of files) {
+      const source = readFileSync(join(process.cwd(), file), "utf8");
+      if (/spawnSync\(\s*["']z3["']/.test(source)) expect(["z3", "integration"], `${file} directly executes Z3`).toContain(tier);
+      if (/spawnSync\(\s*["']pnpm["'][\s\S]*?["']quint["']/.test(source)) expect(["quint", "integration"], `${file} directly executes Quint`).toContain(tier);
+    }
   });
 });
