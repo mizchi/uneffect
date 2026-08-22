@@ -11,7 +11,7 @@ import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounter
 import { generateRefinementAdapterModule } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns } from "../src/async-patterns.js";
-import { analyzeAsyncSafety, generateUnifiedAsyncQuint } from "../src/async-safety.js";
+import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
@@ -42,6 +42,25 @@ const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeo
 const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetry-packet.ts", import.meta.url), "utf8");
 const retryAttemptsSource = readFileSync(new URL("../examples/dogfood/retry-attempts.ts", import.meta.url), "utf8");
 const retryAttemptEscapeSource = readFileSync(new URL("../examples/dogfood/retry-attempt-escape.ts", import.meta.url), "utf8");
+const retryAttemptEscapeFile = "/bench/retry-attempt-escape.ts";
+const asyncSafetyCompilerOptions: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ESNext,
+  module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext,
+  lib: ["lib.esnext.d.ts", "lib.dom.d.ts", "lib.esnext.disposable.d.ts"],
+  types: ["node"],
+  noEmit: true,
+};
+function createAsyncSafetyBenchmarkProgram(): ts.Program {
+  const host = ts.createCompilerHost(asyncSafetyCompilerOptions);
+  const original = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, version, onError, fresh) => name === retryAttemptEscapeFile
+    ? ts.createSourceFile(name, retryAttemptEscapeSource, version, true, ts.ScriptKind.TS)
+    : original(name, version, onError, fresh);
+  return ts.createProgram([retryAttemptEscapeFile], asyncSafetyCompilerOptions, host);
+}
+const warmAsyncSafetyProgram = createAsyncSafetyBenchmarkProgram();
+const warmAsyncSafetySource = warmAsyncSafetyProgram.getSourceFile(retryAttemptEscapeFile)!;
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
@@ -419,6 +438,14 @@ describe("typed-array static verification", () => {
 
   bench("detect a nested aggregate disposed retry resource alias", () => {
     analyzeAsyncSafety("retry-attempt-escape.ts", retryAttemptEscapeSource);
+  }, { time: 500, iterations: 20 });
+
+  bench("construct the retry resource TypeScript Program", () => {
+    createAsyncSafetyBenchmarkProgram();
+  }, { time: 500, iterations: 20 });
+
+  bench("walk a warm retry resource TypeScript Program", () => {
+    analyzeAsyncSafetyInProgram(warmAsyncSafetyProgram, warmAsyncSafetySource);
   }, { time: 500, iterations: 20 });
 
   bench("resolve 64 named timer callback bodies", () => {

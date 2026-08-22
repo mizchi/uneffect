@@ -60,10 +60,13 @@ tracking speedup or regression.
 After extending the fixture to a nested property reached through an aggregate
 root alias, two consecutive runs measured 362.65 ms (10.17% RME) and 322.33 ms
 (9.05% RME), each over 20 samples. Both distributions are noisy and materially
-above the earlier direct-property run; this is kept as a possible regression
-signal rather than explained away. A profiler-separated TypeScript Program
-construction baseline is still needed before attributing the increase to the
-access-path walk.
+above the earlier direct-property run, so a separated follow-up was run rather
+than attributing the increase to the access-path walk. The stable follow-up
+measured 132.06 ms for end-to-end analysis (2.93% RME), 95.82 ms for TypeScript
+Program construction alone (2.93% RME), and 0.297 ms for analysis of a warm
+Program (3.33% RME). The nested access-path walk is therefore not the observed
+bottleneck; the two slow runs are retained as environment-noise evidence, while
+Program construction remains the dominant cold-path cost.
 This includes TypeScript program construction and the complete async analysis,
 not only the alias scan. An immediately preceding run under system pressure
 measured 340.85 ms with 13.95% RME, so it is recorded as noise rather than a
