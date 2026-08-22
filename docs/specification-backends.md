@@ -154,6 +154,12 @@ init and across every one-step transition. Only proven properties, or their
 conjunction, may produce `strengthened-unreachable-action`; rejected and
 unknown names remain diagnostics. Uneffect does not infer an unstated
 strengthening invariant.
+With `discoverStrengtheningProperties: true` or CLI
+`--discover-strengthening`, every declared temporal property is considered as
+a candidate. Candidates are still admitted only after the same initialization
+and preservation proofs; rejected discovered candidates are silent, while an
+invalid explicitly requested hint is diagnostic. Uneffect does not yet
+synthesize new invariant expressions.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
@@ -249,6 +255,7 @@ Run source-level lint, including Z3-backed semantic checks:
 just spec-lint examples/spec.ts
 # Direct CLI form when selected temporal properties are proof hints:
 pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
+pnpm uneffect-spec lint examples/spec.ts --discover-strengthening
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In

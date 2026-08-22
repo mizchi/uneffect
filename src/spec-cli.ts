@@ -13,8 +13,9 @@ const selectedFunction = arguments_.find((argument) => !argument.startsWith("--"
 const strengtheningProperties = arguments_.flatMap((argument) => argument.startsWith("--strengthening=")
   ? argument.slice("--strengthening=".length).split(",").map((name) => name.trim()).filter(Boolean)
   : []);
+const discoverStrengtheningProperties = arguments_.includes("--discover-strengthening");
 if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...]");
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening]");
   process.exit(2);
 }
 
@@ -24,7 +25,7 @@ const spec = parseSpec(fileName, source);
 if (command === "ir") {
   console.log(JSON.stringify(spec, null, 2));
 } else if (command === "lint") {
-  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties });
+  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties, discoverStrengtheningProperties });
   console.log(JSON.stringify(result.diagnostics, null, 2));
   if (result.diagnostics.length > 0) process.exitCode = 1;
 } else if (command === "z3") {

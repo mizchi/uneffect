@@ -726,6 +726,30 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("discovers declared inductive properties as strengthening candidates", async () => {
+    const temporal = parseSpec("discovered-strengthening.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action descend: phase' = phase - 1
+      action recoverMalformed: phase' = 2
+      action_when recoverMalformed: phase > 1
+      action impossible: phase' = phase
+      action_when impossible: phase === 2
+      temporal nonpositive: phase <= 0
+      temporal notInvariant: phase === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      discoverStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action", name: "impossible", relatedName: "nonpositive",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "non-inductive-strengthening-property", name: "notInvariant",
+    }));
+  });
+
   it("combines proven strengthening invariants when no single property excludes a guard", async () => {
     const temporal = parseSpec("combined-strengthening.ts", `/* uneffect:
       state left: int

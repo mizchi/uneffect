@@ -107,7 +107,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Upgrade bounded-unreachable actions to an unbounded result when `!guard` is established at init and preserved by one-step induction across every transition.
     - [x] Accept explicitly selected temporal properties as strengthening invariants, but only after Z3 proves initialization and one-step preservation; combine multiple proven properties when required.
     - [x] Promote unreachable actions after a complete `state-count - 1` exploration bound for finite boolean/record/Set/Map state products.
-    - [ ] Discover strengthening invariants automatically for infinite or impractically large state spaces.
+    - [x] Opt in to automatic discovery among declared temporal properties, retaining only candidates whose initialization and preservation obligations Z3 proves.
+    - [ ] Synthesize new strengthening invariants not already declared by the user.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -116,7 +117,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Report bounded property-specific vacuity when a safe property's referenced state cannot change on any bounded reachable transition.
     - [x] Upgrade property-specific vacuity to an unbounded result when no typed transition can change any referenced state.
     - [x] Use explicitly selected, proven strengthening invariants to promote reachability-specific frozen-state vacuity beyond a bound.
-    - [ ] Discover strengthening invariants automatically and support general liveness/fairness properties beyond explicit stutter cycles.
+    - [x] Reuse automatically discovered, proven declared properties for frozen-state vacuity promotion.
+    - [ ] Synthesize new strengthening invariants and support general liveness/fairness properties beyond explicit stutter cycles.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
