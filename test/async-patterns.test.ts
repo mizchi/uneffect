@@ -780,10 +780,19 @@ describe("builtin async temporal patterns", () => {
       async function load() {
         const code = "capacity"
         const failure = new RangeError("too large")
+        const failures = [Promise.reject(code), Promise.reject(failure)] as const
         try { await Promise.any([Promise.reject(code), Promise.reject(failure)]) } catch {}
+        try { await Promise.any(failures) } catch {}
       }
     `);
     expect(model.combinators[0]).toMatchObject({
+      aggregateErrorReasons: [
+        { kind: "literal", value: "capacity" },
+        { kind: "error", errorType: "RangeError", message: "too large" },
+      ],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      aggregateErrorOrder: [0, 1],
       aggregateErrorReasons: [
         { kind: "literal", value: "capacity" },
         { kind: "error", errorType: "RangeError", message: "too large" },
@@ -873,6 +882,7 @@ describe("builtin async temporal patterns", () => {
     expect(varying).toMatch(/action fulfill_0_1[\s\S]*join_0_iterable_choice == 0/);
     expect(run(varying, "asyncSafe").status).toBe(0);
     const combined = generateAsyncPatternsQuint("varying_conditional_combinators", model);
+    expect(combined).toContain("def join_4_aggregate_error_count = if (join_4_iterable_choice == -1) 0 else if (join_4_iterable_choice == 1) 1 else 2");
     expect(run(combined, "asyncSafe").status).toBe(0);
   });
 

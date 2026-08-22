@@ -158,7 +158,9 @@ differing value/thenable classifications to `unknown`, so both immediate
 fulfillment and assimilation remain possible. Different lengths add one
 correlated iterable-choice state and per-slot presence guards; absent slots do
 not settle or participate in `race`, and join predicates treat them according
-to the selected combinator.
+to the selected combinator. For `Promise.any`, the modeled
+`AggregateError.errors` count is also derived from that selected branch rather
+than from the maximum bounded slot count.
 
 The same neutral combinator IR covers four builtin methods:
 

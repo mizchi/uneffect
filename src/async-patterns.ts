@@ -769,7 +769,12 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     if (join.branchPresence?.some((presence) => presence !== "always")) lines.push(`  var join_${index}_iterable_choice: int`);
     lines.push(`  var join_${index}_result: int`, `  var join_${index}_iterator_failed: bool`, `  var join_${index}_rejection_escapes: bool`);
     if (join.aggregateErrorOrder) {
-      lines.push(`  val join_${index}_aggregate_error_count = ${join.aggregateErrorOrder.length}`);
+      const hasConditionalPresence = join.branchPresence?.some((presence) => presence !== "always") ?? false;
+      if (hasConditionalPresence) {
+        const trueCount = join.branchPresence!.filter((presence) => presence !== "when-false").length;
+        const falseCount = join.branchPresence!.filter((presence) => presence !== "when-true").length;
+        lines.push(`  def join_${index}_aggregate_error_count = if (join_${index}_iterable_choice == -1) 0 else if (join_${index}_iterable_choice == 1) ${trueCount} else ${falseCount}`);
+      } else lines.push(`  val join_${index}_aggregate_error_count = ${join.aggregateErrorOrder.length}`);
       join.aggregateErrorOrder.forEach((slot, rank) => lines.push(`  val join_${index}_aggregate_error_slot_${rank} = ${slot}`));
       join.aggregateErrorReasons?.forEach((reason, rank) => {
         const encoded = reason?.kind === "literal" ? `literal:${typeof reason.value}:${String(reason.value)}`
