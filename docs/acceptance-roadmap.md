@@ -55,9 +55,10 @@ single-variable affine comparisons are normalized syntactically. Conjunctive
 positive-modulo refinements with a canonical nonnegative residue snap those
 boundary seeds to the matching congruence class; for example,
 `shard >= 0 && shard < 1024 && shard % 16 === 0` yields `0`, `16`, and `1008`.
-Modulo constraints under disjunction, multiple simultaneous congruences, and
-negative modulus/residue semantics remain on runtime filtering or the opt-in
-Z3 path rather than receiving misleading syntactic hints. For affine
+Ranges and congruences remain local to each disjunct through a DNF expansion
+bounded at 32 branches. Larger expansions, multiple simultaneous congruences,
+and negative modulus/residue semantics remain on runtime filtering or the
+opt-in Z3 path rather than receiving misleading syntactic hints. For affine
 equalities between scalar parameters, such as
 `y === x + 1 && z === y + 2`, the generator propagates boundary hints through
 the relation graph and runs valid correlated tuples before Cartesian samples.

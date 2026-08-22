@@ -154,6 +154,27 @@ describe("property-test generation", () => {
     expect(result.generatedFiles["shard.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
   });
 
+  it("keeps range and modulo constraints local to each disjunctive branch", () => {
+    const result = generateUneffectPropertyTests({ files: { "tenant-shard.ts": `
+      type Nat = number
+      /* uneffect: requires (shard >= 0 && shard < 32 && shard % 16 === 0) || (shard >= 100 && shard < 132 && shard % 16 === 4) */
+      /* uneffect: ensures result >= 0 */
+      export function tenantShard(shard: Nat): Nat { return shard }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 100, 116]]);
+  });
+
+  it("bounds DNF hint expansion and falls back without losing scalar seeds", () => {
+    const alternatives = Array.from({ length: 6 }, () => "(value === 0 || value === 1)").join(" && ");
+    const result = generateUneffectPropertyTests({ files: { "bounded-dnf.ts": `
+      type Int = number
+      /* uneffect: requires ${alternatives} */
+      /* uneffect: ensures result >= 0 */
+      export function bounded(value: Int): Int { return value }
+    ` } });
+    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 1]]);
+  });
+
   it("derives correlated tuples from affine parameter equalities", () => {
     const result = generateUneffectPropertyTests({ files: { "dependent.ts": `
       type Int = number

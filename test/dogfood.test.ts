@@ -17,7 +17,8 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/shard-batch.ts";
     const result = generateUneffectPropertyTests({ files: { [fileName]: readFileSync(fileName, "utf8") } });
     expect(result.diagnostics).toEqual([]);
-    expect(result.boundaries[0]?.generatorHints).toEqual([[0, 16, 1008]]);
+    expect(result.boundaries.find((boundary) => boundary.functionName === "shardBatch")?.generatorHints).toEqual([[0, 16, 1008]]);
+    expect(result.boundaries.find((boundary) => boundary.functionName === "tenantShard")?.generatorHints).toEqual([[0, 16, 100, 116]]);
     expect(result.generatedFiles["examples/dogfood/shard-batch.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
   });
 

@@ -402,64 +402,78 @@ function affineVariable(expression: LogicExpression): { name: string; offset: nu
 }
 
 function refinementHints(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[]): PropertyLiteral[][] {
-  const hints = parameters.map((): PropertyLiteral[] => []);
-  const bounds = parameters.map((): { lower?: number; upper?: number } => ({}));
-  const congruences = parameters.map((): Array<{ modulus: number; residue: number }> => []);
-  let hasDisjunction = false;
-  const addComparison = (expression: LogicExpression): void => {
-    if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) { addComparison(expression.left); addComparison(expression.right); return; }
-    if (expression.kind !== "binary" || !["gte", "gt", "lte", "lt", "eq"].includes(expression.operator)) return;
-    let name: string | undefined, value: number | undefined, operator = expression.operator;
-    const left = affineVariable(expression.left), right = affineVariable(expression.right);
-    if (left) { name = left.name; const constant = integerValue(expression.right); value = constant === undefined ? undefined : constant - left.offset; }
-    else if (right) {
-      name = right.name; const constant = integerValue(expression.left); value = constant === undefined ? undefined : constant - right.offset;
-      operator = ({ gte: "lte", gt: "lt", lte: "gte", lt: "gt", eq: "eq" } as Record<string, string>)[operator]!;
-    }
-    if (name === undefined || value === undefined) return;
-    const index = parameters.indexOf(name), domain = domains[index];
-    if (index < 0 || typeof domain !== "string") return;
-    const bound = bounds[index]!;
-    if (operator === "gte" || operator === "gt") bound.lower = Math.max(bound.lower ?? -Infinity, value + (operator === "gt" ? 1 : 0));
-    if (operator === "lte" || operator === "lt") bound.upper = Math.min(bound.upper ?? Infinity, value - (operator === "lt" ? 1 : 0));
-    if (operator === "eq") { bound.lower = Math.max(bound.lower ?? -Infinity, value); bound.upper = Math.min(bound.upper ?? Infinity, value); }
-    const candidates = operator === "gte" ? [value, value + 1] : operator === "gt" ? [value + 1, value + 2]
-      : operator === "lte" ? [value - 1, value] : operator === "lt" ? [value - 2, value - 1] : [value];
-    hints[index]!.push(...candidates.filter((candidate) => scalarAccepts(domain, candidate)));
+  const parsed: LogicExpression[] = [];
+  for (const requirement of requires) try { parsed.push(parseLogicExpression(requirement)); } catch { /* Structured hints are derived by the solver-backed path. */ }
+  const dnf = (expression: LogicExpression): LogicExpression[][] | undefined => {
+    if (expression.kind !== "binary" || (expression.operator !== "and" && expression.operator !== "or")) return [[expression]];
+    const left = dnf(expression.left), right = dnf(expression.right);
+    if (!left || !right) return undefined;
+    if (expression.operator === "or") return left.length + right.length <= 32 ? [...left, ...right] : undefined;
+    if (left.length * right.length > 32) return undefined;
+    return left.flatMap((leftBranch) => right.map((rightBranch) => [...leftBranch, ...rightBranch]));
   };
-  const addCongruence = (expression: LogicExpression): void => {
-    if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) { addCongruence(expression.left); addCongruence(expression.right); return; }
-    if (expression.kind !== "binary" || expression.operator !== "eq") return;
-    const read = (candidate: LogicExpression, other: LogicExpression): void => {
-      if (candidate.kind !== "binary" || candidate.operator !== "mod") return;
-      const variable = affineVariable(candidate.left), modulus = integerValue(candidate.right), residue = integerValue(other);
-      if (!variable || variable.offset !== 0 || modulus === undefined || modulus <= 0 || residue === undefined || residue < 0 || residue >= modulus) return;
-      const index = parameters.indexOf(variable.name);
-      if (index >= 0 && typeof domains[index] === "string") congruences[index]!.push({ modulus, residue });
-    };
-    read(expression.left, expression.right);
-    read(expression.right, expression.left);
-  };
-  for (const requirement of requires) try {
-    const expression = parseLogicExpression(requirement);
-    const containsOr = (node: LogicExpression): boolean => node.kind === "binary" && (node.operator === "or" || containsOr(node.left) || containsOr(node.right));
-    hasDisjunction ||= containsOr(expression);
-    addComparison(expression);
-    addCongruence(expression);
-  } catch { /* Structured hints are derived by the solver-backed path. */ }
-  for (let index = 0; index < hints.length; index++) {
-    const [congruence] = congruences[index]!;
-    if (hasDisjunction || !congruence || congruences[index]!.length !== 1) continue;
-    const anchors = hints[index]!.length ? hints[index]!.map(Number) : [congruence.residue, congruence.residue + congruence.modulus];
-    const aligned = anchors.flatMap((anchor) => {
-      const below = congruence.residue + Math.floor((anchor - congruence.residue) / congruence.modulus) * congruence.modulus;
-      return [below, below + congruence.modulus];
-    });
-    const { lower = -Infinity, upper = Infinity } = bounds[index]!;
-    const domain = domains[index] as PropertyBoundaryKind;
-    hints[index] = aligned.filter((candidate) => candidate >= lower && candidate <= upper && scalarAccepts(domain, candidate));
+  let branches: LogicExpression[][] | undefined = [[]];
+  for (const expression of parsed) {
+    const additions = dnf(expression);
+    if (!additions || branches.length * additions.length > 32) { branches = undefined; break; }
+    const next: LogicExpression[][] = branches.flatMap((branch) => additions.map((addition) => [...branch, ...addition]));
+    branches = next.length <= 32 ? next : undefined;
+    if (!branches) break;
   }
-  return hints.map((values) => [...new Set(values)].sort((left, right) => Number(left) - Number(right)));
+  const analyze = (expressions: readonly LogicExpression[], alignCongruence: boolean): PropertyLiteral[][] => {
+    const hints = parameters.map((): PropertyLiteral[] => []);
+    const bounds = parameters.map((): { lower?: number; upper?: number } => ({}));
+    const congruences = parameters.map((): Array<{ modulus: number; residue: number }> => []);
+    const addComparison = (expression: LogicExpression): void => {
+      if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) { addComparison(expression.left); addComparison(expression.right); return; }
+      if (expression.kind !== "binary" || !["gte", "gt", "lte", "lt", "eq"].includes(expression.operator)) return;
+      let name: string | undefined, value: number | undefined, operator = expression.operator;
+      const left = affineVariable(expression.left), right = affineVariable(expression.right);
+      if (left) { name = left.name; const constant = integerValue(expression.right); value = constant === undefined ? undefined : constant - left.offset; }
+      else if (right) {
+        name = right.name; const constant = integerValue(expression.left); value = constant === undefined ? undefined : constant - right.offset;
+        operator = ({ gte: "lte", gt: "lt", lte: "gte", lt: "gt", eq: "eq" } as Record<string, string>)[operator]!;
+      }
+      if (name === undefined || value === undefined) return;
+      const index = parameters.indexOf(name), domain = domains[index];
+      if (index < 0 || typeof domain !== "string") return;
+      const bound = bounds[index]!;
+      if (operator === "gte" || operator === "gt") bound.lower = Math.max(bound.lower ?? -Infinity, value + (operator === "gt" ? 1 : 0));
+      if (operator === "lte" || operator === "lt") bound.upper = Math.min(bound.upper ?? Infinity, value - (operator === "lt" ? 1 : 0));
+      if (operator === "eq") { bound.lower = Math.max(bound.lower ?? -Infinity, value); bound.upper = Math.min(bound.upper ?? Infinity, value); }
+      const candidates = operator === "gte" ? [value, value + 1] : operator === "gt" ? [value + 1, value + 2]
+        : operator === "lte" ? [value - 1, value] : operator === "lt" ? [value - 2, value - 1] : [value];
+      hints[index]!.push(...candidates.filter((candidate) => scalarAccepts(domain, candidate)));
+    };
+    const addCongruence = (expression: LogicExpression): void => {
+      if (expression.kind !== "binary" || expression.operator !== "eq") return;
+      const read = (candidate: LogicExpression, other: LogicExpression): void => {
+        if (candidate.kind !== "binary" || candidate.operator !== "mod") return;
+        const variable = affineVariable(candidate.left), modulus = integerValue(candidate.right), residue = integerValue(other);
+        if (!variable || variable.offset !== 0 || modulus === undefined || modulus <= 0 || residue === undefined || residue < 0 || residue >= modulus) return;
+        const index = parameters.indexOf(variable.name);
+        if (index >= 0 && typeof domains[index] === "string") congruences[index]!.push({ modulus, residue });
+      };
+      read(expression.left, expression.right); read(expression.right, expression.left);
+    };
+    for (const expression of expressions) { addComparison(expression); addCongruence(expression); }
+    if (alignCongruence) for (let index = 0; index < hints.length; index++) {
+      const unique = [...new Map(congruences[index]!.map((item) => [`${item.modulus}:${item.residue}`, item])).values()];
+      const [congruence] = unique;
+      if (!congruence || unique.length !== 1) continue;
+      const anchors = hints[index]!.length ? hints[index]!.map(Number) : [congruence.residue, congruence.residue + congruence.modulus];
+      const aligned = anchors.flatMap((anchor) => {
+        const below = congruence.residue + Math.floor((anchor - congruence.residue) / congruence.modulus) * congruence.modulus;
+        return [below, below + congruence.modulus];
+      });
+      const { lower = -Infinity, upper = Infinity } = bounds[index]!;
+      const domain = domains[index] as PropertyBoundaryKind;
+      hints[index] = aligned.filter((candidate) => candidate >= lower && candidate <= upper && scalarAccepts(domain, candidate));
+    }
+    return hints;
+  };
+  const analyzed = branches ? branches.map((branch) => analyze(branch, true)) : [analyze(parsed, false)];
+  return parameters.map((_, index) => [...new Set(analyzed.flatMap((hints) => hints[index]!))].sort((left, right) => Number(left) - Number(right)));
 }
 
 function correlatedRefinementTuples(requires: readonly string[], parameters: readonly string[], domains: readonly PropertyTestDomain[], hints: readonly (readonly PropertyLiteral[])[]): PropertyLiteral[][] {

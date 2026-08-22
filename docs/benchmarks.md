@@ -30,6 +30,11 @@ with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
 measurement; it isolates the zero-runtime syntactic hint path.
 
+Branch-local DNF hint generation for 16 two-tenant shard contracts measured
+1.6107 ms mean over 311 samples (0.50% RME). DNF construction stops before
+materializing more than 32 branches, so this benchmark does not hide an
+unbounded expansion path.
+
 Initial baseline on 2026-08-21 with Node.js 24 and Vitest 3.2.7:
 
 | Case | Mean |
