@@ -135,8 +135,8 @@ export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectP
 export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, GenerateUneffectPropertyTestsWithZ3Options, GenerateUneffectPropertyTestsWithZ3Result, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertySolverDiagnostic, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
 export { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "./model-replay.js";
 export type { ModelCounterexample, ModelCounterexampleStep, ModelRefinementAdapter, ModelReplayResult, ModelScalar, ModelState, ModelValue, ReplayMismatch, ReplayViolation } from "./model-replay.js";
-export { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "./refinement-bindings.js";
-export type { RefinementActionDiagnostic, RefinementActionDiagnosticCode, RefinementBinding, RefinementBindingCoverageCode, RefinementBindingCoverageDiagnostic, RefinementBindingManifest, RefinementBindingRole, RefinementInvariantDiagnostic, RefinementInvariantDiagnosticCode, RefinementStateProjectionDiagnostic, RefinementStateProjectionDiagnosticCode } from "./refinement-bindings.js";
+export { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, extractRefinementBindings, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "./refinement-bindings.js";
+export type { RefinementActionDiagnostic, RefinementActionDiagnosticCode, RefinementBinding, RefinementBindingCoverageCode, RefinementBindingCoverageDiagnostic, RefinementBindingManifest, RefinementBindingRole, RefinementInvariantDiagnostic, RefinementInvariantDiagnosticCode, RefinementStateProjectionDiagnostic, RefinementStateProjectionDiagnosticCode, Z3RefinementDiagnostic } from "./refinement-bindings.js";
 export { analyzeEffectRecovery, compareEffectImplementations, measureUneffectAdoption } from "./adoption.js";
 export type { AdoptionFixtureName, AdoptionReport, EffectFailureOwnership, EffectImplementationComparison, EffectRecoveryAnalysis, ExternalAdoptionReport } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
@@ -144,8 +144,8 @@ export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafet
 export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationVariable } from "./invariant-ir.js";
 export { parseSpec } from "./spec-ir.js";
-export { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
-export type { SpecLintDiagnostic, SpecLintWithZ3Options, TemporalCounterexampleResult, TemporalReachabilityLintOptions } from "./spec-lint.js";
+export { checkTemporalExpressionEquivalenceWithZ3, findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
+export type { SpecLintDiagnostic, SpecLintWithZ3Options, TemporalCounterexampleResult, TemporalEquivalenceResult, TemporalReachabilityLintOptions } from "./spec-lint.js";
 export type {
   CapabilitySpec,
   InvariantSpec,

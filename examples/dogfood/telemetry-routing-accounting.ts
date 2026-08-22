@@ -66,10 +66,10 @@ export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void { r
 
 /* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
 export function observeLostTelemetryOutcome(runtime: TelemetryRoutingAccounting): void {
-  if (!(runtime.auditArmed && runtime.delivered + runtime.dropped + runtime.buffered < runtime.attempted)) return;
+  if (!(runtime.delivered + runtime.dropped + runtime.buffered < runtime.attempted && runtime.auditArmed)) return;
 }
 
 /* uneffect: refinement telemetryRouting@1 invariant allAttemptsHaveOneOutcome */
 export function allTelemetryAttemptsHaveOneOutcome(runtime: TelemetryRoutingAccounting): boolean {
-  return runtime.delivered + runtime.dropped + runtime.buffered === runtime.attempted;
+  return !(runtime.delivered + runtime.dropped + runtime.buffered !== runtime.attempted);
 }

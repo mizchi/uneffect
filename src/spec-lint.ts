@@ -1,5 +1,5 @@
 import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
-import { parseTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
+import { parseTemporalExpression, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
 import { init as initZ3 } from "z3-solver";
 import { createHash } from "node:crypto";
@@ -556,6 +556,37 @@ async function check(spec: TemporalSpec, assertions: readonly string[]): Promise
   const declarations = [...z3TypeDeclarations(spec.states.map((state) => state.type)), ...spec.states.map((state) => `(declare-const ${state.name} ${smtSort(state.type)})`)];
   solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
   return String(await solver.check()) as "sat" | "unsat" | "unknown";
+}
+
+export type TemporalEquivalenceResult =
+  | { status: "equivalent"; backend: "z3" }
+  | { status: "different"; backend: "z3" }
+  | { status: "unknown"; backend: "z3"; reason: string };
+
+/** Proves typed boolean equivalence over every state valuation, independently of reachability. */
+export async function checkTemporalExpressionEquivalenceWithZ3(
+  spec: TemporalSpec,
+  left: TemporalExpression,
+  right: TemporalExpression,
+): Promise<TemporalEquivalenceResult> {
+  if (spec.states.some((state) => !supportsZ3SemanticType(state.type)) || !supportsZ3Expression(left) || !supportsZ3Expression(right)) {
+    return { status: "unknown", backend: "z3", reason: "unsupported-backend-domain" };
+  }
+  const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
+  try {
+    if (typeCheckTemporalExpression(left, symbols) !== "bool" || typeCheckTemporalExpression(right, symbols) !== "bool") {
+      return { status: "unknown", backend: "z3", reason: "equivalence-requires-boolean-expressions" };
+    }
+    const unequal = `(not (= ${temporalToSmt(left, (name) => name, symbols)} ${temporalToSmt(right, (name) => name, symbols)}))`;
+    const status = await check(spec, [unequal]);
+    return status === "unsat"
+      ? { status: "equivalent", backend: "z3" }
+      : status === "sat"
+        ? { status: "different", backend: "z3" }
+        : { status: "unknown", backend: "z3", reason: "solver-returned-unknown" };
+  } catch (error) {
+    return { status: "unknown", backend: "z3", reason: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 export type TemporalCounterexampleResult =

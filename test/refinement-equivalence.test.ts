@@ -1,0 +1,64 @@
+import { describe, expect, it } from "vitest";
+import { parseSpec } from "../src/spec-ir.js";
+import { validateRefinementActionBodiesWithZ3, validateRefinementInvariantBodiesWithZ3 } from "../src/refinement-bindings.js";
+
+const prelude = `/* uneffect:
+  state value: int
+  state armed: bool
+  init value = 0
+  init armed = false
+  action increment: value' = value + 1
+  action_when increment: armed && value > 0
+  temporal guarded: !armed || value > 0
+*/
+interface Runtime { value: number; armed: boolean }
+/* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+/* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+`;
+
+describe("Z3-backed refinement expression equivalence", () => {
+  it("accepts logically equivalent invariant and guard syntax", async () => {
+    const source = `${prelude}
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { if (!(runtime.value > 0 && runtime.armed)) return; runtime.value++ }
+      /* uneffect: refinement counter@1 invariant guarded */
+      export function guarded(runtime: Runtime) { return !(runtime.armed && runtime.value <= 0) }
+    `;
+    const spec = parseSpec("counter.ts", source).temporal;
+    expect(await validateRefinementActionBodiesWithZ3("counter.ts", source, "counter", spec)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesWithZ3("counter.ts", source, "counter", spec)).toEqual([]);
+  });
+
+  it("retains real mismatches after finding a counterexample", async () => {
+    const source = `${prelude}
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.value >= 0)) return; runtime.value++ }
+      /* uneffect: refinement counter@1 invariant guarded */
+      export function guarded(runtime: Runtime) { return !runtime.armed && runtime.value > 0 }
+    `;
+    const spec = parseSpec("counter.ts", source).temporal;
+    expect(await validateRefinementActionBodiesWithZ3("counter.ts", source, "counter", spec)).toEqual([
+      expect.objectContaining({ code: "action-guard-mismatch", equivalence: "different", backend: "z3" }),
+    ]);
+    expect(await validateRefinementInvariantBodiesWithZ3("counter.ts", source, "counter", spec)).toEqual([
+      expect.objectContaining({ code: "invariant-expression-mismatch", equivalence: "different", backend: "z3" }),
+    ]);
+  });
+
+  it("does not turn unsupported implementation bodies into solver claims", async () => {
+    const source = `${prelude}
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { runtime.value += helper() }
+      /* uneffect: refinement counter@1 invariant guarded */
+      export function guarded(runtime: Runtime) { const ok = !runtime.armed; return ok || runtime.value > 0 }
+      declare function helper(): number
+    `;
+    const spec = parseSpec("counter.ts", source).temporal;
+    expect(await validateRefinementActionBodiesWithZ3("counter.ts", source, "counter", spec)).toContainEqual(
+      expect.objectContaining({ code: "missing-action-guard" }),
+    );
+    expect(await validateRefinementInvariantBodiesWithZ3("counter.ts", source, "counter", spec)).toEqual([
+      expect.objectContaining({ code: "unsupported-invariant-body" }),
+    ]);
+  });
+});

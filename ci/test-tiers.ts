@@ -23,6 +23,7 @@ export const ciTestTiers = {
     "test/instrument.test.ts",
     "test/invariant-ir.test.ts",
     "test/property-tests.test.ts",
+    "test/refinement-equivalence.test.ts",
     "test/typed-array-safety.test.ts",
   ],
   quint: [

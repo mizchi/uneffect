@@ -124,11 +124,13 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
       - [x] Prove direct scalar action assignments, increments, stuttering, and one-level literal-specialized local class methods against temporal assignments.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
+      - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
+      - [x] Add an opt-in Z3 equivalence pass for normalized scalar invariant predicates without weakening unsupported-body diagnostics.
       - [x] Prove supported create/observe adapters preserve every model state field by name, including transparent local-class construction and destructured observation.
       - [ ] Prove a refinement mapping between adjacent TypeScript implementation updates and temporal model actions; current dogfood checks the model independently.
-        - [ ] Extend action-body refinement beyond the current straight-line scalar fragment to general branches, loops, multi-write sequencing, collections, imported/interprocedural calls, and solver-proven guard equivalence.
-        - [ ] Extend invariant-body refinement beyond exact scalar AST equivalence to local constants, helpers, collections, and solver-proven logical equivalence.
+        - [ ] Extend action-body refinement beyond the current straight-line scalar fragment to general branches, loops, multi-write sequencing, collections, and imported/interprocedural calls. Scalar guard equivalence is now solver-proven opt-in.
+        - [ ] Extend invariant-body refinement beyond normalized scalar predicates to local constants, helpers, and collections. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
         - [ ] Extend create/observe refinement beyond identity field projections to explicit abstraction relations, nested records/collections, and TypeChecker-backed runtime shape evidence.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.

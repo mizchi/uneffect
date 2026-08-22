@@ -3,6 +3,8 @@ import { extractAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression } from "./temporal-expressions.js";
+import { generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
+import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
 
@@ -67,6 +69,12 @@ export interface RefinementInvariantDiagnostic {
   actual?: string;
   message: string;
 }
+
+export type Z3RefinementDiagnostic<T> = T & {
+  backend?: "z3";
+  equivalence?: "different" | "unknown";
+  reason?: string;
+};
 
 export type RefinementStateProjectionDiagnosticCode = "unsupported-create-body" | "unsupported-observe-body" | "create-state-mismatch" | "observe-state-mismatch";
 
@@ -176,15 +184,7 @@ const temporalBinaryOperators = new Map<ts.SyntaxKind, TemporalBinaryOperator>([
 ]);
 
 function formatRefinementExpression(expression: TemporalExpression): string {
-  if (expression.kind === "name") return expression.name;
-  if (expression.kind === "integer") return expression.value;
-  if (expression.kind === "boolean") return String(expression.value);
-  if (expression.kind === "unary") return `${expression.operator === "not" ? "!" : "-"}${formatRefinementExpression(expression.operand)}`;
-  if (expression.kind === "binary") {
-    const operator = ({ add: "+", subtract: "-", multiply: "*", divide: "/", modulo: "%", eq: "===", neq: "!==", and: "&&", or: "||", lt: "<", lte: "<=", gt: ">", gte: ">=" } as const)[expression.operator];
-    return `${formatRefinementExpression(expression.left)} ${operator} ${formatRefinementExpression(expression.right)}`;
-  }
-  return `<${expression.kind}>`;
+  return generateRuntimeAssertionExpression(expression);
 }
 
 function refinementFieldName(
@@ -395,6 +395,47 @@ export function validateRefinementInvariantBodies(
     diagnostics.push({ code: "unknown-invariant-binding", adapterName, modelName, exportName, message: `invariant refinement ${exportName} refers to unknown temporal property ${modelName}` });
   }
   return diagnostics;
+}
+
+async function dischargeExpressionMismatchesWithZ3<T extends { code: string; expected?: string; actual?: string }>(
+  diagnostics: readonly T[],
+  mismatchCode: string,
+  spec: TemporalSpec,
+): Promise<Array<Z3RefinementDiagnostic<T>>> {
+  const discharged: Array<Z3RefinementDiagnostic<T>> = [];
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.code !== mismatchCode || !diagnostic.expected || !diagnostic.actual) {
+      discharged.push(diagnostic);
+      continue;
+    }
+    const result = await checkTemporalExpressionEquivalenceWithZ3(
+      spec,
+      parseTemporalExpression(diagnostic.expected),
+      parseTemporalExpression(diagnostic.actual),
+    );
+    if (result.status === "equivalent") continue;
+    discharged.push({
+      ...diagnostic,
+      backend: "z3",
+      equivalence: result.status,
+      ...(result.status === "unknown" ? { reason: result.reason } : {}),
+    });
+  }
+  return discharged;
+}
+
+/** Keeps scalar update checking syntactic, while proving mismatched boolean action guards with Z3. */
+export async function validateRefinementActionBodiesWithZ3(
+  fileName: string, text: string, adapterName: string, spec: TemporalSpec,
+): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
+  return dischargeExpressionMismatchesWithZ3(validateRefinementActionBodies(fileName, text, adapterName, spec), "action-guard-mismatch", spec);
+}
+
+/** Proves normalized single-return invariant predicates by logical rather than syntactic equivalence. */
+export async function validateRefinementInvariantBodiesWithZ3(
+  fileName: string, text: string, adapterName: string, spec: TemporalSpec,
+): Promise<Array<Z3RefinementDiagnostic<RefinementInvariantDiagnostic>>> {
+  return dischargeExpressionMismatchesWithZ3(validateRefinementInvariantBodies(fileName, text, adapterName, spec), "invariant-expression-mismatch", spec);
 }
 
 /** Proves that create and observe each preserve every model state field by name. */

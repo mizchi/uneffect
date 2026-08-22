@@ -122,12 +122,15 @@ collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
 For a guarded model action, the implementation may begin with
 `if (!(predicate)) return`; the positive predicate is normalized and must
-exactly match `action_when`. Missing, different, and unexpected guards are
+exactly match `action_when` in the synchronous fast path. Missing, different, and unexpected guards are
 separate diagnostics. The false path therefore stutters and the true path is
 checked by the same update proof. Other branching forms and logically
-equivalent but differently shaped guards remain unsupported. This check covers
-transition updates and this early-return guard fragment, not arbitrary control
-flow or solver-proven predicate equivalence.
+equivalent but differently shaped guards can use the opt-in asynchronous
+`validateRefinementActionBodiesWithZ3` path. It asks Z3 whether the normalized
+predicates differ for any typed state; only `unsat` discharges the mismatch.
+`sat` remains a mismatch and solver `unknown` remains an explicit non-proof.
+Updates themselves remain syntactic in this API. This check covers transition
+updates and this early-return guard fragment, not arbitrary control flow.
 
 `validateRefinementInvariantBodies` checks the adjacent safety-property
 functions. A supported implementation is exactly one `return` whose expression
@@ -136,7 +139,11 @@ equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
 exactly equal the temporal property AST. Loose JavaScript equality is rejected
 because coercion would make the correspondence unsound. Local declarations,
 calls, mutation, collections, and merely logically equivalent but differently
-shaped predicates remain unsupported. Missing and stale invariant bindings are
+shaped predicates fail the synchronous fast path. The asynchronous
+`validateRefinementInvariantBodiesWithZ3` path discharges such a mismatch only
+when Z3 proves the two normalized boolean expressions equivalent over all typed
+states. It does not make local declarations, calls, mutation, or collections
+supported, and it preserves `unknown` as a diagnostic. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still
 outside point-state invariant binding.
