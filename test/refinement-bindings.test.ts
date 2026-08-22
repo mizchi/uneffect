@@ -281,6 +281,26 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("merges multiple nested member writes independent of model field order", () => {
+    const source = `/* uneffect:
+      state lease: { owner: int, epoch: int }
+      init lease = { owner: 1, epoch: 0 }
+      action advance: lease' = { ...lease, epoch: lease.epoch + 1, owner: lease.owner + 1 }
+    */
+      interface Runtime { lease: { owner: number; epoch: number } }
+      /* uneffect: refinement lease@1 create */ export function createLease(initial: Runtime) { return initial }
+      /* uneffect: refinement lease@1 observe */ export function observeLease(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lease@1 action advance */
+      export function advance(runtime: Runtime) { runtime.lease.owner++; runtime.lease.epoch++ }
+    `;
+    expect(validateRefinementActionBodies("multi-nested-action.ts", source, "lease", parseSpec("multi-nested-action.ts", source).temporal)).toEqual([]);
+
+    const missing = source.replace(" runtime.lease.epoch++", "");
+    expect(validateRefinementActionBodies("missing-nested-write.ts", missing, "lease", parseSpec("missing-nested-write.ts", missing).temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "advance", target: "lease" }),
+    );
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

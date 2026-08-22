@@ -30,6 +30,13 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, wrongTransition, "leaseProjection", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "renew", target: "lease" }),
     );
+    const incompleteTakeover = source.replace(
+      "  runtime.lease.owner++;\n  runtime.lease.epoch++;\n}",
+      "  runtime.lease.owner++;\n}",
+    );
+    expect(await validateRefinementActionBodiesWithZ3(fileName, incompleteTakeover, "leaseProjection", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "takeover", target: "lease" }),
+    );
   });
 
   it("distinguishes retry-loop resource generations before cleanup", () => {

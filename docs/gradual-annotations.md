@@ -115,8 +115,10 @@ zero-runtime fragment. It normalizes direct runtime-field assignment,
 expression AST. A nested scalar member mutation such as
 `runtime.lease.epoch++` is lowered to the immutable record update
 `{ ...lease, epoch: lease.epoch + 1 }`; redirected member writes therefore
-produce an action mismatch. Multiple nested writes are not yet canonicalized
-to one simultaneous record update. It can inline local class method calls when every argument
+produce an action mismatch. Sequential writes to distinct members are merged
+into one record update, while reads of an already-written member observe its
+symbolic new value. Record field order is ignored during refinement comparison.
+It can inline local class method calls when every argument
 is syntactically available; this supports wrappers such as
 `runtime.record("delivered")` and specializes a computed `this[outcome]`
 write to the literal field. It also composes an acyclic graph of direct calls to

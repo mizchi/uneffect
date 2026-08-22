@@ -187,6 +187,16 @@ function formatRefinementExpression(expression: TemporalExpression): string {
   return generateRuntimeAssertionExpression(expression);
 }
 
+function refinementExpressionKey(expression: TemporalExpression): string {
+  return JSON.stringify(expression, (_key, value) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)))
+    : value);
+}
+
+function sameRefinementExpression(left: TemporalExpression, right: TemporalExpression): boolean {
+  return refinementExpressionKey(left) === refinementExpressionKey(right);
+}
+
 function refinementFieldPath(
   target: ts.Expression,
   receiver: string,
@@ -351,8 +361,16 @@ export function validateRefinementActionBodies(
       if (expression.kind === "array") return { ...expression, elements: expression.elements.map(resolveCurrentState) };
       return expression;
     };
+    const selectField = (value: TemporalExpression, name: string): TemporalExpression => {
+      if (value.kind === "record") {
+        const updated = value.fields[name];
+        if (updated) return updated;
+        if (value.base) return selectField(value.base, name);
+      }
+      return { kind: "field", receiver: value, name };
+    };
     const readPath = (root: string, fields: readonly string[]): TemporalExpression => fields.reduce<TemporalExpression>(
-      (value, name) => ({ kind: "field", receiver: value, name }),
+      (value, name) => selectField(value, name),
       updates.get(root) ?? { kind: "name", name: root },
     );
     const writePath = (root: string, fields: readonly string[], value: TemporalExpression): void => {
@@ -360,7 +378,8 @@ export function validateRefinementActionBodies(
       const updateRecord = (base: TemporalExpression, remaining: readonly string[]): TemporalExpression => {
         const [name, ...tail] = remaining;
         if (!name) return value;
-        const fieldValue = tail.length === 0 ? value : updateRecord({ kind: "field", receiver: base, name }, tail);
+        const fieldValue = tail.length === 0 ? value : updateRecord(selectField(base, name), tail);
+        if (base.kind === "record" && base.base) return { ...base, fields: { ...base.fields, [name]: fieldValue } };
         return { kind: "record", base, fields: { [name]: fieldValue } };
       };
       const base = updates.get(root) ?? { kind: "name", name: root } as TemporalExpression;
@@ -410,10 +429,10 @@ export function validateRefinementActionBodies(
           const original = { kind: "name", name } as TemporalExpression;
           const trueValue = whenTrue.get(name) ?? original;
           const falseValue = whenFalse.get(name) ?? original;
-          const merged: TemporalExpression = JSON.stringify(trueValue) === JSON.stringify(falseValue)
+          const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
             ? trueValue
             : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
-          if (JSON.stringify(merged) !== JSON.stringify(original)) updates.set(name, merged);
+          if (!sameRefinementExpression(merged, original)) updates.set(name, merged);
         }
         continue;
       }
@@ -506,7 +525,7 @@ export function validateRefinementActionBodies(
       diagnostics.push({ code: "missing-action-guard", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: "<missing>", message: `${exportName} does not enforce model action guard ${action.guard.expression}` });
     } else if (!action.guard && actualGuard) {
       diagnostics.push({ code: "unexpected-action-guard", adapterName, modelName: action.name, exportName, expected: "<none>", actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces an early-return guard absent from model action ${action.name}` });
-    } else if (action.guard && actualGuard && JSON.stringify(action.guard.expressionAst) !== JSON.stringify(actualGuard)) {
+    } else if (action.guard && actualGuard && !sameRefinementExpression(action.guard.expressionAst, actualGuard)) {
       diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
     }
     const updates = guardedBody && receiver ? collect(guardedBody.updates, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map()) : undefined;
@@ -518,7 +537,7 @@ export function validateRefinementActionBodies(
     for (const state of spec.states) {
       const expectedExpression = expected.get(state.name) ?? { kind: "name", name: state.name } as const;
       const actualExpression = updates.get(state.name) ?? { kind: "name", name: state.name } as const;
-      if (JSON.stringify(expectedExpression) === JSON.stringify(actualExpression)) continue;
+      if (sameRefinementExpression(expectedExpression, actualExpression)) continue;
       diagnostics.push({
         code: "action-update-mismatch", adapterName, modelName: action.name, exportName, target: state.name,
         expected: formatRefinementExpression(expectedExpression), actual: formatRefinementExpression(actualExpression),
@@ -581,7 +600,7 @@ export function validateRefinementInvariantBodies(
       diagnostics.push({ code: "unsupported-invariant-body", adapterName, modelName: property.name, exportName, message: `${exportName} is not a single supported scalar return predicate` });
       continue;
     }
-    if (JSON.stringify(property.expressionAst) === JSON.stringify(actual)) continue;
+    if (sameRefinementExpression(property.expressionAst, actual)) continue;
     diagnostics.push({
       code: "invariant-expression-mismatch", adapterName, modelName: property.name, exportName,
       expected: formatRefinementExpression(property.expressionAst), actual: formatRefinementExpression(actual),
@@ -763,7 +782,7 @@ export function validateRefinementStateProjection(
       if (!value) return undefined;
       const type = stateTypes.get(field);
       const expanded = type ? expandedIdentity(type, [field]) : undefined;
-      if (expanded && JSON.stringify(value) === JSON.stringify(expanded)) value = { kind: "name", name: field };
+      if (expanded && sameRefinementExpression(value, expanded)) value = { kind: "name", name: field };
       projection.set(field, value);
     }
     return projection;
