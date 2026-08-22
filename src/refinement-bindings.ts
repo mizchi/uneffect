@@ -504,6 +504,13 @@ export function validateRefinementActionBodies(
           if (!targetType || typeof targetType === "string" || targetType.kind !== "record") { targetType = undefined; break; }
           targetType = targetType.fields[field];
         }
+        if (target && stateNames.has(target) && targetType && node.expression.name.text === "clear" && node.arguments.length === 0
+          && typeof targetType !== "string" && (targetType.kind === "set" || targetType.kind === "map")) {
+          writePath(target, fields, targetType.kind === "set"
+            ? { kind: "call", name: "Set", arguments: [] }
+            : { kind: "call", name: "Map", arguments: [{ kind: "array", elements: [] }] });
+          continue;
+        }
         if (target && stateNames.has(target) && targetType && node.expression.name.text === "add"
           && typeof targetType !== "string" && targetType.kind === "set" && node.arguments.length === 1) {
           const element = normalizeRefinementExpression(node.arguments[0]!, receiver, substitutions, stateNames, new Map(), new Set(), localValues);

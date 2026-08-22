@@ -3,6 +3,8 @@
   init authority = { owners: Set(1), epochs: Map([[1, 0]]) }
   action admitOwner: authority' = { ...authority, owners: authority.owners.union(Set(2)) }
   action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) }
+  action revokeOwners: authority' = { ...authority, owners: Set() }
+  action clearEpochs: authority' = { ...authority, epochs: Map([]) }
 */
 
 export interface LeaseAuthorityRuntime {
@@ -30,4 +32,14 @@ export function admitLeaseOwner(runtime: LeaseAuthorityRuntime): void {
 /* uneffect: refinement leaseAuthority@1 action publishEpoch */
 export function publishLeaseEpoch(runtime: LeaseAuthorityRuntime): void {
   runtime.authority.epochs.set(2, 1);
+}
+
+/* uneffect: refinement leaseAuthority@1 action revokeOwners */
+export function revokeLeaseOwners(runtime: LeaseAuthorityRuntime): void {
+  runtime.authority.owners.clear();
+}
+
+/* uneffect: refinement leaseAuthority@1 action clearEpochs */
+export function clearLeaseEpochs(runtime: LeaseAuthorityRuntime): void {
+  runtime.authority.epochs.clear();
 }

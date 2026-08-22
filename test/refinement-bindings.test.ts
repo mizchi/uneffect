@@ -327,12 +327,16 @@ describe("annotated refinement bindings", () => {
       init authority = { owners: Set(1), epochs: Map([[1, 0]]) }
       action addOwner: authority' = { ...authority, owners: authority.owners.union(Set(2)) }
       action publishEpoch: authority' = { ...authority, epochs: authority.epochs.put(2, 1) }
+      action clearOwners: authority' = { ...authority, owners: Set() }
+      action clearEpochs: authority' = { ...authority, epochs: Map([]) }
     */
       interface Runtime { authority: { owners: Set<number>; epochs: Map<number, number> } }
       /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
       /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
       /* uneffect: refinement authority@1 action addOwner */ export function addOwner(runtime: Runtime) { runtime.authority.owners.add(2) }
       /* uneffect: refinement authority@1 action publishEpoch */ export function publishEpoch(runtime: Runtime) { runtime.authority.epochs.set(2, 1) }
+      /* uneffect: refinement authority@1 action clearOwners */ export function clearOwners(runtime: Runtime) { runtime.authority.owners.clear() }
+      /* uneffect: refinement authority@1 action clearEpochs */ export function clearEpochs(runtime: Runtime) { runtime.authority.epochs.clear() }
     `;
     expect(validateRefinementActionBodies("collection-action.ts", source, "authority", parseSpec("collection-action.ts", source).temporal)).toEqual([]);
 

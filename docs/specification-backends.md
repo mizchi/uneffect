@@ -243,7 +243,10 @@ member write fails refinement.
 `examples/dogfood/lease-authority-refinement.ts` binds a Node Lease-shaped
 authority record containing native Set and Map instances. Concrete `Set.add`
 and `Map.set` calls refine immutable temporal `union` and `put` transitions;
-admitting the wrong owner is detected as an authority action mismatch.
+`Set.clear` and `Map.clear` refine exact empty-collection replacements.
+Admitting the wrong owner or clearing the wrong authority field is detected as
+an authority action mismatch. Receiver identity is still trusted at the
+annotated boundary rather than proven with the TypeScript TypeChecker.
 
 For finite state products, bounded exploration can itself become complete.
 Uneffect computes exact cardinalities for boolean scalars and supported finite
