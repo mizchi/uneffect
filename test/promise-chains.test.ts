@@ -231,6 +231,19 @@ describe("Promise state and reaction chains", () => {
     expect(mutable.thenables[2]).toMatchObject({ thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"] });
   });
 
+  it("links a directly chained Promise constructor to its executor", () => {
+    const model = analyzePromiseChains("direct-constructor-chain.ts", `
+      function run(remote: PromiseLike<number>) {
+        return new Promise<number>(resolve => resolve(remote)).catch(() => 0)
+      }
+    `);
+    expect(model.chains[0]).toMatchObject({ executor: 0, links: [{ kind: "catch" }] });
+    const quint = generatePromiseChainsQuint("direct_constructor_chain", model);
+    expect(quint).toContain("settle_0_assimilating");
+    expect(quint).toContain("assimilate_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_0_rejected");
+  });
+
   it("resolves a thenable returned by a local factory before assimilation", () => {
     const model = analyzePromiseChains("returned-thenable.ts", `
       function hostile() {

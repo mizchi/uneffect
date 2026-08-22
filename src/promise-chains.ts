@@ -304,7 +304,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     const visit = (node: ts.Node): void => {
       if (node !== owner.body && ts.isFunctionLike(node)) return;
       if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise" && librarySymbol(checker, node.expression)) {
-        const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
+        const binding = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name)
+          ? node.parent.name.text : node.getText(source);
         const callback = node.arguments?.[0];
         const analyzed = analyzeExecutor(callback, checker, source);
         const index = executors.length;

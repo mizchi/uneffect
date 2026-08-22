@@ -449,6 +449,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Analyze a direct Proxy `get` trap whose sole return is a concrete arrow/function then callback.
     - [x] Select a concrete callback from the canonical `if (property === "then") return callback; return forwardingValue` Proxy trap shape.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
+  - [x] Link a directly chained `new Promise(...).catch/then/finally` root to its constructor executor without requiring an intermediate variable.
 - [ ] Refine iterator-based Promise combinators.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
   - [x] Model direct local standard-iterator acquisition failure and linear local-generator step failure before Promise reactions settle.
