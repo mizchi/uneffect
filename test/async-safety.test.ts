@@ -1263,4 +1263,50 @@ describe("async error and explicit resource safety", () => {
     expect(paths.some((path) => path.completion === "throw")).toBe(true);
     expect(run(generateUnifiedAsyncQuint("loop_break_handler", result, "run")).status).toBe(0);
   }, 10_000);
+
+  it("propagates a labeled break through an inner loop to its owner", () => {
+    const result = analyzeAsyncSafety("labeled-loop-handler.ts", `
+      declare const stop: boolean
+      async function run(outerEnabled: boolean, innerEnabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          outer: while (outerEnabled) {
+            while (innerEnabled) {
+              if (stop) break outer
+              throw error
+            }
+            throw error
+          }
+        }
+      }
+    `);
+    const paths = result.controlStatements[0]!.completionPaths;
+    const labeledBreakPath = paths.find((path) => path.controlConditions.some((condition) => condition.id.includes("@if:") && condition.expected));
+    expect(labeledBreakPath?.completion).toBe("normal");
+    expect(run(generateUnifiedAsyncQuint("labeled_loop_handler", result, "run")).status).toBe(0);
+  }, 10_000);
+
+  it("propagates a labeled continue through an inner loop to its owner", () => {
+    const result = analyzeAsyncSafety("labeled-continue-handler.ts", `
+      declare const skip: boolean
+      async function run(outerEnabled: boolean, innerEnabled: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+        } catch (error) {
+          outer: while (outerEnabled) {
+            while (innerEnabled) {
+              if (skip) continue outer
+              throw error
+            }
+            throw error
+          }
+        }
+      }
+    `);
+    const paths = result.controlStatements[0]!.completionPaths;
+    const labeledContinuePath = paths.find((path) => path.controlConditions.some((condition) => condition.id.includes("@if:") && condition.expected));
+    expect(labeledContinuePath?.completion).toBe("normal");
+    expect(run(generateUnifiedAsyncQuint("labeled_continue_handler", result, "run")).status).toBe(0);
+  }, 10_000);
 });

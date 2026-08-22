@@ -464,8 +464,10 @@ Zero-iteration `while`, `for`, `for..in`, and `for..of` handler bodies share a
 stable loop-entry choice. The one-step abstraction retains a skipped path and
 normalizes body `break`/`continue` to normal loop completion; `while (true)`
 omits the skipped path and `do..while` executes once. This is not yet a loop
-fixed point: repeated iterations, labeled exits, and loop-carried state remain
-outside the unified lowering.
+fixed point: repeated iterations and loop-carried state remain outside the
+unified lowering. Labeled `break` and `continue` retain their target while
+crossing nested loops; only their owning labeled loop discharges them to the
+one-step loop continuation.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.

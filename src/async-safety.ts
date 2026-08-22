@@ -732,7 +732,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       });
       const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
       const completionPaths = (statement: ts.Statement): AsyncControlCompletionPath[] => {
-        type InternalCompletionPath = Omit<AsyncControlCompletionPath, "completion"> & { completion: AsyncControlCompletionPath["completion"] | "break" | "continue" };
+        type InternalCompletionPath = Omit<AsyncControlCompletionPath, "completion"> & { completion: AsyncControlCompletionPath["completion"] | "break" | "continue"; label?: string };
         const executeStatements = (statements: readonly ts.Statement[], initial: AsyncControlCondition[]): InternalCompletionPath[] => {
           let active: AsyncControlCondition[][] = [initial];
           const abrupt: InternalCompletionPath[] = [];
@@ -746,11 +746,15 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           }
           return [...abrupt, ...active.map((controlConditions) => ({ controlConditions, completion: "normal" as const }))];
         };
-        const execute = (current: ts.Statement, conditions: AsyncControlCondition[]): InternalCompletionPath[] => {
+        const execute = (current: ts.Statement, conditions: AsyncControlCondition[], attachedLabel?: string): InternalCompletionPath[] => {
           if (ts.isReturnStatement(current)) return [{ controlConditions: conditions, completion: "return" }];
           if (ts.isThrowStatement(current)) return [{ controlConditions: conditions, completion: "throw" }];
-          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break" }];
-          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue" }];
+          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break", label: current.label?.text }];
+          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue", label: current.label?.text }];
+          if (ts.isLabeledStatement(current)) {
+            const paths = execute(current.statement, conditions, current.label.text);
+            return paths.map((path) => path.completion === "break" && path.label === current.label.text ? { controlConditions: path.controlConditions, completion: "normal" } : path);
+          }
           if (ts.isBlock(current)) return executeStatements(current.statements, conditions);
           if (ts.isIfStatement(current)) {
             const id = `${owner}@if:${current.getStart(source)}`;
@@ -761,11 +765,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           }
           if (ts.isWhileStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)) {
             const condition = { id: `${owner}@loop:${current.getStart(source)}`, expected: true };
-            const body = execute(current.statement, [...conditions, condition]).map((path): InternalCompletionPath => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
+            const body = execute(current.statement, [...conditions, condition]).map((path): InternalCompletionPath => {
+              const consumed = (path.completion === "break" || path.completion === "continue") && (path.label === undefined || path.label === attachedLabel);
+              return consumed ? { controlConditions: path.controlConditions, completion: "normal" } : path;
+            });
             const definitelyEnters = ts.isWhileStatement(current) && current.expression.kind === ts.SyntaxKind.TrueKeyword;
             return definitelyEnters ? body : [...body, { controlConditions: [...conditions, { ...condition, expected: false }], completion: "normal" }];
           }
-          if (ts.isDoStatement(current)) return execute(current.statement, conditions).map((path) => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
+          if (ts.isDoStatement(current)) return execute(current.statement, conditions).map((path) => {
+            const consumed = (path.completion === "break" || path.completion === "continue") && (path.label === undefined || path.label === attachedLabel);
+            return consumed ? { controlConditions: path.controlConditions, completion: "normal" } : path;
+          });
           if (ts.isSwitchStatement(current)) {
             const clauses = current.caseBlock.clauses;
             const selectedPaths = clauses.flatMap((clause, clauseIndex) => {
@@ -784,7 +794,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 completion: "normal",
               });
             }
-            return selectedPaths.map((path) => ({ ...path, completion: path.completion === "break" ? "normal" : path.completion }));
+            return selectedPaths.map((path) => path.completion === "break" && (path.label === undefined || path.label === attachedLabel) ? { controlConditions: path.controlConditions, completion: "normal" } : path);
           }
           return [{ controlConditions: conditions, completion: "normal" }];
         };
