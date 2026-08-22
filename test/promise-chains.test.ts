@@ -201,6 +201,36 @@ describe("Promise state and reaction chains", () => {
     expect(quint).toContain("assimilate_0_thenable_option_1_thenable_1_rejected");
   });
 
+  it("resolves an immutable tuple thenable selected by a const literal index", () => {
+    const model = analyzePromiseChains("tuple-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const choices = [first, second] as const
+        const selected = 1 as const
+        const result = new Promise<number>(resolve => resolve(choices[selected]))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+    const quint = generatePromiseChainsQuint("tuple_selected_thenable", model);
+    expect(quint).toContain("assimilate_0_thenable_1_rejected");
+    expect(quint).not.toContain("assimilate_0_thenable_0_fulfilled");
+
+    const mutable = analyzePromiseChains("mutable-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const choices: PromiseLike<number>[] = [first, second]
+        const result = new Promise<number>(resolve => resolve(choices[1]!))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(mutable.thenables).toHaveLength(3);
+    expect(mutable.executors[0]).toMatchObject({ adoptedThenables: [2], adoptedThenable: 2 });
+    expect(mutable.thenables[2]).toMatchObject({ thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"] });
+  });
+
   it("resolves a thenable returned by a local factory before assimilation", () => {
     const model = analyzePromiseChains("returned-thenable.ts", `
       function hostile() {

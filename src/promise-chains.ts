@@ -380,6 +380,26 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
     const selectedSymbols = (expression: ts.Expression): ts.Symbol[] => {
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return selectedSymbols(expression.expression);
       if (ts.isConditionalExpression(expression)) return [...selectedSymbols(expression.whenTrue), ...selectedSymbols(expression.whenFalse)];
+      if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+        const constInitializer = (value: ts.Expression): ts.Expression | undefined => {
+          if (!ts.isIdentifier(value)) return value;
+          const declaration = targetSymbol(checker, value)?.valueDeclaration;
+          return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+            && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+            ? declaration.initializer : undefined;
+        };
+        const indexInitializer = constInitializer(expression.argumentExpression);
+        const unwrappedIndex = indexInitializer && (ts.isAsExpression(indexInitializer) || ts.isTypeAssertionExpression(indexInitializer))
+          ? indexInitializer.expression : indexInitializer;
+        const index = unwrappedIndex && ts.isNumericLiteral(unwrappedIndex) ? Number(unwrappedIndex.text) : undefined;
+        const tupleInitializer = constInitializer(expression.expression);
+        const immutableTuple = tupleInitializer && ts.isAsExpression(tupleInitializer)
+          && tupleInitializer.type.getText(tupleInitializer.getSourceFile()) === "const"
+          && ts.isArrayLiteralExpression(tupleInitializer.expression) ? tupleInitializer.expression : undefined;
+        if (immutableTuple && index !== undefined && Number.isSafeInteger(index) && index >= 0 && index < immutableTuple.elements.length) {
+          return selectedSymbols(immutableTuple.elements[index]! as ts.Expression);
+        }
+      }
       const symbol = targetSymbol(checker, expression);
       return symbol ? [symbol] : [];
     };

@@ -112,13 +112,17 @@ obligation.
 
 Thenable assimilation also resolves direct local factory calls when every
 explicit return is an analyzable object-literal thenable. Getter failure and
-first-call-wins settlement facts are retained at the receiving Promise. Mixed,
-implicit, imported-call, or dynamically selected returns remain conservative
-external user code rather than being reported as proven local behavior.
+first-call-wins settlement facts are retained at the receiving Promise. Direct
+conditional choices and an `as const` tuple selected by a reassignment-free
+literal `const` index preserve their exact local thenable identities. Mutable
+arrays, mixed or implicit returns, imported calls, and other computed selections
+remain conservative external user code rather than being reported as proven
+local behavior.
 When a local `then` callback itself resolves another thenable, the model keeps
 fulfillment, rejection, and pending outcomes rather than turning assimilation
-into a dead state. This is currently conservative: it does not yet link the
-inner thenable's exact terminal states by symbol identity.
+into a dead state. Resolved local and external symbols, including forward local
+references and direct inline thenable literals, link their terminal states by
+identity. Recursive cycles and general computed forwarding remain conservative.
 For a direct standard `Proxy`, an object-literal `get` trap consisting solely
 of a throw is recognized as a definite rejection during `then` lookup. Other
 Proxy handlers remain dynamic because property tests, `Reflect.get`, target
