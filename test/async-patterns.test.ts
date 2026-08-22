@@ -836,6 +836,9 @@ describe("builtin async temporal patterns", () => {
       async function load(flag: boolean) {
         await Promise.all(flag ? [Promise.resolve(1), 2] : [3, Promise.reject(new Error("x"))])
         await Promise.all(flag ? [1] : [2, 3])
+        await Promise.allSettled(flag ? [1] : [2, 3])
+        await Promise.race(flag ? [Promise.resolve(1)] : [Promise.resolve(2), Promise.reject(new Error("race"))])
+        try { await Promise.any(flag ? [Promise.reject("a")] : [Promise.reject("b"), Promise.resolve(3)]) } catch {}
       }
     `);
     expect(model.combinators[0]).toMatchObject({
@@ -844,12 +847,26 @@ describe("builtin async temporal patterns", () => {
       branchKinds: ["unknown", "unknown"],
       branchAlternatives: [["Promise.resolve(1)", "3"], ["2", "Promise.reject(new Error(\"x\"))"]],
     });
-    expect(model.combinators[1]).toMatchObject({ staticIterable: false, iteratorKind: "dynamic" });
+    expect(model.combinators[1]).toMatchObject({
+      staticIterable: true,
+      iteratorKind: "array",
+      branchAlternatives: [["1", "2"], ["<absent>", "3"]],
+      branchPresence: ["always", "when-false"],
+    });
     const quint = generateAsyncPatternsQuint("conditional_iterable", {
       timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[0]!],
     });
     expect(quint).toContain("action assimilate_0_0");
     expect(quint).toContain("action assimilate_0_1");
+    const varying = generateAsyncPatternsQuint("varying_conditional_iterable", {
+      timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[1]!],
+    });
+    expect(varying).toContain("var join_0_iterable_choice: int");
+    expect(varying).toContain("action choose_iterable_0_true");
+    expect(varying).toMatch(/action fulfill_0_1[\s\S]*join_0_iterable_choice == 0/);
+    expect(run(varying, "asyncSafe").status).toBe(0);
+    const combined = generateAsyncPatternsQuint("varying_conditional_combinators", model);
+    expect(run(combined, "asyncSafe").status).toBe(0);
   });
 
   it("models local iterator acquisition and generator step failures", () => {

@@ -148,11 +148,12 @@ Acquisition or step failure rejects every Promise combinator, including
 Sparse literal holes are retained as `undefined` value slots, matching array
 iteration rather than being dropped.
 Direct conditional expressions are also bounded when both alternatives are
-finite arrays of the same length. The IR retains the source alternatives for
-each slot and joins differing value/thenable classifications to `unknown`, so
-both immediate fulfillment and assimilation remain possible. Alternatives of
-different lengths stay dynamic because correct completion requires explicit
-per-branch presence state.
+finite arrays. The IR retains the source alternatives for each slot and joins
+differing value/thenable classifications to `unknown`, so both immediate
+fulfillment and assimilation remain possible. Different lengths add one
+correlated iterable-choice state and per-slot presence guards; absent slots do
+not settle or participate in `race`, and join predicates treat them according
+to the selected combinator.
 
 The same neutral combinator IR covers four builtin methods:
 
@@ -185,7 +186,7 @@ that intermediate state as settled. Unknown unions retain both the immediate
 value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
 thenable IR is not yet composed into each combinator branch. Conditional
-generator control flow, varying-length/imported/arbitrary custom iterables, dynamic spread
+generator control flow, imported/arbitrary custom iterables, non-array dynamic spread
 cardinality, concrete `AggregateError` reasons, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.

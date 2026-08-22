@@ -35,6 +35,7 @@ export interface PromiseCombinatorPattern {
   branches: string[];
   branchKinds: ("value" | "thenable" | "unknown")[];
   branchAlternatives?: string[][];
+  branchPresence?: ("always" | "when-true" | "when-false")[];
   staticIterable: boolean;
   iteratorKind: "array" | "local" | "dynamic";
   iteratorEffects: [] | ["InvokeUserCode"];
@@ -654,20 +655,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           while (conditional && ts.isParenthesizedExpression(conditional)) conditional = conditional.expression;
           const conditionalArrays = conditional && ts.isConditionalExpression(conditional)
             ? [expandStaticArray(conditional.whenTrue), expandStaticArray(conditional.whenFalse)] as const : undefined;
-          const equalConditionalArrays = conditionalArrays?.[0] && conditionalArrays[1]
-            && conditionalArrays[0].length === conditionalArrays[1].length ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
-          const boundedArray = array ?? equalConditionalArrays?.[0];
+          const boundedConditionalArrays = conditionalArrays?.[0] && conditionalArrays[1]
+            ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
+          const boundedArray = array ?? boundedConditionalArrays?.[0];
           const local = boundedArray ? undefined : localIterable(iterable);
           const staticIterable = Boolean(boundedArray || local);
           const branchNodes = local?.branches;
-          const branchAlternatives = equalConditionalArrays?.[0].map((item, index) => [item, equalConditionalArrays[1][index]!]
-            .map((candidate) => ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText(source)));
+          const branchAlternatives = boundedConditionalArrays ? Array.from({ length: Math.max(boundedConditionalArrays[0].length, boundedConditionalArrays[1].length) }, (_, index) =>
+            [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText(source))) : undefined;
+          const branchPresence = boundedConditionalArrays ? branchAlternatives!.map((_, index) =>
+            boundedConditionalArrays[0][index] === undefined ? "when-false" : boundedConditionalArrays[1][index] === undefined ? "when-true" : "always" as const) : undefined;
           const branches = branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
             : boundedArray ? boundedArray.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText(source)) : branchNodes?.map((item) => item.getText(source)) ?? [];
-          const branchKinds = equalConditionalArrays?.[0].map((item, index) => {
-            const kinds = [branchKind(item), branchKind(equalConditionalArrays[1][index]!)];
-            return kinds[0] === kinds[1] ? kinds[0]! : "unknown";
-          }) ?? (boundedArray ? boundedArray.map(branchKind) : branchNodes?.map(branchKind) ?? []);
+          const branchKinds = boundedConditionalArrays ? branchAlternatives!.map((_, index) => {
+            const kinds = [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
+            return kinds.every((kind) => kind === kinds[0]) ? kinds[0]! : "unknown";
+          }) : (boundedArray ? boundedArray.map(branchKind) : branchNodes?.map(branchKind) ?? []);
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -677,7 +680,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives } : {}), staticIterable,
+          combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), staticIterable,
             iteratorKind: boundedArray ? "array" : local ? "local" : "dynamic", iteratorEffects: boundedArray ? [] : ["InvokeUserCode"],
             iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
             aggregateErrorReasons: operation.combinator === "any" && array ? array.map(rejectionReason) : undefined,
@@ -746,6 +749,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   model.timers.forEach((_, index) => lines.push(`  var timer_${index}_scheduled: bool`, `  var timer_${index}_cancelled: bool`, `  var timer_${index}_due: int`, `  var timer_${index}_early: bool`, `  var timer_${index}_after_cancel: bool`, `  var timer_${index}_macro_first: bool`, `  var timer_${index}_fires: int`));
   model.combinators.forEach((join, index) => {
     join.branches.forEach((_, branch) => lines.push(`  var join_${index}_branch_${branch}: int`));
+    if (join.branchPresence?.some((presence) => presence !== "always")) lines.push(`  var join_${index}_iterable_choice: int`);
     lines.push(`  var join_${index}_result: int`, `  var join_${index}_iterator_failed: bool`, `  var join_${index}_rejection_escapes: bool`);
     if (join.aggregateErrorOrder) {
       lines.push(`  val join_${index}_aggregate_error_count = ${join.aggregateErrorOrder.length}`);
@@ -762,9 +766,9 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
     lines.push(`    timer_${index}_scheduled' = ${!cancelled},`, `    timer_${index}_cancelled' = ${cancelled},`, `    timer_${index}_due' = ${timer.delay},`, `    timer_${index}_early' = false,`, `    timer_${index}_after_cancel' = false,`, `    timer_${index}_macro_first' = false,`, `    timer_${index}_fires' = 0,`);
   });
-  model.combinators.forEach((join, index) => { join.branches.forEach((_, branch) => lines.push(`    join_${index}_branch_${branch}' = 0,`)); lines.push(`    join_${index}_result' = 0,`, `    join_${index}_iterator_failed' = false,`, `    join_${index}_rejection_escapes' = false,`); });
+  model.combinators.forEach((join, index) => { join.branches.forEach((_, branch) => lines.push(`    join_${index}_branch_${branch}' = 0,`)); if (join.branchPresence?.some((presence) => presence !== "always")) lines.push(`    join_${index}_iterable_choice' = -1,`); lines.push(`    join_${index}_result' = 0,`, `    join_${index}_iterator_failed' = false,`, `    join_${index}_rejection_escapes' = false,`); });
   lines.push("  }");
-  const allVars = ["clock", ...model.timers.flatMap((_, i) => [`timer_${i}_scheduled`, `timer_${i}_cancelled`, `timer_${i}_due`, `timer_${i}_early`, `timer_${i}_after_cancel`, `timer_${i}_macro_first`, `timer_${i}_fires`]), ...model.combinators.flatMap((join, i) => [...join.branches.map((_, b) => `join_${i}_branch_${b}`), `join_${i}_result`, `join_${i}_iterator_failed`, `join_${i}_rejection_escapes`])];
+  const allVars = ["clock", ...model.timers.flatMap((_, i) => [`timer_${i}_scheduled`, `timer_${i}_cancelled`, `timer_${i}_due`, `timer_${i}_early`, `timer_${i}_after_cancel`, `timer_${i}_macro_first`, `timer_${i}_fires`]), ...model.combinators.flatMap((join, i) => [...join.branches.map((_, b) => `join_${i}_branch_${b}`), ...(join.branchPresence?.some((presence) => presence !== "always") ? [`join_${i}_iterable_choice`] : []), `join_${i}_result`, `join_${i}_iterator_failed`, `join_${i}_rejection_escapes`])];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     lines.push("", `  action ${name} = all {`);
     guards.forEach((guard) => lines.push(`    ${guard},`));
@@ -784,6 +788,13 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     ]));
   });
   model.combinators.forEach((join, index) => {
+    const hasChoice = join.branchPresence?.some((presence) => presence !== "always") ?? false;
+    if (hasChoice) {
+      action(`choose_iterable_${index}_true`, [`join_${index}_iterable_choice == -1`], new Map([[`join_${index}_iterable_choice`, "1"]]));
+      action(`choose_iterable_${index}_false`, [`join_${index}_iterable_choice == -1`], new Map([[`join_${index}_iterable_choice`, "0"]]));
+    }
+    const presence = (branch: number): string => join.branchPresence?.[branch] === "when-true" ? `join_${index}_iterable_choice == 1`
+      : join.branchPresence?.[branch] === "when-false" ? `join_${index}_iterable_choice == 0` : "true";
     if (join.iteratorFailure) action(`fail_iterator_${index}`, [`join_${index}_result == 0`], new Map([
       [`join_${index}_result`, "2"],
       [`join_${index}_iterator_failed`, "true"],
@@ -791,7 +802,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     ]));
     join.branches.forEach((_, branch) => {
       const kind = join.branchKinds?.[branch] ?? "unknown";
-      const raceGuard = join.combinator === "race" ? [`join_${index}_result == 0`] : [];
+      const raceGuard = [...(presence(branch) === "true" ? [] : [presence(branch)]), ...(join.combinator === "race" ? [`join_${index}_result == 0`] : [])];
       const fulfillUpdates = new Map([[`join_${index}_branch_${branch}`, "1"]]);
       const rejectUpdates = new Map([[`join_${index}_branch_${branch}`, "2"]]);
       if (join.combinator === "race") {
@@ -809,21 +820,22 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
         action(`reject_${index}_${branch}`, [`join_${index}_branch_${branch} == 3`, ...raceGuard], rejectUpdates);
       }
     });
-    const allFulfilled = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 1`).join(" and ") || "true";
-    const anyFulfilled = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 1`).join(" or ") || "false";
-    const allRejected = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 2`).join(" and ") || "true";
-    const anyRejected = join.branches.map((_, branch) => `join_${index}_branch_${branch} == 2`).join(" or ") || "false";
-    const allSettled = join.branches.map((_, branch) => `(join_${index}_branch_${branch} == 1 or join_${index}_branch_${branch} == 2)`).join(" and ") || "true";
+    const allFulfilled = join.branches.map((_, branch) => presence(branch) === "true" ? `join_${index}_branch_${branch} == 1` : `(not(${presence(branch)}) or join_${index}_branch_${branch} == 1)`).join(" and ") || "true";
+    const anyFulfilled = join.branches.map((_, branch) => presence(branch) === "true" ? `join_${index}_branch_${branch} == 1` : `(${presence(branch)} and join_${index}_branch_${branch} == 1)`).join(" or ") || "false";
+    const allRejected = join.branches.map((_, branch) => presence(branch) === "true" ? `join_${index}_branch_${branch} == 2` : `(not(${presence(branch)}) or join_${index}_branch_${branch} == 2)`).join(" and ") || "true";
+    const anyRejected = join.branches.map((_, branch) => presence(branch) === "true" ? `join_${index}_branch_${branch} == 2` : `(${presence(branch)} and join_${index}_branch_${branch} == 2)`).join(" or ") || "false";
+    const allSettled = join.branches.map((_, branch) => presence(branch) === "true" ? `(join_${index}_branch_${branch} == 1 or join_${index}_branch_${branch} == 2)` : `(not(${presence(branch)}) or join_${index}_branch_${branch} == 1 or join_${index}_branch_${branch} == 2)`).join(" and ") || "true";
     const fulfilled = join.combinator === "all" ? allFulfilled : join.combinator === "allSettled" ? allSettled : join.combinator === "race" ? "false" : anyFulfilled;
     const normalRejected = join.combinator === "all" ? anyRejected : join.combinator === "any" ? allRejected : "false";
     const rejected = `(join_${index}_iterator_failed or (${normalRejected}))`;
-    action(`fulfill_join_${index}`, [`join_${index}_result == 0`, ...(options.allowEarlyJoin ? ["true"] : [fulfilled])], new Map([[`join_${index}_result`, "1"]]));
-    action(`reject_join_${index}`, [`join_${index}_result == 0`, ...(options.allowSpuriousReject ? ["true"] : [rejected])], new Map([
+    const choiceGuard = hasChoice ? [`join_${index}_iterable_choice != -1`] : [];
+    action(`fulfill_join_${index}`, [`join_${index}_result == 0`, ...choiceGuard, ...(options.allowEarlyJoin ? ["true"] : [fulfilled])], new Map([[`join_${index}_result`, "1"]]));
+    action(`reject_join_${index}`, [`join_${index}_result == 0`, ...choiceGuard, ...(options.allowSpuriousReject ? ["true"] : [rejected])], new Map([
       [`join_${index}_result`, "2"],
       [`join_${index}_rejection_escapes`, String(!join.catchesRejection)],
     ]));
   });
-  const actions = ["tick", ...model.timers.map((timer, i) => timerAction("fire", timer, i)), ...model.combinators.flatMap((join, i) => join.iteratorFailure ? [`fail_iterator_${i}`] : [...join.branches.flatMap((_, b) => {
+  const actions = ["tick", ...model.timers.map((timer, i) => timerAction("fire", timer, i)), ...model.combinators.flatMap((join, i) => join.iteratorFailure ? [`fail_iterator_${i}`] : [...(join.branchPresence?.some((presence) => presence !== "always") ? [`choose_iterable_${i}_true`, `choose_iterable_${i}_false`] : []), ...join.branches.flatMap((_, b) => {
     const kind = join.branchKinds?.[b] ?? "unknown";
     return kind === "value" ? [`fulfill_${i}_${b}`]
       : kind === "thenable" ? [`assimilate_${i}_${b}`, `fulfill_${i}_${b}`, `reject_${i}_${b}`]
@@ -831,11 +843,13 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   }), `fulfill_join_${i}`, `reject_join_${i}`])];
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const safeTerms = [...model.timers.flatMap((timer, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`, ...(timer.kind === "abort-timeout" ? [`timer_${i}_fires <= 1`] : [])]), ...model.combinators.flatMap((join, i) => {
-    const allFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" and ") || "true";
-    const anyFulfilled = join.branches.map((_, b) => `join_${i}_branch_${b} == 1`).join(" or ") || "false";
-    const allRejected = join.branches.map((_, b) => `join_${i}_branch_${b} == 2`).join(" and ") || "true";
-    const anyRejected = join.branches.map((_, b) => `join_${i}_branch_${b} == 2`).join(" or ") || "false";
-    const allSettled = join.branches.map((_, b) => `(join_${i}_branch_${b} == 1 or join_${i}_branch_${b} == 2)`).join(" and ") || "true";
+    const presence = (branch: number): string => join.branchPresence?.[branch] === "when-true" ? `join_${i}_iterable_choice == 1`
+      : join.branchPresence?.[branch] === "when-false" ? `join_${i}_iterable_choice == 0` : "true";
+    const allFulfilled = join.branches.map((_, b) => presence(b) === "true" ? `join_${i}_branch_${b} == 1` : `(not(${presence(b)}) or join_${i}_branch_${b} == 1)`).join(" and ") || "true";
+    const anyFulfilled = join.branches.map((_, b) => presence(b) === "true" ? `join_${i}_branch_${b} == 1` : `(${presence(b)} and join_${i}_branch_${b} == 1)`).join(" or ") || "false";
+    const allRejected = join.branches.map((_, b) => presence(b) === "true" ? `join_${i}_branch_${b} == 2` : `(not(${presence(b)}) or join_${i}_branch_${b} == 2)`).join(" and ") || "true";
+    const anyRejected = join.branches.map((_, b) => presence(b) === "true" ? `join_${i}_branch_${b} == 2` : `(${presence(b)} and join_${i}_branch_${b} == 2)`).join(" or ") || "false";
+    const allSettled = join.branches.map((_, b) => presence(b) === "true" ? `(join_${i}_branch_${b} == 1 or join_${i}_branch_${b} == 2)` : `(not(${presence(b)}) or join_${i}_branch_${b} == 1 or join_${i}_branch_${b} == 2)`).join(" and ") || "true";
     const fulfilled = join.combinator === "all" ? allFulfilled : join.combinator === "allSettled" ? allSettled : anyFulfilled;
     const normalRejected = join.combinator === "all" || join.combinator === "race" ? anyRejected : join.combinator === "any" ? allRejected : "false";
     const rejected = `(join_${i}_iterator_failed or (${normalRejected}))`;
