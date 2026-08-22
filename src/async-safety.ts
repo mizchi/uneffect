@@ -780,8 +780,23 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
-  const firstWaitPc = resources.length;
-  const catchPc = firstWaitPc + awaited.length * 2;
+  const scheduledDisposals = new Set<number>();
+  const disposalAfterAwait = awaited.map((_, awaitIndex) => {
+    if (awaitIndex === awaited.length - 1) return [] as number[];
+    const nextAwaitStart = awaited[awaitIndex + 1]!.span.start;
+    return disposals.flatMap((disposal, disposalIndex) => {
+      if (scheduledDisposals.has(disposalIndex) || disposal.disposalPoint >= nextAwaitStart) return [];
+      scheduledDisposals.add(disposalIndex);
+      return [disposalIndex];
+    });
+  });
+  let nextPc = resources.length;
+  const awaitLayout = awaited.map((_, index) => ({
+    wait: nextPc++,
+    resume: nextPc++,
+    disposalPcs: disposalAfterAwait[index]!.map((disposalIndex) => ({ disposalIndex, pc: nextPc++ })),
+  }));
+  const catchPc = nextPc;
   const afterCatchPc = catchPc + catchStatements.length, finallyPc = afterCatchPc + 1;
   const cleanupPc = finallyPc + finallyStatements.length, completePc = cleanupPc + disposals.length;
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
@@ -797,14 +812,29 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`));
     lines.push("  }");
   };
+  const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
+    const disposal = disposals[disposalIndex]!;
+    const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
+    if (resourceIndex < 0) return;
+    const label = `${labels[resourceIndex]!}${suffix}`;
+    emit(`skip_unacquired_${label}`, [`pc == ${current}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
+    emit(`skip_disposed_${label}`, [`pc == ${current}`, `disposed_${resourceIndex}`], new Map([["pc", String(next)]]));
+    if (disposal.asynchronous) {
+      emit(`dispose_start_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`, `not(disposing_${resourceIndex})`], new Map([[`disposing_${resourceIndex}`, "true"]]));
+      emit(`dispose_resume_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
+      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
+    } else {
+      emit(`dispose_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], [`disposed_${resourceIndex}`, "true"]]));
+      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"]]));
+    }
+  };
   resources.forEach((_, index) => {
     emit(`acquire_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(index + 1)], [`acquired_${index}`, "true"]]));
     emit(`acquire_fail_${labels[index]}`, [`pc == ${index}`], new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
   });
   awaited.forEach((observation, awaitIndex) => {
     const chain = observation.promiseChain!;
-    const waitPc = firstWaitPc + awaitIndex * 2;
-    const resumePc = waitPc + 1;
+    const { wait: waitPc, resume: resumePc, disposalPcs } = awaitLayout[awaitIndex]!;
     emit(`promise_${chain}_fulfill`, [`pc == ${waitPc}`], new Map([["pc", String(resumePc)]]));
     const rejectionUpdates = new Map<string, string>([["pc", String(observation.catchesRejection ? catchPc : cleanupPc)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
@@ -813,25 +843,17 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const resumeName = awaited.length === 1
       ? finallyStatements.length ? "await_resume_finally" : "await_resume_return"
       : isLast ? `await_${chain}_resume_${finallyStatements.length ? "finally" : "return"}` : `await_${chain}_resume_next`;
-    emit(resumeName, [`pc == ${resumePc}`], new Map([["pc", String(isLast ? finallyPc : resumePc + 1)]]));
+    const nextAfterAwait = isLast ? finallyPc : awaitLayout[awaitIndex + 1]!.wait;
+    emit(resumeName, [`pc == ${resumePc}`], new Map([["pc", String(disposalPcs[0]?.pc ?? nextAfterAwait)]]));
+    disposalPcs.forEach(({ disposalIndex, pc }, index) => {
+      const next = disposalPcs[index + 1]?.pc ?? nextAfterAwait;
+      emitDisposal(disposalIndex, pc, next, "_scope_exit", cleanupPc);
+    });
   });
   catchStatements.forEach((_, index) => emit(`catch_statement_${index}`, [`pc == ${catchPc + index}`], new Map([["pc", String(catchPc + index + 1)]])));
   emit("catch_return", [`pc == ${afterCatchPc}`], new Map([["pc", String(finallyPc)]]));
   finallyStatements.forEach((_, index) => emit(`finally_statement_${index}`, [`pc == ${finallyPc + index}`], new Map([["pc", String(finallyPc + index + 1)]])));
-  disposals.forEach((disposal, order) => {
-    const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
-    if (resourceIndex < 0) return;
-    const current = cleanupPc + order, next = current + 1, label = labels[resourceIndex]!;
-    emit(`skip_unacquired_${label}`, [`pc == ${current}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
-    if (disposal.asynchronous) {
-      emit(`dispose_start_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposing_${resourceIndex})`], new Map([[`disposing_${resourceIndex}`, "true"]]));
-      emit(`dispose_resume_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
-      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"]]));
-    } else {
-      emit(`dispose_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], [`disposed_${resourceIndex}`, "true"]]));
-      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"]]));
-    }
-  });
+  disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
   emit("finish_fulfilled", [`pc == ${completePc}`, "completion == 0"], new Map([["pc", "-2"]]));
   emit("finish_rejected", [`pc == ${completePc}`, "completion != 0"], new Map([["pc", "-1"]]));
   if (options.skipCleanup) emit("finish_without_cleanup", [`pc == ${cleanupPc}`], new Map([["pc", "-2"], ["broken", "true"]]));

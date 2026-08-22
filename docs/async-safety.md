@@ -427,6 +427,12 @@ order. A fulfilled chain advances only to the next await; only the final
 fulfilled chain may enter finally/cleanup. Rejection still follows the
 chain-local caught-or-escaping classification. This is a straight-line model:
 awaits selected by branches or loops do not yet have CFG-derived join states.
+When a nested lexical scope ends between two such awaits, its disposal gets an
+explicit scope-exit transition before the following await. The final failure
+cleanup remains idempotent, so an already disposed resource is skipped while a
+rejection before that scope exit still disposes it. Resources in scopes with no
+modeled await and acquisition interleaved after an await still require the
+general CFG lowering.
 
 ```sh
 just spec-resource-quint examples/resources.ts
@@ -449,4 +455,5 @@ all exit kinds conservatively. Unified control edges connect Promise chains,
 await/catch, scope exits, and disposal failures. The initial single-function
 Quint lowering and concrete catch/finally statement ordering are implemented;
 straight-line multiple-await sequencing is also implemented. Arbitrary nested
-regions and general control-flow joins remain outside this slice.
+regions are covered only for a scope exit between two modeled awaits; general
+control-flow joins remain outside this slice.
