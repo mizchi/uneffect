@@ -63,6 +63,11 @@ advances only when the close boundary starts the next bounded
 iteration. A phase-fault oracle is rejected by the same invariant. This phase
 numbering is Uneffect IR, not a public numeric API from Node.
 
+A statically resolved nested `setImmediate` is also registered dynamically.
+One created by a timer callback can run in the subsequent check phase of the
+current iteration; one created while draining the check phase receives a
+next-iteration due time and cannot run in that same phase.
+
 This is intentionally not a complete libuv model. Node documents a special
 ESM top-level case where module evaluation is already executing as a
 microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded

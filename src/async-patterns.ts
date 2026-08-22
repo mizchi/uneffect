@@ -423,7 +423,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (node !== callback && ts.isFunctionLike(node)) return;
         if (ts.isCallExpression(node)) {
           const operation = adapter.resolveCall(node)?.operation;
-          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick")) {
+          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "check")) {
             const child = timers.length;
             const callbackNode = node.arguments[operation.callbackArgument];
             const childSource = node.getSourceFile();
@@ -847,6 +847,10 @@ export function generateNodeEventLoopQuint(
   const enqueueNodeChildren = (parent: number, updates: Map<string, string>): void => {
     [...nextTicks, ...microtasks].filter((index) => model.timers[index]!.enqueuedBy === parent)
       .forEach((child) => updates.set(`callback_${child}_pending`, "true"));
+    checks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+      updates.set(`callback_${child}_pending`, "true");
+      updates.set(`callback_${child}_due`, model.timers[parent]!.queue === "check" ? "clock + 1" : "clock");
+    });
   };
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
   const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
@@ -932,7 +936,7 @@ export function generateNodeEventLoopQuint(
   ], new Map([["node_phase", "2"], ["wrong_phase", phaseViolation(1)]]));
   action("advance_poll_to_check", phaseGuard(2), new Map([["node_phase", "3"], ["wrong_phase", phaseViolation(2)]]));
   action("advance_check_to_close", [
-    ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending)`),
+    ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
   ], new Map([["node_phase", "4"], ["wrong_phase", phaseViolation(3)]]));
   action("advance_close_to_next_iteration", phaseGuard(4), new Map([
     ["clock", "clock + 1"], ["node_phase", "0"], ["resume_phase", "1"], ["wrong_phase", phaseViolation(4)],

@@ -1021,4 +1021,30 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action drain_microtask_2[\s\S]*not\(callback_1_pending\)/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("defers an Immediate created by an Immediate callback to the next iteration", () => {
+    const model = analyzeAsyncPatterns("node-nested-immediate.ts", `
+      function schedule() {
+        setImmediate(() => setImmediate(() => undefined))
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "check" },
+      { queue: "check", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_nested_immediate", model);
+    expect(quint).toMatch(/action init[\s\S]*callback_1_pending' = false/);
+    expect(quint).toMatch(/action run_check_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock \+ 1/);
+    expect(quint).toMatch(/action advance_check_to_close[\s\S]*not\(callback_1_pending\) or callback_1_due > clock/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+
+    const fromTimer = analyzeAsyncPatterns("node-timer-immediate.ts", `
+      function schedule() {
+        setTimeout(() => setImmediate(() => undefined), 0)
+      }
+    `);
+    const timerQuint = generateNodeEventLoopQuint("node_timer_immediate", fromTimer);
+    expect(timerQuint).toMatch(/action run_timer_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock,/);
+    expect(run(timerQuint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
 });
