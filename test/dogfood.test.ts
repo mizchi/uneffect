@@ -11,7 +11,7 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
-import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
   it("refines Node Lease authority Set/Map mutations", async () => {
@@ -162,9 +162,13 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+    });
     expect(validateRefinementBindingCoverage(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "telemetryRouting", temporal)).toEqual([]);
-    expect(await validateRefinementInvariantBodiesWithZ3(fileName, source, "telemetryRouting", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "telemetryRouting", temporal)).toEqual([]);
     expect(validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,

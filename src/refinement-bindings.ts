@@ -326,6 +326,28 @@ function normalizeRefinementExpression(
   return undefined;
 }
 
+function resolveProgramFunction(
+  checker: ts.TypeChecker,
+  expression: ts.Identifier | ts.PropertyAccessExpression,
+  seen: ReadonlySet<ts.Symbol> = new Set(),
+): ts.FunctionDeclaration | undefined {
+  let symbol = checker.getSymbolAtLocation(expression)
+    ?? (ts.isPropertyAccessExpression(expression) ? checker.getSymbolAtLocation(expression.name) : undefined);
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  if (!symbol || seen.has(symbol)) return undefined;
+  const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
+  if (direct) return direct;
+  const alias = symbol.declarations?.find((declaration): declaration is ts.VariableDeclaration =>
+    ts.isVariableDeclaration(declaration)
+    && ts.isVariableDeclarationList(declaration.parent)
+    && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+    && !!declaration.initializer
+    && (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer)));
+  return alias?.initializer && (ts.isIdentifier(alias.initializer) || ts.isPropertyAccessExpression(alias.initializer))
+    ? resolveProgramFunction(checker, alias.initializer, new Set([...seen, symbol]))
+    : undefined;
+}
+
 function validateRefinementActionBodiesInSource(
   source: ts.SourceFile,
   text: string,
@@ -343,21 +365,7 @@ function validateRefinementActionBodiesInSource(
 
   const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
     if (!checker) return ts.isIdentifier(expression) ? functions.get(expression.text) : undefined;
-    let symbol = checker.getSymbolAtLocation(expression)
-      ?? (ts.isPropertyAccessExpression(expression) ? checker.getSymbolAtLocation(expression.name) : undefined);
-    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    if (!symbol || seen.has(symbol)) return undefined;
-    const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
-    if (direct) return direct;
-    const alias = symbol.declarations?.find((declaration): declaration is ts.VariableDeclaration =>
-      ts.isVariableDeclaration(declaration)
-      && ts.isVariableDeclarationList(declaration.parent)
-      && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
-      && !!declaration.initializer
-      && (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer)));
-    return alias?.initializer && (ts.isIdentifier(alias.initializer) || ts.isPropertyAccessExpression(alias.initializer))
-      ? resolveFunction(alias.initializer, new Set([...seen, symbol]))
-      : undefined;
+    return resolveProgramFunction(checker, expression, seen);
   };
 
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
@@ -687,16 +695,42 @@ export function validateRefinementActionBodiesInProgram(
   return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker());
 }
 
-/** Proves a single-return, side-effect-free scalar predicate against temporal safety properties. */
-export function validateRefinementInvariantBodies(
-  fileName: string,
+function collectProgramHelperFunctions(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, ts.FunctionDeclaration> {
+  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const ambiguous = new Set<string>();
+  const scanned = new Set<ts.FunctionDeclaration>();
+  const scan = (root: ts.Node): void => {
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+        const helper = resolveProgramFunction(checker, node.expression);
+        if (helper) {
+          const name = node.expression.text;
+          const existing = functions.get(name);
+          if (existing && existing !== helper) { functions.delete(name); ambiguous.add(name); }
+          else if (!ambiguous.has(name)) functions.set(name, helper);
+          if (!scanned.has(helper)) { scanned.add(helper); if (helper.body) scan(helper.body); }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(root);
+  };
+  scan(source);
+  return functions;
+}
+
+function validateRefinementInvariantBodiesInSource(
+  source: ts.SourceFile,
   text: string,
   adapterName: string,
   spec: TemporalSpec,
+  checker?: ts.TypeChecker,
 ): RefinementInvariantDiagnostic[] {
-  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
-  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const functions = checker
+    ? collectProgramHelperFunctions(source, checker)
+    : new Map(source.statements.filter(ts.isFunctionDeclaration).flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
   const stateNames = new Set(spec.states.map(({ name }) => name));
   const diagnostics: RefinementInvariantDiagnostic[] = [];
   for (const property of spec.properties) {
@@ -749,6 +783,30 @@ export function validateRefinementInvariantBodies(
   return diagnostics;
 }
 
+/** Proves a single-return, side-effect-free scalar predicate against temporal safety properties. */
+export function validateRefinementInvariantBodies(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementInvariantDiagnostic[] {
+  return validateRefinementInvariantBodiesInSource(
+    ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), text, adapterName, spec,
+  );
+}
+
+/** Resolves imported pure invariant helpers through a TypeScript Program. */
+export function validateRefinementInvariantBodiesInProgram(
+  program: ts.Program,
+  fileName: string,
+  adapterName: string,
+  spec: TemporalSpec,
+): RefinementInvariantDiagnostic[] {
+  const source = program.getSourceFile(fileName);
+  if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
+  return validateRefinementInvariantBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker());
+}
+
 async function dischargeExpressionMismatchesWithZ3<T extends { code: string; expected?: string; actual?: string }>(
   diagnostics: readonly T[],
   mismatchCode: string,
@@ -797,6 +855,15 @@ export async function validateRefinementInvariantBodiesWithZ3(
   fileName: string, text: string, adapterName: string, spec: TemporalSpec,
 ): Promise<Array<Z3RefinementDiagnostic<RefinementInvariantDiagnostic>>> {
   return dischargeExpressionMismatchesWithZ3(validateRefinementInvariantBodies(fileName, text, adapterName, spec), "invariant-expression-mismatch", spec);
+}
+
+/** Combines Program-resolved invariant helpers with Z3 predicate equivalence. */
+export async function validateRefinementInvariantBodiesInProgramWithZ3(
+  program: ts.Program, fileName: string, adapterName: string, spec: TemporalSpec,
+): Promise<Array<Z3RefinementDiagnostic<RefinementInvariantDiagnostic>>> {
+  return dischargeExpressionMismatchesWithZ3(
+    validateRefinementInvariantBodiesInProgram(program, fileName, adapterName, spec), "invariant-expression-mismatch", spec,
+  );
 }
 
 /** Proves that create and observe each preserve every model state field by name. */

@@ -221,8 +221,10 @@ literal calls to `record` are locally specialized, including the computed
 outcome-field write. The conditional audit transition is routed through a
 same-file action helper, exercising acyclic direct-call composition. The guarded observation action enforces its exact
 `action_when` predicate with a negated early return before the stuttering body.
-The adjacent single-return invariant function is
-also checked by exact normalized scalar-AST equivalence. Create and observe are
+The adjacent single-return invariant function reaches its predicate through an
+immutable alias to an imported helper. The Program-backed refinement validator
+resolves that symbol and then checks exact normalized scalar-AST equivalence;
+the syntax-only API deliberately cannot prove this boundary. Create and observe are
 additionally checked as independent identity field projections: the transparent
 local-class `Object.assign` construction and destructured observation preserve
 all five model state fields through same-file hydrate/snapshot wrappers. General abstraction relations, runtime validation

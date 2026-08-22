@@ -1,3 +1,5 @@
+import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
+
 /* uneffect:
   state delivered: int
   state dropped: int
@@ -83,11 +85,9 @@ export function observeLostTelemetryOutcome(runtime: TelemetryRoutingAccounting)
   if (!(runtime.delivered + runtime.dropped + runtime.buffered < runtime.attempted && runtime.auditArmed)) return;
 }
 
-function hasExactlyOneTelemetryOutcome(runtime: TelemetryRoutingAccounting): boolean {
-  return runtime.delivered + runtime.dropped + runtime.buffered === runtime.attempted;
-}
+const telemetryOutcomeInvariant = hasExactlyOneOutcome;
 
 /* uneffect: refinement telemetryRouting@1 invariant allAttemptsHaveOneOutcome */
 export function allTelemetryAttemptsHaveOneOutcome(runtime: TelemetryRoutingAccounting): boolean {
-  return hasExactlyOneTelemetryOutcome(runtime);
+  return telemetryOutcomeInvariant(runtime);
 }

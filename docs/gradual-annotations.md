@@ -202,16 +202,24 @@ returned expression may use runtime scalar fields, integer/boolean literals, ari
 equality, comparisons, `&&`, `||`, `!`, and unary minus. Its normalized AST must
 exactly equal the temporal property AST. Loose JavaScript equality is rejected
 because coercion would make the correspondence unsound. An acyclic graph of
-direct calls to same-file function declarations is inlined only when every
+direct calls to function declarations is inlined only when every
 helper has exactly one expression-bearing `return`, identifier parameters, and
-matching arity. Imported/external calls, aliases, dynamic dispatch,
+matching arity. The syntax-only API is limited to same-file declarations. A
+TypeScript Program may instead be passed to
+`validateRefinementInvariantBodiesInProgram` (or its `WithZ3` variant); this
+resolves imported helpers and reassignment-free `const` function aliases by
+symbol identity. Mutable aliases, ambiguous lexical call names, recursion,
+direct namespace-property calls, dynamic dispatch,
 statement-bearing helpers, mutable local
 declarations, mutation, collections, and merely logically equivalent but differently
 shaped predicates fail the synchronous fast path. The asynchronous
-`validateRefinementInvariantBodiesWithZ3` path discharges such a mismatch only
+Z3 variants discharge a normalized mismatch only
 when Z3 proves the two normalized boolean expressions equivalent over all typed
-states. It does not make imported calls, statement-bearing helpers, mutable declarations, mutation, or collections
-supported, and it preserves `unknown` as a diagnostic. Missing and stale invariant bindings are
+states. They do not make statement-bearing helpers, mutable declarations,
+mutation, or collections supported, and preserve `unknown` as a diagnostic.
+Multi-layer scalar argument substitution is supported; object-valued parameter
+substitution across multiple imported helper layers remains a conservative
+non-proof. Missing and stale invariant bindings are
 reported by this validator itself, so an empty diagnostic list means every
 declared safety property passed this fragment. Liveness properties are still
 outside point-state invariant binding.

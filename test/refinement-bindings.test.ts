@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -599,6 +599,59 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementInvariantBodies("recursive.ts", recursive, "counter", parseSpec("recursive.ts", recursive).temporal)).toEqual([
       expect.objectContaining({ code: "unsupported-invariant-body", modelName: "guarded" }),
     ]);
+  });
+
+  it("resolves imported pure invariant helpers only in the Program-backed path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-invariant-"));
+    const helperFile = join(directory, "predicate.ts");
+    const mainFile = join(directory, "main.ts");
+    const helper = `
+      function nonnegative(value: number) { return value >= 0 }
+      export function validEpoch(value: number) { return nonnegative(value) }
+    `;
+    const source = `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action tick: epoch' = epoch + 1
+      temporal validEpoch: epoch >= 0
+    */
+      import { validEpoch as checkEpoch } from "./predicate.js"
+      const epochPredicate = checkEpoch
+      interface Runtime { epoch: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action tick */ export function tick(runtime: Runtime) { runtime.epoch++ }
+      /* uneffect: refinement counter@1 invariant validEpoch */ export function invariant(runtime: Runtime) { return epochPredicate(runtime.epoch) }
+    `;
+    try {
+      writeFileSync(helperFile, helper);
+      writeFileSync(mainFile, source);
+      const spec = parseSpec(mainFile, source).temporal;
+      expect(validateRefinementInvariantBodies(mainFile, source, "counter", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-invariant-body", modelName: "validEpoch",
+      }));
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(program, mainFile, "counter", spec)).toEqual([]);
+      writeFileSync(mainFile, source.replace("const epochPredicate", "let epochPredicate"));
+      const mutableProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(mutableProgram, mainFile, "counter", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-invariant-body", modelName: "validEpoch",
+      }));
+      writeFileSync(mainFile, source);
+      writeFileSync(helperFile, `export function validEpoch(value: number): boolean { return validEpoch(value) }`);
+      const recursiveProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementInvariantBodiesInProgram(recursiveProgram, mainFile, "counter", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-invariant-body", modelName: "validEpoch",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("proves create/observe state projection and reports transformed or swapped fields", () => {
