@@ -120,8 +120,10 @@ same-file function declarations. The first helper argument must be the current
 runtime receiver; remaining scalar arguments are snapshotted symbolically at
 the call site. Recursive calls, imported helpers, aliases, and dynamic dispatch
 remain explicit non-proofs. Every model state is compared, so an extra runtime
-write is rejected as well as a missing or different write. Branches, loops,
-general loops, abrupt completion, collection operations, and dynamic computed members produce
+write is rejected as well as a missing or different write. A terminal void
+`return` and a terminal `return helper(runtime, ...)` are composed in root,
+helper, and local-method bodies. Nonterminal or branch-local abrupt completion,
+general loops, collection operations, and dynamic computed members produce
 `unsupported-action-body`; they are never silently treated as verified.
 Multiple writes are executed over a symbolic scalar state in TypeScript source
 order before comparison. This both proves cases such as two increments and

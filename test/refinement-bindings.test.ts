@@ -240,6 +240,28 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("composes terminal void returns and return-forwarded action helpers", () => {
+    const source = `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+    */
+      interface Runtime { value: number }
+      function applyIncrement(runtime: Runtime) { runtime.value++; return }
+      function forwardIncrement(runtime: Runtime) { return applyIncrement(runtime) }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { return forwardIncrement(runtime) }
+    `;
+    expect(validateRefinementActionBodies("return-helper.ts", source, "counter", parseSpec("return-helper.ts", source).temporal)).toEqual([]);
+
+    const nonterminal = source.replace("runtime.value++; return", "return; runtime.value++");
+    expect(validateRefinementActionBodies("nonterminal-return.ts", nonterminal, "counter", parseSpec("nonterminal-return.ts", nonterminal).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+    ]);
+  });
+
   it("specializes one local class method call and rejects unsupported control flow", () => {
     const source = `
       /* uneffect:

@@ -67,7 +67,7 @@ function armAuditAfterAttempt(runtime: TelemetryRoutingAccounting): void {
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */
 export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void {
-  armAuditAfterAttempt(runtime);
+  return armAuditAfterAttempt(runtime);
 }
 
 /* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
