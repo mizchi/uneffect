@@ -385,12 +385,15 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return selectedSymbols(expression.expression);
       if (ts.isConditionalExpression(expression)) return [...selectedSymbols(expression.whenTrue), ...selectedSymbols(expression.whenFalse)];
       if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
-        const constInitializer = (value: ts.Expression): ts.Expression | undefined => {
+        const constInitializer = (value: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression | undefined => {
           if (!ts.isIdentifier(value)) return value;
-          const declaration = targetSymbol(checker, value)?.valueDeclaration;
-          return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+          const symbol = targetSymbol(checker, value);
+          if (!symbol || seen.has(symbol)) return undefined;
+          const declaration = symbol.valueDeclaration;
+          if (!(declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
             && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
-            ? declaration.initializer : undefined;
+          )) return undefined;
+          return constInitializer(declaration.initializer, new Set([...seen, symbol]));
         };
         const indexInitializer = constInitializer(expression.argumentExpression);
         const unwrappedIndex = indexInitializer && (ts.isAsExpression(indexInitializer) || ts.isTypeAssertionExpression(indexInitializer))

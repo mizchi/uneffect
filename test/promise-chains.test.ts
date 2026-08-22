@@ -255,6 +255,22 @@ describe("Promise state and reaction chains", () => {
     expect(mutable.thenables.at(-1)).toMatchObject({ binding: 'choices["ok"]!', thenAccess: "dynamic" });
   });
 
+  it("resolves immutable thenable table and key alias chains", () => {
+    const model = analyzePromiseChains("aliased-object-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const base = { ok: first, fail: second } as const
+        const choices = base
+        const baseKey = "fail" as const
+        const selected = baseKey
+        const result = new Promise<number>(resolve => resolve(choices[selected]))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+  });
+
   it("links a directly chained Promise constructor to its executor", () => {
     const model = analyzePromiseChains("direct-constructor-chain.ts", `
       function run(remote: PromiseLike<number>) {

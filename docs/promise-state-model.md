@@ -102,7 +102,8 @@ concrete then callback is analyzed exactly. The canonical
 `if (property === "then") return callback; return forwardingValue` shape is
 also narrowed by TypeScript symbol identity. Immutable `as const` tuples and
 object literals can be selected exactly through reassignment-free literal
-`const` indexes/keys; mutable arrays and records remain dynamic. More general
+`const` indexes/keys. Cycle-safe immutable alias chains are followed for both
+the container and key; mutable arrays and records remain dynamic. More general
 computed selections and complex Proxy trap
 behavior, and recursive thenable cycles
 resolution remain conservative gaps. Links currently require a direct local constructor binding
