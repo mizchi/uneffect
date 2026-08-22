@@ -19,3 +19,8 @@ export async function brokenRetry(enabled: boolean): Promise<void> {
   }
   retryState.active.forwardedAttempt?.flush();
 }
+
+export async function brokenAttemptFactory(): Promise<{ attempt: Attempt }> {
+  await using attempt = openAttempt();
+  return { attempt };
+}

@@ -499,6 +499,15 @@ named import aliases, barrel re-exports, and namespace imports to an exported
 imports. Mutable and otherwise dynamic computed keys remain unknown. Mutation
 through imported or interprocedural aggregate aliases, aliases passed through
 calls, and path-correlated alias joins are not yet claimed as covered.
+
+Returning a `using` or `await using` resource is a distinct boundary error:
+explicit resource management disposes it while completing the function, before
+the caller receives the return value. The frontend records direct, local-alias,
+object-property/shorthand, spread, conditional, and array return escapes in
+`resourceEscapes` and emits `disposed-resource-escape`. Returning unrelated
+data after using the resource remains valid. Closure captures, calls that may
+retain an argument, and arbitrary class/container construction are not yet
+claimed as return-escape proofs.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

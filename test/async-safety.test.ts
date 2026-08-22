@@ -1783,4 +1783,44 @@ describe("async error and explicit resource safety", () => {
       }));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("rejects returning lexical resources that are disposed before the caller receives them", () => {
+    const result = analyzeAsyncSafety("returned-resource.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function direct() {
+        await using resource = open()
+        return resource
+      }
+      async function aliased() {
+        await using resource = open()
+        const forwarded = resource
+        return forwarded
+      }
+      async function objectAggregate() {
+        await using resource = open()
+        return { resource }
+      }
+      async function arrayAggregate() {
+        await using resource = open()
+        return [resource]
+      }
+      async function safe() {
+        await using resource = open()
+        resource.send()
+        return { ok: true }
+      }
+    `);
+    for (const functionName of ["direct", "aliased", "objectAggregate", "arrayAggregate"]) {
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName, kind: "disposed-resource-escape", severity: "error",
+      }));
+      expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+        owner: functionName, resource: "resource", via: "return",
+      }));
+    }
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safe", kind: "disposed-resource-escape",
+    }));
+  });
 });

@@ -80,6 +80,12 @@ The stable two-file run measured 131.51 ms end to end (3.35% RME), 92.59 ms
 for Program construction (1.93% RME), and 0.290 ms for the warm analysis
 (3.83% RME), over 20 cold samples and 1,722 warm samples. Following the import
 symbol adds no measurable warm-path regression at this fixture size.
+
+Adding a second dogfood function that returns an `await using` resource inside
+an object measured 140.87 ms end to end (2.78% RME), 98.07 ms for Program
+construction (2.64% RME), and 0.332 ms for the warm analysis (1.98% RME).
+Return-escape recognition remains below one millisecond in the warm two-file
+fixture; as before, cold TypeScript construction dominates.
 This includes TypeScript program construction and the complete async analysis,
 not only the alias scan. An immediately preceding run under system pressure
 measured 340.85 ms with 13.95% RME, so it is recorded as noise rather than a

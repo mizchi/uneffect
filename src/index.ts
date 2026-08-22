@@ -209,7 +209,7 @@ export type { AbortCompositionPattern, AsyncPatternModel, PromiseCombinatorPatte
 export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseChainsQuint } from "./promise-chains.js";
 export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern, PromiseThenablePattern } from "./promise-chains.js";
 export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
-export type { AsyncControlCompletionPath, AsyncControlCondition, AsyncControlEdge, AsyncControlLoop, AsyncControlRegion, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceBinding, ResourceDisposal, ResourceError, ResourceExit } from "./async-safety.js";
+export type { AsyncControlCompletionPath, AsyncControlCondition, AsyncControlEdge, AsyncControlLoop, AsyncControlRegion, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceAliasEscape, ResourceBinding, ResourceDisposal, ResourceError, ResourceEscape, ResourceExit } from "./async-safety.js";
 export { resolveDisposalProtocol } from "./disposal-symbols.js";
 export type { ResolvedDisposalProtocol } from "./disposal-symbols.js";
 export { compareUneffectFrontends } from "./frontend-parity.js";

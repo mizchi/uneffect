@@ -73,11 +73,17 @@ export interface ResourceAliasEscape {
   assignmentSpan: { start: number; end: number };
   useSpan: { start: number; end: number };
 }
+export interface ResourceEscape {
+  owner: string;
+  resource: string;
+  via: "return";
+  span: { start: number; end: number };
+}
 export interface AsyncSafetyDiagnostic {
   fileName: string;
   functionName: string;
   line: number;
-  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "disposed-resource-use";
+  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "disposed-resource-use" | "disposed-resource-escape";
   severity: "error";
   message: string;
 }
@@ -87,6 +93,7 @@ export interface AsyncSafetyResult {
   promiseBindings: PromiseBinding[];
   resources: ResourceBinding[];
   resourceAliases: ResourceAliasEscape[];
+  resourceEscapes: ResourceEscape[];
   disposals: ResourceDisposal[];
   promiseChains: PromiseChainModel;
   controlEdges: AsyncControlEdge[];
@@ -401,7 +408,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
@@ -650,13 +657,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         ? { root: path.root, key: path.segments.join("/"), alias: expression.getText(source) }
         : undefined;
     };
+    const symbolAliasFact = (symbol: ts.Symbol | undefined, alias: string, node: ts.Node): ResourceAliasFact | undefined => {
+      const resource = symbol && resourceSymbols.get(symbol);
+      return resource ? { resource, alias, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } }
+        : symbol ? escapedAliases.get(symbol) : undefined;
+    };
     const aliasFact = (expression: ts.Expression | undefined): ResourceAliasFact | undefined => {
       if (!expression) return undefined;
       if (ts.isIdentifier(expression)) {
         const symbol = checker.getSymbolAtLocation(expression);
-        const resource = symbol && resourceSymbols.get(symbol);
-        return resource ? { resource, alias: expression.text, assignmentSpan: { start: expression.getStart(source), end: expression.getEnd() } }
-          : symbol ? escapedAliases.get(symbol) : undefined;
+        return symbolAliasFact(symbol, expression.text, expression);
       }
       const slot = staticSlot(expression);
       return slot ? escapedAggregateAliases.get(slot.root)?.get(slot.key) : undefined;
@@ -667,8 +677,37 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       resourceAliases.push(alias); reportedAliasUses.add(identity);
       diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
     };
+    const returnedResourceFact = (expression: ts.Expression): ResourceAliasFact | undefined => {
+      const direct = aliasFact(expression);
+      if (direct) return direct;
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+        || ts.isNonNullExpression(expression)) return returnedResourceFact(expression.expression);
+      if (ts.isConditionalExpression(expression)) return returnedResourceFact(expression.whenTrue) ?? returnedResourceFact(expression.whenFalse);
+      if (ts.isObjectLiteralExpression(expression)) for (const property of expression.properties) {
+        const fact = ts.isShorthandPropertyAssignment(property) ? symbolAliasFact(checker.getShorthandAssignmentValueSymbol(property), property.name.text, property)
+          : ts.isPropertyAssignment(property) ? returnedResourceFact(property.initializer)
+            : ts.isSpreadAssignment(property) ? returnedResourceFact(property.expression)
+              : undefined;
+        if (fact) return fact;
+      }
+      if (ts.isArrayLiteralExpression(expression)) for (const element of expression.elements) {
+        if (ts.isExpression(element)) {
+          const fact = returnedResourceFact(element);
+          if (fact) return fact;
+        }
+      }
+      return undefined;
+    };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node) && node.expression) {
+        const escaped = returnedResourceFact(node.expression);
+        if (escaped) {
+          resourceEscapes.push({ owner, resource: escaped.resource.binding, via: "return", span: { start: node.getStart(source), end: node.getEnd() } });
+          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${escaped.resource.binding} escapes through return but is disposed before the caller receives it` });
+        }
+      }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
         const fact = aliasFact(node.right);
         if (ts.isIdentifier(node.left)) {
@@ -1003,7 +1042,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
