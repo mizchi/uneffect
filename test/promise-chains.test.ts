@@ -275,6 +275,23 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("nested_thenable_0_fulfilled");
   });
 
+  it("links an inline nested thenable expression exactly", () => {
+    const model = analyzePromiseChains("nested-inline-thenable.ts", `
+      function run() {
+        const outer = { then(resolve: (value: PromiseLike<number>) => void) {
+          resolve({ then(_resolve: (value: number) => void, reject: (reason: Error) => void) { reject(new Error("inline")) } })
+        } }
+        const result = new Promise<number>((resolve) => resolve(outer))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.thenables[0]).toMatchObject({ binding: expect.stringContaining("then(_resolve"), provenance: "local", possibleSettlements: ["rejected"] });
+    expect(model.thenables.find((thenable) => thenable.binding === "outer")).toMatchObject({ adoptedThenable: 0 });
+    const quint = generatePromiseChainsQuint("nested_inline_thenable", model);
+    expect(quint).toContain("nested_thenable_0_rejected");
+    expect(quint).not.toContain("nested_thenable_0_fulfilled");
+  });
+
   it("recognizes a direct Proxy get trap that always throws during then lookup", () => {
     const model = analyzePromiseChains("proxy-trap.ts", `
       function run() {

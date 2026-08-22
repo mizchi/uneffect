@@ -197,6 +197,15 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const thenable = thenableBySymbol.get(symbol) ?? ensureExternalThenable(symbol);
         return thenable === undefined ? [] : [thenable];
       }))];
+      for (const adoptedExpression of analyzed.adoptedExpressions) {
+        if (targetSymbol(checker, adoptedExpression)) continue;
+        const nested = thenablePattern(adoptedExpression, seen);
+        if (!nested) continue;
+        const thenable = thenables.length;
+        thenables.push({ owner: enclosingOwner(adoptedExpression), binding: adoptedExpression.getText(adoptedExpression.getSourceFile()), ...nested,
+          span: { start: adoptedExpression.getStart(adoptedExpression.getSourceFile()), end: adoptedExpression.getEnd() } });
+        adoptedThenables.push(thenable);
+      }
       return {
         thenAccess: "callable", invokesUserCode: true,
         capabilityEffects: ["InvokeUserCode"], provenance: "local",
