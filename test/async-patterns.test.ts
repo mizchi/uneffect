@@ -440,18 +440,108 @@ describe("builtin async temporal patterns", () => {
   it("keeps a direct external AbortSignal as a nondeterministic cancellation source", () => {
     const model = analyzeAsyncPatterns("scheduler-external-signal.ts", `
       function schedule(signal: AbortSignal) {
-        return scheduler.postTask(() => {}, { signal, priority: "background" })
+        return scheduler.postTask(async () => { await scheduler.yield() }, { signal, priority: "background" })
       }
     `);
     expect(model.timers).toMatchObject([
       { kind: "scheduler-post-task", externalAbortSignal: true, priority: "background" },
+      { kind: "scheduler-yield", externalAbortSignal: true, priority: "background", enqueuedBy: 0 },
     ]);
     const quint = generateWebEventLoopQuint("scheduler_external_signal", model);
     expect(quint).toContain("var callback_0_external_aborted: bool");
+    expect(quint).toContain("var callback_1_external_aborted: bool");
     expect(quint).toContain("action cancel_scheduler_task_0_from_external_signal");
+    expect(quint).toContain("action cancel_scheduler_task_1_from_external_signal");
     expect(quint).toMatch(/action cancel_scheduler_task_0_from_external_signal[\s\S]*callback_0_pending' = false[\s\S]*callback_0_external_aborted' = true/);
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("resolves a timeout signal returned by a direct source factory", () => {
+    const model = analyzeAsyncPatterns("scheduler-signal-factory.ts", `
+      function makeDeadline() { return AbortSignal.timeout(7) }
+      function schedule() {
+        const signal = makeDeadline()
+        return scheduler.postTask(() => {}, { signal, priority: "background" })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "abort-timeout", delay: 7 },
+      { kind: "scheduler-post-task", abortTimer: 0, externalAbortSignal: false },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_signal_factory", model);
+    expect(quint).toContain("action cancel_scheduler_task_1_from_timer_0");
+    expect(quint).not.toContain("cancel_scheduler_task_1_from_external_signal");
+  });
+
+  it("resolves a timeout signal returned by an imported source factory", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-signal-factory-"));
+    try {
+      const factory = join(directory, "factory.ts"), main = join(directory, "main.ts");
+      writeFileSync(factory, `export function makeDeadline() { return AbortSignal.timeout(9) }`);
+      writeFileSync(main, `import { makeDeadline } from "./factory.js"; export function schedule() { const signal = makeDeadline(); return scheduler.postTask(() => {}, { signal, priority: "background" }) }`);
+      const program = ts.createProgram([factory, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!);
+      expect(model.timers).toMatchObject([
+        { kind: "abort-timeout", delay: 9 },
+        { kind: "scheduler-post-task", abortTimer: 0, externalAbortSignal: false },
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("resolves an AbortSignal.any composition returned by a source factory", () => {
+    const model = analyzeAsyncPatterns("scheduler-composition-factory.ts", `
+      function makeSignal(external: AbortSignal) {
+        return AbortSignal.any([external, AbortSignal.timeout(4)])
+      }
+      function schedule(external: AbortSignal) {
+        const signal = makeSignal(external)
+        return scheduler.postTask(() => {}, { signal, priority: "background" })
+      }
+    `);
+    expect(model.abortCompositions).toHaveLength(1);
+    expect(model.abortCompositions[0]).toMatchObject({ sourceTimers: [undefined, 0] });
+    expect(model.timers).toMatchObject([
+      { kind: "abort-timeout", delay: 4 },
+      { kind: "scheduler-post-task", abortComposition: 0, externalAbortSignal: false },
+    ]);
+    const quint = generateWebEventLoopQuint("scheduler_composition_factory", model);
+    expect(quint).toContain("action abort_0_from_external_0");
+    expect(quint).toContain("action abort_0_from_timer_0");
+    expect(quint).toContain("action cancel_scheduler_task_1_from_composition_0");
+  });
+
+  it("resolves an AbortSignal.any composition returned by an imported source factory", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-composition-factory-"));
+    try {
+      const factory = join(directory, "factory.ts"), main = join(directory, "main.ts");
+      writeFileSync(factory, `export function makeSignal(external: AbortSignal) { return AbortSignal.any([external, AbortSignal.timeout(6)]) }`);
+      writeFileSync(main, `import { makeSignal } from "./factory.js"; export function schedule(external: AbortSignal) { const signal = makeSignal(external); return scheduler.postTask(() => {}, { signal, priority: "background" }) }`);
+      const program = ts.createProgram([factory, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!);
+      expect(model.abortCompositions).toMatchObject([{ sourceTimers: [undefined, 0] }]);
+      expect(model.timers).toMatchObject([
+        { kind: "abort-timeout", delay: 6 },
+        { kind: "scheduler-post-task", abortComposition: 0, externalAbortSignal: false },
+      ]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("substitutes abort-factory parameters with concrete call arguments", () => {
+    const model = analyzeAsyncPatterns("composition-factory-arguments.ts", `
+      function makeSignal(source: AbortSignal) {
+        return AbortSignal.any([source, AbortSignal.timeout(10)])
+      }
+      function schedule() {
+        const signal = makeSignal(AbortSignal.abort("pre-aborted"))
+        return scheduler.postTask(() => {}, { signal, priority: "background" })
+      }
+    `);
+    expect(model.abortCompositions).toMatchObject([{ initiallyAbortedSource: 0, sourceReasons: ['"pre-aborted"', "TimeoutError"] }]);
+    expect(model.timers).toMatchObject([
+      { kind: "abort-timeout", delay: 10 },
+      { kind: "scheduler-post-task", abortComposition: 0, initiallyCancelled: true, externalAbortSignal: false },
+    ]);
+  });
 
   it("drains Promise reaction jobs in the same checkpoint as queueMicrotask", () => {
     const source = `

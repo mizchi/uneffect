@@ -343,6 +343,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve direct property-access and literal computed-property method callbacks by TypeChecker symbol identity, including microtasks scheduled from their bodies.
     - [x] Resolve direct imported source callback factories when exactly one function-valued return is present in the analyzed Program.
     - [x] Preserve a direct external `AbortSignal` passed to `scheduler.postTask` as a nondeterministic cancellation state and transition, including inherited `scheduler.yield` continuations.
+    - [x] Resolve `AbortSignal.timeout` returned by a direct local or imported-source factory with exactly one explicit return and bind the scheduler task to its timer source.
+    - [x] Resolve static `AbortSignal.any` returned by the same source-factory subset, retaining external sources, nested timeout sources, first-abort composition identity, and scheduler cancellation.
+    - [x] Substitute source-factory parameters with concrete call arguments by symbol identity, preserving pre-aborted inputs and per-call timeout/composition instances.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

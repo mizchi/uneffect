@@ -147,6 +147,28 @@ The transition cancels the pending task and is inherited by modeled
 does not claim knowledge of the external signal's concrete initial state or
 abort reason.
 
+Signal factories are followed through local and imported source declarations
+when they have exactly one explicit return. A returned
+`AbortSignal.timeout(n)` is linked to the same abstract timer source used at a
+direct call site, so `scheduler.postTask` cancellation is no longer degraded to
+an external signal. Multi-return and declaration-only factories remain
+dynamic.
+
+The same source-factory subset supports static `AbortSignal.any([...])`.
+External inputs and nested timeout sources keep distinct composition slots,
+and a consuming scheduler task references the resulting composition rather
+than an unrelated external-signal approximation. The call expression is
+memoized by AST identity so analyzing both the factory and caller does not
+duplicate its timer or composition state.
+
+Factory parameters are substituted with concrete call arguments using checker
+symbol identity. This preserves a pre-aborted argument as the first source and
+initially cancels the consuming scheduler task. Source factories invoked as
+signal producers are instantiated at their call sites rather than also emitted
+as an unrelated generic timer/composition, and separate calls receive separate
+abstract instances. Recursive and multi-return factories still stop at the
+dynamic boundary.
+
 Conditional APIs can expose the guard explicitly:
 
 ```ts

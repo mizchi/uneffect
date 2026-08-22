@@ -62,6 +62,7 @@ export interface AbortCompositionPattern {
   initiallyAbortedSource?: number;
   span: { start: number; end: number };
 }
+type AbortTarget = { timer?: number; composition?: number; alreadyAborted?: boolean; reason?: string };
 
 export interface TimerHandleEscape {
   owner: string;
@@ -228,6 +229,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     return undefined;
   };
   const scheduledCallbacks = new Set<ts.FunctionLikeDeclaration>();
+  const invokedSignalFactories = new Set<ts.FunctionLikeDeclaration>();
+  const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
+  const inlineAbortCompositionTargets = new Map<ts.CallExpression, AbortTarget>();
   const collectScheduledCallbacks = (node: ts.Node, owner?: ts.FunctionLikeDeclaration): void => {
     const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
     if (ts.isCallExpression(node)) {
@@ -235,6 +239,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") {
         const callback = resolveCallback(node.arguments[operation.callbackArgument]);
         if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
+      }
+      if (!operation) {
+        const type = checker.getTypeAtLocation(node);
+        const abortProperty = checker.getPropertyOfType(type, "aborted");
+        const isAbortSignal = abortProperty?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile
+          && ts.isInterfaceDeclaration(declaration.parent) && declaration.parent.name.text === "AbortSignal");
+        if (isAbortSignal) for (const declaration of resolvedSymbol(node.expression)?.declarations ?? []) {
+          if (ts.isFunctionLike(declaration) && "body" in declaration && declaration.body) invokedSignalFactories.add(declaration as ts.FunctionLikeDeclaration);
+        }
       }
     }
     ts.forEachChild(node, (child) => collectScheduledCallbacks(child, currentOwner));
@@ -245,8 +258,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const ownerName = functionName(owner);
     const handleAliases = new Map<string, string>();
     const handleTargets = new Map<string, number>();
-    const abortSignalTargets = new Map<string, { timer?: number; composition?: number; alreadyAborted?: boolean; reason?: string }>();
-    const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
+    const abortSignalTargets = new Map<string, AbortTarget>();
     const assignedBinding = (call: ts.CallExpression): string | undefined => ts.isVariableDeclaration(call.parent) && call.parent.initializer === call && ts.isIdentifier(call.parent.name) ? call.parent.name.text
       : ts.isBinaryExpression(call.parent) && call.parent.right === call && call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(call.parent.left) ? call.parent.left.text
         : undefined;
@@ -257,16 +269,67 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (members.every((member) => Boolean(member.flags & ts.TypeFlags.Object))) return "object";
       return "unknown";
     };
-    const abortTarget = (expression: ts.Expression): { timer?: number; composition?: number; alreadyAborted?: boolean; reason?: string } | undefined => {
-      if (ts.isIdentifier(expression)) return abortSignalTargets.get(expression.text);
+    const abortTarget = (expression: ts.Expression, seen = new Set<ts.Symbol>(), bindings = new Map<ts.Symbol, ts.Expression>()): AbortTarget | undefined => {
+      if (ts.isIdentifier(expression)) {
+        const symbol = resolvedSymbol(expression);
+        const bound = symbol && bindings.get(symbol);
+        return bound ? abortTarget(bound, seen, bindings) : abortSignalTargets.get(expression.text);
+      }
       if (!ts.isCallExpression(expression)) return undefined;
       const operation = adapter.resolveCall(expression)?.operation;
       if (operation?.kind === "abort-static") return {
         alreadyAborted: true,
         reason: expression.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError",
       };
-      if (operation?.kind !== "abort-timeout") return undefined;
-      const existing = inlineAbortTimeoutTargets.get(expression);
+      if (operation?.kind === "abort-any") {
+        const existing = bindings.size === 0 ? inlineAbortCompositionTargets.get(expression) : undefined;
+        if (existing !== undefined) return existing;
+        const argument = expression.arguments[operation.signalsArgument];
+        const elements = argument ? expandStaticArray(argument) : undefined;
+        if (!elements || !elements.every((element): element is ts.Expression => !ts.isOmittedExpression(element))) return undefined;
+        const targets = elements.map((element) => abortTarget(element, seen, bindings));
+        const composition = abortCompositions.length;
+        const initiallyAbortedSource = targets.findIndex((target) => target?.alreadyAborted);
+        const expressionSource = expression.getSourceFile();
+        abortCompositions.push({
+          owner: ownerName,
+          sources: elements.map((element) => element.getText(expressionSource)),
+          sourceTimers: targets.map((target) => target?.timer),
+          sourceCompositions: targets.map((target) => target?.composition),
+          sourceReasons: targets.map((target) => target?.reason),
+          initiallyAbortedSource: initiallyAbortedSource < 0 ? undefined : initiallyAbortedSource,
+          span: { start: expression.getStart(expressionSource), end: expression.getEnd() },
+        });
+        const target: AbortTarget = {
+          composition,
+          alreadyAborted: initiallyAbortedSource >= 0,
+          reason: initiallyAbortedSource < 0 ? undefined : targets[initiallyAbortedSource]?.reason,
+        };
+        if (bindings.size === 0) inlineAbortCompositionTargets.set(expression, target);
+        return target;
+      }
+      if (operation?.kind !== "abort-timeout") {
+        const factory = resolvedSymbol(expression.expression);
+        if (!factory || seen.has(factory)) return undefined;
+        seen.add(factory);
+        const declarations = factory.declarations?.filter((declaration): declaration is ts.FunctionLikeDeclaration =>
+          ts.isFunctionLike(declaration) && "body" in declaration && Boolean(declaration.body)) ?? [];
+        const returned = declarations.flatMap((declaration) => {
+          const body = declaration.body as ts.ConciseBody;
+          if (!ts.isBlock(body)) return [body];
+          return body.statements.flatMap((statement) =>
+            ts.isReturnStatement(statement) && statement.expression ? [statement.expression] : []);
+        }) ?? [];
+        if (declarations.length !== 1 || returned.length !== 1) return undefined;
+        const nextBindings = new Map(bindings);
+        declarations[0]!.parameters.forEach((parameter, index) => {
+          if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
+          const parameterSymbol = resolvedSymbol(parameter.name);
+          if (parameterSymbol) nextBindings.set(parameterSymbol, expression.arguments[index]!);
+        });
+        return abortTarget(returned[0], seen, nextBindings);
+      }
+      const existing = bindings.size === 0 ? inlineAbortTimeoutTargets.get(expression) : undefined;
       if (existing !== undefined) return { timer: existing, reason: "TimeoutError" };
       const delayNode = expression.arguments[0];
       const timer = timers.length;
@@ -281,7 +344,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         abortReason: "TimeoutError",
         span: { start: expression.getStart(source), end: expression.getEnd() },
       });
-      inlineAbortTimeoutTargets.set(expression, timer);
+      if (bindings.size === 0) inlineAbortTimeoutTargets.set(expression, timer);
       return { timer, reason: "TimeoutError" };
     };
     const resolveHandle = (name: string): string => {
@@ -387,6 +450,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         handleAliases.delete(node.left.text);
         handleTargets.delete(node.left.text);
       }
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
+        const signal = abortTarget(node.initializer);
+        if (signal) abortSignalTargets.set(node.name.text, signal);
+      }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
         && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) recordEscapesInValue(node.right, "property", node);
       if (ts.isReturnStatement(node) && node.expression) recordEscapesInValue(node.expression, "return", node);
@@ -429,33 +496,18 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             abortReason: "TimeoutError",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          inlineAbortTimeoutTargets.set(node, timer);
+          if (declaration && timers[timer]) timers[timer]!.handle = declaration;
           if (declaration) abortSignalTargets.set(declaration, { timer, reason: "TimeoutError" });
         } else if (operation?.kind === "abort-static") {
           const declaration = assignedBinding(node);
           if (declaration) abortSignalTargets.set(declaration, { alreadyAborted: true, reason: node.arguments[operation.reasonArgument]?.getText(source) ?? "AbortError" });
         } else if (operation?.kind === "abort-any") {
           const declaration = assignedBinding(node);
-          const argument = node.arguments[operation.signalsArgument];
-          const elements = argument ? expandStaticArray(argument) : undefined;
-          if (elements && elements.every((element): element is ts.Expression => !ts.isOmittedExpression(element))) {
-            const targets = elements.map(abortTarget);
-            const composition = abortCompositions.length;
-            const initiallyAbortedSource = targets.findIndex((target) => target?.alreadyAborted);
-            abortCompositions.push({
-              owner: ownerName,
-              handle: declaration,
-              sources: elements.map((element) => element.getText(source)),
-              sourceTimers: targets.map((target) => target?.timer),
-              sourceCompositions: targets.map((target) => target?.composition),
-              sourceReasons: targets.map((target) => target?.reason),
-              initiallyAbortedSource: initiallyAbortedSource < 0 ? undefined : initiallyAbortedSource,
-              span: { start: node.getStart(source), end: node.getEnd() },
-            });
-            if (declaration) abortSignalTargets.set(declaration, {
-              composition,
-              alreadyAborted: initiallyAbortedSource >= 0,
-              reason: initiallyAbortedSource < 0 ? undefined : targets[initiallyAbortedSource]?.reason,
-            });
+          const target = abortTarget(node);
+          if (target?.composition !== undefined && declaration) {
+            abortCompositions[target.composition]!.handle = declaration;
+            abortSignalTargets.set(declaration, target);
           }
         } else if (operation?.kind === "scheduler-post-task") {
           const callbackNode = node.arguments[operation.callbackArgument];
@@ -555,7 +607,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       const parentCall = ts.isCallExpression(node.parent) ? node.parent : undefined;
       const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
       const scheduledCallback = Boolean(parentCall && (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node);
-      if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
+      if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration) && !invokedSignalFactories.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }
     ts.forEachChild(node, visit);
   };
