@@ -247,6 +247,15 @@ the declared temporal record shape and accepts the reconstruction as identity
 only when every nested field is present exactly once and reads the corresponding
 runtime path. Missing, extra, or redirected fields remain mismatches. Arbitrary factories, nested collections, computed dynamic
 keys, defaults, and non-identity abstraction functions remain unsupported.
+
+The Program-backed path also checks the first parameter and inferred or
+declared return type of both endpoints against the complete temporal state
+shape. Integer state requires a TypeScript number domain, Boolean state requires
+boolean, and nested records require every same-named field recursively. `any`,
+`unknown`, optional or missing fields, and scalar-kind mismatches produce an
+explicit `create-type-mismatch` or `observe-type-mismatch`; expression identity
+alone cannot discharge them. TypeChecker evidence for temporal Set/Map state is
+not implemented yet and remains a conservative non-proof.
 The proof assumes the annotated TypeScript parameter contract at the gradual
 boundary; it does not establish runtime object conformance against hostile
 Proxy/getter inputs.

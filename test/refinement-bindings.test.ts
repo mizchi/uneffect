@@ -779,6 +779,27 @@ describe("annotated refinement bindings", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementStateProjectionInProgram(program, mainFile, "lease", spec)).toEqual([]);
+      writeFileSync(mainFile, source.replace("interface State { owner: number; epoch: number }", "interface State { owner: number; epoch: boolean }"));
+      const wrongShapeProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(wrongShapeProgram, mainFile, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch", field: "epoch",
+      }));
+      writeFileSync(mainFile, source.replace("interface State { owner: number; epoch: number }", "type State = any"));
+      const anyProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(anyProgram, mainFile, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "create-type-mismatch",
+      }));
+      writeFileSync(mainFile, source.replace("export function observe(runtime: State)", "export function observe(runtime: State): any"));
+      const anyReturnProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementStateProjectionInProgram(anyReturnProgram, mainFile, "lease", spec)).toContainEqual(expect.objectContaining({
+        code: "observe-type-mismatch",
+      }));
       writeFileSync(mainFile, source.replace("const createRuntime", "let createRuntime"));
       const mutableProgram = ts.createProgram([mainFile, helperFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,

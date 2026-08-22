@@ -243,7 +243,9 @@ an action mismatch. The
 is normalized to one order-independent temporal record update. Omitting either
 member write fails refinement. The hydrate and snapshot implementations live
 in a neighboring module; the Program-backed projection validator resolves both
-imported symbols before checking the nested identity mapping.
+imported symbols before checking the nested identity mapping. It also checks
+that both endpoint parameter and return types contain the complete nested
+number/boolean temporal shape, rather than trusting an `any` identity adapter.
 
 `examples/dogfood/lease-authority-refinement.ts` binds a Node Lease-shaped
 authority record containing native Set and Map instances. Concrete `Set.add`

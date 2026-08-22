@@ -3,7 +3,7 @@ import { extractAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
-import { generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
+import { formatTemporalValueType, generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
 import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
@@ -76,7 +76,7 @@ export type Z3RefinementDiagnostic<T> = T & {
   reason?: string;
 };
 
-export type RefinementStateProjectionDiagnosticCode = "unsupported-create-body" | "unsupported-observe-body" | "create-state-mismatch" | "observe-state-mismatch";
+export type RefinementStateProjectionDiagnosticCode = "unsupported-create-body" | "unsupported-observe-body" | "create-state-mismatch" | "observe-state-mismatch" | "create-type-mismatch" | "observe-type-mismatch";
 
 export interface RefinementStateProjectionDiagnostic {
   code: RefinementStateProjectionDiagnosticCode;
@@ -870,6 +870,32 @@ export async function validateRefinementInvariantBodiesInProgramWithZ3(
   );
 }
 
+function typescriptTemporalShapeMismatch(
+  checker: ts.TypeChecker,
+  actual: ts.Type,
+  expected: TemporalValueType,
+  location: ts.Node,
+  path: readonly string[] = [],
+): readonly string[] | undefined {
+  if ((actual.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Never)) !== 0) return path;
+  if (typeof expected === "string") {
+    const flag = expected === "int" ? ts.TypeFlags.Number : ts.TypeFlags.Boolean;
+    if ((actual.flags & flag) !== 0) return undefined;
+    if (actual.isIntersection() && actual.types.some((part) => (part.flags & flag) !== 0)) return undefined;
+    return path;
+  }
+  if (expected.kind !== "record") return path;
+  if ((actual.flags & ts.TypeFlags.Object) === 0 && !actual.isIntersection()) return path;
+  for (const [name, fieldType] of Object.entries(expected.fields)) {
+    const property = actual.getProperty(name);
+    if (!property) return [...path, name];
+    const declaration = property.valueDeclaration ?? property.declarations?.[0] ?? location;
+    const mismatch = typescriptTemporalShapeMismatch(checker, checker.getTypeOfSymbolAtLocation(property, declaration), fieldType, declaration, [...path, name]);
+    if (mismatch) return mismatch;
+  }
+  return undefined;
+}
+
 function validateRefinementStateProjectionInSource(
   source: ts.SourceFile,
   text: string,
@@ -1007,9 +1033,31 @@ function validateRefinementStateProjectionInSource(
   };
 
   const diagnostics: RefinementStateProjectionDiagnostic[] = [];
+  const expectedStateType: TemporalValueType = { kind: "record", fields: Object.fromEntries(spec.states.map(({ name, type }) => [name, type])) };
   for (const role of ["create", "observe"] as const) {
     const exportName = manifest[role];
     const implementation = functions.get(exportName);
+    if (checker && implementation) {
+      const parameter = implementation.parameters[0];
+      const parameterMismatch = parameter
+        ? typescriptTemporalShapeMismatch(checker, checker.getTypeAtLocation(parameter), expectedStateType, parameter)
+        : [];
+      const signature = checker.getSignatureFromDeclaration(implementation);
+      const returnMismatch = signature
+        ? typescriptTemporalShapeMismatch(checker, checker.getReturnTypeOfSignature(signature), expectedStateType, implementation)
+        : [];
+      const mismatch = parameterMismatch ?? returnMismatch;
+      if (mismatch) {
+        diagnostics.push({
+          code: `${role}-type-mismatch`, adapterName, role, exportName,
+          ...(mismatch[0] ? { field: mismatch[0] } : {}),
+          expected: formatTemporalValueType(expectedStateType),
+          actual: parameterMismatch ? (parameter ? checker.typeToString(checker.getTypeAtLocation(parameter)) : "<missing>") : (signature ? checker.typeToString(checker.getReturnTypeOfSignature(signature)) : "<missing>"),
+          message: `${exportName} ${parameterMismatch ? "parameter" : "return"} type does not match temporal state${mismatch.length ? ` at ${mismatch.join(".")}` : ""}`,
+        });
+        continue;
+      }
+    }
     const projection = implementation ? extract(implementation, role) : undefined;
     if (!projection) {
       diagnostics.push({ code: `unsupported-${role}-body`, adapterName, role, exportName, message: `${exportName} is outside the supported state-projection fragment` });
