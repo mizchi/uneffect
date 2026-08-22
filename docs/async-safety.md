@@ -444,9 +444,10 @@ statements and later awaits. A top-level handler statement containing one
 analyzed awaited chain receives dedicated terminal and resume states. Catch
 await rejection preserves an enclosing finally edge before escaping; normal
 finally completion resumes the first following outer await. Abrupt completion
-nested inside handler branches, multiple awaits in one statement, rethrow
-propagation from an inner handler to an outer handler, and general handler
-joins still require the statement-level CFG.
+nested inside handler branches, multiple awaits in one statement, and general
+handler joins still require the statement-level CFG. Top-level rethrows and a
+single analyzed awaited handler failure do propagate to the nearest enclosing
+catch, including through a normally completing inner finally region.
 
 The straight-line lowering orders resource acquisition, awaited-chain
 boundaries, and early lexical disposal in one source-position event sequence.
@@ -482,4 +483,4 @@ await/catch, scope exits, and disposal failures. The initial single-function
 Quint lowering, region-identified catch/finally statement ordering,
 straight-line multiple-await sequencing, and innermost catch selection for
 sequential/nested try regions are implemented. General control-flow joins and
-full rethrow propagation across nested handlers remain outside this slice.
+branch-nested abrupt propagation across handlers remain outside this slice.

@@ -916,4 +916,95 @@ describe("async error and explicit resource safety", () => {
     expect(rejectionTarget).toBe(catchEntry);
     expect(run(quint).status).toBe(0);
   }, 10_000);
+
+  it("propagates an inner catch throw to the enclosing catch region", () => {
+    const result = analyzeAsyncSafety("nested-rethrow.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          try {
+            await new Promise<string>((resolve) => resolve("inner")).then(() => { throw new Error("inner") })
+          } catch (error) {
+            throw error
+          }
+        } catch (error) {
+          note("caught-outer")
+        }
+      }
+    `);
+    const quint = generateUnifiedAsyncQuint("nested_rethrow", result, "run");
+    const innerThrowTarget = /action catch_statement_0_1 = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const outerCatchEntry = /action catch_statement_0_0 = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    expect(innerThrowTarget).toBe(outerCatchEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("propagates an awaited inner handler rejection to the enclosing catch", () => {
+    const result = analyzeAsyncSafety("nested-handler-rejection.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          try {
+            await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+          } catch (error) {
+            await new Promise<string>((resolve) => resolve("handler")).then(() => { throw new Error("handler") })
+          }
+        } catch (error) {
+          note("caught-outer")
+        }
+      }
+    `);
+    const handler = result.promises.find((item) => item.source.includes('"handler"'))!;
+    const quint = generateUnifiedAsyncQuint("nested_handler_rejection", result, "run");
+    const handlerRejectTarget = new RegExp(`action promise_${handler.promiseChain}_reject_escapes = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const outerCatchEntry = /action catch_statement_0_0 = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    expect(handlerRejectTarget).toBe(outerCatchEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("propagates an awaited inner finally rejection to the enclosing catch", () => {
+    const result = analyzeAsyncSafety("nested-finally-rejection.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          try {
+            await Promise.resolve("try").then(value => value)
+          } finally {
+            await new Promise<string>((resolve) => resolve("finally")).then(() => { throw new Error("finally") })
+          }
+        } catch (error) {
+          note("caught-outer")
+        }
+      }
+    `);
+    const finalized = result.promises.find((item) => item.source.includes('"finally"'))!;
+    const quint = generateUnifiedAsyncQuint("nested_finally_rejection", result, "run");
+    const rejectTarget = new RegExp(`action promise_${finalized.promiseChain}_reject_escapes = all \\{[\\s\\S]*?pc' = (-?\\d+),`).exec(quint)?.[1];
+    const outerCatchEntry = /action catch_statement_0_0 = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    expect(rejectTarget).toBe(outerCatchEntry);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
+
+  it("preserves an inner throw through a normally completing finally", () => {
+    const result = analyzeAsyncSafety("nested-rethrow-finally.ts", `
+      declare function note(value: string): void
+      async function run() {
+        try {
+          try {
+            await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("try") })
+          } catch (error) {
+            throw error
+          } finally {
+            note("finalized")
+          }
+        } catch (error) {
+          note("caught-outer")
+        }
+      }
+    `);
+    const quint = generateUnifiedAsyncQuint("nested_rethrow_finally", result, "run");
+    const outerCatchEntry = /action catch_statement_0_0 = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    expect(quint).toContain(`else ${outerCatchEntry}`);
+    expect(run(quint).status).toBe(0);
+  }, 10_000);
 });

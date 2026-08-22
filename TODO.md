@@ -301,7 +301,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve top-level catch/finally `return` and `throw` completion so abrupt handlers do not fall through to later awaits.
     - [x] Give one awaited chain per top-level catch/finally statement dedicated terminal/resume states, including finally-before-outer-await ordering.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
-    - [ ] Propagate rethrows and handler failures through enclosing control regions instead of directly to function cleanup.
+    - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
+    - [ ] Extend enclosing-handler propagation to abrupt completion nested in branches and multiple awaits per handler statement.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
