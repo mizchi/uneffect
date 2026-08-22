@@ -1945,6 +1945,10 @@ describe("async error and explicit resource safety", () => {
       function maybeRegisterWrapper(resource: Resource, enabled: boolean) {
         maybeRegister(resource, enabled)
       }
+      function maybeRegisterAliasWrapper(resource: Resource, enabled: boolean) {
+        const shouldRegister = enabled
+        maybeRegister(resource, shouldRegister)
+      }
       class MaybeRegistry {
         /* uneffect: retains_resource_when 0: enabled */
         constructor(resource: Resource, enabled: boolean) {}
@@ -1973,6 +1977,14 @@ describe("async error and explicit resource safety", () => {
         using resource = open()
         maybeRegisterWrapper(resource, enabled)
       }
+      function wrappedAliasDisabled() {
+        using resource = open()
+        maybeRegisterAliasWrapper(resource, false)
+      }
+      function wrappedAliasEnabled() {
+        using resource = open()
+        maybeRegisterAliasWrapper(resource, true)
+      }
       /* uneffect: requires !enabled */
       function wrappedPreconditionDisabled(enabled: boolean) {
         using resource = open()
@@ -1998,6 +2010,7 @@ describe("async error and explicit resource safety", () => {
     `);
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "disabled" }));
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "wrappedDisabled" }));
+    expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "wrappedAliasDisabled" }));
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "wrappedPreconditionDisabled" }));
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "preconditionDisabled" }));
     expect(result.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "disabledConstruction" }));
@@ -2006,6 +2019,9 @@ describe("async error and explicit resource safety", () => {
     }));
     for (const owner of ["wrappedEnabled", "wrappedUnknown"]) expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
       owner, resource: "resource", via: "retaining-call",
+    }));
+    expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
+      owner: "wrappedAliasEnabled", resource: "resource", via: "retaining-call",
     }));
     expect(result.resourceEscapes).toContainEqual(expect.objectContaining({
       owner: "unknownConstruction", resource: "resource", via: "retaining-construction",

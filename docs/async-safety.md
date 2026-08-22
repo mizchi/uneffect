@@ -528,7 +528,9 @@ escape; only a guard proved false by literal/type facts or an enclosing
 per call and deliberately excluded from the unconditional signature cache.
 For direct wrappers, literal/type facts and caller preconditions are renamed to
 the wrapper's boolean parameters and propagated into nested retention calls.
-Calls without such facts retain the conservative may-retain summary.
+Reassignment-free local `const` aliases of those boolean parameters are
+resolved by symbol identity. Calls without such facts retain the conservative
+may-retain summary; mutable guard aliases remain unresolved.
 Labeled `break` and `continue` retain their target while
 crossing nested loops; only their owning labeled loop discharges them to the
 one-step loop continuation.

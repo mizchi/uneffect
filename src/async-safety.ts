@@ -288,15 +288,28 @@ function resourceRetentionParameters(
   const callerFacts = caller && ts.isFunctionLike(caller)
     ? extractAnnotations(caller.getSourceFile().text.slice(caller.getFullStart(), caller.getStart(caller.getSourceFile())), "requires")
     : [];
+  const booleanOrigin = (expression: ts.Expression, aliasSeen = new Set<ts.Symbol>()): ts.Expression => {
+    while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+      || ts.isNonNullExpression(expression)) expression = expression.expression;
+    if (!ts.isIdentifier(expression)) return expression;
+    const symbol = checker.getSymbolAtLocation(expression), value = symbol?.valueDeclaration;
+    if (!symbol || aliasSeen.has(symbol) || !value || !ts.isVariableDeclaration(value) || !value.initializer
+      || !ts.isVariableDeclarationList(value.parent)
+      || (ts.getCombinedNodeFlags(value.parent) & ts.NodeFlags.Const) === 0) return expression;
+    return booleanOrigin(value.initializer, new Set(aliasSeen).add(symbol));
+  };
+  const availableCallerFacts = [...contextFacts, ...callerFacts];
   signature.parameters.forEach((parameter, index) => {
     const argument = call.arguments?.[index];
     if (!argument || !ts.isIdentifier(parameter.name)) return;
     const type = checker.typeToString(checker.getTypeAtLocation(argument));
     if (argument.kind === ts.SyntaxKind.TrueKeyword || type === "true") invocationFacts.push(parameter.name.text);
     if (argument.kind === ts.SyntaxKind.FalseKeyword || type === "false") invocationFacts.push(`!(${parameter.name.text})`);
-    if (callerFacts.length > 0) {
-      if (proveBooleanImplication(callerFacts, argument.getText())) invocationFacts.push(parameter.name.text);
-      if (proveBooleanImplication(callerFacts, `!(${argument.getText()})`)) invocationFacts.push(`!(${parameter.name.text})`);
+    if (availableCallerFacts.length > 0) {
+      const origin = booleanOrigin(argument).getText();
+      if (proveBooleanImplication(availableCallerFacts, origin)) invocationFacts.push(parameter.name.text, argument.getText());
+      if (proveBooleanImplication(availableCallerFacts, `!(${origin})`)) invocationFacts.push(`!(${parameter.name.text})`, `!(${argument.getText()})`);
     }
   });
   const effectiveFacts = [...contextFacts, ...invocationFacts];

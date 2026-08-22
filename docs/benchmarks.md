@@ -415,3 +415,9 @@ fixture result above one millisecond on the warm path. The current
 context-sensitive implementation re-walks a wrapper when boolean facts differ;
 a reusable symbolic guarded summary is the next optimization target rather
 than hiding this cost behind the unconditional cache.
+
+Resolving the adapter's boolean guard through one reassignment-free `const`
+alias measured 1.134 ms on the warm Program over 442 samples (1.64% relative
+margin of error). This is slightly below the preceding 1.204 ms observation
+and does not indicate a regression, but the context-sensitive wrapper walk
+still dominates the sub-millisecond direct-boundary results.
