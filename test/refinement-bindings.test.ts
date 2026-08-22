@@ -419,10 +419,11 @@ describe("annotated refinement bindings", () => {
       action addOwner: owners' = owners.union(Set(2))
     */
       import { addOwner as applyOwner } from "./helper.js"
+      const ownerOperation = applyOwner
       interface Runtime { owners: Set<number> }
       /* uneffect: refinement authority@1 create */ export function createAuthority(initial: Runtime) { return initial }
       /* uneffect: refinement authority@1 observe */ export function observeAuthority(runtime: Runtime) { return runtime }
-      /* uneffect: refinement authority@1 action addOwner */ export function add(runtime: Runtime) { applyOwner(runtime, 2) }
+      /* uneffect: refinement authority@1 action addOwner */ export function add(runtime: Runtime) { ownerOperation(runtime, 2) }
     `;
     try {
       writeFileSync(helperFile, helper);
@@ -435,6 +436,14 @@ describe("annotated refinement bindings", () => {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementActionBodiesInProgram(program, mainFile, "authority", spec)).toEqual([]);
+      writeFileSync(mainFile, source.replace("const ownerOperation", "let ownerOperation"));
+      const mutableAliasProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(mutableAliasProgram, mainFile, "authority", spec)).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "addOwner",
+      }));
+      writeFileSync(mainFile, source);
       writeFileSync(helperFile, `export function addOwner(runtime: { owners: Set<number> }, owner: number) { addOwner(runtime, owner) }`);
       const recursiveProgram = ts.createProgram([mainFile, helperFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,

@@ -251,7 +251,9 @@ syntax API still trusts receiver identity at the annotated boundary; the
 Program-backed API resolves the receiver type symbol and rejects collection
 subclasses and same-shaped user types. Its Node Lease dogfood also resolves an
 aliased import through a two-level helper graph before proving an owner-removal
-transition; the syntax-only API deliberately leaves that imported call
+transition. The imported function is reached through an immutable local
+function-value alias; changing that alias to `let` makes the body a deliberate
+non-proof. The syntax-only API deliberately leaves that imported call
 unsupported.
 
 For finite state products, bounded exploration can itself become complete.

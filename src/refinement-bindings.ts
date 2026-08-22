@@ -341,11 +341,22 @@ function validateRefinementActionBodiesInSource(
   const stateTypes = new Map(spec.states.map(({ name, type }) => [name, type]));
   const diagnostics: RefinementActionDiagnostic[] = [];
 
-  const resolveFunction = (identifier: ts.Identifier): ts.FunctionDeclaration | undefined => {
-    if (!checker) return functions.get(identifier.text);
-    let symbol = checker.getSymbolAtLocation(identifier);
+  const resolveFunction = (expression: ts.Identifier, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
+    if (!checker) return functions.get(expression.text);
+    let symbol = checker.getSymbolAtLocation(expression);
     if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    return symbol?.declarations?.find(ts.isFunctionDeclaration);
+    if (!symbol || seen.has(symbol)) return undefined;
+    const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
+    if (direct) return direct;
+    const alias = symbol.declarations?.find((declaration): declaration is ts.VariableDeclaration =>
+      ts.isVariableDeclaration(declaration)
+      && ts.isVariableDeclarationList(declaration.parent)
+      && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+      && !!declaration.initializer
+      && ts.isIdentifier(declaration.initializer));
+    return alias?.initializer && ts.isIdentifier(alias.initializer)
+      ? resolveFunction(alias.initializer, new Set([...seen, symbol]))
+      : undefined;
   };
 
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
@@ -496,7 +507,7 @@ function validateRefinementActionBodiesInSource(
       if (!ts.isExpressionStatement(statement) && !terminalReturn) return undefined;
       const node = ts.isReturnStatement(statement) ? statement.expression! : statement.expression;
       if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
-        const helperName = node.expression.text;
+        const helperName = node.expression.getText();
         const helper = resolveFunction(node.expression);
         const callKey = helper ? `function:${helper.getSourceFile().fileName}:${helper.pos}` : `function:${helperName}`;
         if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
