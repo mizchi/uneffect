@@ -356,6 +356,7 @@ describe("Uneffect dogfood", () => {
         function flushFailure() { nextTick(() => console.log("retry")) }
         /* uneffect: effect Throw<SyntaxError> */
         function parseSettings() { throw new SyntaxError("invalid settings") }
+        async function loadSettings() { throw new SyntaxError("async settings") }
         const flushDispatcher = {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
@@ -363,6 +364,7 @@ describe("Uneffect dogfood", () => {
         /* uneffect: effect FsRead<"settings.json"> | Console | Timer */
         export function scheduleFlush(preferCache: boolean) {
           try { parseSettings() } catch { console.warn("using defaults") }
+          void loadSettings().catch(() => console.warn("async defaults"))
           readFile("settings.json", "utf8", () => {
             nextTick(() => console.log("tick"))
             queueMicrotask(() => console.log("microtask"))

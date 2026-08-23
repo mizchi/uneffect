@@ -229,6 +229,21 @@ describe("effect checker", () => {
     );
   });
 
+  it("does not classify an async-function rejection as synchronous Throw", () => {
+    const source = `
+      /* uneffect: effect Throw<RangeError> */
+      async function rejects() { throw new RangeError("async") }
+      function starts() { rejects() }
+    `;
+    const diagnostics = analyzeEffects("async-rejection.ts", source);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "rejects", effect: "Throw<RangeError>", kind: "unused",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "starts", effect: "Throw<RangeError>", kind: "missing",
+    }));
+  });
+
   it("does not admit a class that is not assignable to Error", () => {
     const source = `class NotAnError {} /* uneffect: effect Throw<Error> */ function f() { throw new NotAnError() }`;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(expect.objectContaining({ functionName: "f", effect: "Throw<unknown>", kind: "missing" }));

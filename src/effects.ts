@@ -224,6 +224,10 @@ function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.Fu
   return model.executors.some((executor) => executor.adoptedThenable !== undefined && executor.span.start >= start && executor.span.end <= end);
 }
 
+function isAsyncFunction(node: ts.FunctionLikeDeclaration): boolean {
+  return (ts.getCombinedModifierFlags(node) & ts.ModifierFlags.Async) !== 0;
+}
+
 function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker, promiseModel?: PromiseChainModel): EffectAnalysisResult {
   const fileName = source.fileName;
   const functions = new Map<string, FunctionInfo>();
@@ -239,6 +243,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     });
   });
   for (const info of functions.values()) {
+    const asyncOwner = isAsyncFunction(info.node);
     if (mayAssimilateUserCode(promiseModel, info.node)) addEffect(info.direct, capability("InvokeUserCode"));
     const visit = (node: ts.Node, dischargesThrow: boolean): void => {
       if (node !== info.node && ts.isFunctionLike(node)) return;
@@ -248,7 +253,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
         if (node.finallyBlock) visit(node.finallyBlock, dischargesThrow);
         return;
       }
-      if (ts.isThrowStatement(node) && !dischargesThrow) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
+      if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (checker && ts.isVariableStatement(node)) {
         const flags = ts.getCombinedNodeFlags(node.declarationList);
         if ((flags & ts.NodeFlags.Using) === ts.NodeFlags.Using) for (const resource of node.declarationList.declarations) {
@@ -256,7 +261,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           const asynchronous = (flags & ts.NodeFlags.AwaitUsing) === ts.NodeFlags.AwaitUsing;
           const { asyncSymbol: asyncDispose, syncSymbol: syncDispose } = resolveDisposalProtocol(checker, resource.initializer);
           for (const disposal of (asynchronous ? asyncDispose ?? syncDispose : syncDispose)?.declarations ?? []) for (const effect of declaration(disposal.getSourceFile(), disposal)) {
-            if (!dischargesThrow || effect.kind !== "throw") addEffect(info.direct, effect);
+            if (effect.kind !== "throw" || (!dischargesThrow && !asyncOwner)) addEffect(info.direct, effect);
           }
         }
       }
@@ -282,6 +287,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     for (const info of functions.values()) for (const edge of info.calls) {
       const callee = functions.get(edge.target)!;
       for (const rawEffect of inferred.get(edge.target) ?? []) {
+        if (rawEffect.kind === "throw" && isAsyncFunction(info.node)) continue;
         if (edge.dischargesThrow && rawEffect.kind === "throw") continue;
         const effect = substitute(rawEffect, callee, edge), own = inferred.get(info.name)!;
         if (!own.some((item) => formatEffect(item) === formatEffect(effect))) { own.push(effect); changed = true; }
@@ -353,9 +359,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program), checker = program.getTypeChecker();
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
-  const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>();
+  const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
+    if (isAsyncFunction(node)) asyncOwners.add(graphNode.id);
     const locals = localBindings(node);
     localsById.set(graphNode.id, locals);
     const source = node.getSourceFile(), effects: Effect[] = [];
@@ -377,7 +384,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (child.finallyBlock) visit(child.finallyBlock, catches);
         return;
       }
-      if (ts.isThrowStatement(child) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(child.expression) });
+      if (ts.isThrowStatement(child) && !catches && !asyncOwners.has(graphNode.id)) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(child.expression) });
       if (ts.isVariableStatement(child)) {
         const flags = ts.getCombinedNodeFlags(child.declarationList);
         if ((flags & ts.NodeFlags.Using) === ts.NodeFlags.Using) for (const declaration of child.declarationList.declarations) {
@@ -410,6 +417,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
       for (const raw of inferred.get(edge.callee)!) {
+        if (raw.kind === "throw" && asyncOwners.has(edge.caller)) continue;
         if (edge.dischargesThrow && raw.kind === "throw") continue;
         const effect = raw.kind === "mutate" ? (() => {
           for (let index = 0; index < calleeParams.length; index++) {

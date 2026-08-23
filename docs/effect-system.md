@@ -67,6 +67,10 @@ they may execute after that handler has returned.
 Implicit disposal calls introduced by `using` and `await using` carry the same
 lexical catch fact. A disposer `Throw<E>` therefore propagates from an uncaught
 scope and is discharged when completion of that scope is enclosed by a catch.
+An `async function` is also a semantic boundary: a direct throw, or a
+synchronous callee/disposer throw inside it, rejects the returned Promise rather
+than throwing from the function call. Uneffect therefore stops `Throw<E>` at
+that owner boundary and leaves rejection observation to async-safety analysis.
 
 ## Domain effects and semantic footprints
 

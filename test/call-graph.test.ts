@@ -69,12 +69,15 @@ describe("multi-file call graph and effect polymorphism", () => {
       writeFileSync(library, `
         /* uneffect: effect Throw<RangeError> */
         export function dangerous() { throw new RangeError("bad") }
+        /* uneffect: effect Throw<SyntaxError> */
+        export async function rejects() { throw new SyntaxError("async") }
         export function invoke(callback: () => void) { callback() }
       `);
       writeFileSync(main, `
-        import { dangerous, invoke } from "./library.js"
+        import { dangerous, rejects, invoke } from "./library.js"
         export function caughtDirect() { try { dangerous() } catch {} }
         export function uncaughtDirect() { dangerous() }
+        export function startsAsync() { rejects() }
         export function caughtInline() { try { invoke(() => { throw new TypeError("inline") }) } catch {} }
         export function deferredIsNotCaught() {
           try { setTimeout(() => { throw new URIError("later") }, 0) } catch {}
@@ -90,6 +93,12 @@ describe("multi-file call graph and effect polymorphism", () => {
       }));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "uncaughtDirect", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "rejects", effect: "Throw<SyntaxError>", kind: "unused",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "startsAsync", effect: "Throw<SyntaxError>", kind: "missing",
       }));
       expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
         functionName: "caughtInline", effect: "Throw<TypeError>", kind: "missing",

@@ -352,6 +352,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
   - [x] Preserve synchronous `Throw<T>` discharge on caught program call-graph edges, including inline callbacks, without discharging deferred callbacks.
   - [x] Apply the same caught-edge discharge to implicit `using`/`await using` disposal calls in single-file and Program analysis.
+  - [x] Stop synchronous `Throw<T>` propagation at async-function boundaries; async throws are Promise rejections handled by async-safety analysis.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.
