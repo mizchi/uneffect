@@ -53,6 +53,23 @@ export async function brokenConditionalRetry(enabled: boolean, keepFirst: boolea
   latestAttempt?.flush();
 }
 
+export async function brokenTryRetry(enabled: boolean): Promise<void> {
+  let preparedAttempt: Attempt | undefined;
+  let failedAttempt: Attempt | undefined;
+  while (enabled) {
+    await using attempt = openAttempt();
+    try {
+      prepareFlush();
+      preparedAttempt = attempt;
+    } catch {
+      failedAttempt = attempt;
+    }
+    await Promise.resolve("flush").then((value) => value);
+  }
+  preparedAttempt?.flush();
+  failedAttempt?.flush();
+}
+
 export async function brokenAttemptFactory(): Promise<{ attempt: Attempt }> {
   await using attempt = openAttempt();
   return { attempt };

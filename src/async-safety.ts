@@ -560,6 +560,19 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return false;
     };
+    const mayThrowOrReject = (node: ts.Node): boolean => {
+      let risky = false;
+      const scan = (current: ts.Node): void => {
+        if (risky || (current !== node && ts.isFunctionLike(current))) return;
+        if (ts.isCallExpression(current) || ts.isNewExpression(current) || ts.isAwaitExpression(current) || ts.isThrowStatement(current)) {
+          risky = true;
+          return;
+        }
+        ts.forEachChild(current, scan);
+      };
+      scan(node);
+      return risky;
+    };
     const controlPaths = (node: ts.Node): AsyncControlCondition[][] => {
       let paths: AsyncControlCondition[][] = [[]];
       let child = node;
@@ -577,6 +590,23 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) if (ts.isCaseClause(parent) || ts.isDefaultClause(parent)) {
         paths = switchControlPaths(owner, source, parent).flatMap((prefix) => paths.map((path) => [...prefix, ...path]));
+      }
+      return paths;
+    };
+    const resourceAliasControlPaths = (node: ts.Node): AsyncControlCondition[][] => {
+      let paths = controlPaths(node);
+      for (let child: ts.Node = node, parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
+        if (!ts.isTryStatement(parent) || !parent.catchClause || child === parent.finallyBlock) continue;
+        const id = `${owner}@try:${parent.getStart(source)}:completed`;
+        if (child === parent.catchClause) {
+          paths = paths.map((path) => [{ id, expected: false }, ...path]);
+          continue;
+        }
+        if (child !== parent.tryBlock) continue;
+        const statementIndex = parent.tryBlock.statements.findIndex((statement) => node.getStart(source) >= statement.getStart(source) && node.getEnd() <= statement.getEnd());
+        if (statementIndex > 0 && parent.tryBlock.statements.slice(0, statementIndex).some(mayThrowOrReject)) {
+          paths = paths.map((path) => [{ id, expected: true }, ...path]);
+        }
       }
       return paths;
     };
@@ -1017,7 +1047,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const generationAtAssignment = (fact: ResourceAliasFact, node: ts.Node): ResourceAliasEscape["generation"] => {
       const resourceConditions = new Set(fact.resource.controlPaths.flat().map((condition) => `${condition.id}:${condition.expected}`));
-      const relativePaths = controlPaths(node).map((path) => path.filter((condition) => !resourceConditions.has(`${condition.id}:${condition.expected}`)));
+      const relativePaths = resourceAliasControlPaths(node).map((path) => path.filter((condition) => !resourceConditions.has(`${condition.id}:${condition.expected}`)));
       const hasRelativeControl = relativePaths.some((path) => path.length > 0);
       if (!hasRelativeControl) return fact.generation;
       const combined = fact.generation.controlPaths.flatMap((existing) => relativePaths.flatMap((relative) => {

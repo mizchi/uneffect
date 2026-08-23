@@ -137,6 +137,10 @@ After retaining relative control paths and correlating both aliases through one
 branch identity, the same benchmark measured 124.56 ms mean over 20 samples
 (1.66% RME). No regression is visible against the earlier independent-choice
 lowering.
+A restricted try/catch generation variant, including preceding-risk detection
+and correlated completion/catch capture lowering, measured 124.77 ms mean over
+20 samples (1.59% RME). Keeping this projection separate from the general
+Promise handler CFG produced no measurable cold-path penalty.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

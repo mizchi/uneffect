@@ -264,6 +264,13 @@ describe("Uneffect dogfood", () => {
     const branch = /branch_(\d+) == 1,/.exec(firstCapture)?.[1];
     expect(branch).toBeDefined();
     expect(latestCapture).toContain(`branch_${branch} == 0,`);
+    const tryAliases = broken.resourceAliases.filter((alias) => alias.owner === "brokenTryRetry");
+    expect(tryAliases).toHaveLength(2);
+    expect(tryAliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(tryAliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: tryAliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
     }));

@@ -1574,6 +1574,95 @@ describe("async error and explicit resource safety", () => {
     expect(run(quint, 24).status).not.toBe(0);
   });
 
+  it("correlates switch entry and fallthrough resource-generation captures", () => {
+    const result = analyzeAsyncSafety("switch-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken(enabled: boolean, mode: "first" | "latest" | "none") {
+        let first: Resource | undefined
+        let latest: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          switch (mode) {
+            case "first": first = resource
+            case "latest": latest = resource; break
+            case "none": break
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        first?.send()
+        latest?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases).toHaveLength(2);
+    expect(aliases[0]?.generation.controlPaths).toHaveLength(1);
+    expect(aliases[1]?.generation.controlPaths).toHaveLength(2);
+
+    const quint = generateUnifiedAsyncQuint("switch_resource_generations", result, "broken");
+    const firstCapture = /action capture_alias_0 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    const latestCapture = /action capture_alias_1 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    const firstCase = /branch_(\d+) == 1,/.exec(firstCapture)?.[1];
+    expect(firstCase).toBeDefined();
+    expect(latestCapture).toContain(`(branch_${firstCase} == 1) or (`);
+    expect(quint).toContain("action skip_conditional_capture_alias_0");
+    expect(quint).toContain("action skip_conditional_capture_alias_1");
+    expect(run(quint, 28).status).not.toBe(0);
+  });
+
+  it("correlates post-risk try continuation and catch resource-generation captures", () => {
+    const result = analyzeAsyncSafety("try-catch-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      declare function mayThrow(): void
+      async function broken(enabled: boolean) {
+        let success: Resource | undefined
+        let failure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            mayThrow()
+            success = resource
+          } catch {
+            failure = resource
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        failure?.send()
+      }
+      async function assignedBeforeRisk(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            success = resource
+            mayThrow()
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases).toHaveLength(2);
+    expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
+    expect(aliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
+    expect(result.resourceAliases.find((alias) => alias.owner === "assignedBeforeRisk")?.generation.relation).toBe("latest");
+
+    const quint = generateUnifiedAsyncQuint("try_catch_resource_generations", result, "broken");
+    const successCapture = /action capture_alias_0 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    const failureCapture = /action capture_alias_1 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    const completionBranch = /branch_(\d+) == 1,/.exec(successCapture)?.[1];
+    expect(completionBranch).toBeDefined();
+    expect(failureCapture).toContain(`branch_${completionBranch} == 0,`);
+    expect(run(quint, 28).status).not.toBe(0);
+  });
+
   it("propagates disposed resource identity through local alias chains", () => {
     const result = analyzeAsyncSafety("transitive-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

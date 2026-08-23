@@ -564,9 +564,15 @@ repeated acquisition. A branch introduced below the acquisition produces
 that alias. This prevents an optional assignment from becoming a mandatory
 snapshot. Relative control paths retain their condition identity and polarity,
 so aliases assigned by opposite arms of the same `if` share one Quint branch
-choice and cannot both capture in one modeled iteration. Switch/fallthrough,
-try/catch, and cross-loop alias-generation correlations still require the
-general CFG join and are not claimed as proved.
+choice and cannot both capture in one modeled iteration. Finite switch entries
+reuse the ordered case-decision paths, including explicit fallthrough. A
+restricted top-level `try` sequence marks assignments after a preceding call,
+construction, `await`, or explicit throw as the successful continuation and
+correlates them with the catch path through the opposite completion polarity.
+Assignments before the first such risky statement remain unconditional.
+Nested try control, effects hidden behind getters/coercions, finally-dependent
+joins, and cross-loop alias-generation correlations still require the general
+CFG join and are not claimed as proved.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local
