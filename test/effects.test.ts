@@ -127,12 +127,15 @@ describe("effect checker", () => {
   it("tracks Node DNS authority and callback capabilities through aliases", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns";
-      /* uneffect: effect Net | Console */
+      /* uneffect: effect Net<"example.com"> | Console */
       function resolve() { resolveHost("example.com", () => console.log("resolved")) }
       function lookup(_host: string, callback: () => void) { callback() }
       function local() { lookup("example.com", () => undefined) }
     `;
     expect(analyzeEffects("node-dns-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-dns-effects.ts", source.replace('Net<"example.com">', 'Net<"other.example">'))).toContainEqual(
+      expect.objectContaining({ functionName: "resolve", kind: "missing", effect: 'Net<"example.com">' }),
+    );
   });
 
   it("checks an inferred literal fs path against a structured declaration", () => {

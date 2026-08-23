@@ -123,6 +123,10 @@ pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.
 
+The DNS overlay also contributes a `Net` capability. A literal `lookup`
+hostname is narrowed to `Net<"host">`; dynamic hostnames and the two-argument
+address/port scope of `lookupService` remain conservatively broad `Net`.
+
 Nested jobs in `Server.close(callback)` are composed into the temporal model,
 and capability effects from inline or statically named deferred callbacks are
 propagated into the enclosing function's effect summary. A synchronous
