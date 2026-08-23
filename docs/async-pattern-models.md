@@ -52,6 +52,15 @@ same source-ordered V8 FIFO with `queueMicrotask` jobs. A broken option permits
 a V8 job to overtake a pending next-tick callback and is rejected by
 `nodeEventLoopSafe`.
 
+Static `scheduler.postTask` options may be written inline or through an
+immutable `const` object. Nested immutable object spreads and computed keys
+whose string/number value is statically known use JavaScript's
+last-write-wins order, so `priority`, `delay`, and `signal` retain the same
+proof information after ordinary configuration composition. A mutable alias,
+accessor, unresolved computed key, or opaque spread can override an earlier
+property and therefore keeps that option unknown rather than proving a stale
+priority or cancellation source.
+
 Top-level calls are represented with owner `<module>`. The default
 `commonjs` mode drains initial `process.nextTick` jobs before initial V8 jobs.
 Use `just spec-node-esm-event-loop <file>`, CLI option

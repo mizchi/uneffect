@@ -5,6 +5,7 @@ import type { PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
+import { evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export interface TimerPattern {
   owner: string;
@@ -951,6 +952,45 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const taskControllers = new Map<string, { priority: NonNullable<TimerPattern["priority"]>; tasks: number[] }>();
     const staticPriority = (expression: ts.Expression | undefined): TimerPattern["priority"] => expression && ts.isStringLiteralLike(expression)
       && (expression.text === "user-blocking" || expression.text === "user-visible" || expression.text === "background") ? expression.text : undefined;
+    type StaticOptionResult = { status: "found"; value: ts.Expression } | { status: "missing" | "unknown" };
+    const resolveStaticObjectOption = (expression: ts.Expression | undefined, name: string): StaticOptionResult => {
+      if (!expression) return { status: "missing" };
+      expression = immutableInitializer(expression);
+      while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+      if (!ts.isObjectLiteralExpression(expression)) return { status: "unknown" };
+      const propertyName = (property: ts.ObjectLiteralElementLike): string | undefined => {
+        if (!property.name) return undefined;
+        if (!ts.isComputedPropertyName(property.name)) return property.name.getText(property.getSourceFile()).replaceAll(/["']/g, "");
+        const key = evaluateStaticPrimitive(property.name.expression, {
+          resolveIdentifier: (identifier) => {
+            const symbol = resolvedSymbol(identifier);
+            if (!symbol) return undefined;
+            const initializer = immutableInitializer(identifier);
+            return { key: symbol, ...(initializer === identifier ? {} : { expression: initializer }) };
+          },
+        });
+        return typeof key === "string" || typeof key === "number" ? String(key) : undefined;
+      };
+      for (const property of [...expression.properties].reverse()) {
+        if (ts.isSpreadAssignment(property)) {
+          const selected = resolveStaticObjectOption(property.expression, name);
+          if (selected.status === "found" || selected.status === "unknown") return selected;
+          continue;
+        }
+        const key = propertyName(property);
+        if (key === undefined && property.name && ts.isComputedPropertyName(property.name)) return { status: "unknown" };
+        if (key !== name) continue;
+        if (ts.isPropertyAssignment(property)) return { status: "found", value: property.initializer };
+        if (ts.isShorthandPropertyAssignment(property)) return { status: "found", value: property.name };
+        return { status: "unknown" };
+      }
+      return { status: "missing" };
+    };
+    const staticObjectOption = (expression: ts.Expression | undefined, name: string): ts.Expression | undefined => {
+      const result = resolveStaticObjectOption(expression, name);
+      return result.status === "found" ? result.value : undefined;
+    };
     const taskControllerConstructor = (expression: ts.Expression): boolean => {
       if (!ts.isIdentifier(expression) || expression.text !== "TaskController") return false;
       return resolvedSymbol(expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
@@ -1248,12 +1288,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         } else if (operation?.kind === "scheduler-post-task") {
           const callbackNode = node.arguments[operation.callbackArgument];
           const optionsNode = node.arguments[operation.optionsArgument];
-          const optionsObject = optionsNode && ts.isObjectLiteralExpression(optionsNode) ? optionsNode : undefined;
-          const option = (name: string): ts.Expression | undefined => optionsObject?.properties.flatMap((property) => {
-            if (ts.isPropertyAssignment(property) && property.name.getText(source).replaceAll(/["']/g, "") === name) return [property.initializer];
-            if (ts.isShorthandPropertyAssignment(property) && property.name.text === name) return [property.name];
-            return [];
-          })[0];
+          const option = (name: string): ts.Expression | undefined => staticObjectOption(optionsNode, name);
           const priorityNode = option("priority");
           const signalNode = option("signal");
           const taskController = !priorityNode ? controllerForSignal(signalNode) : undefined;

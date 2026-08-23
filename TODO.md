@@ -617,6 +617,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve `AbortSignal.timeout` returned by a direct local or imported-source factory with exactly one explicit return and bind the scheduler task to its timer source.
     - [x] Resolve static `AbortSignal.any` returned by the same source-factory subset, retaining external sources, nested timeout sources, first-abort composition identity, and scheduler cancellation.
     - [x] Substitute source-factory parameters with concrete call arguments by symbol identity, preserving pre-aborted inputs and per-call timeout/composition instances.
+    - [x] Resolve immutable `scheduler.postTask` option aliases, object spreads, and literal-computed keys with last-write-wins semantics; retain mutable, accessor, dynamic-key, and opaque-spread overrides as unknown.
     - [x] Model direct synchronous `TaskController` construction and literal `setPriority` changes as ordered dynamic-priority transitions; propagate the final priority to `scheduler.yield`, while explicit `postTask` priority remains immutable.
     - [x] Add an initial Node callback-checkpoint profile for `process.nextTick`, V8 microtasks, timers, and `setImmediate`, with CLI/project verification and a broken-order oracle. ESM top-level and complete libuv phase/I/O semantics remain open.
     - [x] Merge definitely queued Promise reactions and `queueMicrotask` jobs into the Node V8 microtask FIFO below the next-tick queue.

@@ -410,6 +410,44 @@ describe("builtin async temporal patterns", () => {
     `))).toThrow(/requires a static priority/);
   }, 20_000);
 
+  it("resolves immutable scheduler option aliases, spreads, and computed keys", () => {
+    const model = analyzeAsyncPatterns("scheduler-option-aliases.ts", `
+      function schedule() {
+        const cancelled = AbortSignal.abort("cancelled")
+        const priorityKey = "priority"
+        const base = { signal: cancelled, priority: "background" } as const
+        const options = { ...base, [priorityKey]: "user-blocking", delay: 3 } as const
+        scheduler.postTask(() => undefined, options)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-blocking", delay: 3, initiallyCancelled: true },
+    ]);
+
+    const mutable = analyzeAsyncPatterns("scheduler-mutable-options.ts", `
+      function schedule(signal: AbortSignal) {
+        let options = { signal, priority: "background" as const }
+        scheduler.postTask(() => undefined, options)
+      }
+    `);
+    expect(mutable.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-visible", externalAbortSignal: false },
+    ]);
+
+    const opaqueOverride = analyzeAsyncPatterns("scheduler-opaque-options.ts", `
+      function schedule(key: string, opaque: Record<string, unknown>) {
+        const dynamic = { priority: "user-blocking" as const, [key]: "background" }
+        const spread = { priority: "user-blocking" as const, ...opaque }
+        scheduler.postTask(() => undefined, dynamic)
+        scheduler.postTask(() => undefined, spread)
+      }
+    `);
+    expect(opaqueOverride.timers).toMatchObject([
+      { kind: "scheduler-post-task", priority: "user-visible" },
+      { kind: "scheduler-post-task", priority: "user-visible" },
+    ]);
+  });
+
   it("applies ordered TaskController reprioritization before a queued task runs", () => {
     const model = analyzeAsyncPatterns("scheduler-reprioritize.ts", `
       function schedule() {
