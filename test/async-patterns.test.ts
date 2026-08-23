@@ -1338,6 +1338,29 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("specializes generator-local computed constants only when they become primitive literals", () => {
+    const model = analyzeAsyncPatterns("generator-computed-const.ts", `
+      function* failures(flag: boolean, reason: string) {
+        const enabled = flag === true
+        const selected = enabled ? reason : "cache-miss"
+        yield Promise.reject(selected)
+      }
+      async function network() { return Promise.any(failures(true, "network-down")) }
+      async function dynamic(flag: boolean, reason: string) { return Promise.any(failures(flag, reason)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      owner: "network",
+      staticIterable: true,
+      branches: ['Promise.reject("network-down")'],
+      aggregateErrorReasons: [{ kind: "literal", value: "network-down" }],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      owner: "dynamic",
+      staticIterable: false,
+      unsupportedReason: "unsupported-generator-control-flow",
+    });
+  });
+
   it("rejects recursive generator delegation without recursing indefinitely", () => {
     const model = analyzeAsyncPatterns("recursive-generator-delegation.ts", `
       function* recursive(): Generator<number> {

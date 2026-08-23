@@ -567,12 +567,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           } else if (ts.isVariableStatement(statement)
             && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
             && statement.declarationList.declarations.every((declaration) => ts.isIdentifier(declaration.name)
-              && Boolean(declaration.initializer && safeAliasExpression(declaration.initializer)))) {
+              && Boolean(declaration.initializer))) {
             const bindings = new Map(path.bindings);
             for (const declaration of statement.declarationList.declarations) {
               const symbol = resolvedSymbol(declaration.name as ts.Identifier);
               if (!symbol || !declaration.initializer) return undefined;
-              bindings.set(symbol, substitute(declaration.initializer, bindings));
+              const value = substitute(declaration.initializer, bindings);
+              if (!safeAliasExpression(declaration.initializer) && !staticPrimitive(value)) return undefined;
+              bindings.set(symbol, value);
             }
             next.push({ ...path, bindings });
           } else if (ts.isThrowStatement(statement)) next.push({ ...path, failure: "step", completes: false });

@@ -22,8 +22,10 @@ export function dashboardFailures(details: {
 }): Iterable<Promise<never>> {
   return {
     *[Symbol.iterator](): Generator<Promise<never>> {
-      yield Promise.reject(details.useCache ? `${details.cache.reason}` : "cache-disabled");
-      yield Promise.reject(new TypeError(details.useNetwork ? `${details.network.services[0]}-down` : "network-disabled"));
+      const useCache = details.useCache === true;
+      const useNetwork = details.useNetwork !== false;
+      yield Promise.reject(useCache ? `${details.cache.reason}` : "cache-disabled");
+      yield Promise.reject(new TypeError(useNetwork ? `${details.network.services[0]}-down` : "network-disabled"));
     },
   };
 }

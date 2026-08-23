@@ -236,9 +236,12 @@ an imported replica generator loops over a readonly tuple and another imported
 generator delegates to a finite child generator. Call-site network thenables
 remain exact thenable slots across both inter-file boundaries.
 Reassignment-free generator-local `const` bindings with identifier or primitive
-literal initializers are substituted by symbol identity. This covers boolean
-guard aliases and directly yielded value/thenable aliases without evaluating
-user code. Mutable bindings, destructuring, and call/property initializers stay
+literal initializers are substituted by symbol identity. A computed initializer
+is also accepted when call-site substitution and the restricted expression
+folder reduce it to a primitive literal; otherwise the generator remains
+unsupported. This covers boolean guard aliases and directly yielded
+value/thenable aliases without evaluating user code. Mutable bindings,
+destructuring, unresolved computed expressions, and call initializers stay
 outside the finite fragment. Nested lexical blocks are analyzed with a scoped
 binding environment; generated yields survive the block while local aliases do
 not leak into following statements or loop iterations.
