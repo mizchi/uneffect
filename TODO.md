@@ -509,6 +509,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Treat a bare generator `yield;` as an exact fulfilled `undefined` Promise-combinator slot.
     - [x] Flatten `yield*` over recursively finite arrays/readonly tuples and direct finite builtin Sets.
     - [x] Compose `yield*` delegation to resolved local/imported finite generators, including substitutions, correlated paths, step failures, and cycle-safe recursion rejection.
+    - [x] Extend finite `yield*` delegation and cycle rejection to resolved single-return custom-iterable factories and immutable iterable objects.
     - [x] Unroll synchronous generator `for...of` over the same direct finite builtin iterable subset with symbol-based direct-yield substitution and literal guard folding.
     - [x] Specialize generator-local immutable identifier/primitive aliases for restricted guards and direct yields while rejecting mutable, destructured, and effectful initializers.
     - [x] Preserve lexical alias scope across nested generator blocks, conditional branches, and finite-loop iterations.

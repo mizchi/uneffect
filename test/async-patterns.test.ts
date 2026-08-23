@@ -1240,6 +1240,55 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("delegates to a resolved finite custom iterable factory", () => {
+    const model = analyzeAsyncPatterns("custom-iterable-delegation.ts", `
+      function values(remote: PromiseLike<string>): Iterable<string | PromiseLike<string>> {
+        return {
+          *[Symbol.iterator]() {
+            yield "factory-cache"
+            yield remote
+          }
+        }
+      }
+      function* parent(network: PromiseLike<string>) {
+        yield "head"
+        yield* values(network)
+        yield "tail"
+      }
+      async function load(remote: PromiseLike<string>) { return Promise.all(parent(remote)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['"head"', '"factory-cache"', "remote", '"tail"'],
+      branchKinds: ["value", "value", "thenable", "value"],
+    });
+  });
+
+  it("rejects recursive custom iterable factory delegation without overflowing", () => {
+    const model = analyzeAsyncPatterns("recursive-custom-iterable.ts", `
+      function values(): Iterable<number> {
+        return { *[Symbol.iterator]() { yield 1; yield* values() } }
+      }
+      const objectValues = {
+        *[Symbol.iterator](): Generator<number> { yield 2; yield* objectValues }
+      }
+      async function loadFactory() { return Promise.all(values()) }
+      async function loadObject() { return Promise.all(objectValues) }
+    `);
+    expect(model.combinators).toEqual([
+      expect.objectContaining({
+        owner: "loadFactory",
+        staticIterable: false,
+        unsupportedReason: "unsupported-generator-control-flow",
+      }),
+      expect.objectContaining({
+        owner: "loadObject",
+        staticIterable: false,
+        unsupportedReason: "unsupported-generator-control-flow",
+      }),
+    ]);
+  });
+
   it("unrolls a generator for-of over a directly finite builtin iterable", () => {
     const model = analyzeAsyncPatterns("finite-generator-loop.ts", `
       function* values() {

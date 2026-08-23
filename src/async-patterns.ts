@@ -534,7 +534,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       });
       if (iterator && ts.isMethodDeclaration(iterator) && iterator.body) {
         if (iterator.asteriskToken) {
-          return linearGeneratorBody(iterator.body);
+          if (expressionSymbol && generatorStack.has(expressionSymbol)) return {
+            branches: [],
+            unsupportedReason: "unsupported-generator-control-flow",
+          };
+          const nextGeneratorStack = new Set(generatorStack);
+          if (expressionSymbol) nextGeneratorStack.add(expressionSymbol);
+          return linearGeneratorBody(iterator.body, new Map(), nextGeneratorStack);
         }
         const containsThrow = (node: ts.Node): boolean => {
           if (ts.isThrowStatement(node)) return true;
@@ -570,13 +576,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           && (resolvedSymbol(access.name)?.declarations?.some((item) => item.getSourceFile().isDeclarationFile) ?? false);
       });
       if (iterator && ts.isMethodDeclaration(iterator) && iterator.asteriskToken && iterator.body) {
+        const factorySymbol = declaration.name && resolvedSymbol(declaration.name);
+        if (factorySymbol && generatorStack.has(factorySymbol)) return {
+          branches: [],
+          unsupportedReason: "unsupported-generator-control-flow",
+        };
+        const nextGeneratorStack = new Set(generatorStack);
+        if (factorySymbol) nextGeneratorStack.add(factorySymbol);
         const substitutions = new Map<ts.Symbol, ts.Expression>();
         declaration.parameters.forEach((parameter, index) => {
           if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
           const symbol = resolvedSymbol(parameter.name);
           if (symbol) substitutions.set(symbol, expression.arguments[index]);
         });
-        return linearGeneratorBody(iterator.body, substitutions, generatorStack);
+        return linearGeneratorBody(iterator.body, substitutions, nextGeneratorStack);
       }
     }
     if (declaration && ts.isFunctionDeclaration(declaration) && declaration.asteriskToken && declaration.body) {

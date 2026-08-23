@@ -186,13 +186,15 @@ an unreachable branch does not enter the path product. A bare `yield;` is an
 exact fulfilled `undefined` value slot, not an unknown thenable.
 `yield*` is flattened when its operand is a recursively finite array/readonly
 tuple, a directly constructed finite builtin `Set`, or a resolved local/imported
-generator call that itself stays in this finite fragment. Generator delegation
-substitutes call-site arguments, composes correlated paths, and turns a delegated
-acquisition/step failure into a step failure of the parent generator. A symbol
-call stack rejects direct and indirect recursive delegation instead of assuming
-termination. Delegated return values are intentionally ignored, matching the
-iteration values observed by Promise combinators. General custom iterator
-delegation remains outside this slice.
+generator call that itself stays in this finite fragment. The same rule covers a
+resolved single-return factory whose returned object has a finite generator
+`[Symbol.iterator]` method. Delegation substitutes call-site arguments, composes
+correlated paths, and turns a delegated acquisition/step failure into a step
+failure of the parent generator. A symbol call stack rejects direct and indirect
+recursive generator, factory, and immutable-object delegation instead of
+assuming termination. Delegated return values are intentionally ignored,
+matching the iteration values observed by Promise combinators. General dynamic
+custom iterator delegation remains outside this slice.
 Synchronous `for...of` is unrolled over the same direct finite array/readonly
 tuple and builtin-Set subset. A directly yielded loop binding is specialized by
 TypeChecker symbol identity, and boolean literal elements can fold restricted
