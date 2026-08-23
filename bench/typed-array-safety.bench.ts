@@ -189,6 +189,10 @@ describe("typed-array static verification", () => {
     analyzePromiseChains("dynamic-thenables.ts", dynamicThenableSource);
   }, { time: 500, iterations: 5 });
 
+  bench("resolve forwarded Proxy then trap dogfood", () => {
+    analyzePromiseChains("examples/dogfood/promise-routing.ts", readFileSync("examples/dogfood/promise-routing.ts", "utf8"));
+  }, { time: 500, iterations: 20 });
+
   bench("classify mixed Promise combinator elements", () => {
     analyzeAsyncPatterns("mixed-promise-batch.ts", mixedPromiseBatchSource);
   }, { time: 500, iterations: 5 });

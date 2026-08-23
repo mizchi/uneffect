@@ -258,9 +258,56 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const branch = trapBody.statements[0]!, condition = branch.expression;
         if (selectsThen(condition)) returned = returnedExpression(branch.thenStatement);
       }
-      const immutableCallback = (candidate: ts.Expression, callbackSeen = new Set<ts.Symbol>()): ts.ArrowFunction | ts.FunctionExpression | undefined => {
+      const isAssignmentOperator = (kind: ts.SyntaxKind): boolean => kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+      const isReassigned = (symbol: ts.Symbol): boolean => {
+        let written = false;
+        const visit = (node: ts.Node): void => {
+          if (written) return;
+          if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)
+            && ts.isIdentifier(node.left) && targetSymbol(checker, node.left) === symbol) written = true;
+          else if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+            && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+            && ts.isIdentifier(node.operand) && targetSymbol(checker, node.operand) === symbol) written = true;
+          if (!written) ts.forEachChild(node, visit);
+        };
+        visit(expression.getSourceFile());
+        return written;
+      };
+      const immutableCallback = (
+        candidate: ts.Expression,
+        callbackSeen = new Set<ts.Symbol>(),
+        substitutions = new Map<ts.Symbol, ts.Expression>(),
+      ): ts.ArrowFunction | ts.FunctionExpression | undefined => {
+        if (ts.isIdentifier(candidate)) {
+          const symbol = targetSymbol(checker, candidate), substituted = symbol && substitutions.get(symbol);
+          if (symbol && substituted) {
+            if (callbackSeen.has(symbol)) return undefined;
+            return immutableCallback(substituted, new Set([...callbackSeen, symbol]), substitutions);
+          }
+        }
         const initializer = immutableInitializer(candidate, callbackSeen);
-        return initializer && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) ? initializer : undefined;
+        if (initializer && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))) return initializer;
+        if (!initializer || !ts.isCallExpression(initializer)) return undefined;
+        const calleeSymbol = targetSymbol(checker, initializer.expression);
+        if (!calleeSymbol || callbackSeen.has(calleeSymbol) || isReassigned(calleeSymbol)) return undefined;
+        const immutableCallee = immutableInitializer(initializer.expression);
+        const signatureDeclaration = checker.getResolvedSignature(initializer)?.declaration;
+        const factory = immutableCallee && (ts.isArrowFunction(immutableCallee) || ts.isFunctionExpression(immutableCallee))
+          ? immutableCallee
+          : signatureDeclaration && ts.isFunctionDeclaration(signatureDeclaration) ? signatureDeclaration : undefined;
+        if (!factory?.body || factory.parameters.length !== initializer.arguments.length) return undefined;
+        const returned = !ts.isBlock(factory.body) ? factory.body
+          : factory.body.statements.length === 1 && ts.isReturnStatement(factory.body.statements[0]!)
+            ? factory.body.statements[0]!.expression : undefined;
+        if (!returned) return undefined;
+        const nextSubstitutions = new Map(substitutions);
+        for (const [index, parameter] of factory.parameters.entries()) {
+          if (!ts.isIdentifier(parameter.name) || parameter.dotDotDotToken) return undefined;
+          const parameterSymbol = targetSymbol(checker, parameter.name);
+          if (!parameterSymbol) return undefined;
+          nextSubstitutions.set(parameterSymbol, initializer.arguments[index]!);
+        }
+        return immutableCallback(returned, new Set([...callbackSeen, calleeSymbol]), nextSubstitutions);
       };
       const selectedCallback = returned && immutableCallback(returned);
       if (selectedCallback) {

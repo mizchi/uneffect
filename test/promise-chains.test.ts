@@ -618,6 +618,41 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("resolves an immutable identity wrapper around a Proxy then callback", () => {
+    const exact = analyzePromiseChains("proxy-identity-forwarded-then.ts", `
+      function forward<T>(value: T): T { return value }
+      const forwardAgain = <T>(value: T): T => forward(value)
+      function run() {
+        const thenCallback = (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          get(_target, property) {
+            if (property === "then") return forwardAgain(thenCallback)
+            return undefined
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const mutable = analyzePromiseChains("proxy-mutable-identity-forwarded-then.ts", `
+      function run(flag: boolean) {
+        const thenCallback = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        let forward = <T>(value: T): T => value
+        if (flag) forward = <T>(_value: T): T => (() => undefined) as T
+        const hostile = new Proxy({ then() {} }, { get() { return forward(thenCallback) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(mutable.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

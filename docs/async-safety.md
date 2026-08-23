@@ -140,7 +140,12 @@ forwarding, and arbitrary trap code can invoke user code or return any value.
 The exact forwarding forms `if (property === "then") return callback; return
 fallback` and `return property === "then" ? callback : fallback` select the
 concrete callback because Promise assimilation requests that literal property.
-Selectors for any other property and compound conditions remain dynamic.
+The selected callback may pass through cycle-safe direct function declarations
+or immutable `const` identity wrappers whose single definite return forwards an
+identifier parameter. Resolution uses parameter symbols rather than names.
+Reassigned callees, defaults, rest/destructured parameters, non-definite return
+flows, selectors for other properties, and compound selector conditions remain
+dynamic.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

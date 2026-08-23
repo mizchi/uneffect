@@ -416,6 +416,12 @@ Proxy, and one external `PromiseLike`, each adopted by a local Promise) measured
 of error). This includes symbol resolution, `InvokeUserCode` classification,
 and linking all three adoption states; it adds no production runtime work.
 
+The `promise-routing.ts` dogfood with a Proxy `then` callback passed through a
+two-level function/immutable-arrow identity chain measured 122.29 ms mean over
+20 cold samples (2.07% RME). This includes the conservative source-level
+reassignment scan; the result is observational and does not establish
+large-file scaling.
+
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
 one immediate cached value, one sparse `undefined` slot, and one thenable that
