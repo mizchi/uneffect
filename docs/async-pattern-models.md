@@ -169,8 +169,13 @@ The same finite body is accepted for the standard iterator generator method of
 an imported immutable object literal, or an object literal returned directly by
 an imported factory whose body contains only that return. The analyzer resolves
 aliases by TypeChecker symbol identity and substitutes a directly yielded
-factory or generator parameter with its call-site argument. Yield expressions
-that require general expression substitution remain outside this finite fragment.
+factory or generator parameter with its call-site argument. Substitution also
+descends through parenthesized expressions and call/constructor arguments. This
+preserves concrete `Promise.resolve(value)`, `Promise.reject(reason)`, and
+`new Error(message)` evidence across local and imported generator/factory
+boundaries without evaluating the expression. Property/index rewriting,
+operators, templates, and other general expression substitution remain outside
+this finite fragment and therefore do not receive call-site specialization.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing

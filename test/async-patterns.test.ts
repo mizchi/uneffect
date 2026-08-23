@@ -1192,6 +1192,33 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("substitutes generator parameters inside Promise and Error construction", () => {
+    const model = analyzeAsyncPatterns("generator-expression-substitution.ts", `
+      function* failures(reason: string, message: string) {
+        yield Promise.reject(reason)
+        yield Promise.reject(new TypeError(message))
+      }
+      function* values(remote: PromiseLike<string>) {
+        yield Promise.resolve(remote)
+      }
+      async function fallback() { return Promise.any(failures("network-down", "bad gateway")) }
+      async function load(network: PromiseLike<string>) { return Promise.all(values(network)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['Promise.reject("network-down")', 'Promise.reject(new TypeError("bad gateway"))'],
+      aggregateErrorReasons: [
+        { kind: "literal", value: "network-down" },
+        { kind: "error", errorType: "TypeError", message: "bad gateway" },
+      ],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      staticIterable: true,
+      branches: ["Promise.resolve(network)"],
+      branchKinds: ["thenable"],
+    });
+  });
+
   it("rejects recursive generator delegation without recursing indefinitely", () => {
     const model = analyzeAsyncPatterns("recursive-generator-delegation.ts", `
       function* recursive(): Generator<number> {
