@@ -104,6 +104,26 @@ describe("effect checker", () => {
     expect(analyzeEffects("fs.ts", source)).toEqual([]);
   });
 
+  it("propagates capabilities from TypeChecker-resolved deferred callbacks", () => {
+    const source = `
+      import type { Server } from "node:net";
+      /* uneffect: effect Console */
+      function shutdown(server: Server) {
+        server.close(() => console.log("closed"));
+      }
+    `;
+    expect(analyzeEffects("node-close-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-close-effects.ts", source.replace("effect Console", "effect Timer"))).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "shutdown", kind: "missing", effect: "Console" }),
+      expect.objectContaining({ functionName: "shutdown", kind: "unused", effect: "Timer" }),
+    ]));
+    expect(analyzeEffects("node-close-named-effects.ts", `
+      import type { Server } from "node:net";
+      /* uneffect: effect Console */ function afterClose() { console.log("closed") }
+      /* uneffect: effect Console */ function shutdown(server: Server) { server.close(afterClose) }
+    `)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

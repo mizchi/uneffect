@@ -2247,7 +2247,7 @@ describe("builtin async temporal patterns", () => {
   it("keeps node:fs authority while scheduling callback APIs in the poll phase", () => {
     const source = `
       import { readFile } from "node:fs"
-      /* uneffect: effect FsRead<"settings.json"> */
+      /* uneffect: effect FsRead<"settings.json"> | Timer */
       function load() {
         readFile("settings.json", "utf8", () => queueMicrotask(() => undefined))
       }

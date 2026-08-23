@@ -122,10 +122,10 @@ pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.
 
-The close-phase projection and capability checker currently have different
-boundaries: nested jobs in `Server.close(callback)` are composed into the
-temporal model, but capability effects used only inside that deferred callback
-are not yet propagated into the enclosing function's effect summary.
+Nested jobs in `Server.close(callback)` are composed into the temporal model,
+and capability effects from inline or statically named deferred callbacks are
+propagated into the enclosing function's effect summary. A synchronous
+`Throw<T>` is not propagated across this deferred boundary.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and

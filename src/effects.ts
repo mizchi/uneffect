@@ -301,15 +301,15 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       info.calls.push({ target, arguments: [], dischargesThrow });
     };
     if (mayAssimilateUserCode(promiseModel, info.node)) addEffect(info.direct, capability("InvokeUserCode"));
-    const visit = (node: ts.Node, dischargesThrow: boolean): void => {
+    const visit = (node: ts.Node, dischargesThrow: boolean, deferredBoundary = false): void => {
       if (node !== info.node && ts.isFunctionLike(node)) return;
       if (ts.isTryStatement(node)) {
-        visit(node.tryBlock, dischargesThrow || node.catchClause !== undefined);
-        if (node.catchClause) visit(node.catchClause.block, dischargesThrow);
-        if (node.finallyBlock) visit(node.finallyBlock, dischargesThrow);
+        visit(node.tryBlock, dischargesThrow || node.catchClause !== undefined, deferredBoundary);
+        if (node.catchClause) visit(node.catchClause.block, dischargesThrow, deferredBoundary);
+        if (node.finallyBlock) visit(node.finallyBlock, dischargesThrow, deferredBoundary);
         return;
       }
-      if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
+      if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner && !deferredBoundary) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
         const direct = generatorTarget(node.initializer);
         const targets = direct ? [direct]
@@ -337,7 +337,20 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
+        const builtinOperation = adapter.resolveCall(node)?.operation;
         for (const effect of primitiveEffects(node, adapter)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+        const callbackIndex = builtinOperation?.kind === "timer" ? builtinOperation.callbackArgument
+          : builtinOperation?.kind === "scheduler-post-task" ? builtinOperation.callbackArgument
+          : builtinOperation?.kind === "fs" && builtinOperation.callbackArgumentFromEnd
+            ? node.arguments.length - builtinOperation.callbackArgumentFromEnd
+            : builtinOperation?.kind === "deferred-callback"
+              ? node.arguments.length - builtinOperation.callbackArgumentFromEnd : undefined;
+        const callback = callbackIndex === undefined ? undefined : node.arguments[callbackIndex];
+        if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+          visit(callback.body, false, true);
+        } else if (callback && ts.isIdentifier(callback) && functions.has(callback.text)) {
+          info.calls.push({ target: callback.text, arguments: [], dischargesThrow: true });
+        }
         const directGenerator = generatorTarget(node);
         const parent = node.parent;
         const consumed = (ts.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "next"
@@ -355,7 +368,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           for (const target of returnedGenerators ?? []) addGeneratorConsumption(target, dischargesThrow);
         }
       }
-      ts.forEachChild(node, (child) => visit(child, dischargesThrow));
+      ts.forEachChild(node, (child) => visit(child, dischargesThrow, deferredBoundary));
     };
     visit(info.node.body!, false);
   }
