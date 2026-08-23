@@ -906,6 +906,9 @@ describe("builtin async temporal patterns", () => {
       async function loadSpread(flag: boolean, remote: PromiseLike<string>) {
         return Promise.all(["prefix", ...values(flag, remote)])
       }
+      async function loadAny(flag: boolean, remote: PromiseLike<string>) {
+        return Promise.any(values(flag, remote))
+      }
     `);
     expect(model.combinators[0]).toMatchObject({
       staticIterable: true,
@@ -928,6 +931,12 @@ describe("builtin async temporal patterns", () => {
       owner: "loadSpread",
       staticIterable: false,
       iteratorKind: "dynamic",
+    });
+    expect(model.combinators[2]).toMatchObject({
+      owner: "loadAny",
+      aggregateErrorOrder: [0, 1, 2, 3],
+      aggregateErrorReasons: undefined,
+      branchPresence: ["always", "always", "always", "when-false"],
     });
   });
 

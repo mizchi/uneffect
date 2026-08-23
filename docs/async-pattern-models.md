@@ -175,6 +175,9 @@ A generator with one complete top-level `if`/`else`, surrounded only by the
 same linear statements, becomes two finite paths under one correlated iterable
 choice. Unequal path lengths use presence guards. Nested/multiple conditionals,
 branching spread composition, loops, and partial `if` statements remain dynamic.
+`Promise.any` retains the path-dependent aggregate cardinality, but concrete
+rejection reasons are left unknown until the IR can associate reasons with the
+same iterable choice; one branch is never presented as representative of both.
 Acquisition or step failure rejects every Promise combinator, including
 `allSettled`, before any yielded Promise reaction can settle the aggregate.
 Sparse literal holes are retained as `undefined` value slots, matching array

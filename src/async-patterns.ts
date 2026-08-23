@@ -961,7 +961,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: arrayEvidence.failure ?? local?.failure,
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? branchNodes)
+            aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
             awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
