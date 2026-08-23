@@ -523,6 +523,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve every branch of a finite conditional scheduled callback when all branches have TypeChecker-resolved bodies; partial or external selections remain dynamic.
     - [x] Resolve finite literal-key selections from immutable `as const` callback tables through local alias chains; mutable records, getters, missing keys, and unresolved members remain dynamic.
     - [x] Specialize callback-factory parameter symbols from finite literal call arguments, including identity factories and immutable callback-table selection.
+    - [x] Bind `this` to immutable object-literal method-factory receivers for finite callback-table selection; mutable and polymorphic receivers remain dynamic.
     - [x] Avoid `InvokeUserCode` coercion effects for TypeChecker-proven string/number key unions while preserving accessor effects for every finite literal property candidate.
     - [x] Resolve all callbacks from a definite-return factory CFG subset, including `if`/`else`, early return, concise conditional functions, and immutable arrow/function bindings; fallthrough and unsupported control flow remain dynamic.
 - [x] Bring Promise/resource IR to Rust/Corsa parity.

@@ -113,7 +113,10 @@ Source callback factories use a definite-return block/`if` subset and retain
 every resolved return candidate. Concise conditional arrows are included;
 parameter symbols are specialized from concrete call arguments, so identity
 factories and finite literal-key selection from immutable callback tables can
-remain exact. A type assertion around a dynamic value does not make it finite.
+remain exact. An object-literal method factory may also select through
+`this.table[key]` when the receiver and nested table are immutable. Mutable,
+class-instance, and polymorphic receivers remain dynamic. A type assertion
+around a dynamic value does not make it finite.
 fallthrough, cycles, unsupported control flow, or any unresolved returned value
 make the factory callback dynamic.
 Nested minimum-delay clamping,

@@ -135,6 +135,8 @@ returns and concise conditional arrow functions. Every returned expression must
 resolve to a source callback. Parameter references are substituted by symbol
 identity from the call arguments, enabling finite conditional keys and direct
 callback identity forwarding without treating a dynamic typed value as finite;
+immutable object-literal method receivers also bind `this` for nested callback
+table selection, while mutable or polymorphic receivers remain unresolved;
 fallthrough and unsupported control flow keep the factory result dynamic.
 An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.

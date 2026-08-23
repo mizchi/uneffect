@@ -1160,6 +1160,21 @@ describe("builtin async temporal patterns", () => {
     expect(model.timers.some((timer) => timer.enqueuedBy === dynamic)).toBe(false);
   });
 
+  it("resolves a callback selected by an immutable method factory", () => {
+    const model = analyzeAsyncPatterns("method-callback-factory.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      const worker = {
+        handlers: { success: afterSuccess, failure: afterFailure } as const,
+        select(key: "success" | "failure") { return this.handlers[key] },
+      } as const
+      function start(flag: boolean) { setTimeout(worker.select(flag ? "success" : "failure"), 0) }
+    `);
+    const parent = model.timers.findIndex((timer) => timer.callback === 'worker.select(flag ? "success" : "failure")');
+    expect(model.timers.filter((timer) => timer.enqueuedBy === parent).map((timer) => timer.queue).sort())
+      .toEqual(["microtask", "next-tick"]);
+  });
+
   it("resolves every branch of a finite conditional timer callback", () => {
     const model = analyzeAsyncPatterns("conditional-callback.ts", `
       function afterSuccess() { queueMicrotask(() => undefined) }
