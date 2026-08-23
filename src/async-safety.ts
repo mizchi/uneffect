@@ -892,6 +892,30 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return false;
     };
+    const finiteLiteralKey = (type: ts.Type): string | undefined => {
+      if ((type.flags & ts.TypeFlags.EnumLiteral) !== 0) return undefined;
+      if (type.isStringLiteral()) return `string:${type.value}`;
+      if (type.isNumberLiteral()) return `number:${type.value}`;
+      if ((type.flags & ts.TypeFlags.BooleanLiteral) !== 0) {
+        const intrinsic = type as ts.Type & { intrinsicName?: string };
+        return intrinsic.intrinsicName === "true" || intrinsic.intrinsicName === "false" ? `boolean:${intrinsic.intrinsicName}` : undefined;
+      }
+      return undefined;
+    };
+    const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
+      const clauses = statement.caseBlock.clauses;
+      if (clauses.some(ts.isDefaultClause)) return true;
+      const discriminant = checker.getTypeAtLocation(statement.expression);
+      const members = discriminant.isUnion() ? discriminant.types : [discriminant];
+      const expected = members.map(finiteLiteralKey);
+      if (expected.length === 0 || expected.some((key) => key === undefined)) return false;
+      const covered = new Set(clauses.flatMap((clause) => {
+        if (!ts.isCaseClause(clause)) return [];
+        const key = finiteLiteralKey(checker.getTypeAtLocation(clause.expression));
+        return key === undefined ? [] : [key];
+      }));
+      return expected.every((key) => covered.has(key!));
+    };
     const isConditionalResourceExecution = (node: ts.Node): boolean => {
       if (isConditionalExecution(node)) return true;
       let child = node;
@@ -948,7 +972,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         collectDisposedAliasFlow(node.expression);
         for (const clause of node.caseBlock.clauses) for (const statement of clause.statements) collectDisposedAliasFlow(statement);
         const clauses = node.caseBlock.clauses;
-        if (clauses.some(ts.isDefaultClause)) {
+        if (switchIsExhaustive(node)) {
           for (const symbol of [...escapedAliases.keys()]) {
             const matchesSymbol = (left: ts.Expression): boolean =>
               ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;

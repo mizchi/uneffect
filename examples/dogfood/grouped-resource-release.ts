@@ -15,7 +15,6 @@ export async function finalizeDelivery(status: "sent" | "cancelled" | "expired")
     case "sent":
     case "cancelled": pending = undefined; break;
     case "expired": pending = undefined; break;
-    default: pending = undefined;
   }
   pending?.flush();
 }

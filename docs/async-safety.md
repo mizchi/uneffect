@@ -513,7 +513,10 @@ restricted rule only when it has a `default`, every clause owns a terminal
 nullish clear, and no earlier statement can complete abruptly. An empty grouped
 case label inherits the following clause's mandatory clear, matching common
 `case A: case B: clear()` release code. Non-empty fallthrough and default-free
-switches remain conservative. The same
+switches over open types remain conservative. A default-free switch is accepted
+when the TypeChecker proves its discriminant is a finite string, number, or
+boolean literal union and the case literals cover the entire union. Enum and
+computed case domains are not treated as exhaustiveness evidence. The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the

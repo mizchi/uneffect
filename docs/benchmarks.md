@@ -516,6 +516,11 @@ of error). The fixture accepts two empty grouped case labels that converge on a
 mandatory alias clear and reports the broken control where one concrete exit
 does not clear the disposed resource alias. This is a small cold-program
 measurement; it does not establish scaling for large switch or alias graphs.
+After removing the default clause and proving exhaustiveness from the three-way
+string literal union, the fixture measured 146.97 ms mean over five cold
+samples (3.10% relative margin of error). The roughly 21 ms difference includes
+TypeChecker union/case inspection and cold-run noise; this sample count is too
+small to claim a stable regression.
 
 ## Collection refinement receiver identity
 
