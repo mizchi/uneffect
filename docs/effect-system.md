@@ -73,8 +73,13 @@ than throwing from the function call. Uneffect therefore stops `Throw<E>` at
 that owner boundary and leaves rejection observation to async-safety analysis.
 Generator bodies are delayed in the same spirit but retain synchronous step
 effects: constructing an iterator does not propagate its body summary, while a
-resolved direct `.next()`, `for..of`/`for await`, `yield*`, spread, or
-`Array.from` consumption does.
+resolved direct `.next()`, `for..of`/`for await`, `yield*`, spread, destructuring,
+`Array.from`, `Object.fromEntries`, standard collection/typed-array construction,
+or a standard Promise combinator consumption does. Built-ins are recognized by
+their TypeScript standard-library signature, so a shadowed API with the same text
+does not acquire these semantics. Promise combinators turn a generator-body
+`Throw<T>` during iteration into rejection; synchronous effects of evaluating the
+factory argument itself remain ordinary effects.
 The Program path follows imported generators and a directly stored local
 iterator binding by symbol identity. Acyclic factories whose sole terminal
 returns are resolved generator/factory calls are specialized at direct

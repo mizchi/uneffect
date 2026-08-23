@@ -159,10 +159,15 @@ describe("multi-file call graph and effect polymorphism", () => {
           if (log) return logOnly()
           return externalIterator()
         }
+        /* uneffect: effect Throw<URIError> */
+        export function maybeThrowFactory(fail: boolean) {
+          if (fail) throw new URIError("factory")
+          return generate()
+        }
         export function values() { return [1, 2, 3] }
       `);
       writeFileSync(main, `
-        import { generate, chooseIterator, choosePartial, values } from "./library.js"
+        import { generate, chooseIterator, choosePartial, maybeThrowFactory, values } from "./library.js"
         export function constructOnly() { generate() }
         export function buildIterator() { return generate() }
         export function consumeNext() { const iterator = generate(); iterator.next() }
@@ -179,6 +184,19 @@ describe("multi-file call graph and effect polymorphism", () => {
           const iterator = generate()
           Array.from(iterator)
         }
+        export function consumeDestructure() { const [first] = generate(); void first }
+        export function consumeSet() { void new Set(generate()) }
+        export function consumeStoredMap() {
+          function* entries() { console.log("entry"); yield ["key", "value"] as const }
+          const iterator = entries()
+          void new Map(iterator)
+        }
+        export function consumePromiseAll() { void Promise.all(generate()) }
+        export function consumePromiseFactory(fail: boolean) { void Promise.all(maybeThrowFactory(fail)) }
+        export function shadowedArrayFromDoesNotConsume() {
+          const Array = { from(_value: unknown) {} }
+          Array.from(generate())
+        }
         export function consumeFactory() { for (const value of buildIterator()) void value }
         export function consumeBranchingFactory(log: boolean) {
           for (const value of chooseIterator(log)) void value
@@ -194,6 +212,9 @@ describe("multi-file call graph and effect polymorphism", () => {
           const iterator = choosePartial(false)
           const forwarded = iterator
           for (const value of forwarded) void value
+        }
+        export function consumeOpaquePromiseAll(log: boolean) {
+          void Promise.all(choosePartial(log))
         }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
@@ -224,7 +245,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeAlias", effect: "Throw<RangeError>", kind: "missing",
       }));
-      for (const functionName of ["consumeArrayFrom", "consumeSpread", "consumeStoredArrayFrom"]) {
+      for (const functionName of ["consumeArrayFrom", "consumeSpread", "consumeStoredArrayFrom", "consumeDestructure", "consumeSet"]) {
         expect(result.diagnostics).toContainEqual(expect.objectContaining({
           functionName, effect: "Console", kind: "missing",
         }));
@@ -232,6 +253,21 @@ describe("multi-file call graph and effect polymorphism", () => {
           functionName, effect: "Throw<RangeError>", kind: "missing",
         }));
       }
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumePromiseAll", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumePromiseAll", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumePromiseFactory", effect: "Throw<URIError>", kind: "missing",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumePromiseFactory", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeStoredMap", effect: "Console", kind: "missing",
+      }));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeLoop", effect: "Console", kind: "missing",
       }));
@@ -255,6 +291,11 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeOpaqueAliasLoop"))
         .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeOpaquePromiseAll"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "shadowedArrayFromDoesNotConsume", effect: "Console", kind: "missing",
+      }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeArrayFactory"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);

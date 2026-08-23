@@ -370,11 +370,13 @@ describe("Uneffect dogfood", () => {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
         } as const
-        /* uneffect: effect FsRead<"settings.json"> | Console | Timer */
+        /* uneffect: effect FsRead<"settings.json"> | Console | Timer | InvokeUserCode */
         export function scheduleFlush(preferCache: boolean) {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps(true)
+          void Promise.all(buildFlushSteps(preferCache))
+            .catch(() => console.warn("skipping async flush steps"))
           try { Array.from(buildFlushSteps(preferCache)) }
           catch { console.warn("skipping materialized flush steps") }
           try { for (const _step of buildFlushSteps(preferCache)) {} }

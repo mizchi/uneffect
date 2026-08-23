@@ -360,6 +360,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Preserve generator identities through immutable local iterator alias chains before `.next()`, loop, or `yield*` consumption.
   - [x] Preserve unknown evidence when an opaque or partial generator factory is stored and consumed through immutable local aliases.
   - [x] Treat spread syntax and `Array.from` as synchronous iterator consumers for direct factories and stored immutable bindings.
+  - [x] Recognize destructuring, collection/typed-array constructors, `Object.fromEntries`, and Promise combinators by standard-library signature identity as iterator consumers.
+  - [x] Convert generator-body `Throw<T>` during Promise combinator iteration to rejection while retaining synchronous factory-call throws.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.
