@@ -580,9 +580,12 @@ immutable local `const` aliases, is conservatively treated as a preceding
 throw risk because its `get` trap can invoke user code. The same proof follows
 a cycle-safe chain of TypeChecker-resolved zero-argument functions when each
 body is exactly one return expression, including immutable arrow wrappers,
-imports, and re-exports. Mutable aliases, conditional or argument-dependent
-factories, methods and dynamic dispatch, coercions, finally-dependent joins,
-and cross-loop
+imports, and re-exports. A restricted definite-return walk also accepts nested
+blocks and `if`/`else` when every normal return expression recursively resolves
+to a Proxy; terminal throws do not create a non-Proxy receiver. Fallthrough,
+mixed return values, loops, `switch`, `try`, mutable aliases,
+argument-dependent factories, methods and dynamic dispatch, coercions,
+finally-dependent joins, and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved.
 

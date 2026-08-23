@@ -7,6 +7,7 @@ interface Attempt {
 
 declare function openAttempt(): Attempt;
 declare function prepareFlush(): void;
+declare const usePrimaryFlushGate: boolean;
 class FlushGate {
   get ready(): boolean {
     prepareFlush();
@@ -16,6 +17,9 @@ class FlushGate {
 const flushGate = new FlushGate();
 const flushGateKey = "ready" as const;
 function createProxiedFlushGate() {
+  if (!usePrimaryFlushGate) {
+    return new Proxy({ ready: false }, { get: Reflect.get });
+  }
   return new Proxy({ ready: true }, {
     get(target, key, receiver) {
       prepareFlush();

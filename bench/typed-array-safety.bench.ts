@@ -645,7 +645,11 @@ describe("typed-array static verification", () => {
     const result = analyzeAsyncSafety("proxy-factory-retry-aliases.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
-      function createGate() { return new Proxy({ ready: true }, { get: Reflect.get }) }
+      declare const primary: boolean
+      function createGate() {
+        if (primary) return new Proxy({ ready: true }, { get: Reflect.get })
+        return new Proxy({ ready: false }, { get: Reflect.get })
+      }
       const wrapGate = () => createGate()
       const gate = wrapGate()
       async function retry(enabled: boolean) {

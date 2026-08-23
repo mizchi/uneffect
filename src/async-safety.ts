@@ -570,12 +570,38 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     type ProxyFactoryDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
     const isProxyFactoryDeclaration = (declaration: ts.Node): declaration is ProxyFactoryDeclaration =>
       ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
-    const returnedExpression = (declaration: ProxyFactoryDeclaration): ts.Expression | undefined => {
+    type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
+    const returnedExpressions = (declaration: ProxyFactoryDeclaration): ts.Expression[] | undefined => {
       if (declaration.parameters.length !== 0 || !declaration.body) return undefined;
-      if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return declaration.body;
-      if (!ts.isBlock(declaration.body) || declaration.body.statements.length !== 1) return undefined;
-      const statement = declaration.body.statements[0];
-      return statement && ts.isReturnStatement(statement) ? statement.expression : undefined;
+      if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return [declaration.body];
+      if (!ts.isBlock(declaration.body)) return undefined;
+      const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
+        if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
+        if (ts.isThrowStatement(statement)) return { expressions: [], definite: true };
+        if (ts.isBlock(statement)) return blockFlow(statement);
+        if (ts.isIfStatement(statement)) {
+          const whenTrue = statementFlow(statement.thenStatement);
+          const whenFalse = statement.elseStatement ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
+          return whenTrue && whenFalse ? {
+            expressions: [...whenTrue.expressions, ...whenFalse.expressions],
+            definite: whenTrue.definite && whenFalse.definite,
+          } : undefined;
+        }
+        return ts.isExpressionStatement(statement) || ts.isVariableStatement(statement) || ts.isEmptyStatement(statement)
+          ? { expressions: [], definite: false } : undefined;
+      };
+      const blockFlow = (block: ts.Block): ReturnFlow | undefined => {
+        const expressions: ts.Expression[] = [];
+        for (const statement of block.statements) {
+          const flow = statementFlow(statement);
+          if (!flow) return undefined;
+          expressions.push(...flow.expressions);
+          if (flow.definite) return { expressions, definite: true };
+        }
+        return { expressions, definite: false };
+      };
+      const flow = blockFlow(declaration.body);
+      return flow?.definite && flow.expressions.length > 0 ? flow.expressions : undefined;
     };
     const isBuiltinProxyReceiver = (expression: ts.Expression, seen = new Set<ProxyFactoryDeclaration>()): boolean => {
       const initializer = immutableInitializer(expression);
@@ -583,11 +609,15 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (ts.isNewExpression(initializer) && ts.isIdentifier(initializer.expression) && initializer.expression.text === "Proxy") {
         return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       }
+      if (ts.isConditionalExpression(initializer)) {
+        return isBuiltinProxyReceiver(initializer.whenTrue, new Set(seen)) && isBuiltinProxyReceiver(initializer.whenFalse, new Set(seen));
+      }
       if (!ts.isCallExpression(initializer) || initializer.arguments.length !== 0) return false;
       const declaration = checker.getResolvedSignature(initializer)?.declaration;
       if (!declaration || !isProxyFactoryDeclaration(declaration) || seen.has(declaration)) return false;
-      const returned = returnedExpression(declaration);
-      return returned ? isBuiltinProxyReceiver(returned, new Set([...seen, declaration])) : false;
+      const returned = returnedExpressions(declaration);
+      const nextSeen = new Set([...seen, declaration]);
+      return returned !== undefined && returned.every((candidate) => isBuiltinProxyReceiver(candidate, new Set(nextSeen)));
     };
     const isInsideIteration = (node: ts.Node): boolean => {
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
