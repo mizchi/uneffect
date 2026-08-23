@@ -496,7 +496,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve immutable local `const` aliases of literal and direct `new Error` rejection reasons by symbol identity.
     - [x] Bound direct builtin `Set` construction over a static array, preserving insertion order and only removing statically provable duplicate identities while leaving custom or mutable Sets dynamic.
     - [x] Resolve imported finite generator functions by TypeChecker symbol identity and substitute directly yielded parameters with their call-site arguments.
-    - [x] Preserve call-site substitutions inside finite generator call/constructor arguments, including concrete Promise rejection and Error message evidence.
+    - [x] Preserve call-site substitutions inside finite generator call/constructor arguments and literal `+`, including concrete Promise rejection and Error message evidence without inventing dynamic reasons.
     - [x] Resolve imported immutable object literals whose standard iterator is a finite linear generator method, preserving yield order and thenable classification.
     - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten finite imported generator/custom-iterable spreads inside array literals while retaining `InvokeUserCode`, step failure, order, cardinality, and concrete `Promise.any` reasons.

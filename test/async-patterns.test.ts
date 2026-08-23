@@ -1197,25 +1197,43 @@ describe("builtin async temporal patterns", () => {
       function* failures(reason: string, message: string) {
         yield Promise.reject(reason)
         yield Promise.reject(new TypeError(message))
+        yield Promise.reject(reason + "!")
+        yield Promise.reject(new Error(message + " unavailable"))
       }
       function* values(remote: PromiseLike<string>) {
         yield Promise.resolve(remote)
       }
+      function* dynamicFailure(reason: string) {
+        yield Promise.reject(reason + "!")
+      }
       async function fallback() { return Promise.any(failures("network-down", "bad gateway")) }
       async function load(network: PromiseLike<string>) { return Promise.all(values(network)) }
+      async function dynamic(reason: string) { return Promise.any(dynamicFailure(reason)) }
     `);
     expect(model.combinators[0]).toMatchObject({
       staticIterable: true,
-      branches: ['Promise.reject("network-down")', 'Promise.reject(new TypeError("bad gateway"))'],
+      branches: [
+        'Promise.reject("network-down")',
+        'Promise.reject(new TypeError("bad gateway"))',
+        'Promise.reject("network-down" + "!")',
+        'Promise.reject(new Error("bad gateway" + " unavailable"))',
+      ],
       aggregateErrorReasons: [
         { kind: "literal", value: "network-down" },
         { kind: "error", errorType: "TypeError", message: "bad gateway" },
+        { kind: "literal", value: "network-down!" },
+        { kind: "error", errorType: "Error", message: "bad gateway unavailable" },
       ],
     });
     expect(model.combinators[1]).toMatchObject({
       staticIterable: true,
       branches: ["Promise.resolve(network)"],
       branchKinds: ["thenable"],
+    });
+    expect(model.combinators[2]).toMatchObject({
+      staticIterable: true,
+      branches: ['Promise.reject(reason + "!")'],
+      aggregateErrorReasons: [null],
     });
   });
 

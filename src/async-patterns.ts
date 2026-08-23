@@ -150,6 +150,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
     if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(expression.operand)) return -Number(expression.operand.text);
+    if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const left = literalReason(expression.left), right = literalReason(expression.right);
+      if (left !== undefined && right !== undefined
+        && (typeof left === "string" || typeof left === "number")
+        && (typeof right === "string" || typeof right === "number")) {
+        return typeof left === "string" || typeof right === "string"
+          ? String(left) + String(right) : left + right;
+      }
+    }
     return undefined;
   };
   const immutableInitializer = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
@@ -357,6 +366,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const args = expression.arguments?.map((argument) => substitute(argument, bindings, new Set(seen)));
         return args?.every((argument, index) => argument === expression.arguments?.[index]) !== false ? expression
           : ts.factory.createNewExpression(expression.expression, expression.typeArguments, args);
+      }
+      if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+        const left = substitute(expression.left, bindings, new Set(seen));
+        const right = substitute(expression.right, bindings, new Set(seen));
+        return left === expression.left && right === expression.right ? expression
+          : ts.factory.createBinaryExpression(left, expression.operatorToken, right);
       }
       return expression;
     };
