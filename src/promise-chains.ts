@@ -322,7 +322,16 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           if (!parameterSymbol) return undefined;
           nextSubstitutions.set(parameterSymbol, initializer.arguments[index]!);
         }
-        const switchReturn = (statement: ts.SwitchStatement): ts.Expression | undefined => {
+        type SelectedReturn = { kind: "return"; expression: ts.Expression } | { kind: "continue" };
+        const statementsReturn = (statements: readonly ts.Statement[]): SelectedReturn | undefined => {
+          for (const statement of statements) {
+            const selected = statementReturn(statement);
+            if (!selected) return undefined;
+            if (selected.kind === "return") return selected;
+          }
+          return { kind: "continue" };
+        };
+        const switchReturn = (statement: ts.SwitchStatement): SelectedReturn | undefined => {
           const discriminant = staticPrimitive(statement.expression, nextSubstitutions);
           if (discriminant === undefined) return undefined;
           let entry: number | undefined, defaultEntry: number | undefined;
@@ -333,20 +342,33 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
             if (label === discriminant) { entry = index; break; }
           }
           entry ??= defaultEntry;
-          if (entry === undefined) return undefined;
+          if (entry === undefined) return { kind: "continue" };
           for (const clause of statement.caseBlock.clauses.slice(entry)) {
             for (const clauseStatement of clause.statements) {
-              if (ts.isReturnStatement(clauseStatement)) return clauseStatement.expression;
-              if (!ts.isEmptyStatement(clauseStatement)) return undefined;
+              const selected = statementReturn(clauseStatement);
+              if (!selected) return undefined;
+              if (selected.kind === "return") return selected;
             }
+          }
+          return { kind: "continue" };
+        };
+        const statementReturn = (statement: ts.Statement): SelectedReturn | undefined => {
+          if (ts.isReturnStatement(statement)) return statement.expression
+            ? { kind: "return", expression: statement.expression } : undefined;
+          if (ts.isEmptyStatement(statement)) return { kind: "continue" };
+          if (ts.isBlock(statement)) return statementsReturn(statement.statements);
+          if (ts.isSwitchStatement(statement)) return switchReturn(statement);
+          if (ts.isIfStatement(statement)) {
+            const condition = staticPrimitive(statement.expression, nextSubstitutions);
+            if (typeof condition !== "boolean") return undefined;
+            return condition ? statementReturn(statement.thenStatement)
+              : statement.elseStatement ? statementReturn(statement.elseStatement) : { kind: "continue" };
           }
           return undefined;
         };
-        const returned = !ts.isBlock(factory.body) ? factory.body
-          : factory.body.statements.length === 1 && ts.isReturnStatement(factory.body.statements[0]!)
-            ? factory.body.statements[0]!.expression
-            : factory.body.statements.length === 1 && ts.isSwitchStatement(factory.body.statements[0]!)
-              ? switchReturn(factory.body.statements[0]!) : undefined;
+        const selected = !ts.isBlock(factory.body) ? { kind: "return" as const, expression: factory.body }
+          : statementsReturn(factory.body.statements);
+        const returned = selected?.kind === "return" ? selected.expression : undefined;
         if (!returned) return undefined;
         return immutableCallback(returned, new Set([...callbackSeen, calleeSymbol]), nextSubstitutions);
       };

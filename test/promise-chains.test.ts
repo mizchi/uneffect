@@ -660,12 +660,17 @@ describe("Promise state and reaction chains", () => {
         const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
         const resolveThen = (resolve: (value: number) => void) => resolve(1)
         const hostile = new Proxy({ then() {} }, { get() { return select(true, rejectThen, resolveThen) } })
+        const friendly = new Proxy({ then() {} }, { get() { return select(false, rejectThen, resolveThen) } })
         const result = new Promise<number>((resolve) => resolve(hostile))
+        new Promise<number>((resolve) => resolve(friendly)).catch(() => 0)
         return result.catch(() => 0)
       }
     `);
     expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
       provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+    expect(exact.thenables.find((thenable) => thenable.binding === "friendly")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["fulfilled"], mayRemainPending: false,
     });
 
     const dynamic = analyzePromiseChains("proxy-dynamic-selected-forwarded-then.ts", `
@@ -754,6 +759,43 @@ describe("Promise state and reaction chains", () => {
         const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
         const resolveThen = (resolve: (value: number) => void) => resolve(1)
         const hostile = new Proxy({ then() {} }, { get() { return select(mode, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(dynamic.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
+  it("specializes a literal early-return callback selector", () => {
+    const exact = analyzePromiseChains("proxy-early-return-selected-then.ts", `
+      function select<T>(enabled: boolean, rejectThen: T, resolveThen: T): T {
+        if (enabled) return rejectThen
+        return resolveThen
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(true, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const dynamic = analyzePromiseChains("proxy-dynamic-early-return-selected-then.ts", `
+      declare const enabled: boolean
+      function select<T>(enabled: boolean, rejectThen: T, resolveThen: T): T {
+        if (enabled) return rejectThen
+        return resolveThen
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(enabled, rejectThen, resolveThen) } })
         const result = new Promise<number>((resolve) => resolve(hostile))
         return result.catch(() => 0)
       }

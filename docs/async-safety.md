@@ -160,6 +160,10 @@ statements, and other abrupt control remain conservative. Resource Proxy
 factories and Promise Proxy traps use the same finite primitive evaluator, so
 their literal, strict-equality, negation, and boolean short-circuit semantics do
 not drift independently.
+The callback-wrapper return analysis also follows nested blocks and statically
+selected `if`/`else`, including the common `if (enabled) return yes; return no`
+shape. A dynamic condition, return without a value, or unsupported statement
+invalidates the exact proof rather than being treated as ordinary fallthrough.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

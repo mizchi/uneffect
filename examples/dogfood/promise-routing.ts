@@ -26,15 +26,13 @@ export function adaptRejectedProxy(): Promise<number> {
   function forward<T>(value: T): T { return value; }
   const forwardAgain = <T>(value: T): T => forward(value);
   const resolveThen = (resolve: (value: number) => void) => resolve(200);
-  function selectCallback<T>(mode: "reject" | "resolve", reject: T, resolve: T): T {
-    switch (mode) {
-      case "reject": return reject;
-      default: return resolve;
-    }
+  function selectCallback<T>(rejectEnabled: boolean, reject: T, resolve: T): T {
+    if (rejectEnabled) return reject;
+    return resolve;
   }
   const rejectEnabled = true as const;
   const getTrap: ProxyHandler<PromiseLike<number>>["get"] = (_target, property) => property === "then" && rejectEnabled
-    ? selectCallback("reject", forwardAgain(rejectThen), resolveThen)
+    ? selectCallback(true, forwardAgain(rejectThen), resolveThen)
     : undefined;
   const handler: ProxyHandler<PromiseLike<number>> = { get: getTrap };
   const upstream = new Proxy({ then() {} } as unknown as PromiseLike<number>, handler);

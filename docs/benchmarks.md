@@ -430,6 +430,9 @@ over 20 samples (2.03% RME), returning to the earlier observed range.
 Replacing the inner callback selector with a static string `switch` and sharing
 the primitive evaluator with resource analysis measured 123.52 ms mean over 20
 samples (1.46% RME), still within the same cold-analysis range.
+Using the equivalent early-return `if` selector through the restricted block
+walker measured 120.83 ms mean over 20 samples (1.88% RME). The lower point is
+within run-to-run variance and is not claimed as an optimization gain.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
