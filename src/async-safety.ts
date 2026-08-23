@@ -74,6 +74,7 @@ export interface ResourceAliasEscape {
     acquisitionIndex: number;
     repeated: boolean;
     relation: "single" | "latest" | "conditional";
+    controlPaths: AsyncControlCondition[][];
     snapshot: string;
   };
   assignmentSpan: { start: number; end: number };
@@ -789,6 +790,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           acquisitionIndex: resource.acquisitionIndex,
           repeated,
           relation: repeated ? "latest" : "single",
+          controlPaths: [[]],
           snapshot: repeated ? `generation_${resource.acquisitionIndex}@${node.getStart(source)}` : `single_${resource.acquisitionIndex}`,
         },
         assignmentSpan: { start: node.getStart(source), end: node.getEnd() },
@@ -1015,8 +1017,19 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const generationAtAssignment = (fact: ResourceAliasFact, node: ts.Node): ResourceAliasEscape["generation"] => {
       const resourceConditions = new Set(fact.resource.controlPaths.flat().map((condition) => `${condition.id}:${condition.expected}`));
-      const hasRelativeControl = controlPaths(node).some((path) => path.some((condition) => !resourceConditions.has(`${condition.id}:${condition.expected}`)));
-      return { ...fact.generation, relation: hasRelativeControl ? "conditional" : fact.generation.relation };
+      const relativePaths = controlPaths(node).map((path) => path.filter((condition) => !resourceConditions.has(`${condition.id}:${condition.expected}`)));
+      const hasRelativeControl = relativePaths.some((path) => path.length > 0);
+      if (!hasRelativeControl) return fact.generation;
+      const combined = fact.generation.controlPaths.flatMap((existing) => relativePaths.flatMap((relative) => {
+        const conditions = new Map(existing.map((condition) => [condition.id, condition]));
+        for (const condition of relative) {
+          const previous = conditions.get(condition.id);
+          if (previous && previous.expected !== condition.expected) return [];
+          conditions.set(condition.id, condition);
+        }
+        return [[...conditions.values()]];
+      }));
+      return { ...fact.generation, relation: "conditional", controlPaths: combined };
     };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
@@ -1675,6 +1688,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     ...resources.flatMap((item) => item.controlPaths.flat()),
     ...awaited.flatMap((item) => item.controlPaths.flat()),
     ...result.controlStatements.filter((item) => item.owner === owner).flatMap((item) => item.completionPaths.flatMap((path) => path.controlConditions)),
+    ...aliases.flatMap((item) => item.generation.controlPaths.flat()),
   ].map((condition) => condition.id))];
   const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
   const conditionGuards = (conditions: readonly AsyncControlCondition[]): string[] => conditions.map((condition) => `branch_${branchIndex.get(condition.id)!} == ${condition.expected ? 1 : 0}`);
@@ -1752,11 +1766,14 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       const alias = aliases[event.index]!;
       const resourceIndex = resources.findIndex((resource) => resource.acquisitionIndex === alias.generation.acquisitionIndex);
       if (resourceIndex < 0) throw new Error(`${owner} alias ${alias.alias} references missing acquisition ${alias.generation.acquisitionIndex}`);
-      emit(`capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`], new Map([
+      emit(`capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`, ...conditionPathGuards(alias.generation.controlPaths)], new Map([
         ["pc", String(next)],
         [`alias_generation_${event.index}`, `generation_${resourceIndex}`],
       ]));
-      if (alias.generation.relation === "conditional") emit(`skip_conditional_capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`], new Map([["pc", String(next)]]));
+      if (alias.generation.relation === "conditional") {
+        const mismatch = conditionPathMismatch(alias.generation.controlPaths);
+        emit(`skip_conditional_capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`, ...(mismatch ? [mismatch] : [])], new Map([["pc", String(next)]]));
+      }
       emit(`skip_capture_alias_${event.index}`, [`pc == ${pc}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
       return;
     }

@@ -40,6 +40,19 @@ export async function brokenRetry(enabled: boolean): Promise<void> {
   retryState.active.forwardedAttempt?.flush();
 }
 
+export async function brokenConditionalRetry(enabled: boolean, keepFirst: boolean): Promise<void> {
+  let firstAttempt: Attempt | undefined;
+  let latestAttempt: Attempt | undefined;
+  while (enabled) {
+    await using attempt = openAttempt();
+    if (keepFirst) firstAttempt = attempt;
+    else latestAttempt = attempt;
+    await Promise.resolve("flush").then((value) => value);
+  }
+  firstAttempt?.flush();
+  latestAttempt?.flush();
+}
+
 export async function brokenAttemptFactory(): Promise<{ attempt: Attempt }> {
   await using attempt = openAttempt();
   return { attempt };

@@ -562,9 +562,11 @@ Alias-generation evidence classifies each capture as `single`, `latest`, or
 repeated acquisition. A branch introduced below the acquisition produces
 `conditional`; unified Quint then offers both capture and skip transitions for
 that alias. This prevents an optional assignment from becoming a mandatory
-snapshot. Multiple conditional aliases are currently conservative independent
-choices: correlation between mutually exclusive assignments requires the
-general CFG join and is not claimed as proved.
+snapshot. Relative control paths retain their condition identity and polarity,
+so aliases assigned by opposite arms of the same `if` share one Quint branch
+choice and cannot both capture in one modeled iteration. Switch/fallthrough,
+try/catch, and cross-loop alias-generation correlations still require the
+general CFG join and are not claimed as proved.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

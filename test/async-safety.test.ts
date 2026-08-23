@@ -1556,10 +1556,20 @@ describe("async error and explicit resource safety", () => {
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
     expect(aliases).toHaveLength(2);
     expect(aliases.every((alias) => alias.generation.relation === "conditional")).toBe(true);
+    expect(aliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({ id: aliases[0]?.generation.controlPaths[0]?.[0]?.id, expected: false });
 
     const quint = generateUnifiedAsyncQuint("conditional_resource_generations", result, "broken");
     expect(quint).toContain("action skip_conditional_capture_alias_0");
     expect(quint).toContain("action skip_conditional_capture_alias_1");
+    const firstCapture = /branch_(\d+) == ([01]),/.exec(/action capture_alias_0 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "");
+    const latestCapture = /branch_(\d+) == ([01]),/.exec(/action capture_alias_1 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "");
+    expect(firstCapture?.slice(1)).toEqual([expect.any(String), "1"]);
+    expect(latestCapture?.slice(1)).toEqual([firstCapture?.[1], "0"]);
+    const firstSkip = /action skip_conditional_capture_alias_0 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    const latestSkip = /action skip_conditional_capture_alias_1 = all \{([^}]*)\}/.exec(quint)?.[1] ?? "";
+    expect(firstSkip).toContain(`branch_${firstCapture?.[1]} == 0,`);
+    expect(latestSkip).toContain(`branch_${firstCapture?.[1]} == 1,`);
     expect([...quint.matchAll(/action alias_loop_\d+_repeat/g)]).toHaveLength(1);
     expect(run(quint, 24).status).not.toBe(0);
   });

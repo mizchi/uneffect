@@ -133,6 +133,10 @@ not evidence of a stable 31% cost increase over the shared-alias case.
 A conditional two-alias variant, including relative-control classification and
 explicit capture/skip lowering, measured 128.42 ms mean over 20 samples (2.60%
 RME). Its cost is consistent with the non-nested shared-alias baseline.
+After retaining relative control paths and correlating both aliases through one
+branch identity, the same benchmark measured 124.56 ms mean over 20 samples
+(1.66% RME). No regression is visible against the earlier independent-choice
+lowering.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

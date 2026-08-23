@@ -251,6 +251,19 @@ describe("Uneffect dogfood", () => {
     const aliasRepeatPc = /action alias_loop_0_repeat = all \{[\s\S]*?pc' = (-?\d+),/.exec(brokenAliasQuint)?.[1];
     expect(aliasRepeatPc).toBe(aliasAcquirePc);
     expect(brokenAliasQuint).toContain("action alias_loop_0_exit");
+    const conditionalAliases = broken.resourceAliases.filter((alias) => alias.owner === "brokenConditionalRetry");
+    expect(conditionalAliases).toHaveLength(2);
+    expect(conditionalAliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(conditionalAliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: conditionalAliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
+    const conditionalQuint = generateUnifiedAsyncQuint("broken_conditional_retry", broken, "brokenConditionalRetry");
+    const firstCapture = /action capture_alias_0 = all \{([^}]*)\}/.exec(conditionalQuint)?.[1] ?? "";
+    const latestCapture = /action capture_alias_1 = all \{([^}]*)\}/.exec(conditionalQuint)?.[1] ?? "";
+    const branch = /branch_(\d+) == 1,/.exec(firstCapture)?.[1];
+    expect(branch).toBeDefined();
+    expect(latestCapture).toContain(`branch_${branch} == 0,`);
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
     }));
