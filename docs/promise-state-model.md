@@ -104,7 +104,9 @@ also narrowed by TypeScript symbol identity. Immutable `as const` tuples and
 object literals can be selected exactly through reassignment-free literal
 `const` indexes/keys. Cycle-safe immutable alias chains are followed for both
 the container and key, and direct property access on the same immutable object
-fragment is exact. Getters and mutable arrays/records remain dynamic. More general
+fragment is exact. Finite conditional literal keys retain every selected local
+thenable identity as an alternative adoption action. Getters, out-of-range or
+non-literal keys, and mutable arrays/records remain dynamic. More general
 computed selections and complex Proxy trap
 behavior, and recursive thenable cycles
 resolution remain conservative gaps. Links currently require a direct local constructor binding

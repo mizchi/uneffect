@@ -285,6 +285,28 @@ describe("Promise state and reaction chains", () => {
     expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
   });
 
+  it("retains exact thenable identities for finite conditional keys", () => {
+    const model = analyzePromiseChains("conditional-key-thenable.ts", `
+      function run(flag: boolean) {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const choices = { ok: first, fail: second } as const
+        const selected = flag ? "ok" : "fail"
+        const tuple = [first, second] as const
+        const index = flag ? 0 : 1
+        const objectResult = new Promise<number>(resolve => resolve(choices[selected])).catch(() => 0)
+        const tupleResult = new Promise<number>(resolve => resolve(tuple[index])).catch(() => 0)
+        return Promise.all([objectResult, tupleResult])
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [0, 1] });
+    expect(model.executors[0].adoptedThenable).toBeUndefined();
+    expect(model.executors[1]).toMatchObject({ adoptedThenables: [0, 1] });
+    const quint = generatePromiseChainsQuint("conditional_key_thenable", model);
+    expect(quint).toContain("assimilate_0_thenable_option_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_option_1_thenable_1_rejected");
+  });
+
   it("links a directly chained Promise constructor to its executor", () => {
     const model = analyzePromiseChains("direct-constructor-chain.ts", `
       function run(remote: PromiseLike<number>) {

@@ -7,7 +7,7 @@ export function routeLegacyResult(kind: "cache" | "remote"): Promise<number> {
   };
   const baseRoutes = { cache: cached, remote } as const;
   const routes = baseRoutes;
-  const baseSelection = "remote" as const;
+  const baseSelection = kind === "cache" ? "cache" : "remote";
   const selected = baseSelection;
   return new Promise<number>((resolve) => resolve(routes[selected])).catch(() => kind === "cache" ? 200 : 503);
 }

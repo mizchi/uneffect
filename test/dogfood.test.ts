@@ -576,11 +576,12 @@ describe("Uneffect dogfood", () => {
   it("selects an exact legacy thenable from an immutable routing table", () => {
     const fileName = "examples/dogfood/promise-routing.ts";
     const model = analyzePromiseChains(fileName, readFileSync(fileName, "utf8"));
-    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [0, 1] });
+    expect(model.executors[0].adoptedThenable).toBeUndefined();
     expect(model.executors[1]).toMatchObject({ adoptedThenables: [3], adoptedThenable: 3 });
     const quint = generatePromiseChainsQuint("promise_routing", model);
-    expect(quint).toContain("assimilate_0_thenable_1_rejected");
-    expect(quint).not.toContain("assimilate_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_option_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_0_thenable_option_1_thenable_1_rejected");
     expect(quint).toContain("assimilate_1_thenable_3_rejected");
   });
 

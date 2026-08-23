@@ -441,6 +441,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve `as const` object thenables selected by a reassignment-free string/number literal `const` key while retaining mutable records as dynamic assimilation.
     - [x] Follow cycle-safe immutable `const` alias chains for exact tuple/object containers and their literal selection keys.
     - [x] Resolve direct property access on immutable `as const` thenable tables, including shorthand properties, while retaining getters and mutable objects as dynamic.
+    - [x] Expand finite conditional string/number keys over immutable object/tuple thenable tables into exact alternative adoption identities.
     - [x] Detect exact self and mutual cycles in the linked local thenable graph and keep the adopting Promise pending instead of inventing terminal outcomes.
     - [x] Resolve direct local factory calls whose every explicit return is an analyzable thenable literal.
     - [x] Preserve imported `PromiseLike` call results as conservative external assimilation nodes using their call-site type and span.

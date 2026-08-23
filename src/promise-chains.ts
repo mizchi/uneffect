@@ -408,6 +408,18 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       }
       return undefined;
     };
+    const literalKeys = (value: ts.Expression): string[] | undefined => {
+      const initializer = constInitializer(value);
+      if (!initializer) return undefined;
+      if (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer) || ts.isTypeAssertionExpression(initializer)) {
+        return literalKeys(initializer.expression);
+      }
+      if (ts.isConditionalExpression(initializer)) {
+        const whenTrue = literalKeys(initializer.whenTrue), whenFalse = literalKeys(initializer.whenFalse);
+        return whenTrue && whenFalse ? [...new Set([...whenTrue, ...whenFalse])] : undefined;
+      }
+      return ts.isStringLiteral(initializer) || ts.isNumericLiteral(initializer) ? [initializer.text] : undefined;
+    };
     const selectedSymbols = (expression: ts.Expression): ts.Symbol[] => {
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return selectedSymbols(expression.expression);
       if (ts.isConditionalExpression(expression)) return [...selectedSymbols(expression.whenTrue), ...selectedSymbols(expression.whenFalse)];
@@ -416,21 +428,21 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (member) return selectedSymbols(member);
       }
       if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
-        const indexInitializer = constInitializer(expression.argumentExpression);
-        const unwrappedIndex = indexInitializer && (ts.isAsExpression(indexInitializer) || ts.isTypeAssertionExpression(indexInitializer))
-          ? indexInitializer.expression : indexInitializer;
-        const index = unwrappedIndex && ts.isNumericLiteral(unwrappedIndex) ? Number(unwrappedIndex.text) : undefined;
-        const key = unwrappedIndex && (ts.isStringLiteral(unwrappedIndex) || ts.isNumericLiteral(unwrappedIndex))
-          ? unwrappedIndex.text : undefined;
+        const keys = literalKeys(expression.argumentExpression);
         const tupleInitializer = constInitializer(expression.expression);
         const immutableTuple = tupleInitializer && ts.isAsExpression(tupleInitializer)
           && tupleInitializer.type.getText(tupleInitializer.getSourceFile()) === "const"
           && ts.isArrayLiteralExpression(tupleInitializer.expression) ? tupleInitializer.expression : undefined;
-        if (immutableTuple && index !== undefined && Number.isSafeInteger(index) && index >= 0 && index < immutableTuple.elements.length) {
-          return selectedSymbols(immutableTuple.elements[index]! as ts.Expression);
+        if (immutableTuple && keys) {
+          const indexes = keys.map(Number);
+          if (indexes.every((index) => Number.isSafeInteger(index) && index >= 0 && index < immutableTuple.elements.length)) {
+            return indexes.flatMap((index) => selectedSymbols(immutableTuple.elements[index]! as ts.Expression));
+          }
         }
-        const member = key === undefined ? undefined : immutableObjectMember(expression.expression, key);
-        if (member) return selectedSymbols(member);
+        if (keys) {
+          const members = keys.map((key) => immutableObjectMember(expression.expression, key));
+          if (members.every((member): member is ts.Expression => member !== undefined)) return members.flatMap(selectedSymbols);
+        }
       }
       const symbol = targetSymbol(checker, expression);
       return symbol ? [symbol] : [];
