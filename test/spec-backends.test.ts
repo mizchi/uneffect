@@ -1219,9 +1219,25 @@ describe("spec IR and generated verifier programs", () => {
     expect(unfair).toContainEqual(expect.objectContaining({
       code: "reachable-liveness-cycle", name: "completes", depth: 1, loopStart: 0,
     }));
+    expect(unfair).not.toContainEqual(expect.objectContaining({
+      code: "initially-vacuous-liveness", name: "completes",
+    }));
     const fair = await lintTemporalReachabilityWithZ3(model(true), { maxSteps: 2 });
     expect(fair).not.toContainEqual(expect.objectContaining({
       code: "reachable-liveness-cycle", name: "completes",
+    }));
+  });
+
+  it("reports an eventuality already guaranteed by every initial state as temporally vacuous", async () => {
+    const temporal = parseSpec("initial-eventuality.ts", `/* uneffect:
+      state done: bool
+      init done = true
+      action reset: done' = false
+      temporal_eventually completes: done
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "initially-vacuous-liveness", name: "completes", backend: "z3", depth: 0,
     }));
   });
 

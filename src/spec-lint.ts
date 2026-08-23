@@ -10,7 +10,7 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "initially-vacuous-liveness" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -886,6 +886,13 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       });
       break;
     }
+  }
+  if (initStatus === "sat") for (const property of spec.liveness) {
+    const initiallyFalse = `(not ${temporalToSmt(property.expressionAst, (name) => at(name, 0), symbols)})`;
+    if (await checkAssertions([...init, initiallyFalse]) === "unsat") diagnostics.push({
+      code: "initially-vacuous-liveness", name: property.name, backend: "z3", depth: 0,
+      message: `${property.name} is already true in every initial state, so this eventuality imposes no future progress obligation`,
+    });
   }
   if (initStatus === "sat" && spec.actions.length > 0 && spec.liveness.length > 0) for (const property of spec.liveness) {
     let found = false;

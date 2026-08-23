@@ -401,6 +401,11 @@ state, and every declared weak/strong action-fairness obligation is satisfied.
 The returned `depth` and `loopStart` describe an infinite counterexample
 witness. Failure to find a lasso within the requested depth is not a liveness
 proof; nested or more general temporal formulas remain delegated to Quint/TLC.
+Before that search, `initially-vacuous-liveness` is emitted when Z3 proves that
+the eventuality predicate is true in every state satisfying `init`. Such a
+property imposes no future progress obligation; expressing request-triggered
+completion requires a future leads-to/response fragment that is not yet
+supported rather than treating a bare `eventually` as equivalent.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 

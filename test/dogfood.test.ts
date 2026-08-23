@@ -282,6 +282,17 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("flags the realtime example's completion eventuality as initially vacuous", async () => {
+    const fileName = "examples/realtime.ts";
+    const temporal = parseSpec(fileName, readFileSync(fileName, "utf8")).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "initially-vacuous-liveness",
+      name: "requestCompletes",
+      depth: 0,
+    }));
+  });
+
   it("proves four-way telemetry routing accounting and rejects a missing update", async () => {
     const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
     const source = readFileSync(fileName, "utf8");

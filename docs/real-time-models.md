@@ -157,8 +157,14 @@ remaining frame callbacks and paint continue.
  * action_fair tick_clock: weak
  * temporal deadlineSafe: !pending || clock <= deadline
  * temporal_eventually requestCompletes: !pending
- */
+*/
 ```
+
+Because `pending` is initially false, the current Z3 lint reports
+`requestCompletes` as `initially-vacuous-liveness`: the bare eventuality is true
+before any request is released. This is intentional dogfood evidence for the
+remaining response-property gap; it must not be presented as a proof that each
+released request completes.
 
 `action_when name: predicate` is TypeScript-like Uneffect syntax. It is parsed
 into the neutral expression AST and emitted as a Quint action guard; Quint
