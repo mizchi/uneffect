@@ -504,6 +504,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Retain conditional-generator `Promise.any` reasons per selected path instead of unsoundly projecting one path onto all executions.
     - [x] Guard path-specific generator step failure with the correlated iterable choice, preserve normal join actions on the non-failing path, and exclude suffix yields after abrupt completion.
     - [x] Compose multiple correlated generator spreads with deterministic array prefix/suffix as a finite choice product while retaining effects, branch kinds, reason order, and path-specific failure guards.
+    - [x] Correlate repeated TypeChecker-resolved boolean conditions and negated generator arguments across finite paths, removing contradictory choice products before Quint lowering.
     - [x] Bound finite iterable choice products at 32 paths and fall back to an explicit unsupported dynamic boundary instead of truncating proof state.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.

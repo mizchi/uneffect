@@ -770,9 +770,9 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action assimilate_1_1");
     expect(quint).toContain('val join_2_aggregate_error_reason_0 = "literal:string:cache-miss"');
     expect(quint).toContain('val join_2_aggregate_error_reason_1 = "error:TypeError:network-down"');
-    expect(quint).toContain("action choose_iterable_3_true");
-    expect(quint).toContain("action choose_iterable_3_false");
-    expect(quint).toMatch(/action fail_iterator_3[\s\S]*join_3_iterable_choice == 1/);
+    expect(quint).toContain("action choose_iterable_3_path_0");
+    expect(quint).toContain("action choose_iterable_3_path_1");
+    expect(quint).toMatch(/action fail_iterator_3[\s\S]*join_3_iterable_choice == 0/);
     expect(quint).toContain("action choose_iterable_4_path_0");
     expect(quint).toContain("action choose_iterable_4_path_2");
     expect(quint).toMatch(/action fail_iterator_4[\s\S]*join_4_iterable_choice == 0 or join_4_iterable_choice == 1/);

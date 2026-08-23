@@ -174,6 +174,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   type FiniteIterablePath = {
     branches: (ts.Expression | ts.OmittedExpression)[];
     failure?: "acquire" | "step";
+    conditions?: Map<ts.Symbol | string, boolean>;
   };
   const MAX_FINITE_ITERABLE_PATHS = 32;
   function expandStaticArray(
@@ -230,10 +231,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             { branches: alternatives[0], ...(failurePresence === "when-true" && failure ? { failure } : {}) },
             { branches: alternatives[1], ...(failurePresence === "when-false" && failure ? { failure } : {}) },
           ] : [{ branches: nested, ...(failure ? { failure } : {}) }]);
-        const product = paths.flatMap((prefix) => prefix.failure ? [prefix] : nestedPaths.map((suffix) => ({
-          branches: [...prefix.branches, ...suffix.branches],
-          failure: suffix.failure,
-        })));
+        const product = paths.flatMap((prefix) => {
+          if (prefix.failure) return [prefix];
+          return nestedPaths.flatMap((suffix) => {
+            const conditions = new Map(prefix.conditions);
+            for (const [key, value] of suffix.conditions ?? []) {
+              const existing = conditions.get(key);
+              if (existing !== undefined && existing !== value) return [];
+              conditions.set(key, value);
+            }
+            return [{
+              branches: [...prefix.branches, ...suffix.branches],
+              failure: suffix.failure,
+              ...(conditions.size ? { conditions } : {}),
+            }];
+          });
+        });
         if (product.length > MAX_FINITE_ITERABLE_PATHS) return undefined;
         paths = product;
         if (evidence) {
@@ -299,7 +312,27 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   ): FiniteIterableExpansion | undefined => {
     const substitute = (expression: ts.Expression): ts.Expression => ts.isIdentifier(expression)
       ? substitutions.get(resolvedSymbol(expression)!) ?? expression : expression;
-    type FlowPath = { branches: ts.Expression[]; failure?: "step"; completes: boolean };
+    type FlowPath = { branches: ts.Expression[]; failure?: "step"; completes: boolean; conditions?: Map<ts.Symbol | string, boolean> };
+    const conditionConstraint = (expression: ts.Expression): { key: ts.Symbol | string; value: boolean } => {
+      while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+      if (ts.isIdentifier(expression)) {
+        const replacement = substitutions.get(resolvedSymbol(expression)!);
+        if (replacement) return conditionConstraint(replacement);
+        return { key: resolvedSymbol(expression) ?? `text:${expression.getText(expression.getSourceFile())}`, value: true };
+      }
+      if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
+        const inner = conditionConstraint(expression.operand);
+        return { ...inner, value: !inner.value };
+      }
+      return { key: `text:${expression.getText(expression.getSourceFile())}`, value: true };
+    };
+    const constrain = (path: FlowPath, constraint: { key: ts.Symbol | string; value: boolean }): FlowPath | undefined => {
+      const existing = path.conditions?.get(constraint.key);
+      if (existing !== undefined && existing !== constraint.value) return undefined;
+      const conditions = new Map(path.conditions);
+      conditions.set(constraint.key, constraint.value);
+      return { ...path, conditions };
+    };
     const statementsOf = (node: ts.Statement): readonly ts.Statement[] => ts.isBlock(node) ? node.statements : [node];
     const flow = (statements: readonly ts.Statement[], initial: FlowPath[] = [{ branches: [], completes: true }]): FlowPath[] | undefined => {
       let paths = initial;
@@ -313,10 +346,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           } else if (ts.isThrowStatement(statement)) next.push({ ...path, failure: "step", completes: false });
           else if (ts.isReturnStatement(statement)) next.push({ ...path, completes: false });
           else if (ts.isIfStatement(statement)) {
-            const truePaths = flow(statementsOf(statement.thenStatement), [{ ...path, branches: [...path.branches] }]);
+            const condition = conditionConstraint(statement.expression);
+            const trueInput = constrain({ ...path, branches: [...path.branches] }, condition);
+            const falseInput = constrain({ ...path, branches: [...path.branches] }, { ...condition, value: !condition.value });
+            const truePaths = trueInput ? flow(statementsOf(statement.thenStatement), [trueInput]) : [];
             const falsePaths = statement.elseStatement
-              ? flow(statementsOf(statement.elseStatement), [{ ...path, branches: [...path.branches] }])
-              : [{ ...path, branches: [...path.branches] }];
+              ? falseInput ? flow(statementsOf(statement.elseStatement), [falseInput]) : []
+              : falseInput ? [falseInput] : [];
             if (!truePaths || !falsePaths) return undefined;
             next.push(...truePaths, ...falsePaths);
           } else if (ts.isEmptyStatement(statement)) next.push(path);
@@ -329,7 +365,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     };
     const flowed = flow(body.statements);
     if (!flowed?.length) return undefined;
-    const finitePaths = flowed.map(({ branches, failure }) => ({ branches, ...(failure ? { failure } : {}) }));
+    const finitePaths = flowed.map(({ branches, failure, conditions }) => ({ branches, ...(failure ? { failure } : {}), ...(conditions?.size ? { conditions } : {}) }));
     if (finitePaths.length === 1) return {
       branches: finitePaths[0]!.branches,
       ...(finitePaths[0]!.failure ? { failure: finitePaths[0]!.failure } : {}),
@@ -1039,7 +1075,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
-          const iterablePaths = expressionPaths && expressionPaths.length > 2 ? expressionPaths.map((path) => ({
+          const iterablePaths = expressionPaths ? expressionPaths.map((path) => ({
             branches: path.branches.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText()),
             branchKinds: path.branches.map(branchKind),
             ...(path.failure ? { iteratorFailure: path.failure } : {}),
@@ -1185,11 +1221,11 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
       }
     }
     const presence = (branch: number): string => join.iterablePaths
-      ? join.iterablePaths.flatMap((path, pathIndex) => path.branches[branch] === undefined ? [] : [`join_${index}_iterable_choice == ${pathIndex}`]).join(" or ") || "false"
+      ? `(${join.iterablePaths.flatMap((path, pathIndex) => path.branches[branch] === undefined ? [] : [`join_${index}_iterable_choice == ${pathIndex}`]).join(" or ") || "false"})`
       : join.branchPresence?.[branch] === "when-true" ? `join_${index}_iterable_choice == 1`
       : join.branchPresence?.[branch] === "when-false" ? `join_${index}_iterable_choice == 0` : "true";
     const failurePresence = join.iterablePaths
-      ? join.iterablePaths.flatMap((path, pathIndex) => path.iteratorFailure ? [`join_${index}_iterable_choice == ${pathIndex}`] : []).join(" or ") || "false"
+      ? `(${join.iterablePaths.flatMap((path, pathIndex) => path.iteratorFailure ? [`join_${index}_iterable_choice == ${pathIndex}`] : []).join(" or ") || "false"})`
       : join.iteratorFailurePresence === "when-true" ? `join_${index}_iterable_choice == 1`
       : join.iteratorFailurePresence === "when-false" ? `join_${index}_iterable_choice == 0` : "true";
     if (join.iteratorFailure) action(`fail_iterator_${index}`, [
@@ -1208,7 +1244,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
           const candidate = path.branchKinds[branch];
           return candidate && accepted.includes(candidate) ? [`join_${index}_iterable_choice == ${pathIndex}`] : [];
         });
-        return choices.length === join.iterablePaths.length ? undefined : choices.join(" or ") || "false";
+        return choices.length === join.iterablePaths.length ? undefined : `(${choices.join(" or ") || "false"})`;
       };
       const fulfillUpdates = new Map([[`join_${index}_branch_${branch}`, "1"]]);
       const rejectUpdates = new Map([[`join_${index}_branch_${branch}`, "2"]]);
@@ -1261,7 +1297,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const safeTerms = [...model.timers.flatMap((timer, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`, ...(timer.kind === "abort-timeout" ? [`timer_${i}_fires <= 1`] : [])]), ...model.combinators.flatMap((join, i) => {
     const presence = (branch: number): string => join.iterablePaths
-      ? join.iterablePaths.flatMap((path, pathIndex) => path.branches[branch] === undefined ? [] : [`join_${i}_iterable_choice == ${pathIndex}`]).join(" or ") || "false"
+      ? `(${join.iterablePaths.flatMap((path, pathIndex) => path.branches[branch] === undefined ? [] : [`join_${i}_iterable_choice == ${pathIndex}`]).join(" or ") || "false"})`
       : join.branchPresence?.[branch] === "when-true" ? `join_${i}_iterable_choice == 1`
       : join.branchPresence?.[branch] === "when-false" ? `join_${i}_iterable_choice == 0` : "true";
     const allFulfilled = join.branches.map((_, b) => presence(b) === "true" ? `join_${i}_branch_${b} == 1` : `(not(${presence(b)}) or join_${i}_branch_${b} == 1)`).join(" and ") || "true";

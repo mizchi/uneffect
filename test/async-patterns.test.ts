@@ -880,11 +880,12 @@ describe("builtin async temporal patterns", () => {
       timers: [], cancellations: [], abortCompositions: [], timerEscapes: [], combinators: [model.combinators[1]!],
     });
     expect(varying).toContain("var join_0_iterable_choice: int");
-    expect(varying).toContain("action choose_iterable_0_true");
-    expect(varying).toMatch(/action fulfill_0_1[\s\S]*join_0_iterable_choice == 0/);
+    expect(varying).toContain("action choose_iterable_0_path_0");
+    expect(varying).toContain("action choose_iterable_0_path_1");
+    expect(varying).toMatch(/action fulfill_0_1[\s\S]*join_0_iterable_choice == 1/);
     expect(run(varying, "asyncSafe").status).toBe(0);
     const combined = generateAsyncPatternsQuint("varying_conditional_combinators", model);
-    expect(combined).toContain("def join_4_aggregate_error_count = if (join_4_iterable_choice == -1) 0 else if (join_4_iterable_choice == 1) 1 else 2");
+    expect(combined).toContain("def join_4_aggregate_error_count = if (join_4_iterable_choice == -1) 0 else if (join_4_iterable_choice == 0) 1 else if (join_4_iterable_choice == 1) 2 else 0");
     expect(run(combined, "asyncSafe").status).toBe(0);
   });
 
@@ -920,6 +921,13 @@ describe("builtin async temporal patterns", () => {
       async function loadTwoChoices(first: boolean, second: boolean) {
         return Promise.all(twoChoices(first, second))
       }
+      function* repeatedChoice(flag: boolean) {
+        if (flag) yield "first-true"; else yield "first-false"
+        if (flag) yield "second-true"; else yield "second-false"
+      }
+      async function loadRepeatedChoice(flag: boolean) {
+        return Promise.all(repeatedChoice(flag))
+      }
     `);
     expect(model.combinators[0]).toMatchObject({
       staticIterable: true,
@@ -935,9 +943,9 @@ describe("builtin async temporal patterns", () => {
     });
     const quint = generateAsyncPatternsQuint("conditional_generator", { ...model, combinators: [model.combinators[0]!] });
     expect(quint.match(/var join_0_iterable_choice/g)).toHaveLength(1);
-    expect(quint).toContain("action choose_iterable_0_true");
-    expect(quint).toContain("action choose_iterable_0_false");
-    expect(quint).toMatch(/action fulfill_0_3[\s\S]*join_0_iterable_choice == 0/);
+    expect(quint).toContain("action choose_iterable_0_path_0");
+    expect(quint).toContain("action choose_iterable_0_path_1");
+    expect(quint).toMatch(/action fulfill_0_3[\s\S]*join_0_iterable_choice == 1/);
     expect(model.combinators[1]).toMatchObject({
       owner: "loadSpread",
       staticIterable: true,
@@ -962,17 +970,19 @@ describe("builtin async temporal patterns", () => {
       owner: "loadDoubleSpread",
       staticIterable: true,
       iteratorKind: "array",
-      iterablePaths: [
-        { branches: ['"head"', 'Promise.resolve("fresh")', '"tail"', '"head"', 'Promise.resolve("fresh")', '"tail"'] },
-        { branches: ['"head"', 'Promise.resolve("fresh")', '"tail"', '"head"', '"cached"', 'remote', '"tail"'] },
-        { branches: ['"head"', '"cached"', 'remote', '"tail"', '"head"', 'Promise.resolve("fresh")', '"tail"'] },
-        { branches: ['"head"', '"cached"', 'remote', '"tail"', '"head"', '"cached"', 'remote', '"tail"'] },
+      branchAlternatives: [
+        ['"head"', '"head"'],
+        ['Promise.resolve("fresh")', '"cached"'],
+        ['"tail"', "remote"],
+        ['"head"', '"tail"'],
+        ['"cached"', '"head"'],
+        ["remote", 'Promise.resolve("fresh")'],
+        ['"tail"', '"tail"'],
       ],
     });
     const product = generateAsyncPatternsQuint("conditional_generator_product", { ...model, combinators: [model.combinators[3]!] });
     expect(product).toContain("action choose_iterable_0_path_0");
-    expect(product).toContain("action choose_iterable_0_path_3");
-    expect(product).toMatch(/action fulfill_0_7[\s\S]*join_0_iterable_choice == 3/);
+    expect(product).toContain("action choose_iterable_0_path_1");
     expect(run(product, "asyncSafe").status).toBe(0);
     expect(model.combinators[4]).toMatchObject({
       owner: "loadTwoChoices",
@@ -982,6 +992,13 @@ describe("builtin async temporal patterns", () => {
         { branches: ['"a"', '"middle"', '"d"', '"e"'] },
         { branches: ['"b"', '"middle"', 'Promise.resolve("c")'] },
         { branches: ['"b"', '"middle"', '"d"', '"e"'] },
+      ],
+    });
+    expect(model.combinators[5]).toMatchObject({
+      owner: "loadRepeatedChoice",
+      branchAlternatives: [
+        ['"first-true"', '"first-false"'],
+        ['"second-true"', '"second-false"'],
       ],
     });
   });
@@ -1018,8 +1035,8 @@ describe("builtin async temporal patterns", () => {
       branchPresence: ["when-false", "when-false"],
     });
     const quint = generateAsyncPatternsQuint("conditional_generator_failure", model);
-    expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_iterable_choice == 1/);
-    expect(quint).toMatch(/action assimilate_0_0[\s\S]*join_0_iterable_choice == 0/);
+    expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_iterable_choice == 0/);
+    expect(quint).toMatch(/action assimilate_0_0[\s\S]*join_0_iterable_choice == 1/);
     expect(quint).toMatch(/action step = any \{[\s\S]*fail_iterator_0,[\s\S]*assimilate_0_0,/);
     expect(model.combinators[1]).toMatchObject({
       iterablePaths: [

@@ -175,6 +175,11 @@ A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing
 values from incompatible paths. Partial `if` statements use an empty else path.
+Repeated reads of the same TypeScript-resolved boolean condition, including a
+negated call-site argument such as a second spread of `values(!flag)`, share a
+path constraint. Contradictory products are removed before Quint generation.
+This identity fragment does not prove equivalence between general boolean
+expressions; syntactically different computed predicates remain independent.
 Finite correlated generator spreads compose by Cartesian product with other
 spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product
@@ -239,8 +244,9 @@ the input-index order used by `AggregateError.errors`, independently of branch
 rejection order, and emits count/rank constants to Quint. Literal
 `Promise.reject(value)` reasons and direct `Promise.reject(new ErrorType(message))`
 reasons are retained as typed IR values and stable string constants in the
-artifact. The same retention applies after a finite imported generator or
-custom-iterable expansion. Other rejection reasons remain explicitly unknown.
+artifact. Path-indexed constants keep the same retention after a finite
+conditional imported generator or custom-iterable expansion. Other rejection
+reasons remain explicitly unknown.
 
 Each literal element is classified as a plain value, a thenable, or unknown.
 Plain values (including holes) can only fulfill. Thenables enter an explicit
