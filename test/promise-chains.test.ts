@@ -460,6 +460,42 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("thenable_0_fulfilled");
   });
 
+  it("recognizes a statically guarded Proxy throw without skipping an opaque prefix", () => {
+    const guarded = analyzePromiseChains("proxy-guarded-throw.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            if (property === "then") {
+              throw new TypeError("blocked")
+            }
+            return undefined
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(guarded.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "throws", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const opaquePrefix = analyzePromiseChains("proxy-opaque-prefix-throw.ts", `
+      declare function audit(): void
+      function run() {
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            audit()
+            if (property === "then") throw new TypeError("blocked")
+            return undefined
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(opaquePrefix.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("analyzes a Proxy get trap returning a concrete then callback", () => {
     const model = analyzePromiseChains("proxy-returned-then.ts", `
       function run() {

@@ -454,6 +454,10 @@ Routing the property alias through a source-ordered `switch` measured
 122.69 ms mean over 20 samples (1.46% RME). The alias exposed and fixed a
 one-step-versus-transitive initializer-resolution bug; the corrected walker
 remains in the established range.
+Adding a second realistic Proxy whose guarded `then` lookup throws measured
+126.45 ms mean over 20 samples (1.84% RME). The fixture now proves both callback
+rejection and getter rejection, so this increase also includes another Promise
+chain and thenable node rather than only the completion-kind check.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

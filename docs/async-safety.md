@@ -170,6 +170,11 @@ labels are evaluated in source order only until the first match, then clause
 bodies fall through without evaluating later labels, matching JavaScript.
 Default is selected only after no case matches. A dynamic or effectful label
 reached before the match keeps the trap dynamic.
+`throw` is a first-class completion in the same walker. When the known `then`
+lookup selects a guarded or nested throw, assimilation rejects without a
+fabricated fulfillment path. An unsupported statement before that throw keeps
+the result dynamic because the prefix may not return or may have unmodeled
+observable behavior.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

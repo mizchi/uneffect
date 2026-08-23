@@ -860,13 +860,17 @@ describe("Uneffect dogfood", () => {
     expect(model.executors[0].adoptedThenable).toBeUndefined();
     expect(model.executors[1]).toMatchObject({ adoptedThenables: [3], adoptedThenable: 3 });
     expect(model.executors[2]).toMatchObject({ adoptedThenables: [4], adoptedThenable: 4 });
+    expect(model.executors[3]).toMatchObject({ adoptedThenables: [5], adoptedThenable: 5 });
     expect(model.thenables[4]).toMatchObject({ binding: "upstream", provenance: "proxy", possibleSettlements: ["rejected"], mayRemainPending: false });
+    expect(model.thenables[5]).toMatchObject({ binding: "guarded", provenance: "proxy", thenAccess: "throws", possibleSettlements: ["rejected"], mayRemainPending: false });
     const quint = generatePromiseChainsQuint("promise_routing", model);
     expect(quint).toContain("assimilate_0_thenable_option_0_thenable_0_fulfilled");
     expect(quint).toContain("assimilate_0_thenable_option_1_thenable_1_rejected");
     expect(quint).toContain("assimilate_1_thenable_3_rejected");
     expect(quint).toContain("assimilate_2_thenable_4_rejected");
     expect(quint).not.toContain("assimilate_2_thenable_4_fulfilled");
+    expect(quint).toContain("assimilate_3_thenable_5_getter_rejected");
+    expect(quint).not.toContain("assimilate_3_thenable_5_fulfilled");
   });
 
   it("models cached values, sparse slots, and remote thenables in one batch", () => {

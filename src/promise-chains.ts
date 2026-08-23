@@ -265,9 +265,6 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const trapFunction = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap
         : assignedTrap && (ts.isArrowFunction(assignedTrap) || ts.isFunctionExpression(assignedTrap)) ? assignedTrap : undefined;
       const trapBody = trapFunction?.body && ts.isBlock(trapFunction.body) ? trapFunction.body : undefined;
-      if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
-        return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
-      }
       const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
       const directImmutableInitializer = (identifier: ts.Identifier): ts.Expression | undefined => {
@@ -304,12 +301,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           || operator === ts.SyntaxKind.EqualsEqualsEqualsToken || operator === ts.SyntaxKind.ExclamationEqualsEqualsToken)
           && isPureTrapExpression(candidate.left) && isPureTrapExpression(candidate.right);
       };
-      type TrapReturn = { kind: "return"; expression: ts.Expression } | { kind: "continue" };
+      type TrapReturn = { kind: "return"; expression: ts.Expression } | { kind: "throw" } | { kind: "continue" };
       const trapStatementsReturn = (statements: readonly ts.Statement[]): TrapReturn | undefined => {
         for (const statement of statements) {
           const selected = trapStatementReturn(statement);
           if (!selected) return undefined;
-          if (selected.kind === "return") return selected;
+          if (selected.kind !== "continue") return selected;
         }
         return { kind: "continue" };
       };
@@ -334,13 +331,14 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         for (const clause of statement.caseBlock.clauses.slice(entry)) {
           const selected = trapStatementsReturn(clause.statements);
           if (!selected) return undefined;
-          if (selected.kind === "return") return selected;
+          if (selected.kind !== "continue") return selected;
         }
         return { kind: "continue" };
       };
       const trapStatementReturn = (statement: ts.Statement): TrapReturn | undefined => {
         if (ts.isReturnStatement(statement)) return statement.expression
           ? { kind: "return", expression: statement.expression } : undefined;
+        if (ts.isThrowStatement(statement)) return { kind: "throw" };
         if (ts.isEmptyStatement(statement)) return { kind: "continue" };
         if (ts.isBlock(statement)) return trapStatementsReturn(statement.statements);
         if (ts.isSwitchStatement(statement)) return trapSwitchReturn(statement);
@@ -359,6 +357,9 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const selectedTrapReturn = trapFunction?.body && !ts.isBlock(trapFunction.body)
         ? { kind: "return" as const, expression: trapFunction.body }
         : trapBody ? trapStatementsReturn(trapBody.statements) : undefined;
+      if (selectedTrapReturn?.kind === "throw") {
+        return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
+      }
       let returned = selectedTrapReturn?.kind === "return" ? selectedTrapReturn.expression : undefined;
       while (returned && ts.isConditionalExpression(returned)) {
         const condition = thenLookupBoolean(returned.condition);
