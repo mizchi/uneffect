@@ -109,6 +109,10 @@ with any unresolved or external branch remains dynamic. Dynamic property
 selection is resolved only for finite literal keys into immutable `as const`
 object tables whose every selected property has a source callback body. Mutable
 tables, getters, missing keys, and other dynamic selections remain unresolved.
+Source callback factories use a definite-return block/`if` subset and retain
+every resolved return candidate. Concise conditional arrows are included;
+fallthrough, cycles, unsupported control flow, or any unresolved returned value
+make the factory callback dynamic.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

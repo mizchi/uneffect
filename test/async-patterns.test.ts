@@ -1082,17 +1082,56 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("resolves every definitely returned callback from a branching factory", () => {
+    const model = analyzeAsyncPatterns("branching-callback-factory.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      function makeCallback(flag: boolean) {
+        if (flag) return afterSuccess
+        return afterFailure
+      }
+      function start(flag: boolean) { setTimeout(makeCallback(flag), 0) }
+    `);
+    const parent = model.timers.findIndex((timer) => timer.callback === "makeCallback(flag)");
+    expect(parent).toBeGreaterThanOrEqual(0);
+    expect(model.timers.filter((timer) => timer.enqueuedBy === parent).map((timer) => timer.queue).sort())
+      .toEqual(["microtask", "next-tick"]);
+
+    const concise = analyzeAsyncPatterns("conditional-expression-callback-factory.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      const makeCallback = (flag: boolean) => flag ? afterSuccess : afterFailure
+      function start(flag: boolean) { setTimeout(makeCallback(flag), 0) }
+    `);
+    const conciseParent = concise.timers.findIndex((timer) => timer.callback === "makeCallback(flag)");
+    expect(concise.timers.filter((timer) => timer.enqueuedBy === conciseParent).map((timer) => timer.queue).sort())
+      .toEqual(["microtask", "next-tick"]);
+
+    const partial = analyzeAsyncPatterns("partial-callback-factory.ts", `
+      function local() { queueMicrotask(() => undefined) }
+      function makeCallback(flag: boolean) { if (flag) return local }
+      function start(flag: boolean) { setTimeout(makeCallback(flag), 0) }
+    `);
+    const partialParent = partial.timers.findIndex((timer) => timer.callback === "makeCallback(flag)");
+    expect(partialParent).toBeGreaterThanOrEqual(0);
+    expect(partial.timers.some((timer) => timer.enqueuedBy === partialParent)).toBe(false);
+  });
+
   it("resolves a callback returned by an imported source factory", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-callback-factory-"));
     try {
       const factory = join(directory, "factory.ts"), main = join(directory, "main.ts");
-      writeFileSync(factory, `export function makeCallback() { return () => queueMicrotask(() => undefined) }`);
-      writeFileSync(main, `import { makeCallback } from "./factory.js"; export function start() { setTimeout(makeCallback(), 0) }`);
+      writeFileSync(factory, `export function makeCallback(flag: boolean) {
+        if (flag) return () => queueMicrotask(() => undefined)
+        return () => setTimeout(() => undefined, 0)
+      }`);
+      writeFileSync(main, `import { makeCallback } from "./factory.js"; export function start(flag: boolean) { setTimeout(makeCallback(flag), 0) }`);
       const program = ts.createProgram([factory, main], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
       const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!);
       expect(model.timers).toMatchObject([
-        { callback: "makeCallback()", queue: "timer" },
+        { callback: "makeCallback(flag)", queue: "timer" },
         { queue: "microtask", enqueuedBy: 0 },
+        { queue: "timer", enqueuedBy: 0 },
       ]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

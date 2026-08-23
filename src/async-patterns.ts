@@ -276,23 +276,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
-  const resolveCallback = (callback: ts.Expression | undefined, seen = new Set<ts.Symbol>()): ts.FunctionLikeDeclaration | undefined => {
+  const resolveCallback = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration | undefined => {
     if (!callback) return undefined;
     if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) return callback;
-    if (ts.isCallExpression(callback)) {
-      const factory = resolvedSymbol(callback.expression);
-      if (!factory || seen.has(factory)) return undefined;
-      seen.add(factory);
-      const returned = factory.declarations?.flatMap((declaration) => {
-        if (!ts.isFunctionLike(declaration) || !("body" in declaration) || !declaration.body) return [];
-        const body = declaration.body as ts.ConciseBody;
-        if (!ts.isBlock(body)) return [body];
-        return body.statements.flatMap((statement) =>
-          ts.isReturnStatement(statement) && statement.expression ? [statement.expression] : []);
-      }) ?? [];
-      if (returned.length !== 1) return undefined;
-      return resolveCallback(returned[0], seen);
-    }
     const location = ts.isPropertyAccessExpression(callback) ? callback.name
       : ts.isElementAccessExpression(callback) && callback.argumentExpression ? callback.argumentExpression
         : callback;
@@ -307,14 +293,59 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
-  const resolveCallbacks = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration[] => {
+  const resolveCallbacks = (callback: ts.Expression | undefined, seen = new Set<ts.Symbol>()): ts.FunctionLikeDeclaration[] => {
     if (!callback) return [];
     if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback) || ts.isNonNullExpression(callback)) {
-      return resolveCallbacks(callback.expression);
+      return resolveCallbacks(callback.expression, seen);
     }
     if (ts.isConditionalExpression(callback)) {
-      const whenTrue = resolveCallbacks(callback.whenTrue), whenFalse = resolveCallbacks(callback.whenFalse);
+      const whenTrue = resolveCallbacks(callback.whenTrue, new Set(seen)), whenFalse = resolveCallbacks(callback.whenFalse, new Set(seen));
       return whenTrue.length > 0 && whenFalse.length > 0 ? [...new Set([...whenTrue, ...whenFalse])] : [];
+    }
+    if (ts.isCallExpression(callback)) {
+      const factory = resolvedSymbol(callback.expression);
+      if (!factory || seen.has(factory)) return [];
+      type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
+      const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
+        if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
+        if (ts.isThrowStatement(statement)) return { expressions: [], definite: true };
+        if (ts.isBlock(statement)) return blockFlow(statement);
+        if (ts.isIfStatement(statement)) {
+          const whenTrue = statementFlow(statement.thenStatement), whenFalse = statement.elseStatement
+            ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
+          return whenTrue && whenFalse ? {
+            expressions: [...whenTrue.expressions, ...whenFalse.expressions],
+            definite: whenTrue.definite && whenFalse.definite,
+          } : undefined;
+        }
+        if (ts.isExpressionStatement(statement) || ts.isVariableStatement(statement) || ts.isEmptyStatement(statement)) {
+          return { expressions: [], definite: false };
+        }
+        return undefined;
+      };
+      const blockFlow = (block: ts.Block): ReturnFlow | undefined => {
+        const expressions: ts.Expression[] = [];
+        for (const statement of block.statements) {
+          const flow = statementFlow(statement);
+          if (!flow) return undefined;
+          expressions.push(...flow.expressions);
+          if (flow.definite) return { expressions, definite: true };
+        }
+        return { expressions, definite: false };
+      };
+      const flows = factory.declarations?.flatMap((declaration): ReturnFlow[] => {
+        const functionLike = ts.isFunctionLike(declaration) && "body" in declaration && declaration.body ? declaration
+          : ts.isVariableDeclaration(declaration) && declaration.initializer
+            && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
+            ? declaration.initializer : undefined;
+        if (!functionLike?.body) return [];
+        const body = functionLike.body as ts.ConciseBody;
+        return [ts.isBlock(body) ? blockFlow(body) : { expressions: [body], definite: true }].filter((flow): flow is ReturnFlow => flow !== undefined);
+      }) ?? [];
+      if (flows.length === 0 || flows.some((flow) => !flow.definite || flow.expressions.length === 0)) return [];
+      const nextSeen = new Set([...seen, factory]);
+      const callbacks = flows.flatMap((flow) => flow.expressions).map((expression) => resolveCallbacks(expression, new Set(nextSeen)));
+      return callbacks.every((candidates) => candidates.length > 0) ? [...new Set(callbacks.flat())] : [];
     }
     if (ts.isElementAccessExpression(callback) && callback.argumentExpression) {
       const literalKeys = (expression: ts.Expression): string[] | undefined => {
@@ -344,7 +375,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           return undefined;
         });
         if (members.every((member): member is ts.Expression => member !== undefined)) {
-          const callbacks = members.map(resolveCallbacks);
+          const callbacks = members.map((member) => resolveCallbacks(member, new Set(seen)));
           if (callbacks.every((candidates) => candidates.length > 0)) return [...new Set(callbacks.flat())];
         }
       }

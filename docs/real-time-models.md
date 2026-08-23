@@ -129,7 +129,11 @@ external selection remains dynamic rather than attributing one known branch to
 the parent job. Finite literal-key selections from an immutable `as const`
 callback table are expanded through local `const` aliases under the same
 all-members-resolved rule. Mutable tables, getters, missing keys, and general
-dynamic property selection remain unknown.
+dynamic property selection remain unknown. Callback factories support a
+definite-return subset of sequential blocks and `if`/`else`, including early
+returns and concise conditional arrow functions. Every returned expression must
+resolve to a source callback; fallthrough and unsupported control flow keep the
+factory result dynamic.
 An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.
 
