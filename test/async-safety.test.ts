@@ -1663,6 +1663,101 @@ describe("async error and explicit resource safety", () => {
     expect(run(quint, 28).status).not.toBe(0);
   });
 
+  it("treats a resolved getter as a try risk before alias generation capture", () => {
+    const result = analyzeAsyncSafety("getter-try-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      declare const fail: boolean
+      class Source {
+        get value(): number {
+          if (fail) throw new Error("getter")
+          return 1
+        }
+      }
+      declare const source: Source
+      async function broken(enabled: boolean) {
+        let success: Resource | undefined
+        let failure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            source.value
+            success = resource
+          } catch {
+            failure = resource
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        failure?.send()
+      }
+      async function computedGetter(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            source["value"]
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
+    expect(aliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
+    const quint = generateUnifiedAsyncQuint("getter_try_resource_generations", result, "broken");
+    expect(run(quint, 28).status).not.toBe(0);
+    expect(result.resourceAliases.find((alias) => alias.owner === "computedGetter")?.generation.relation).toBe("conditional");
+  });
+
+  it("composes nested try completion identities for alias generations", () => {
+    const result = analyzeAsyncSafety("nested-try-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      declare function mayThrowOuter(): void
+      declare function mayThrowInner(): void
+      async function broken(enabled: boolean) {
+        let success: Resource | undefined
+        let innerFailure: Resource | undefined
+        let outerFailure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            mayThrowOuter()
+            try {
+              mayThrowInner()
+              success = resource
+            } catch {
+              innerFailure = resource
+            }
+          } catch {
+            outerFailure = resource
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        innerFailure?.send()
+        outerFailure?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases).toHaveLength(3);
+    expect(aliases[0]?.generation.controlPaths[0]).toHaveLength(2);
+    expect(aliases[1]?.generation.controlPaths[0]).toHaveLength(2);
+    expect(aliases[2]?.generation.controlPaths[0]).toHaveLength(1);
+    const outerId = aliases[2]?.generation.controlPaths[0]?.[0]?.id;
+    expect(aliases[0]?.generation.controlPaths[0]).toContainEqual({ id: outerId, expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]).toContainEqual({ id: outerId, expected: true });
+    const quint = generateUnifiedAsyncQuint("nested_try_resource_generations", result, "broken");
+    expect(run(quint, 36).status).not.toBe(0);
+  });
+
   it("propagates disposed resource identity through local alias chains", () => {
     const result = analyzeAsyncSafety("transitive-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

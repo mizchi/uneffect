@@ -7,6 +7,13 @@ interface Attempt {
 
 declare function openAttempt(): Attempt;
 declare function prepareFlush(): void;
+class FlushGate {
+  get ready(): boolean {
+    prepareFlush();
+    return true;
+  }
+}
+const flushGate = new FlushGate();
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
 /* uneffect: retains_resource_when 0: enabled */
@@ -60,6 +67,23 @@ export async function brokenTryRetry(enabled: boolean): Promise<void> {
     await using attempt = openAttempt();
     try {
       prepareFlush();
+      preparedAttempt = attempt;
+    } catch {
+      failedAttempt = attempt;
+    }
+    await Promise.resolve("flush").then((value) => value);
+  }
+  preparedAttempt?.flush();
+  failedAttempt?.flush();
+}
+
+export async function brokenGetterRetry(enabled: boolean): Promise<void> {
+  let preparedAttempt: Attempt | undefined;
+  let failedAttempt: Attempt | undefined;
+  while (enabled) {
+    await using attempt = openAttempt();
+    try {
+      flushGate.ready;
       preparedAttempt = attempt;
     } catch {
       failedAttempt = attempt;

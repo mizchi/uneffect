@@ -568,6 +568,21 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           risky = true;
           return;
         }
+        if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+          const symbol = ts.isPropertyAccessExpression(current)
+            ? checker.getSymbolAtLocation(current.name)
+            : (() => {
+              const direct = checker.getSymbolAtLocation(current);
+              if (direct) return direct;
+              const key = current.argumentExpression;
+              if (!key || (!ts.isStringLiteral(key) && !ts.isNumericLiteral(key))) return undefined;
+              return checker.getPropertyOfType(checker.getTypeAtLocation(current.expression), key.text);
+            })();
+          if (symbol?.declarations?.some(ts.isGetAccessorDeclaration)) {
+            risky = true;
+            return;
+          }
+        }
         ts.forEachChild(current, scan);
       };
       scan(node);

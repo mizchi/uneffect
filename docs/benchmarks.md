@@ -141,6 +141,9 @@ A restricted try/catch generation variant, including preceding-risk detection
 and correlated completion/catch capture lowering, measured 124.77 ms mean over
 20 samples (1.59% RME). Keeping this projection separate from the general
 Promise handler CFG produced no measurable cold-path penalty.
+A TypeChecker-resolved getter-risk variant measured 126.67 ms mean over 20
+samples (2.66% RME). Symbol-based accessor inspection therefore remains within
+the established cold Program-construction distribution.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

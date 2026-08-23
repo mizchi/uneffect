@@ -596,6 +596,28 @@ describe("typed-array static verification", () => {
     generateUnifiedAsyncQuint("try_catch_retry_alias_generations", result, "retry");
   }, { time: 500, iterations: 20 });
 
+  bench("lower getter-risk retry alias generations to unified Quint", () => {
+    const result = analyzeAsyncSafety("getter-retry-aliases.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      class Gate { get ready(): boolean { return true } }
+      declare const gate: Gate
+      async function retry(enabled: boolean) {
+        let success: Resource | undefined
+        let failure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { gate.ready; success = resource }
+          catch { failure = resource }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        failure?.send()
+      }
+    `);
+    generateUnifiedAsyncQuint("getter_retry_alias_generations", result, "retry");
+  }, { time: 500, iterations: 20 });
+
   bench("construct the retry resource TypeScript Program", () => {
     createAsyncSafetyBenchmarkProgram();
   }, { time: 500, iterations: 20 });
