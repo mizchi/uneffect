@@ -461,6 +461,9 @@ chain and thenable node rather than only the completion-kind check.
 Moving callback selection after an unlabeled switch `break` measured 127.81 ms
 mean over 20 samples (2.44% RME). The noisier sample remains close to the
 expanded two-Proxy fixture and does not establish a regression.
+Wrapping the guarded getter rejection in a restricted `try/finally` measured
+124.86 ms mean over 20 samples (1.88% RME). Normal-completion composition adds
+no visible cold-path regression in this fixture.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

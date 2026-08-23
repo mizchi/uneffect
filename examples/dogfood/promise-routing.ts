@@ -52,10 +52,12 @@ export function adaptRejectedProxy(): Promise<number> {
 export function recoverGuardedProxyLookup(): Promise<number> {
   const guarded = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
     get(_target, property) {
-      if (property === "then") {
-        throw new TypeError("then access denied");
-      }
-      return undefined;
+      try {
+        if (property === "then") {
+          throw new TypeError("then access denied");
+        }
+        return undefined;
+      } finally {}
     },
   });
   return new Promise<number>((resolve) => resolve(guarded)).catch(() => 403);

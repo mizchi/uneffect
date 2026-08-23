@@ -179,6 +179,10 @@ An unlabeled `break` reached within the selected switch clause exits that
 switch and resumes the enclosing statement sequence. Labeled breaks are not
 collapsed into local fallthrough because their target identity is outside this
 restricted walker.
+For a catch-free `try/finally`, a normally completing restricted finally block
+preserves the selected return, throw, or break from the try block. An abrupt
+finally completion overrides it, matching JavaScript. Catch clauses and
+effectful or unsupported cleanup statements remain dynamic.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

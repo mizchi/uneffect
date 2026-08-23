@@ -913,6 +913,67 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("composes restricted try/finally completion in a Proxy trap", () => {
+    const preserved = analyzePromiseChains("proxy-try-finally-trap.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            try {
+              if (property === "then") return rejectThen
+              return undefined
+            } finally {}
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(preserved.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const overridden = analyzePromiseChains("proxy-finally-throw-trap.ts", `
+      function run() {
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            try {
+              if (property === "then") return resolveThen
+              return undefined
+            } finally {
+              throw new TypeError("blocked")
+            }
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(overridden.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "throws", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const effectfulFinally = analyzePromiseChains("proxy-effectful-finally-trap.ts", `
+      declare function audit(): void
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            try {
+              if (property === "then") return rejectThen
+              return undefined
+            } finally {
+              audit()
+            }
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(effectfulFinally.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("resolves an immutable identity wrapper around a Proxy then callback", () => {
     const exact = analyzePromiseChains("proxy-identity-forwarded-then.ts", `
       function forward<T>(value: T): T { return value }
