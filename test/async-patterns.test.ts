@@ -2297,6 +2297,25 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
+    const source = `
+      import { lookup as resolveHost } from "node:dns"
+      /* uneffect: effect Net | Timer */
+      function resolve() { resolveHost("example.com", () => queueMicrotask(() => undefined)) }
+      function lookup(_host: string, callback: () => void) { callback() }
+      function local() { lookup("example.com", () => undefined) }
+    `;
+    expect(analyzeEffects("node-dns-poll.ts", source)).toEqual([]);
+    const model = analyzeAsyncPatterns("node-dns-poll.ts", source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_dns_poll", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("registers a nested one-shot Node timeout only when its parent runs", () => {
     const model = analyzeAsyncPatterns("node-nested-timeout.ts", `
       function schedule() {

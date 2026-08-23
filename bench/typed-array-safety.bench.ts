@@ -740,6 +740,10 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("examples/dogfood/node-server-shutdown.ts", readFileSync("examples/dogfood/node-server-shutdown.ts", "utf8"));
   }, { time: 500, iterations: 5 });
 
+  bench("analyze Node DNS poll dogfood", () => {
+    analyzeAsyncPatterns("examples/dogfood/node-dns-resolution.ts", readFileSync("examples/dogfood/node-dns-resolution.ts", "utf8"));
+  }, { time: 500, iterations: 5 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

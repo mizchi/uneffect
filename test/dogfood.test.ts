@@ -1106,4 +1106,15 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action complete_close_0");
     expect(quint).toMatch(/action run_close_0[\s\S]*node_phase == 4[\s\S]*callback_1_pending' = true/);
   });
+
+  it("checks a Node DNS capability and poll-phase boundary", () => {
+    const fileName = "examples/dogfood/node-dns-resolution.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([{ queue: "poll", externallyReady: true }]);
+    const quint = generateNodeEventLoopQuint("node_dns_resolution", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2/);
+  });
 });

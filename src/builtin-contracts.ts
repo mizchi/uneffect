@@ -24,7 +24,7 @@ export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; queue: "poll" | "close" }
+export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; queue: "poll" | "close"; effect?: string }
 export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number; family: "timeout" | "immediate" | "animation-frame" }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
@@ -133,6 +133,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     ...fsBuiltinContracts("node:fs"),
     ...fsBuiltinContracts("node:fs/promises"),
     trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" } }),
+    ...["lookup", "lookupService"].map((name): BuiltinContract => trusted({
+      symbol: { module: "node:dns", export: name },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
+    })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" } }),

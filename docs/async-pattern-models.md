@@ -116,7 +116,8 @@ This host-specific normalization does not apply to Web timers or
 This is intentionally not a complete libuv model. The ESM mode covers only
 the initial jobs queued during top-level module evaluation; dynamic imports
 and loader hooks remain outside the model. Poll callbacks outside the reviewed
-one-shot fs set, poll ordering/readiness details, close event listeners other
+one-shot fs set and `node:dns` `lookup`/`lookupService`, poll
+ordering/readiness details, close event listeners other
 than the TypeChecker-resolved `node:net` `Server.close(callback)` contract,
 pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check

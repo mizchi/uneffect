@@ -124,6 +124,17 @@ describe("effect checker", () => {
     `)).toEqual([]);
   });
 
+  it("tracks Node DNS authority and callback capabilities through aliases", () => {
+    const source = `
+      import { lookup as resolveHost } from "node:dns";
+      /* uneffect: effect Net | Console */
+      function resolve() { resolveHost("example.com", () => console.log("resolved")) }
+      function lookup(_host: string, callback: () => void) { callback() }
+      function local() { lookup("example.com", () => undefined) }
+    `;
+    expect(analyzeEffects("node-dns-effects.ts", source)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";
