@@ -309,12 +309,45 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   };
   const resolveCallbacks = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration[] => {
     if (!callback) return [];
-    if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback)) {
+    if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback) || ts.isNonNullExpression(callback)) {
       return resolveCallbacks(callback.expression);
     }
     if (ts.isConditionalExpression(callback)) {
       const whenTrue = resolveCallbacks(callback.whenTrue), whenFalse = resolveCallbacks(callback.whenFalse);
       return whenTrue.length > 0 && whenFalse.length > 0 ? [...new Set([...whenTrue, ...whenFalse])] : [];
+    }
+    if (ts.isElementAccessExpression(callback) && callback.argumentExpression) {
+      const literalKeys = (expression: ts.Expression): string[] | undefined => {
+        const initializer = immutableInitializer(expression);
+        if (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
+          || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)) return literalKeys(initializer.expression);
+        if (ts.isConditionalExpression(initializer)) {
+          const whenTrue = literalKeys(initializer.whenTrue), whenFalse = literalKeys(initializer.whenFalse);
+          return whenTrue && whenFalse ? [...new Set([...whenTrue, ...whenFalse])] : undefined;
+        }
+        return ts.isStringLiteral(initializer) || ts.isNumericLiteral(initializer) ? [initializer.text] : undefined;
+      };
+      const keys = literalKeys(callback.argumentExpression), container = immutableInitializer(callback.expression);
+      const object = ts.isAsExpression(container) && container.type.getText(container.getSourceFile()) === "const"
+        && ts.isObjectLiteralExpression(container.expression) ? container.expression : undefined;
+      if (keys && object) {
+        const members = keys.map((key) => object.properties.find((property) => {
+          if (!property.name || ts.isComputedPropertyName(property.name)) return false;
+          return property.name.getText(property.getSourceFile()).replace(/^['"]|['"]$/g, "") === key;
+        })).map((property): ts.Expression | undefined => {
+          if (property && ts.isPropertyAssignment(property)) return property.initializer;
+          if (property && ts.isShorthandPropertyAssignment(property)) {
+            const symbol = checker.getShorthandAssignmentValueSymbol(property);
+            return symbol?.valueDeclaration && ts.isVariableDeclaration(symbol.valueDeclaration)
+              ? symbol.valueDeclaration.name as ts.Expression : property.name;
+          }
+          return undefined;
+        });
+        if (members.every((member): member is ts.Expression => member !== undefined)) {
+          const callbacks = members.map(resolveCallbacks);
+          if (callbacks.every((candidates) => candidates.length > 0)) return [...new Set(callbacks.flat())];
+        }
+      }
     }
     const resolved = resolveCallback(callback);
     return resolved ? [resolved] : [];

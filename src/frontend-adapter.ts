@@ -108,8 +108,18 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         && declaration.initializer && ts.isNewExpression(declaration.initializer)
         && ts.isIdentifier(declaration.initializer.expression) && declaration.initializer.expression.text === "Proxy")) return true;
       if (ts.isElementAccessExpression(node) && node.argumentExpression && !ts.isStringLiteralLike(node.argumentExpression) && !ts.isNumericLiteral(node.argumentExpression)) {
-        const keyFlags = this.#checker.getTypeAtLocation(node.argumentExpression).flags;
-        const staticallyPrimitiveKey = (keyFlags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike)) !== 0;
+        const keyType = this.#checker.getTypeAtLocation(node.argumentExpression);
+        const keyMembers = keyType.isUnion() ? keyType.types : [keyType];
+        const literalPropertyNames = keyMembers.flatMap((member) => {
+          if ((member.flags & ts.TypeFlags.StringLiteral) !== 0) return [(member as ts.StringLiteralType).value];
+          if ((member.flags & ts.TypeFlags.NumberLiteral) !== 0) return [String((member as ts.NumberLiteralType).value)];
+          return [];
+        });
+        if (literalPropertyNames.length === keyMembers.length && literalPropertyNames.some((name) =>
+          this.#checker.getPropertyOfType(receiverType, name)?.declarations?.some((declaration) =>
+            ts.isGetAccessorDeclaration(declaration) || ts.isSetAccessorDeclaration(declaration)))) return true;
+        const staticallyPrimitiveKey = keyMembers.every((member) =>
+          (member.flags & (ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike)) !== 0);
         if (!staticallyPrimitiveKey) return true;
       }
     }

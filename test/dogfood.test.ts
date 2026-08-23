@@ -345,13 +345,15 @@ describe("Uneffect dogfood", () => {
         import { readFile } from "node:fs"
         function flushSuccess() { queueMicrotask(() => console.log("flushed")) }
         function flushFailure() { nextTick(() => console.log("retry")) }
+        const flushHandlers = { success: flushSuccess, failure: flushFailure } as const
         /* uneffect: effect FsRead<"settings.json"> | Console | Timer */
         export function scheduleFlush(preferCache: boolean) {
           readFile("settings.json", "utf8", () => {
             nextTick(() => console.log("tick"))
             queueMicrotask(() => console.log("microtask"))
             setImmediate(() => console.log("check"))
-            setTimeout(preferCache ? flushSuccess : flushFailure, 0)
+            const outcome = preferCache ? "success" : "failure"
+            setTimeout(flushHandlers[outcome], 0)
           })
         }
       `;
@@ -364,7 +366,7 @@ describe("Uneffect dogfood", () => {
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_next_tick_1");
     expect(verified.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nodeEventLoopSafe", result: "verified" }));
     const asyncModel = analyzeAsyncPatterns("src/node-service.ts", source);
-    const selectedTimer = asyncModel.timers.findIndex((timer) => timer.callback === "preferCache ? flushSuccess : flushFailure");
+    const selectedTimer = asyncModel.timers.findIndex((timer) => timer.callback === "flushHandlers[outcome]");
     expect(selectedTimer).toBeGreaterThanOrEqual(0);
     expect(asyncModel.timers.filter((timer) => timer.enqueuedBy === selectedTimer).map((timer) => timer.queue).sort())
       .toEqual(["microtask", "next-tick"]);

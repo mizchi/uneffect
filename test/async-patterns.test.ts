@@ -1128,6 +1128,47 @@ describe("builtin async temporal patterns", () => {
     expect(partial.timers.some((timer) => timer.enqueuedBy === 0)).toBe(false);
   });
 
+  it("resolves a finite computed callback selection from an immutable table", () => {
+    const exact = analyzeAsyncPatterns("computed-callback-table.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      function start(flag: boolean) {
+        const baseHandlers = { success: afterSuccess, failure: afterFailure } as const
+        const handlers = baseHandlers
+        const baseKey = flag ? "success" : "failure"
+        const key = baseKey
+        setTimeout(handlers[key], 0)
+      }
+    `);
+    expect(exact.timers).toMatchObject([
+      { callback: "handlers[key]", queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+      { queue: "next-tick", enqueuedBy: 0 },
+    ]);
+
+    const mutable = analyzeAsyncPatterns("mutable-callback-table.ts", `
+      function callback() { queueMicrotask(() => undefined) }
+      function start() {
+        const handlers: Record<string, () => void> = { success: callback }
+        setTimeout(handlers["success"]!, 0)
+      }
+    `);
+    const parent = mutable.timers.findIndex((timer) => timer.callback === 'handlers["success"]!');
+    expect(parent).toBeGreaterThanOrEqual(0);
+    expect(mutable.timers.some((timer) => timer.enqueuedBy === parent)).toBe(false);
+
+    const getter = analyzeAsyncPatterns("getter-callback-table.ts", `
+      function callback() { queueMicrotask(() => undefined) }
+      function start() {
+        const handlers = { get success() { return callback } } as const
+        setTimeout(handlers["success"], 0)
+      }
+    `);
+    const getterParent = getter.timers.findIndex((timer) => timer.callback === 'handlers["success"]');
+    expect(getterParent).toBeGreaterThanOrEqual(0);
+    expect(getter.timers.some((timer) => timer.enqueuedBy === getterParent)).toBe(false);
+  });
+
   it("models the Node callback checkpoint with nextTick before V8 microtasks", () => {
     const model = analyzeAsyncPatterns("node-loop.ts", `
       import { nextTick } from "node:process"

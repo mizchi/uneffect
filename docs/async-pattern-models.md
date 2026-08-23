@@ -106,7 +106,10 @@ now resolves direct/literal-computed methods and single-return source callback
 factories. It also resolves both branches of a finite conditional callback when
 every branch has a source body, deduplicating identical branches. A conditional
 with any unresolved or external branch remains dynamic. Dynamic property
-selection is not resolved. Nested minimum-delay clamping,
+selection is resolved only for finite literal keys into immutable `as const`
+object tables whose every selected property has a source callback body. Mutable
+tables, getters, missing keys, and other dynamic selections remain unresolved.
+Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite

@@ -93,6 +93,9 @@ describe("TypeChecker symbol adapter", () => {
       }
       /* uneffect: effect InvokeUserCode */ async function collect(values: Iterable<Promise<number>>) { await Promise.all(values) }
       /* uneffect: effect InvokeUserCode */ function key(value: object, key: object) { return (value as any)[key as any] }
+      function safeKey(value: Record<"success" | "failure", number>, key: "success" | "failure") { return value[key] }
+      class RoutedBox { get success() { return 1 } get failure() { return 0 } }
+      /* uneffect: effect InvokeUserCode */ function routedGetter(value: RoutedBox, key: "success" | "failure") { return value[key] }
       /* uneffect: effect InvokeUserCode */ function coerce(value: object) { return value + "" }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] });

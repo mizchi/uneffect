@@ -520,6 +520,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve direct property-access and literal computed-property methods; polymorphic receiver dispatch remains dynamic.
     - [x] Resolve direct local or imported-source callback factories with exactly one explicit function-valued return.
     - [x] Resolve every branch of a finite conditional scheduled callback when all branches have TypeChecker-resolved bodies; partial or external selections remain dynamic.
+    - [x] Resolve finite literal-key selections from immutable `as const` callback tables through local alias chains; mutable records, getters, missing keys, and unresolved members remain dynamic.
+    - [x] Avoid `InvokeUserCode` coercion effects for TypeChecker-proven string/number key unions while preserving accessor effects for every finite literal property candidate.
 - [x] Bring Promise/resource IR to Rust/Corsa parity.
   - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [x] Add cross-frontend parity fixtures and reject schema drift.

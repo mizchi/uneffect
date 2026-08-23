@@ -128,7 +128,7 @@ Node.appendChild(child)
 
 User-code reentrancy must be explicit. Getters, proxies, event dispatch, custom element reactions, and conversions are not safely summarized as plain reads or writes.
 
-The frontend conservatively emits `InvokeUserCode` for declared accessors, `any`/`unknown` receivers, direct `new Proxy` receivers, computed keys that may coerce, and coercive operators with non-primitive operands. A Proxy can inhabit its target's static type, so absence of this effect is not a general proof that an escaped object is non-proxied; that stronger conclusion requires later escape and evidence analysis.
+The frontend conservatively emits `InvokeUserCode` for declared accessors, `any`/`unknown` receivers, direct `new Proxy` receivers, computed keys that may coerce, and coercive operators with non-primitive operands. A union whose every key constituent is string- or number-like does not add a coercion effect; for finite literal unions, every candidate property is still checked and any declared accessor retains `InvokeUserCode`. A Proxy can inhabit its target's static type, so absence of this effect is not a general proof that an escaped object is non-proxied; that stronger conclusion requires later escape and evidence analysis.
 
 ## Fetch authority
 

@@ -126,7 +126,10 @@ literal-computed methods and single-return source callback factories are also
 resolved. A conditional scheduled callback is a finite callback set only when
 both branches resolve; duplicate branches are collapsed, while a partially
 external selection remains dynamic rather than attributing one known branch to
-the parent job. General dynamic property selection remains unknown.
+the parent job. Finite literal-key selections from an immutable `as const`
+callback table are expanded through local `const` aliases under the same
+all-members-resolved rule. Mutable tables, getters, missing keys, and general
+dynamic property selection remain unknown.
 An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.
 
