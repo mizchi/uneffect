@@ -158,6 +158,10 @@ generic identity parameter and a string-literal `switch` mixed-return selector,
 measured 123.57 ms mean over 20 samples (1.98% RME). The additional TypeChecker
 call-signature, cycle, definite-return, symbol-substitution, and branch-folding
 checks remain inside the existing cold Program-construction distribution.
+Replacing that selector with a boolean-only compound predicate
+(`mode === "proxy" && enabled`) measured 122.20 ms mean over 20 samples (1.80%
+RME). This single run does not establish an improvement, but shows no visible
+regression from left-to-right short-circuit folding in the same workload.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

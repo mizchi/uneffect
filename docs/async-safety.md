@@ -584,7 +584,7 @@ including immutable arrow wrappers, imports, and re-exports. A restricted
 definite-return walk accepts nested
 blocks and `if`/`else` when every normal return expression recursively resolves
 to a Proxy; terminal throws do not create a non-Proxy receiver. Fallthrough,
-mixed return values, loops, `switch`, `try`, mutable aliases,
+mixed return values, loops, `try`, mutable aliases,
 methods and dynamic dispatch, coercions, finally-dependent joins, and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved. For ordinary function and arrow calls, supplied
@@ -599,8 +599,12 @@ Within this restricted factory CFG, a substituted boolean literal can select an
 parentheses/assertions, unary `!`, and omitted parameters with boolean literal
 defaults are folded. This permits a literal-enabled selector to return its
 Proxy argument even when the unreachable branch returns an ordinary object.
-Dynamic booleans still require both branches. Compound predicates, explicit
-`undefined` defaulting, and mutable condition sources are not specialized.
+Dynamic booleans still require both branches. Boolean-only `&&` and `||`
+predicates are evaluated left to right with JavaScript short-circuit ordering,
+so a decisive left operand does not require the right operand to be static.
+Both reached operands must resolve to booleans: general JavaScript truthiness,
+dynamic residual operands, explicit `undefined` defaulting, and mutable
+condition sources are not specialized.
 
 Strict equality and inequality are folded when both operands resolve to finite
 string, number, or boolean literals through the same immutable/substitution

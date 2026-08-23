@@ -1860,6 +1860,19 @@ describe("async error and explicit resource safety", () => {
         if (status == 200) return new Proxy({ ready: true }, { get: Reflect.get })
         return { ready: true }
       }
+      function compoundAndGate(mode: "proxy" | "plain", enabled: boolean) {
+        if (mode === "proxy" && enabled) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      function compoundOrGate(mode: "proxy" | "plain", forced: boolean) {
+        if (mode === "proxy" || forced) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      declare function opaqueBoolean(): boolean
+      function shortCircuitGate(enabled: boolean) {
+        if (enabled || opaqueBoolean()) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
       function switchGate(mode: "alias" | "proxy" | "plain") {
         switch (mode) {
           case "alias":
@@ -1895,6 +1908,10 @@ describe("async error and explicit resource safety", () => {
       const stringInequalityGate = nonPlainGate("proxy")
       const numberEqualityGate = statusGate(200)
       const coerciveEqualityGate = coerciveStatusGate(200)
+      const compoundAndProxyGate = compoundAndGate("proxy", true)
+      const compoundOrProxyGate = compoundOrGate("plain", true)
+      const shortCircuitedProxyGate = shortCircuitGate(true)
+      const dynamicCompoundGate = compoundAndGate("proxy", dynamicChoice)
       const stringSwitchGate = switchGate("alias")
       const numberSwitchGate = numericSwitchGate(200)
       const fallbackSwitchGate = defaultSwitchGate("fallback")
@@ -2070,6 +2087,30 @@ describe("async error and explicit resource safety", () => {
         }
         success?.send()
       }
+      async function literalCompoundFactoryProxy(enabled: boolean) {
+        let andCase: Resource | undefined
+        let orCase: Resource | undefined
+        let shortCircuitCase: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { compoundAndProxyGate.ready; andCase = resource } catch {}
+          try { compoundOrProxyGate.ready; orCase = resource } catch {}
+          try { shortCircuitedProxyGate.ready; shortCircuitCase = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        andCase?.send()
+        orCase?.send()
+        shortCircuitCase?.send()
+      }
+      async function dynamicCompoundIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { dynamicCompoundGate.ready; success = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
     `);
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "factoryProxy");
     expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
@@ -2092,6 +2133,8 @@ describe("async error and explicit resource safety", () => {
     expect(result.resourceAliases.find((alias) => alias.owner === "coerciveEqualityIsUnknown")?.generation.relation).toBe("latest");
     expect(result.resourceAliases.filter((alias) => alias.owner === "literalSwitchFactoryProxy").map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional", "conditional"]);
     expect(result.resourceAliases.find((alias) => alias.owner === "dynamicSwitchIsUnknown")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.filter((alias) => alias.owner === "literalCompoundFactoryProxy").map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional", "conditional"]);
+    expect(result.resourceAliases.find((alias) => alias.owner === "dynamicCompoundIsUnknown")?.generation.relation).toBe("latest");
   });
 
   it("tracks an imported Proxy factory through a re-export", () => {
@@ -2106,10 +2149,11 @@ describe("async error and explicit resource safety", () => {
         }
         export function forwardGate<T>(value: T): T { return value }
         export function selectGate(mode: "proxy" | "plain") {
-          switch (mode) {
-            case "proxy": return new Proxy({ ready: true }, { get: Reflect.get })
-            default: return { ready: true }
-          }
+          return selectCompoundGate(mode, true)
+        }
+        function selectCompoundGate(mode: "proxy" | "plain", enabled: boolean) {
+          if (mode === "proxy" && enabled) return new Proxy({ ready: true }, { get: Reflect.get })
+          return { ready: true }
         }
       `);
       writeFileSync(barrel, `export { createGate as makeGate, forwardGate as forward, selectGate as select } from "./factory.js"`);

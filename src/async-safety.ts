@@ -588,6 +588,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           return typeof operand?.value === "boolean" ? { value: !operand.value } : undefined;
         }
         if (ts.isBinaryExpression(expression)
+          && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+          const left = staticPrimitive(expression.left, new Set(seen));
+          if (typeof left?.value !== "boolean") return undefined;
+          if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left.value) return { value: false };
+          if (expression.operatorToken.kind === ts.SyntaxKind.BarBarToken && left.value) return { value: true };
+          const right = staticPrimitive(expression.right, new Set(seen));
+          return typeof right?.value === "boolean" ? right : undefined;
+        }
+        if (ts.isBinaryExpression(expression)
           && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
             || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
           const left = staticPrimitive(expression.left, new Set(seen));

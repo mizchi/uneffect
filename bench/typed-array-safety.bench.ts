@@ -652,13 +652,11 @@ describe("typed-array static verification", () => {
       }
       const wrapGate = () => createGate()
       function forward<T>(value: T): T { return value }
-      function select<T>(mode: "proxy" | "plain", value: T): T | { ready: boolean } {
-        switch (mode) {
-          case "proxy": return value
-          default: return { ready: true }
-        }
+      function select<T>(mode: "proxy" | "plain", enabled: boolean, value: T): T | { ready: boolean } {
+        if (mode === "proxy" && enabled) return value
+        return { ready: true }
       }
-      const gate = forward(select("proxy", wrapGate()))
+      const gate = forward(select("proxy", true, wrapGate()))
       async function retry(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined
