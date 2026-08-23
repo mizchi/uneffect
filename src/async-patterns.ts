@@ -401,6 +401,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const inner = substitute(expression.expression, bindings, seen);
         return inner === expression.expression ? expression : ts.factory.createParenthesizedExpression(inner);
       }
+      if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
+        const operand = substitute(expression.operand, bindings, new Set(seen));
+        if (operand.kind === ts.SyntaxKind.TrueKeyword) return ts.factory.createFalse();
+        if (operand.kind === ts.SyntaxKind.FalseKeyword) return ts.factory.createTrue();
+        return operand === expression.operand ? expression : ts.factory.createPrefixUnaryExpression(expression.operator, operand);
+      }
       if (ts.isConditionalExpression(expression)) {
         const condition = substitute(expression.condition, bindings, new Set(seen));
         const whenTrue = substitute(expression.whenTrue, bindings, new Set(seen));

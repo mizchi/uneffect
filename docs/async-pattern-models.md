@@ -193,6 +193,9 @@ after substitution. A literal `true` or `false` condition selects exactly one
 branch; a dynamic condition remains a conditional expression and contributes no
 concrete rejection reason. This specialization is expression-local and does not
 replace the correlated generator-path model used for statement-level `if`.
+Direct boolean negation participates in the same substitution: `!true` and
+`!false` fold, including after object/tuple projection, while `!dynamic` remains
+symbolic and cannot select a conditional branch.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing
