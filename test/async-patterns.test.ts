@@ -940,6 +940,33 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("guards a conditional generator step failure with the same iterable choice", () => {
+    const model = analyzeAsyncPatterns("conditional-generator-failure.ts", `
+      function* values(fail: boolean) {
+        if (fail) {
+          throw new Error("iterator-failed")
+        } else {
+          yield Promise.resolve("ok")
+        }
+        yield "tail"
+      }
+      async function load(fail: boolean) { return Promise.all(values(fail)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      iteratorFailure: "step",
+      iteratorFailurePresence: "when-true",
+      branchAlternatives: [
+        ["<absent>", 'Promise.resolve("ok")'],
+        ["<absent>", '"tail"'],
+      ],
+      branchPresence: ["when-false", "when-false"],
+    });
+    const quint = generateAsyncPatternsQuint("conditional_generator_failure", model);
+    expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_iterable_choice == 1/);
+    expect(quint).toMatch(/action assimilate_0_0[\s\S]*join_0_iterable_choice == 0/);
+    expect(quint).toMatch(/action step = any \{[\s\S]*fail_iterator_0,[\s\S]*assimilate_0_0,/);
+  });
+
   it("models local iterator acquisition and generator step failures", () => {
     const model = analyzeAsyncPatterns("iterator-failures.ts", `
       const broken = {

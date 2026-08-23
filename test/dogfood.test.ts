@@ -729,11 +729,13 @@ describe("Uneffect dogfood", () => {
         branchAlternatives: [
           ['"dashboard-head"', '"dashboard-head"'],
           ["network", '"cached-primary"'],
-          ['"dashboard-tail"', '"cached-secondary"'],
+          ["<absent>", '"cached-secondary"'],
           ["<absent>", '"dashboard-tail"'],
         ],
-        branchPresence: ["always", "always", "always", "when-false"],
+        branchPresence: ["always", "always", "when-false", "when-false"],
         iteratorKind: "local",
+        iteratorFailure: "step",
+        iteratorFailurePresence: "when-true",
       }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
@@ -744,6 +746,7 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain('val join_2_aggregate_error_reason_1 = "error:TypeError:network-down"');
     expect(quint).toContain("action choose_iterable_3_true");
     expect(quint).toContain("action choose_iterable_3_false");
+    expect(quint).toMatch(/action fail_iterator_3[\s\S]*join_3_iterable_choice == 1/);
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {

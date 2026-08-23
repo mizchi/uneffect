@@ -30,6 +30,7 @@ export function* conditionalDashboardValues(
   yield "dashboard-head";
   if (preferNetwork) {
     yield network;
+    throw new TypeError("network-iterator-failed");
   } else {
     yield "cached-primary";
     yield "cached-secondary";

@@ -41,6 +41,7 @@ export interface PromiseCombinatorPattern {
   iteratorKind: "array" | "set" | "local" | "dynamic";
   iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
+  iteratorFailurePresence?: "when-true" | "when-false";
   aggregateErrorOrder?: number[];
   aggregateErrorReasons?: Array<PromiseRejectionReason | null>;
   awaited: boolean;
@@ -237,6 +238,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     branches: ts.Expression[];
     alternatives?: readonly [ts.Expression[], ts.Expression[]];
     failure?: "acquire" | "step";
+    failurePresence?: "when-true" | "when-false";
   };
   const linearGeneratorBody = (
     body: ts.Block,
@@ -244,17 +246,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   ): FiniteIterableExpansion | undefined => {
     const substitute = (expression: ts.Expression): ts.Expression => ts.isIdentifier(expression)
       ? substitutions.get(resolvedSymbol(expression)!) ?? expression : expression;
-    const direct = (statements: readonly ts.Statement[]): { branches: ts.Expression[]; failure?: "step" } | undefined => {
+    const direct = (statements: readonly ts.Statement[]): { branches: ts.Expression[]; failure?: "step"; completes: boolean } | undefined => {
       const branches: ts.Expression[] = [];
-      let failure: "step" | undefined;
       for (const statement of statements) {
         if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
           && statement.expression.expression && !statement.expression.asteriskToken) {
           branches.push(substitute(statement.expression.expression));
-        } else if (ts.isThrowStatement(statement)) failure = "step";
-        else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
+        } else if (ts.isThrowStatement(statement)) return { branches, failure: "step", completes: false };
+        else if (ts.isReturnStatement(statement)) return { branches, completes: false };
+        else if (!ts.isEmptyStatement(statement)) return undefined;
       }
-      return { branches, failure };
+      return { branches, completes: true };
     };
     const conditionalIndices = body.statements.flatMap((statement, index) => ts.isIfStatement(statement) ? [index] : []);
     if (conditionalIndices.length === 1) {
@@ -266,12 +268,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       const whenFalse = direct(statementsOf(statement.elseStatement));
       const suffix = direct(body.statements.slice(index + 1));
       if (!prefix || !whenTrue || !whenFalse || !suffix) return undefined;
-      const truePath = [...prefix.branches, ...whenTrue.branches, ...suffix.branches];
-      const falsePath = [...prefix.branches, ...whenFalse.branches, ...suffix.branches];
+      if (!prefix.completes) return prefix;
+      const truePath = [...prefix.branches, ...whenTrue.branches, ...(whenTrue.completes ? suffix.branches : [])];
+      const falsePath = [...prefix.branches, ...whenFalse.branches, ...(whenFalse.completes ? suffix.branches : [])];
+      const trueFailure = whenTrue.failure ?? (whenTrue.completes ? suffix.failure : undefined);
+      const falseFailure = whenFalse.failure ?? (whenFalse.completes ? suffix.failure : undefined);
+      const failure = trueFailure ?? falseFailure;
+      const failurePresence = Boolean(trueFailure) !== Boolean(falseFailure)
+        ? trueFailure ? "when-true" as const : "when-false" as const
+        : undefined;
       return {
         branches: truePath,
         alternatives: [truePath, falsePath],
-        failure: prefix.failure ?? whenTrue.failure ?? whenFalse.failure ?? suffix.failure,
+        failure,
+        failurePresence,
       };
     }
     if (conditionalIndices.length > 0) return undefined;
@@ -960,6 +970,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local ? "local" : "dynamic",
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: arrayEvidence.failure ?? local?.failure,
+            iteratorFailurePresence: local?.failurePresence,
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
             aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
@@ -1079,7 +1090,11 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     }
     const presence = (branch: number): string => join.branchPresence?.[branch] === "when-true" ? `join_${index}_iterable_choice == 1`
       : join.branchPresence?.[branch] === "when-false" ? `join_${index}_iterable_choice == 0` : "true";
-    if (join.iteratorFailure) action(`fail_iterator_${index}`, [`join_${index}_result == 0`], new Map([
+    const failurePresence = join.iteratorFailurePresence === "when-true" ? `join_${index}_iterable_choice == 1`
+      : join.iteratorFailurePresence === "when-false" ? `join_${index}_iterable_choice == 0` : "true";
+    if (join.iteratorFailure) action(`fail_iterator_${index}`, [
+      `join_${index}_result == 0`, ...(failurePresence === "true" ? [] : [failurePresence]),
+    ], new Map([
       [`join_${index}_result`, "2"],
       [`join_${index}_iterator_failed`, "true"],
       [`join_${index}_rejection_escapes`, String(!join.catchesRejection)],
@@ -1119,12 +1134,16 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
       [`join_${index}_rejection_escapes`, String(!join.catchesRejection)],
     ]));
   });
-  const actions = ["tick", ...model.timers.map((timer, i) => timerAction("fire", timer, i)), ...model.combinators.flatMap((join, i) => join.iteratorFailure ? [`fail_iterator_${i}`] : [...(join.branchPresence?.some((presence) => presence !== "always") ? [`choose_iterable_${i}_true`, `choose_iterable_${i}_false`] : []), ...join.branches.flatMap((_, b) => {
+  const actions = ["tick", ...model.timers.map((timer, i) => timerAction("fire", timer, i)), ...model.combinators.flatMap((join, i) => {
+    const conditionalFailure = join.iteratorFailure && join.iteratorFailurePresence;
+    if (join.iteratorFailure && !conditionalFailure) return [`fail_iterator_${i}`];
+    return [...(join.branchPresence?.some((presence) => presence !== "always") ? [`choose_iterable_${i}_true`, `choose_iterable_${i}_false`] : []), ...(conditionalFailure ? [`fail_iterator_${i}`] : []), ...join.branches.flatMap((_, b) => {
     const kind = join.branchKinds?.[b] ?? "unknown";
     return kind === "value" ? [`fulfill_${i}_${b}`]
       : kind === "thenable" ? [`assimilate_${i}_${b}`, `fulfill_${i}_${b}`, `reject_${i}_${b}`]
       : [`fulfill_${i}_${b}`, `assimilate_${i}_${b}`, `reject_${i}_${b}`];
-  }), `fulfill_join_${i}`, `reject_join_${i}`])];
+    }), `fulfill_join_${i}`, `reject_join_${i}`];
+  })];
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const safeTerms = [...model.timers.flatMap((timer, i) => [`not(timer_${i}_early)`, `not(timer_${i}_after_cancel)`, `not(timer_${i}_macro_first)`, ...(timer.kind === "abort-timeout" ? [`timer_${i}_fires <= 1`] : [])]), ...model.combinators.flatMap((join, i) => {
     const presence = (branch: number): string => join.branchPresence?.[branch] === "when-true" ? `join_${i}_iterable_choice == 1`
