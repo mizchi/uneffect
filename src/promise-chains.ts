@@ -381,20 +381,41 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const thenable = thenableBySymbol.get(symbol) ?? ensureExternalThenable(symbol);
       return thenable === undefined ? [] : [thenable];
     }))];
+    const constInitializer = (value: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression | undefined => {
+      if (!ts.isIdentifier(value)) return value;
+      const symbol = targetSymbol(checker, value);
+      if (!symbol || seen.has(symbol)) return undefined;
+      const declaration = symbol.valueDeclaration;
+      if (!(declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+        && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+      )) return undefined;
+      return constInitializer(declaration.initializer, new Set([...seen, symbol]));
+    };
+    const immutableObjectMember = (container: ts.Expression, key: string): ts.Expression | undefined => {
+      const initializer = constInitializer(container);
+      const object = initializer && ts.isAsExpression(initializer)
+        && initializer.type.getText(initializer.getSourceFile()) === "const"
+        && ts.isObjectLiteralExpression(initializer.expression) ? initializer.expression : undefined;
+      const property = object?.properties.find((item) => {
+        if (!item.name || ts.isComputedPropertyName(item.name)) return false;
+        return item.name.getText(item.getSourceFile()).replace(/^['"]|['"]$/g, "") === key;
+      });
+      if (property && ts.isPropertyAssignment(property)) return property.initializer;
+      if (property && ts.isShorthandPropertyAssignment(property)) {
+        const valueSymbol = checker.getShorthandAssignmentValueSymbol(property);
+        return valueSymbol?.valueDeclaration && ts.isVariableDeclaration(valueSymbol.valueDeclaration)
+          ? valueSymbol.valueDeclaration.name as ts.Expression : property.name;
+      }
+      return undefined;
+    };
     const selectedSymbols = (expression: ts.Expression): ts.Symbol[] => {
       if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return selectedSymbols(expression.expression);
       if (ts.isConditionalExpression(expression)) return [...selectedSymbols(expression.whenTrue), ...selectedSymbols(expression.whenFalse)];
+      if (ts.isPropertyAccessExpression(expression)) {
+        const member = immutableObjectMember(expression.expression, expression.name.text);
+        if (member) return selectedSymbols(member);
+      }
       if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
-        const constInitializer = (value: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression | undefined => {
-          if (!ts.isIdentifier(value)) return value;
-          const symbol = targetSymbol(checker, value);
-          if (!symbol || seen.has(symbol)) return undefined;
-          const declaration = symbol.valueDeclaration;
-          if (!(declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
-            && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
-          )) return undefined;
-          return constInitializer(declaration.initializer, new Set([...seen, symbol]));
-        };
         const indexInitializer = constInitializer(expression.argumentExpression);
         const unwrappedIndex = indexInitializer && (ts.isAsExpression(indexInitializer) || ts.isTypeAssertionExpression(indexInitializer))
           ? indexInitializer.expression : indexInitializer;
@@ -408,20 +429,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (immutableTuple && index !== undefined && Number.isSafeInteger(index) && index >= 0 && index < immutableTuple.elements.length) {
           return selectedSymbols(immutableTuple.elements[index]! as ts.Expression);
         }
-        const immutableObject = tupleInitializer && ts.isAsExpression(tupleInitializer)
-          && tupleInitializer.type.getText(tupleInitializer.getSourceFile()) === "const"
-          && ts.isObjectLiteralExpression(tupleInitializer.expression) ? tupleInitializer.expression : undefined;
-        if (immutableObject && key !== undefined) {
-          const property = immutableObject.properties.find((item) => {
-            if (!item.name || ts.isComputedPropertyName(item.name)) return false;
-            return item.name.getText(item.getSourceFile()).replace(/^['"]|['"]$/g, "") === key;
-          });
-          if (property && ts.isPropertyAssignment(property)) return selectedSymbols(property.initializer);
-          if (property && ts.isShorthandPropertyAssignment(property)) {
-            const valueSymbol = checker.getShorthandAssignmentValueSymbol(property);
-            return valueSymbol ? [valueSymbol] : [];
-          }
-        }
+        const member = key === undefined ? undefined : immutableObjectMember(expression.expression, key);
+        if (member) return selectedSymbols(member);
       }
       const symbol = targetSymbol(checker, expression);
       return symbol ? [symbol] : [];

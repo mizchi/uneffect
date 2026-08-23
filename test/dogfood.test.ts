@@ -577,9 +577,11 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/dogfood/promise-routing.ts";
     const model = analyzePromiseChains(fileName, readFileSync(fileName, "utf8"));
     expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+    expect(model.executors[1]).toMatchObject({ adoptedThenables: [3], adoptedThenable: 3 });
     const quint = generatePromiseChainsQuint("promise_routing", model);
     expect(quint).toContain("assimilate_0_thenable_1_rejected");
     expect(quint).not.toContain("assimilate_0_thenable_0_fulfilled");
+    expect(quint).toContain("assimilate_1_thenable_3_rejected");
   });
 
   it("models cached values, sparse slots, and remote thenables in one batch", () => {

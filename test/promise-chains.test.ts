@@ -271,6 +271,20 @@ describe("Promise state and reaction chains", () => {
     expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
   });
 
+  it("resolves an immutable object thenable selected by property access", () => {
+    const model = analyzePromiseChains("property-selected-thenable.ts", `
+      function run() {
+        const first: PromiseLike<number> = { then(resolve) { resolve(1); return this } }
+        const second: PromiseLike<number> = { then(_resolve, reject) { reject?.(new Error("second")); return this } }
+        const base = { ok: first, fail: second } as const
+        const choices = base
+        const result = new Promise<number>(resolve => resolve(choices.fail))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(model.executors[0]).toMatchObject({ adoptedThenables: [1], adoptedThenable: 1 });
+  });
+
   it("links a directly chained Promise constructor to its executor", () => {
     const model = analyzePromiseChains("direct-constructor-chain.ts", `
       function run(remote: PromiseLike<number>) {
