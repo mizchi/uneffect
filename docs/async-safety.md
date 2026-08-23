@@ -578,9 +578,10 @@ properties and open key domains remain unknown. Property access through a
 direct standard `new Proxy(...)` receiver, including a cycle-safe chain of
 immutable local `const` aliases, is conservatively treated as a preceding
 throw risk because its `get` trap can invoke user code. The same proof follows
-a cycle-safe chain of TypeChecker-resolved zero-argument functions when each
-body is exactly one return expression, including immutable arrow wrappers,
-imports, and re-exports. A restricted definite-return walk also accepts nested
+a cycle-safe chain of TypeChecker-resolved functions whose identifier
+parameters can be substituted from supplied arguments or supported defaults,
+including immutable arrow wrappers, imports, and re-exports. A restricted
+definite-return walk accepts nested
 blocks and `if`/`else` when every normal return expression recursively resolves
 to a Proxy; terminal throws do not create a non-Proxy receiver. Fallthrough,
 mixed return values, loops, `switch`, `try`, mutable aliases,
@@ -598,9 +599,15 @@ Within this restricted factory CFG, a substituted boolean literal can select an
 parentheses/assertions, unary `!`, and omitted parameters with boolean literal
 defaults are folded. This permits a literal-enabled selector to return its
 Proxy argument even when the unreachable branch returns an ordinary object.
-Dynamic booleans still require both branches, and equality tests, compound
-predicates, explicit `undefined` defaulting, or mutable condition sources are
-not specialized.
+Dynamic booleans still require both branches. Compound predicates, explicit
+`undefined` defaulting, and mutable condition sources are not specialized.
+
+Strict equality and inequality are folded when both operands resolve to finite
+string, number, or boolean literals through the same immutable/substitution
+rules. Operand order is irrelevant. Coercive `==`/`!=`, relational comparisons,
+template interpolation, symbols, bigint, and object identity are deliberately
+not evaluated. This supports mode/status selectors without importing general
+JavaScript evaluation into the verifier.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

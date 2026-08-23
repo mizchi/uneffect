@@ -154,8 +154,8 @@ lowering; imported and mutable Proxy provenance remain outside the benchmarked
 proof fragment.
 Resolving the same receiver through a two-function zero-argument factory chain
 whose leaf has two Proxy-valued return paths, then forwarding it through a
-generic identity parameter and a literal-enabled mixed-return selector,
-measured 123.59 ms mean over 20 samples (1.93% RME). The additional TypeChecker
+generic identity parameter and a string-literal strict-equality mixed-return
+selector, measured 122.89 ms mean over 20 samples (2.45% RME). The additional TypeChecker
 call-signature, cycle, definite-return, symbol-substitution, and branch-folding
 checks remain inside the existing cold Program-construction distribution.
 

@@ -1844,6 +1844,22 @@ describe("async error and explicit resource safety", () => {
         return { ready: true }
       }
       function destructuredGate({ value }: { value: { ready: boolean } }) { return value }
+      function modeGate(mode: "proxy" | "plain") {
+        if (mode === "proxy") return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      function nonPlainGate(mode: "proxy" | "plain") {
+        if (mode !== "plain") return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      function statusGate(status: number) {
+        if (status === 200) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      function coerciveStatusGate(status: number | string) {
+        if (status == 200) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
       const gate = wrapGate()
       const literalBranchGate = chooseGate(true)
       const negatedBranchGate = chooseNegatedGate(true)
@@ -1856,6 +1872,12 @@ describe("async error and explicit resource safety", () => {
       const missingGate = optionalGate()
       const defaultedProxyGate = defaultGate()
       const destructuredProxyGate = destructuredGate({ value: new Proxy({ ready: true }, { get: Reflect.get }) })
+      const stringEqualityGate = modeGate("proxy")
+      const stringInequalityGate = nonPlainGate("proxy")
+      const numberEqualityGate = statusGate(200)
+      const coerciveEqualityGate = coerciveStatusGate(200)
+      declare const dynamicMode: "proxy" | "plain"
+      const dynamicModeGate = modeGate(dynamicMode)
       async function factoryProxy(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined
@@ -1968,6 +1990,39 @@ describe("async error and explicit resource safety", () => {
         }
         success?.send()
       }
+      async function literalEqualityFactoryProxy(enabled: boolean) {
+        let stringEqual: Resource | undefined
+        let stringUnequal: Resource | undefined
+        let numberEqual: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { stringEqualityGate.ready; stringEqual = resource } catch {}
+          try { stringInequalityGate.ready; stringUnequal = resource } catch {}
+          try { numberEqualityGate.ready; numberEqual = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        stringEqual?.send()
+        stringUnequal?.send()
+        numberEqual?.send()
+      }
+      async function dynamicEqualityIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { dynamicModeGate.ready; success = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function coerciveEqualityIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { coerciveEqualityGate.ready; success = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
     `);
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "factoryProxy");
     expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
@@ -1985,6 +2040,9 @@ describe("async error and explicit resource safety", () => {
     expect(result.resourceAliases.find((alias) => alias.owner === "substitutedPlainIsUnknown")?.generation.relation).toBe("latest");
     expect(result.resourceAliases.filter((alias) => alias.owner === "unsupportedSubstitutionIsUnknown").map((alias) => alias.generation.relation)).toEqual(["latest", "latest"]);
     expect(result.resourceAliases.find((alias) => alias.owner === "defaultParameterProxy")?.generation.relation).toBe("conditional");
+    expect(result.resourceAliases.filter((alias) => alias.owner === "literalEqualityFactoryProxy").map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional", "conditional"]);
+    expect(result.resourceAliases.find((alias) => alias.owner === "dynamicEqualityIsUnknown")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.find((alias) => alias.owner === "coerciveEqualityIsUnknown")?.generation.relation).toBe("latest");
   });
 
   it("tracks an imported Proxy factory through a re-export", () => {
@@ -1998,8 +2056,8 @@ describe("async error and explicit resource safety", () => {
           return new Proxy({ ready: false }, { get: Reflect.get })
         }
         export function forwardGate<T>(value: T): T { return value }
-        export function selectGate(enabled: boolean) {
-          if (enabled) return new Proxy({ ready: true }, { get: Reflect.get })
+        export function selectGate(mode: "proxy" | "plain") {
+          if (mode === "proxy") return new Proxy({ ready: true }, { get: Reflect.get })
           return { ready: true }
         }
       `);
@@ -2010,7 +2068,7 @@ describe("async error and explicit resource safety", () => {
         declare function open(): Resource
         const gate = makeGate()
         const forwarded = forward(new Proxy({ ready: true }, { get: Reflect.get }))
-        const selected = select(true)
+        const selected = select("proxy")
         async function importedFactoryProxy(enabled: boolean) {
           let success: Resource | undefined
           let failure: Resource | undefined

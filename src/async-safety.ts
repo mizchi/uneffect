@@ -575,20 +575,36 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (!declaration.body) return undefined;
       if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return [declaration.body];
       if (!ts.isBlock(declaration.body)) return undefined;
-      const staticBoolean = (expression: ts.Expression, seen = new Set<ts.Symbol>()): boolean | undefined => {
-        if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
-        if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+      type StaticPrimitive = { value: string | number | boolean };
+      const staticPrimitive = (expression: ts.Expression, seen = new Set<ts.Symbol>()): StaticPrimitive | undefined => {
+        if (expression.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
+        if (expression.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
+        if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return { value: expression.text };
+        if (ts.isNumericLiteral(expression)) return { value: Number(expression.text) };
         if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticBoolean(expression.expression, seen);
+          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticPrimitive(expression.expression, seen);
         if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
-          const operand = staticBoolean(expression.operand, seen);
-          return operand === undefined ? undefined : !operand;
+          const operand = staticPrimitive(expression.operand, seen);
+          return typeof operand?.value === "boolean" ? { value: !operand.value } : undefined;
+        }
+        if (ts.isBinaryExpression(expression)
+          && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+            || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+          const left = staticPrimitive(expression.left, new Set(seen));
+          const right = staticPrimitive(expression.right, new Set(seen));
+          if (!left || !right) return undefined;
+          const equal = left.value === right.value;
+          return { value: expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ? equal : !equal };
         }
         if (!ts.isIdentifier(expression)) return undefined;
         const symbol = targetSymbol(expression);
         if (!symbol || seen.has(symbol)) return undefined;
         const replacement = substitutions.get(symbol) ?? immutableInitializer(expression);
-        return replacement && replacement !== expression ? staticBoolean(replacement, new Set([...seen, symbol])) : undefined;
+        return replacement && replacement !== expression ? staticPrimitive(replacement, new Set([...seen, symbol])) : undefined;
+      };
+      const staticBoolean = (expression: ts.Expression): boolean | undefined => {
+        const primitive = staticPrimitive(expression);
+        return typeof primitive?.value === "boolean" ? primitive.value : undefined;
       };
       const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
         if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
