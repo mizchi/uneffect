@@ -1185,6 +1185,33 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes multi-variable fixed-budget equalities", async () => {
+    const temporal = parseSpec("fixed-budget-strengthening.ts", `/* uneffect:
+      state active: int
+      state queued: int
+      state remaining: int
+      state armed: bool
+      init active = 1
+      init queued = 2
+      init remaining = 7
+      init armed = false
+      action activate: active' = active + 1, remaining' = remaining - 1
+      action enqueue: queued' = queued + 1, remaining' = remaining - 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && active + queued + remaining !== 10
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:active + queued + remaining === 10>",
+    }));
+  });
+
   it("synthesizes bounded four-variable conservation equalities when requested", async () => {
     const temporal = parseSpec("four-counter-conservation-strengthening.ts", `/* uneffect:
       state accepted: int

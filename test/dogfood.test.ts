@@ -452,6 +452,36 @@ describe("Uneffect dogfood", () => {
       .resolves.toMatchObject({ status: "counterexample", depth: 1 });
   });
 
+  it("proves a request pool fixed budget and catches capacity inflation", async () => {
+    const fileName = "examples/dogfood/request-capacity.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeCapacityDrift",
+      relatedName: "<synth:active + queued + remaining === 100>",
+    }));
+
+    const broken = parseSpec(fileName, source.replace(
+      "action enqueue: queued' = queued + 1, remaining' = remaining - 1",
+      "action enqueue: queued' = queued + 1",
+    )).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeCapacityDrift",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(broken, "capacityConserved", { maxSteps: 1 }))
+      .resolves.toMatchObject({ status: "counterexample", depth: 1 });
+  });
+
   it("verifies a Node callback-checkpoint application model through the project API", async () => {
     const source = `
         import { nextTick } from "node:process"

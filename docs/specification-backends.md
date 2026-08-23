@@ -194,7 +194,9 @@ The same opt-in includes bounded conservation equalities such as
 initializers. Each partition also considers reduced positive integer
 coefficient vectors up to the same coefficient bound, which admits weighted
 accounting laws such as `2 * accepted + rejected === attemptedCost`. The
-default maximum arity is three. Set `relationalStrengtheningMaxArity` or CLI
+same coefficient vectors are considered as fixed-budget sums, such as
+`active + queued + remaining === 100`. The default maximum arity is three. Set
+`relationalStrengtheningMaxArity` or CLI
 `--relational-max-arity=N` to consider larger partitions, up to the hard safety
 limit of six variables. Conservation generation stops after 256 candidates by
 default; configure `relationalStrengtheningCandidateLimit` or

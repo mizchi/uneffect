@@ -486,6 +486,12 @@ fixture at the default coefficient bound of two; it is not evidence that the
 exponential coefficient-vector search scales to large arity. The candidate
 limit remains a required safety boundary.
 
+The three-counter request-capacity dogfood, whose synthesized relation is the
+fixed sum `active + queued + remaining === 100`, measured 792.94 ms mean over
+three cold Z3-backed samples (4.72% relative margin of error). This slightly
+larger fixture includes three state-changing actions. As above, this is a
+bounded-template observation, not a general affine-synthesis scaling claim.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured

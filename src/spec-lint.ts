@@ -210,6 +210,14 @@ function synthesizedRelationalStrengtheningProperties(
   };
   outer: for (let arity = 3; arity <= Math.min(maxArity, initializedIntegers.length); arity++) {
     for (const variables of combinations(initializedIntegers, arity)) {
+      for (const coefficients of coefficientVectors(arity)) {
+        if (conservationExpressions.length >= candidateLimit) break outer;
+        const weighted = variables.map((variable, index) => ({
+          ...variable,
+          coefficient: BigInt(coefficients[index]!),
+        }));
+        conservationExpressions.push(`${weighted.map((variable) => term(variable.coefficient, variable.name)).join(" + ")} === ${weighted.reduce((sum, variable) => sum + variable.coefficient * variable.initial, 0n)}`);
+      }
       // Keep the first variable on the left to emit only one of each complementary partition.
       const partitionCount = 2 ** (arity - 1);
       for (let suffixMask = 0; suffixMask < partitionCount - 1; suffixMask++) {
