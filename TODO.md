@@ -454,6 +454,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Analyze a direct Proxy `get` trap whose sole return is a concrete arrow/function then callback.
     - [x] Select a concrete callback from the canonical `if (property === "then") return callback; return forwardingValue` Proxy trap shape.
     - [x] Select the `then` callback from the equivalent conditional-expression Proxy forwarding shape while keeping other property selectors dynamic.
+    - [x] Follow cycle-safe immutable local `const` aliases for a selected Proxy `then` callback while retaining mutable callback bindings as dynamic.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
   - [x] Link a directly chained `new Promise(...).catch/then/finally` root to its constructor executor without requiring an intermediate variable.
 - [ ] Refine iterator-based Promise combinators.

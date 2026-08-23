@@ -98,7 +98,9 @@ an explicit `InvokeUserCode` capability effect, and effect inference assigns it
 to the enclosing Promise executor. Direct conditional selections between
 analyzed local thenable symbols retain every branch identity and emit distinct
 adoption actions. A direct Proxy `get` trap that solely throws or returns a
-concrete then callback is analyzed exactly. The canonical
+concrete then callback is analyzed exactly. A selected callback may also pass
+through a cycle-safe chain of local `const` bindings; mutable callback bindings
+remain dynamic. The canonical
 `if (property === "then") return callback; return forwardingValue` shape is
 also narrowed by TypeScript symbol identity. Immutable `as const` tuples and
 object literals can be selected exactly through reassignment-free literal

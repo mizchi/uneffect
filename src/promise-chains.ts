@@ -244,8 +244,20 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         const branch = trapBody.statements[0]!, condition = branch.expression;
         if (selectsThen(condition)) returned = returnedExpression(branch.thenStatement);
       }
-      if (returned && (ts.isArrowFunction(returned) || ts.isFunctionExpression(returned))) {
-        const analyzed = analyzeExecutor(returned, checker, expression.getSourceFile());
+      const immutableCallback = (candidate: ts.Expression, callbackSeen = new Set<ts.Symbol>()): ts.ArrowFunction | ts.FunctionExpression | undefined => {
+        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate) || ts.isTypeAssertionExpression(candidate)) {
+          return immutableCallback(candidate.expression, callbackSeen);
+        }
+        if (ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate)) return candidate;
+        if (!ts.isIdentifier(candidate)) return undefined;
+        const symbol = targetSymbol(checker, candidate), declaration = symbol?.valueDeclaration;
+        if (!symbol || callbackSeen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+          || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+        return immutableCallback(declaration.initializer, new Set([...callbackSeen, symbol]));
+      };
+      const selectedCallback = returned && immutableCallback(returned);
+      if (selectedCallback) {
+        const analyzed = analyzeExecutor(selectedCallback, checker, expression.getSourceFile());
         const nestedAssimilation = analyzed.possibleSettlements.includes("assimilating");
         return {
           thenAccess: "callable", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy",

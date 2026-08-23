@@ -478,6 +478,37 @@ describe("Promise state and reaction chains", () => {
     expect(quint).not.toContain("thenable_0_fulfilled");
   });
 
+  it("follows an immutable local alias returned as a Proxy then callback", () => {
+    const exact = analyzePromiseChains("proxy-aliased-then.ts", `
+      function run() {
+        const thenCallback = (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          get() { return thenCallback }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const mutable = analyzePromiseChains("proxy-mutable-aliased-then.ts", `
+      function run(flag: boolean) {
+        let thenCallback = (_resolve: (value: number) => void, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        if (flag) thenCallback = (resolve) => resolve(1)
+        const hostile = new Proxy({ then() {} }, {
+          get() { return thenCallback }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(mutable.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("selects the concrete then branch of a forwarding Proxy trap", () => {
     const model = analyzePromiseChains("proxy-forwarded-then.ts", `
       function run() {
