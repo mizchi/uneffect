@@ -144,16 +144,16 @@ function synthesizedRelationalStrengtheningProperties(
     if (expression?.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") return -BigInt(expression.operand.value);
     return undefined;
   };
+  const requestedMaxCoefficient = options.maxCoefficient ?? 2;
+  const maxCoefficient = Number.isFinite(requestedMaxCoefficient)
+    ? Math.max(1, Math.min(8, Math.trunc(requestedMaxCoefficient)))
+    : 2;
+  const gcd = (left: number, right: number): number => right === 0 ? left : gcd(right, left % right);
+  const term = (coefficient: bigint, name: string) => coefficient === 1n ? name : `${coefficient} * ${name}`;
   const pairwiseExpressions = integers.flatMap((left, leftIndex) => integers.slice(leftIndex + 1).flatMap((right) => {
     const direct = [`${left.name} === ${right.name}`, `${left.name} <= ${right.name}`, `${left.name} >= ${right.name}`];
     const leftInitial = initialInteger(left.name), rightInitial = initialInteger(right.name);
     if (leftInitial === undefined || rightInitial === undefined) return direct;
-    const term = (coefficient: bigint, name: string) => coefficient === 1n ? name : `${coefficient} * ${name}`;
-    const requestedMaxCoefficient = options.maxCoefficient ?? 2;
-    const maxCoefficient = Number.isFinite(requestedMaxCoefficient)
-      ? Math.max(1, Math.min(8, Math.trunc(requestedMaxCoefficient)))
-      : 2;
-    const gcd = (left: number, right: number): number => right === 0 ? left : gcd(right, left % right);
     const coefficientPairs = Array.from({ length: maxCoefficient }, (_, left) => left + 1).flatMap((left) =>
       Array.from({ length: maxCoefficient }, (_, right) => right + 1)
         .filter((right) => gcd(left, right) === 1)
@@ -199,21 +199,37 @@ function synthesizedRelationalStrengtheningProperties(
       yield* combinations(values, size, index + 1, [...prefix, values[index]!]);
     }
   };
+  const coefficientVectors = function* (size: number, prefix: readonly number[] = []): Generator<readonly number[]> {
+    if (prefix.length === size) {
+      if (prefix.reduce(gcd) === 1) yield prefix;
+      return;
+    }
+    for (let coefficient = 1; coefficient <= maxCoefficient; coefficient++) {
+      yield* coefficientVectors(size, [...prefix, coefficient]);
+    }
+  };
   outer: for (let arity = 3; arity <= Math.min(maxArity, initializedIntegers.length); arity++) {
     for (const variables of combinations(initializedIntegers, arity)) {
       // Keep the first variable on the left to emit only one of each complementary partition.
       const partitionCount = 2 ** (arity - 1);
       for (let suffixMask = 0; suffixMask < partitionCount - 1; suffixMask++) {
         if (conservationExpressions.length >= candidateLimit) break outer;
-        const left = variables.filter((_, index) => index === 0 || (suffixMask & (1 << (index - 1))) !== 0);
-        const right = variables.filter((variable) => !left.includes(variable));
-        const leftInitial = left.reduce((sum, variable) => sum + variable.initial, 0n);
-        const rightInitial = right.reduce((sum, variable) => sum + variable.initial, 0n);
-        conservationExpressions.push(withOffset(
-          left.map((variable) => variable.name).join(" + "),
-          right.map((variable) => variable.name).join(" + "),
-          leftInitial - rightInitial,
-        ));
+        for (const coefficients of coefficientVectors(arity)) {
+          if (conservationExpressions.length >= candidateLimit) break outer;
+          const left = variables.flatMap((variable, index) => index === 0 || (suffixMask & (1 << (index - 1))) !== 0
+            ? [{ ...variable, coefficient: BigInt(coefficients[index]!) }]
+            : []);
+          const right = variables.flatMap((variable, index) => index !== 0 && (suffixMask & (1 << (index - 1))) === 0
+            ? [{ ...variable, coefficient: BigInt(coefficients[index]!) }]
+            : []);
+          const leftInitial = left.reduce((sum, variable) => sum + variable.coefficient * variable.initial, 0n);
+          const rightInitial = right.reduce((sum, variable) => sum + variable.coefficient * variable.initial, 0n);
+          conservationExpressions.push(withOffset(
+            left.map((variable) => term(variable.coefficient, variable.name)).join(" + "),
+            right.map((variable) => term(variable.coefficient, variable.name)).join(" + "),
+            leftInitial - rightInitial,
+          ));
+        }
       }
     }
   }

@@ -475,6 +475,17 @@ margin of error). This is slightly below the preceding 1.204 ms observation
 and does not indicate a regression, but the context-sensitive wrapper walk
 still dominates the sub-millisecond direct-boundary results.
 
+## Weighted conservation synthesis
+
+On 2026-08-23, the three-counter telemetry accounting dogfood with the
+inductive invariant `2 * accepted + rejected === attemptedCost` measured
+721.71 ms mean over three cold Z3-backed samples (3.66% relative margin of
+error). This includes generation and independent init/preservation checking of
+the bounded relational candidate pool. It demonstrates a practical sub-second
+fixture at the default coefficient bound of two; it is not evidence that the
+exponential coefficient-vector search scales to large arity. The candidate
+limit remains a required safety boundary.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured

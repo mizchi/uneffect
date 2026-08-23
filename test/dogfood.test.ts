@@ -422,6 +422,36 @@ describe("Uneffect dogfood", () => {
       .resolves.toMatchObject({ status: "counterexample", depth: 1 });
   });
 
+  it("proves weighted telemetry accounting and catches a missing cost update", async () => {
+    const fileName = "examples/dogfood/telemetry-weighted-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeAccountingDrift",
+      relatedName: "<synth:2 * accepted + rejected === attemptedCost>",
+    }));
+
+    const broken = parseSpec(fileName, source.replace(
+      "action accept: accepted' = accepted + 1, attemptedCost' = attemptedCost + 2",
+      "action accept: accepted' = accepted + 1",
+    )).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeAccountingDrift",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(broken, "accountingConserved", { maxSteps: 1 }))
+      .resolves.toMatchObject({ status: "counterexample", depth: 1 });
+  });
+
   it("verifies a Node callback-checkpoint application model through the project API", async () => {
     const source = `
         import { nextTick } from "node:process"

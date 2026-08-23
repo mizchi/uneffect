@@ -287,6 +287,14 @@ describe("typed-array static verification", () => {
     });
   }, { time: 2_000, iterations: 1 });
 
+  bench("synthesize a weighted multi-variable conservation invariant", async () => {
+    const temporal = parseSpec("telemetry-weighted-accounting.ts", readFileSync(new URL("../examples/dogfood/telemetry-weighted-accounting.ts", import.meta.url), "utf8")).temporal;
+    await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+  }, { time: 2_000, iterations: 1 });
+
   bench("synthesize a three-counter conservation invariant", async () => {
     const temporal = parseSpec("telemetry-accounting.ts", readFileSync(new URL("../examples/dogfood/telemetry-accounting.ts", import.meta.url), "utf8")).temporal;
     await lintTemporalReachabilityWithZ3(temporal, {

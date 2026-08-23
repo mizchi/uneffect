@@ -1158,6 +1158,33 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes bounded weighted conservation equalities", async () => {
+    const temporal = parseSpec("weighted-conservation-strengthening.ts", `/* uneffect:
+      state accepted: int
+      state rejected: int
+      state attempted: int
+      state armed: bool
+      init accepted = 0
+      init rejected = 0
+      init attempted = 0
+      init armed = false
+      action accept: accepted' = accepted + 1, attempted' = attempted + 2
+      action reject: rejected' = rejected + 1, attempted' = attempted + 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && 2 * accepted + rejected !== attempted
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:2 * accepted + rejected === attempted>",
+    }));
+  });
+
   it("synthesizes bounded four-variable conservation equalities when requested", async () => {
     const temporal = parseSpec("four-counter-conservation-strengthening.ts", `/* uneffect:
       state accepted: int
