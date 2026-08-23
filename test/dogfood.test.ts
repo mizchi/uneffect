@@ -17,6 +17,23 @@ import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("accepts grouped resource-release cases and catches an uncleared exit", () => {
+    const fileName = "examples/dogfood/grouped-resource-release.ts";
+    const source = readFileSync(fileName, "utf8");
+    const verified = analyzeAsyncSafety(fileName, source);
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "finalizeDelivery", kind: "disposed-resource-use",
+    }));
+
+    const broken = analyzeAsyncSafety(fileName, source.replace(
+      "case \"expired\": pending = undefined; break;",
+      "case \"expired\": break;",
+    ));
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "finalizeDelivery", kind: "disposed-resource-use",
+    }));
+  });
+
   it("refines renamed application state through an explicit abstraction relation", async () => {
     const fileName = "examples/dogfood/renamed-routing-state.ts";
     const source = readFileSync(fileName, "utf8");

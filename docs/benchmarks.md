@@ -508,6 +508,15 @@ reachability and vacuity checks that are unaffected by candidate ordering, so
 the smaller three-counter gain is expected. More samples are needed before
 treating these one-shot ratios as stable performance claims.
 
+## Grouped resource-release switches
+
+On 2026-08-23, analyzing the `grouped-resource-release.ts` dogfood measured
+125.63 ms mean over five cold TypeScript Program samples (2.52% relative margin
+of error). The fixture accepts two empty grouped case labels that converge on a
+mandatory alias clear and reports the broken control where one concrete exit
+does not clear the disposed resource alias. This is a small cold-program
+measurement; it does not establish scaling for large switch or alias graphs.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured

@@ -878,6 +878,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         && !clause.statements.slice(0, index).some(containsAbruptCompletion)
         && terminallyClears(clause.statements[index]!, matchesTarget);
     };
+    const switchEntryTerminallyClears = (
+      clauses: ts.NodeArray<ts.CaseOrDefaultClause>,
+      entryIndex: number,
+      matchesTarget: (left: ts.Expression) => boolean,
+    ): boolean => {
+      for (let index = entryIndex; index < clauses.length; index++) {
+        const clause = clauses[index]!;
+        if (clauseTerminallyClears(clause, matchesTarget)) return true;
+        // A label-only group has no behavior of its own and necessarily enters
+        // the following clause. Non-empty fallthrough remains conservative.
+        if (clause.statements.some((statement) => !ts.isEmptyStatement(statement))) return false;
+      }
+      return false;
+    };
     const isConditionalResourceExecution = (node: ts.Node): boolean => {
       if (isConditionalExecution(node)) return true;
       let child = node;
@@ -938,14 +952,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           for (const symbol of [...escapedAliases.keys()]) {
             const matchesSymbol = (left: ts.Expression): boolean =>
               ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;
-            if (clauses.every((clause) => clauseTerminallyClears(clause, matchesSymbol))) escapedAliases.delete(symbol);
+            if (clauses.every((_, index) => switchEntryTerminallyClears(clauses, index, matchesSymbol))) escapedAliases.delete(symbol);
           }
           for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
             const matchesSlot = (left: ts.Expression): boolean => {
               const slot = staticSlot(left);
               return Boolean(slot && slot.root === root && (key === slot.key || key.startsWith(`${slot.key}/`)));
             };
-            if (clauses.every((clause) => clauseTerminallyClears(clause, matchesSlot))) slots.delete(key);
+            if (clauses.every((_, index) => switchEntryTerminallyClears(clauses, index, matchesSlot))) slots.delete(key);
           }
         }
         return;

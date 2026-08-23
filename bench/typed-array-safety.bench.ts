@@ -514,6 +514,10 @@ describe("typed-array static verification", () => {
     analyzeAsyncSafetyInProgram(warmAsyncSafetyProgram, warmAsyncSafetySource);
   }, { time: 500, iterations: 20 });
 
+  bench("analyze grouped resource-release switch dogfood", () => {
+    analyzeAsyncSafety("examples/dogfood/grouped-resource-release.ts", readFileSync("examples/dogfood/grouped-resource-release.ts", "utf8"));
+  }, { time: 500, iterations: 5 });
+
   bench("resolve 64 named timer callback bodies", () => {
     const callbacks = Array.from({ length: 64 }, (_, index) => `function callback${index}() { queueMicrotask(() => {}) }`).join("\n");
     const schedules = Array.from({ length: 64 }, (_, index) => `setTimeout(callback${index}, ${index})`).join(";");

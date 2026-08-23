@@ -1554,6 +1554,33 @@ describe("async error and explicit resource safety", () => {
         }
         alias?.send()
       }
+      async function groupedSwitchCases(mode: "done" | "cancelled" | "expired") {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done":
+          case "cancelled": alias = undefined; break
+          case "expired": alias = undefined; break
+          default: alias = undefined
+        }
+        alias?.send()
+      }
+      async function nonEmptyFallthroughRemainsConservative(mode: "done" | "cancelled") {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done": mayThrow()
+          case "cancelled": alias = undefined; break
+          default: alias = undefined
+        }
+        alias?.send()
+      }
       async function clearedInFinally() {
         let alias: Resource | undefined
         {
@@ -1613,6 +1640,12 @@ describe("async error and explicit resource safety", () => {
       functionName: "unclearedSwitchCase", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "groupedSwitchCases", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "nonEmptyFallthroughRemainsConservative", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInFinally", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -1644,6 +1677,20 @@ describe("async error and explicit resource safety", () => {
         switch (mode) {
           case "done": holder.current = undefined; break
           case "cancelled": holder["current"] = undefined; break
+          default: holder.current = undefined
+        }
+        holder.current?.send()
+      }
+      async function groupedSwitchSlots(mode: "done" | "cancelled" | "expired") {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        switch (mode) {
+          case "done":
+          case "cancelled": holder.current = undefined; break
+          case "expired": holder.current = undefined; break
           default: holder.current = undefined
         }
         holder.current?.send()
@@ -1721,6 +1768,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "groupedSwitchSlots", kind: "disposed-resource-use",
     }));
   });
 

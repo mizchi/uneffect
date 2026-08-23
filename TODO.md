@@ -450,6 +450,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add conservative `retains_resource_when`: discharge only a guard proven false through the shared boolean logic IR, for calls, constructors, and direct wrappers with literal/type/precondition facts and reassignment-free boolean aliases.
     - [x] Join exhaustive `if`/`else` terminal nullish clears for direct and static aggregate resource aliases while retaining one-branch clears conservatively.
     - [x] Join `default`-covered `switch` clauses that each terminally nullish-clear a resource alias; fallthrough and abrupt pre-clear paths remain conservative.
+    - [x] Let empty grouped `switch` labels inherit a following mandatory resource-alias clear for direct and static aggregate slots; keep non-empty fallthrough conservative.
     - [x] Keep resource-alias kills inside `try` and `catch` conditional while recognizing mandatory `finally` clears, preventing exception-path false negatives.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
