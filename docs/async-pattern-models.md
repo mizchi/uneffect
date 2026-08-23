@@ -185,6 +185,9 @@ spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product
 and reports the remainder as proved. Loops and conditions whose bodies leave
 the restricted direct-yield/throw/return fragment remain dynamic.
+The neutral IR distinguishes this boundary as `finite-path-limit` from the
+ordinary `dynamic-cardinality` boundary, and Quint generation reports the
+specific reason when it refuses an unbounded model.
 `Promise.any` retains path-dependent aggregate cardinality and emits concrete
 rejection-reason constants under the same path index; one path is never
 presented as representative of another.

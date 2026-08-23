@@ -48,6 +48,7 @@ export interface PromiseCombinatorPattern {
   iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
   iteratorFailurePresence?: "when-true" | "when-false";
+  unsupportedReason?: "dynamic-cardinality" | "finite-path-limit";
   aggregateErrorOrder?: number[];
   aggregateErrorReasons?: Array<PromiseRejectionReason | null>;
   aggregateErrorReasonPaths?: Array<Array<PromiseRejectionReason | null>>;
@@ -170,6 +171,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     alternatives?: readonly [(ts.Expression | ts.OmittedExpression)[], (ts.Expression | ts.OmittedExpression)[]];
     failure?: "acquire" | "step";
     failurePresence?: "when-true" | "when-false";
+    unsupportedReason?: "finite-path-limit";
   };
   type FiniteIterablePath = {
     branches: (ts.Expression | ts.OmittedExpression)[];
@@ -217,6 +219,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (!nested) {
           const local = localIterable(element.expression);
           if (local) {
+            if (local.unsupportedReason) {
+              if (evidence) evidence.unsupportedReason = local.unsupportedReason;
+              return undefined;
+            }
             nested = local.branches;
             nestedPathEvidence = local.paths;
             alternatives = local.alternatives;
@@ -247,7 +253,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             }];
           });
         });
-        if (product.length > MAX_FINITE_ITERABLE_PATHS) return undefined;
+        if (product.length > MAX_FINITE_ITERABLE_PATHS) {
+          if (evidence) evidence.unsupportedReason = "finite-path-limit";
+          return undefined;
+        }
         paths = product;
         if (evidence) {
           evidence.invokesUserCode ||= invokesUserCode;
@@ -305,6 +314,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     alternatives?: readonly [ts.Expression[], ts.Expression[]];
     failure?: "acquire" | "step";
     failurePresence?: "when-true" | "when-false";
+    unsupportedReason?: "finite-path-limit";
   };
   const linearGeneratorBody = (
     body: ts.Block,
@@ -334,6 +344,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       return { ...path, conditions };
     };
     const statementsOf = (node: ts.Statement): readonly ts.Statement[] => ts.isBlock(node) ? node.statements : [node];
+    let pathLimitExceeded = false;
     const flow = (statements: readonly ts.Statement[], initial: FlowPath[] = [{ branches: [], completes: true }]): FlowPath[] | undefined => {
       let paths = initial;
       for (const statement of statements) {
@@ -359,12 +370,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           else return undefined;
         }
         paths = next;
-        if (paths.length > MAX_FINITE_ITERABLE_PATHS) return undefined;
+        if (paths.length > MAX_FINITE_ITERABLE_PATHS) { pathLimitExceeded = true; return undefined; }
       }
       return paths;
     };
     const flowed = flow(body.statements);
-    if (!flowed?.length) return undefined;
+    if (!flowed?.length) return pathLimitExceeded ? { branches: [], unsupportedReason: "finite-path-limit" } : undefined;
     const finitePaths = flowed.map(({ branches, failure, conditions }) => ({ branches, ...(failure ? { failure } : {}), ...(conditions?.size ? { conditions } : {}) }));
     if (finitePaths.length === 1) return {
       branches: finitePaths[0]!.branches,
@@ -1037,8 +1048,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
           const boundedElements = array ?? set ?? boundedConditionalArrays?.[0];
           const local = boundedElements ? undefined : localIterable(iterable);
-          const staticIterable = Boolean(boundedElements || local);
-          const branchNodes = local?.branches;
+          const staticIterable = Boolean(boundedElements || (local && !local.unsupportedReason));
+          const branchNodes = local?.unsupportedReason ? undefined : local?.branches;
           const expressionPaths: FiniteIterablePath[] | undefined = boundedConditionalArrays
             ? boundedConditionalArrays.map((branches) => ({ branches }))
             : array ? arrayEvidence.paths
@@ -1082,12 +1093,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           })) : undefined;
           const pathFailure = expressionPaths?.find((path) => path.failure)?.failure;
           combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), ...(iterablePaths ? { iterablePaths } : {}), staticIterable,
-            iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local ? "local" : "dynamic",
+            iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local && !local.unsupportedReason ? "local" : "dynamic",
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: pathFailure ?? arrayEvidence.failure ?? local?.failure,
             iteratorFailurePresence: arrayEvidence.failurePresence ?? local?.failurePresence,
+            unsupportedReason: staticIterable ? undefined : arrayEvidence.unsupportedReason ?? local?.unsupportedReason ?? "dynamic-cardinality",
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
+            aggregateErrorReasons: operation.combinator === "any" && !expressionPaths && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
             aggregateErrorReasonPaths: operation.combinator === "any" && expressionPaths
               ? expressionPaths.map((path) => path.branches.map(rejectionReason)) : undefined,
@@ -1151,7 +1163,7 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
     if (timer.kind === "abort-timeout" && timer.delay > Number.MAX_SAFE_INTEGER) throw new Error(`${timer.owner}: AbortSignal.timeout delay exceeds Number.MAX_SAFE_INTEGER`);
     if (timer.kind === "scheduler-post-task" && timer.priority === undefined) throw new Error(`${timer.owner}: scheduler.postTask model requires a static priority`);
   }
-  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires a statically bounded iterable`);
+  for (const join of model.combinators) if (!join.staticIterable) throw new Error(`${join.owner}: Promise.${join.combinator} model requires a statically bounded iterable (${join.unsupportedReason ?? "dynamic-cardinality"})`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int"];
   model.timers.forEach((_, index) => lines.push(`  var timer_${index}_scheduled: bool`, `  var timer_${index}_cancelled: bool`, `  var timer_${index}_due: int`, `  var timer_${index}_early: bool`, `  var timer_${index}_after_cancel: bool`, `  var timer_${index}_macro_first: bool`, `  var timer_${index}_fires: int`));
   model.combinators.forEach((join, index) => {

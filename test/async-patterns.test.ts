@@ -1076,8 +1076,40 @@ describe("builtin async temporal patterns", () => {
       staticIterable: false,
       iteratorKind: "dynamic",
       iteratorEffects: ["InvokeUserCode"],
+      unsupportedReason: "finite-path-limit",
     });
-    expect(() => generateAsyncPatternsQuint("generator_path_cap", model)).toThrow(/statically bounded iterable/);
+    expect(() => generateAsyncPatternsQuint("generator_path_cap", model)).toThrow(/finite-path-limit/);
+  });
+
+  it("keeps Promise.any rejection reasons correlated with the selected iterable path", () => {
+    const model = analyzeAsyncPatterns("conditional-any-reasons.ts", `
+      function* failures(flag: boolean) {
+        if (flag) yield Promise.reject("primary")
+        else {
+          yield Promise.reject(new TypeError("cache"))
+          yield Promise.reject("secondary")
+        }
+      }
+      async function load(flag: boolean) {
+        try { return await Promise.any([...failures(flag)]) } catch { return "fallback" }
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      aggregateErrorReasons: undefined,
+      aggregateErrorReasonPaths: [
+        [{ kind: "literal", value: "primary" }],
+        [
+          { kind: "error", errorType: "TypeError", message: "cache" },
+          { kind: "literal", value: "secondary" },
+        ],
+      ],
+    });
+    const quint = generateAsyncPatternsQuint("conditional_any_reasons", model);
+    expect(quint).toContain('val join_0_path_0_aggregate_error_reason_0 = "literal:string:primary"');
+    expect(quint).toContain('val join_0_path_1_aggregate_error_reason_0 = "error:TypeError:cache"');
+    expect(quint).toContain('val join_0_path_1_aggregate_error_reason_1 = "literal:string:secondary"');
+    expect(quint).toContain("if (join_0_iterable_choice == 0) 1 else if (join_0_iterable_choice == 1) 2 else 0");
+    expect(run(quint, "asyncSafe").status).toBe(0);
   });
 
   it("models local iterator acquisition and generator step failures", () => {
