@@ -181,8 +181,12 @@ collapsed into local fallthrough because their target identity is outside this
 restricted walker.
 For a catch-free `try/finally`, a normally completing restricted finally block
 preserves the selected return, throw, or break from the try block. An abrupt
-finally completion overrides it, matching JavaScript. Catch clauses and
-effectful or unsupported cleanup statements remain dynamic.
+finally completion overrides it, matching JavaScript. Effectful or unsupported
+cleanup statements remain dynamic.
+A restricted catch block is evaluated only when the selected try completion is
+`throw`; return, break, and normal completion skip it. If the try body itself
+cannot be summarized, a catch does not manufacture an exact result. Finally is
+then composed over the post-catch completion.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

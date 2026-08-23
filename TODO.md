@@ -531,6 +531,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Propagate statically selected `throw` completion through nested Proxy trap control flow; opaque prefixes remain conservative for nontermination and hidden effects.
     - [x] Consume an unlabeled `break` at the selected Proxy trap switch and continue into following statements; labeled breaks remain unsupported.
     - [x] Compose restricted Proxy trap `try/finally` completions so normal cleanup preserves the try result and abrupt cleanup overrides it; catches and effectful cleanup remain conservative.
+    - [x] Execute a restricted Proxy trap `catch` only for a selected throw completion, skip unreachable catch bodies, and retain unknown try bodies conservatively.
     - [x] Select the `then` callback from the equivalent conditional-expression Proxy forwarding shape while keeping other property selectors dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for a selected Proxy `then` callback while retaining mutable callback bindings as dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for an object-literal Proxy handler while retaining mutable handlers as dynamic.

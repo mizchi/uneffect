@@ -57,6 +57,8 @@ export function recoverGuardedProxyLookup(): Promise<number> {
           throw new TypeError("then access denied");
         }
         return undefined;
+      } catch {
+        throw new TypeError("guarded then lookup rejected");
       } finally {}
     },
   });

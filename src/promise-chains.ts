@@ -346,9 +346,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (ts.isBlock(statement)) return trapStatementsReturn(statement.statements);
         if (ts.isSwitchStatement(statement)) return trapSwitchReturn(statement);
         if (ts.isTryStatement(statement)) {
-          if (statement.catchClause) return undefined;
-          const primary = trapStatementsReturn(statement.tryBlock.statements);
+          let primary = trapStatementsReturn(statement.tryBlock.statements);
           if (!primary) return undefined;
+          if (primary.kind === "throw" && statement.catchClause) {
+            primary = trapStatementsReturn(statement.catchClause.block.statements);
+            if (!primary) return undefined;
+          }
           if (!statement.finallyBlock) return primary;
           const cleanup = trapStatementsReturn(statement.finallyBlock.statements);
           if (!cleanup) return undefined;

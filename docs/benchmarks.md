@@ -464,6 +464,9 @@ expanded two-Proxy fixture and does not establish a regression.
 Wrapping the guarded getter rejection in a restricted `try/finally` measured
 124.86 ms mean over 20 samples (1.88% RME). Normal-completion composition adds
 no visible cold-path regression in this fixture.
+Adding a reachable catch that rethrows the guarded lookup failure measured
+122.15 ms mean over 20 samples (1.45% RME). Path-reachable catch composition
+remains within the fixture's prior variance.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
