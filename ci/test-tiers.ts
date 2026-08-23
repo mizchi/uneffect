@@ -73,6 +73,8 @@ export function shouldRetryIsolatedSolverFailure(output: string): boolean {
     || output.includes("table index is out of bounds")
     || output.includes("Cannot enlarge memory arrays")
   );
+  const wasmHeapCorruption = output.includes("z3-solver/build/z3-built.js")
+    && output.includes("corrupted its heap memory area (address zero)");
   const z3InternalAssertion = output.includes("ASSERTION VIOLATION")
     && output.includes("src/ast/for_each_expr.h")
     && output.includes("UNEXPECTED CODE WAS REACHED")
@@ -80,5 +82,5 @@ export function shouldRetryIsolatedSolverFailure(output: string): boolean {
   const knownLeaseTimeout = output.includes("test/node-lease.test.ts")
     && output.includes("uses a proven lease-domain invariant to exclude invalid epoch actions")
     && output.includes("Test timed out in 60000ms");
-  return wasmCrash || z3InternalAssertion || knownLeaseTimeout;
+  return wasmCrash || wasmHeapCorruption || z3InternalAssertion || knownLeaseTimeout;
 }
