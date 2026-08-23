@@ -11,6 +11,7 @@ import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
+import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
@@ -282,15 +283,16 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
-  it("flags the realtime example's completion eventuality as initially vacuous", async () => {
+  it("models realtime request completion as a non-vacuous response property", async () => {
     const fileName = "examples/realtime.ts";
     const temporal = parseSpec(fileName, readFileSync(fileName, "utf8")).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
-    expect(diagnostics).toContainEqual(expect.objectContaining({
-      code: "initially-vacuous-liveness",
-      name: "requestCompletes",
-      depth: 0,
+    expect(temporal.responses).toContainEqual(expect.objectContaining({
+      name: "requestCompletes", trigger: "pending", response: "!pending",
     }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "initially-vacuous-liveness", name: "requestCompletes" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }));
+    expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal requestCompletes = pending leadsTo not(pending)");
   });
 
   it("proves four-way telemetry routing accounting and rejects a missing update", async () => {

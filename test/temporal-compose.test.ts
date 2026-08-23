@@ -117,6 +117,7 @@ describe("temporal function-summary composition", () => {
       /* uneffect: temporal neverRejects: pc !== -2 */
       /* uneffect: temporal neverCancels: !cancelled */
       /* uneffect: temporal_eventually finishes: pc === 1 */
+      /* uneffect: temporal_response resumedFinishes: suspended => pc === 1 */
       /* uneffect: temporal_rejects Error */
       /* uneffect: temporal_suspends true */
       /* uneffect: temporal_cancellable true */
@@ -131,6 +132,7 @@ describe("temporal function-summary composition", () => {
     expect(program).toContain("action suspend_0_wait");
     expect(program).toContain("action cancel_0_wait");
     expect(program).toContain("temporal finishes = eventually(pc == 1)");
+    expect(program).toContain("temporal resumedFinishes = suspended leadsTo pc == 1");
     expect(program).toContain("resume_0_wait.weakFair(fairnessVars)");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-liveness-"));
     const path = join(directory, "liveness.qnt");

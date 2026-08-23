@@ -14,7 +14,7 @@
  * action_when tick_clock: !pending || clock < deadline
  * action_fair tick_clock: weak
  * temporal deadlineSafe: !pending || clock <= deadline
- * temporal_eventually requestCompletes: !pending
+ * temporal_response requestCompletes: pending => !pending
  */
 
 export {};

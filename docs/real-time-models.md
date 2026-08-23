@@ -156,15 +156,16 @@ remaining frame callbacks and paint continue.
  * action_when tick_clock: !pending || clock < deadline
  * action_fair tick_clock: weak
  * temporal deadlineSafe: !pending || clock <= deadline
- * temporal_eventually requestCompletes: !pending
+ * temporal_response requestCompletes: pending => !pending
 */
 ```
 
-Because `pending` is initially false, the current Z3 lint reports
-`requestCompletes` as `initially-vacuous-liveness`: the bare eventuality is true
-before any request is released. This is intentional dogfood evidence for the
-remaining response-property gap; it must not be presented as a proof that each
-released request completes.
+`temporal_response requestCompletes: pending => !pending` is a leads-to
+property: whenever a request is pending, a later state must make it non-pending.
+Quint receives this as native `leadsTo`. Z3 searches for a reachable,
+fairness-respecting lasso where the trigger occurs and the response remains
+false forever. Absence of a lasso within the configured depth is bounded
+evidence, not a general liveness proof.
 
 `action_when name: predicate` is TypeScript-like Uneffect syntax. It is parsed
 into the neutral expression AST and emitted as a Quint action guard; Quint

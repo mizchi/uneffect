@@ -404,8 +404,15 @@ proof; nested or more general temporal formulas remain delegated to Quint/TLC.
 Before that search, `initially-vacuous-liveness` is emitted when Z3 proves that
 the eventuality predicate is true in every state satisfying `init`. Such a
 property imposes no future progress obligation; expressing request-triggered
-completion requires a future leads-to/response fragment that is not yet
-supported rather than treating a bare `eventually` as equivalent.
+completion requires the leads-to/response fragment below rather than treating
+a bare `eventually` as equivalent.
+
+`temporal_response name: trigger => response` expresses that missing response
+shape directly. It lowers to Quint's native `trigger leadsTo response`. The Z3
+reachability lint reports `reachable-response-cycle` only for a complete
+reachable lasso where the trigger occurs, the response stays false through the
+loop, and all declared weak/strong action fairness constraints hold. It does
+not mislabel a finite prefix with a pending response as an infinite violation.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 

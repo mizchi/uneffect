@@ -55,6 +55,14 @@ export interface TemporalProperty {
 
 export interface TemporalLiveness extends TemporalProperty {}
 
+export interface TemporalResponse {
+  name: string;
+  trigger: string;
+  triggerAst: TemporalExpression;
+  response: string;
+  responseAst: TemporalExpression;
+}
+
 export interface TemporalSpec {
   stutteringPolicy: "explicit-unchanged";
   clocks: TemporalClock[];
@@ -63,6 +71,7 @@ export interface TemporalSpec {
   actions: TemporalAction[];
   properties: TemporalProperty[];
   liveness: TemporalLiveness[];
+  responses: TemporalResponse[];
 }
 
 export interface ParsedSpec {
@@ -80,6 +89,31 @@ function namedExpression(input: string, kind: string): { name: string; expressio
   const match = /^([A-Za-z_$][\w$]*)\s*:\s*(.+)$/.exec(input);
   if (!match) throw new Error(`invalid ${kind}: ${input}`);
   return { name: match[1]!, expression: match[2]!.trim() };
+}
+
+function responseExpression(input: string): TemporalResponse {
+  const { name, expression } = namedExpression(input, "temporal_response");
+  let depth = 0, quote: "'" | '"' | "`" | undefined, escaped = false, separator = -1;
+  for (let index = 0; index < expression.length - 1; index++) {
+    const character = expression[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"' || character === "`") { quote = character; continue; }
+    if (character === "(" || character === "[" || character === "{") depth++;
+    else if (character === ")" || character === "]" || character === "}") depth--;
+    else if (depth === 0 && character === "=" && expression[index + 1] === ">") {
+      if (separator >= 0) throw new Error(`invalid temporal_response: ${input}`);
+      separator = index++;
+    }
+  }
+  if (separator < 0) throw new Error(`invalid temporal_response: ${input}; expected trigger => response`);
+  const trigger = expression.slice(0, separator).trim(), response = expression.slice(separator + 2).trim();
+  if (!trigger || !response) throw new Error(`invalid temporal_response: ${input}; expected non-empty trigger => response`);
+  return { name, trigger, triggerAst: parseTemporalExpression(trigger), response, responseAst: parseTemporalExpression(response) };
 }
 
 function assignment(input: string, kind: string): TemporalAssignment {
@@ -223,6 +257,7 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     const property = namedExpression(value, "temporal_eventually");
     return { ...property, expressionAst: parseTemporalExpression(property.expression) };
   });
+  const responses = extractAnnotations(text, "temporal_response").map(responseExpression);
 
   const symbols = new Map<string, TemporalValueType>(options.temporalSymbols);
   for (const state of states) {
@@ -254,6 +289,12 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     assertGuardedTemporalMapGets(property.expressionAst);
     if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") throw new Error(`temporal liveness property \`${property.name}\` must be boolean`);
   }
+  for (const property of responses) {
+    assertGuardedTemporalMapGets(property.triggerAst);
+    assertGuardedTemporalMapGets(property.responseAst);
+    if (typeCheckTemporalExpression(property.triggerAst, symbols) !== "bool") throw new Error(`temporal response trigger \`${property.name}\` must be boolean`);
+    if (typeCheckTemporalExpression(property.responseAst, symbols) !== "bool") throw new Error(`temporal response target \`${property.name}\` must be boolean`);
+  }
 
-  return { fileName, capabilities, invariants, temporal: { stutteringPolicy: "explicit-unchanged", clocks, states, init, actions, properties, liveness } };
+  return { fileName, capabilities, invariants, temporal: { stutteringPolicy: "explicit-unchanged", clocks, states, init, actions, properties, liveness, responses } };
 }

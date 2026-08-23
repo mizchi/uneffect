@@ -662,6 +662,42 @@ describe("spec IR and generated verifier programs", () => {
     expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
   });
 
+  it("parses a TypeScript-style response property and lowers it to Quint leads-to", () => {
+    const temporal = parseSpec("response.ts", `/* uneffect:
+      state pending: bool
+      init pending = false
+      action release: pending' = true
+      action_when release: !pending
+      action complete: pending' = false
+      action_when complete: pending
+      temporal_response requestCompletes: pending => !pending
+    */`).temporal;
+    expect(temporal.responses).toEqual([expect.objectContaining({
+      name: "requestCompletes",
+      trigger: "pending",
+      response: "!pending",
+    })]);
+    const quint = generateQuint("response", temporal);
+    expect(quint).toContain(
+      "temporal requestCompletes = pending leadsTo not(pending)",
+    );
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-response-"));
+    const path = join(directory, "response.qnt");
+    writeFileSync(path, quint);
+    const typecheck = spawnSync("pnpm", ["exec", "quint", "typecheck", path], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(typecheck.status, typecheck.stdout + typecheck.stderr).toBe(0);
+    expect(() => parseSpec("broken-response.ts", `/* uneffect:
+      state pending: bool
+      temporal_response requestCompletes: pending
+    */`)).toThrow(/expected trigger => response/);
+    expect(() => parseSpec("typed-response.ts", `/* uneffect:
+      state attempts: int
+      state done: bool
+      temporal_response completes: attempts => done
+    */`)).toThrow(/response trigger .* must be boolean/);
+  });
+
   it("protects structured clocks from arbitrary writes", () => {
     expect(() => parseSpec("clock.ts", `/*
       * uneffect:
@@ -1239,6 +1275,29 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "initially-vacuous-liveness", name: "completes", backend: "z3", depth: 0,
     }));
+  });
+
+  it("finds a response-property lasso and discharges it only with matching weak fairness", async () => {
+    const model = (fair: boolean) => parseSpec("response-lasso.ts", `/* uneffect:
+      state pending: bool
+      init pending = false
+      action release: pending' = true
+      action_when release: !pending
+      action idle: pending' = pending
+      action_when idle: pending
+      action complete: pending' = false
+      action_when complete: pending
+      ${fair ? "action_fair complete: weak" : ""}
+      temporal_response requestCompletes: pending => !pending
+    */`).temporal;
+    await expect(lintTemporalReachabilityWithZ3(model(false), { maxSteps: 3 })).resolves.toContainEqual(
+      expect.objectContaining({
+        code: "reachable-response-cycle", name: "requestCompletes", depth: 2, loopStart: 1, triggerDepth: 1,
+      }),
+    );
+    await expect(lintTemporalReachabilityWithZ3(model(true), { maxSteps: 3 })).resolves.not.toContainEqual(
+      expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }),
+    );
   });
 
   it("distinguishes strong fairness from intermittent weak fairness", async () => {

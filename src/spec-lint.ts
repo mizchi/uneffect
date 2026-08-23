@@ -10,13 +10,14 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "initially-vacuous-liveness" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
   backend?: "z3";
   depth?: number;
   loopStart?: number;
+  triggerDepth?: number;
 }
 
 function smtBinaryOperator(operator: Exclude<Extract<TemporalExpression, { kind: "binary" }>["operator"], "neq">): string {
@@ -435,6 +436,8 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
   for (const assignment of [...spec.init, ...spec.actions.flatMap((action) => action.assignments)]) visit(assignment.expressionAst);
   for (const action of spec.actions) if (action.guard) visit(action.guard.expressionAst);
   for (const property of spec.properties) visit(property.expressionAst);
+  for (const property of spec.liveness) visit(property.expressionAst);
+  for (const property of spec.responses) { visit(property.triggerAst); visit(property.responseAst); }
   return { int: [...integers].sort((a, b) => a - b), bool: [...booleans].sort((a, b) => Number(a) - Number(b)), complete };
 }
 
@@ -459,6 +462,8 @@ function supportsZ3SpecExpressions(spec: TemporalSpec): boolean {
   for (const assignment of [...spec.init, ...spec.actions.flatMap((action) => action.assignments)]) if (!supportsZ3Expression(assignment.expressionAst)) return false;
   for (const action of spec.actions) if (action.guard && !supportsZ3Expression(action.guard.expressionAst)) return false;
   for (const property of spec.properties) if (!supportsZ3Expression(property.expressionAst)) return false;
+  for (const property of spec.liveness) if (!supportsZ3Expression(property.expressionAst)) return false;
+  for (const property of spec.responses) if (!supportsZ3Expression(property.triggerAst) || !supportsZ3Expression(property.responseAst)) return false;
   return true;
 }
 
@@ -793,6 +798,13 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   const step = (index: number) => disjoin(spec.actions.map((action) => actionTransition(action, index)));
   const selectedStep = (index: number) => disjoin(spec.actions.map((action, actionIndex) =>
     `(and (= __uneffect_action_${index} ${actionIndex}) ${actionTransition(action, index)})`));
+  const fairnessAssertions = (loopStart: number, depth: number): string[] => spec.actions.flatMap((action, actionIndex) => {
+    if (!action.fairness) return [];
+    const enabled = Array.from({ length: depth - loopStart }, (_, offset) => guard(action, loopStart + offset));
+    const occurs = Array.from({ length: depth - loopStart }, (_, offset) => `(= __uneffect_action_${loopStart + offset} ${actionIndex})`);
+    const premise = action.fairness === "weak" ? `(and ${enabled.join(" ")})` : `(or ${enabled.join(" ")})`;
+    return [`(or (not ${premise}) (or ${occurs.join(" ")}))`];
+  });
   const diagnostics: SpecLintDiagnostic[] = [];
   const completenessDepth = finiteStateCompletenessDepth(spec);
   const { Context } = await initZ3();
@@ -901,13 +913,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       const loop = spec.states.map((state) => `(= ${at(state.name, depth)} ${at(state.name, loopStart)})`);
       const neverReached = Array.from({ length: depth }, (_, index) =>
         `(not ${temporalToSmt(property.expressionAst, (name) => at(name, index), symbols)})`);
-      const fairness = spec.actions.flatMap((action, actionIndex) => {
-        if (!action.fairness) return [];
-        const enabled = Array.from({ length: depth - loopStart }, (_, offset) => guard(action, loopStart + offset));
-        const occurs = Array.from({ length: depth - loopStart }, (_, offset) => `(= __uneffect_action_${loopStart + offset} ${actionIndex})`);
-        const premise = action.fairness === "weak" ? `(and ${enabled.join(" ")})` : `(or ${enabled.join(" ")})`;
-        return [`(or (not ${premise}) (or ${occurs.join(" ")}))`];
-      });
+      const fairness = fairnessAssertions(loopStart, depth);
       if (await checkAssertions([...init, ...transitions, ...loop, ...neverReached, ...fairness]) !== "sat") continue;
       diagnostics.push({
         code: "reachable-liveness-cycle", name: property.name, backend: "z3", depth, loopStart,
@@ -915,6 +921,26 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       });
       found = true;
       break;
+    }
+  }
+  if (initStatus === "sat" && spec.actions.length > 0 && spec.responses.length > 0) for (const property of spec.responses) {
+    let found = false;
+    for (let depth = 1; depth <= maxSteps && !found; depth++) for (let loopStart = 0; loopStart < depth && !found; loopStart++) {
+      const transitions = Array.from({ length: depth }, (_, index) => selectedStep(index));
+      const loop = spec.states.map((state) => `(= ${at(state.name, depth)} ${at(state.name, loopStart)})`);
+      const fairness = fairnessAssertions(loopStart, depth);
+      for (let triggerDepth = 0; triggerDepth < depth; triggerDepth++) {
+        const trigger = temporalToSmt(property.triggerAst, (name) => at(name, triggerDepth), symbols);
+        const responseAbsent = Array.from({ length: depth - triggerDepth + 1 }, (_, offset) =>
+          `(not ${temporalToSmt(property.responseAst, (name) => at(name, triggerDepth + offset), symbols)})`);
+        if (await checkAssertions([...init, ...transitions, ...loop, trigger, ...responseAbsent, ...fairness]) !== "sat") continue;
+        diagnostics.push({
+          code: "reachable-response-cycle", name: property.name, backend: "z3", depth, loopStart, triggerDepth,
+          message: `${property.name} is violated by a reachable lasso: its trigger holds at depth ${triggerDepth}, but its response stays false forever on the loop starting at ${loopStart}`,
+        });
+        found = true;
+        break;
+      }
     }
   }
   if (initStatus === "sat" && maxSteps >= 1) for (const property of spec.properties) {
