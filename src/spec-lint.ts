@@ -10,7 +10,7 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-unreachable-response-trigger" | "inductively-unreachable-response-trigger" | "strengthened-unreachable-response-trigger" | "finite-state-unreachable-response-trigger" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -1015,6 +1015,41 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
           });
           break;
         }
+      }
+    }
+  }
+  for (const property of spec.responses) {
+    const triggerAt = (depth: number) => temporalToSmt(property.triggerAst, (name) => at(name, depth), symbols);
+    const prefixes = Array.from({ length: maxSteps + 1 }, (_, depth) => {
+      const transitions = Array.from({ length: depth }, (__, index) => step(index));
+      return `(and ${[...transitions, triggerAt(depth)].join(" ")})`;
+    });
+    if (await checkAssertions([...init, disjoin(prefixes)]) !== "unsat") continue;
+    diagnostics.push({
+      code: "bounded-unreachable-response-trigger", name: property.name, backend: "z3", depth: maxSteps,
+      message: `${property.name} cannot start from init within ${maxSteps} transition steps; this is not by itself an unbounded proof`,
+    });
+    if (completenessDepth !== undefined && maxSteps >= completenessDepth) diagnostics.push({
+      code: "finite-state-unreachable-response-trigger", name: property.name, backend: "z3", depth: completenessDepth,
+      message: `${property.name} cannot start: the complete finite state space is covered by paths of at most ${completenessDepth} transitions`,
+    });
+    if (maxSteps >= 1) {
+      const induction = await checkAssertions([`(not ${triggerAt(0)})`, step(0), triggerAt(1)]);
+      if (induction === "unsat") diagnostics.push({
+        code: "inductively-unreachable-response-trigger", name: property.name, backend: "z3", depth: 1,
+        message: `${property.name} cannot start: init excludes its trigger and one-step induction preserves that exclusion across every transition`,
+      });
+      else for (const properties of strengtheningCandidates) {
+        const invariant = properties.length === 1
+          ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
+          : `(and ${properties.map((candidate) => temporalToSmt(candidate.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
+        if (await checkAssertions([invariant, step(0), triggerAt(1)]) !== "unsat") continue;
+        const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
+        diagnostics.push({
+          code: "strengthened-unreachable-response-trigger", name: property.name, relatedName: propertyNames, backend: "z3", depth: 1,
+          message: `${property.name} cannot start using proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
+        });
+        break;
       }
     }
   }

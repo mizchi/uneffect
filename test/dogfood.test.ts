@@ -293,6 +293,7 @@ describe("Uneffect dogfood", () => {
     }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "initially-vacuous-liveness", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-unreachable-response-trigger", name: "requestCompletes" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "unsatisfiable-response-trigger", name: "requestCompletes" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-response", name: "requestCompletes" }));
     expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal requestCompletes = pending leadsTo not(pending)");

@@ -1325,6 +1325,64 @@ describe("spec IR and generated verifier programs", () => {
     );
   });
 
+  it("distinguishes globally satisfiable response triggers from transition-reachable triggers", async () => {
+    const temporal = parseSpec("unreachable-response-trigger.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action advance: epoch' = epoch + 1
+      action_when advance: epoch < 2
+      temporal_response impossible: epoch < 0 => epoch === 0
+      temporal_response reached: epoch === 2 => epoch === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-response-trigger", name: "impossible", depth: 3,
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-response-trigger", name: "impossible", depth: 1,
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-response-trigger", name: "reached",
+    }));
+
+    const finite = parseSpec("finite-unreachable-response-trigger.ts", `/* uneffect:
+      state active: bool
+      init active = false
+      action idle: active' = false
+      temporal_response activated: active => false
+    */`).temporal;
+    await expect(lintTemporalReachabilityWithZ3(finite, { maxSteps: 1 })).resolves.toContainEqual(
+      expect.objectContaining({ code: "finite-state-unreachable-response-trigger", name: "activated", depth: 1 }),
+    );
+  });
+
+  it("uses a proven strengthening invariant to exclude a response trigger", async () => {
+    const temporal = parseSpec("strengthened-response-trigger.ts", `/* uneffect:
+      state gate: int
+      state value: int
+      init gate = 0
+      init value = 0
+      action hiddenDecrease: value' = value - 1
+      action_when hiddenDecrease: gate < 0
+      temporal gateNonnegative: gate >= 0
+      temporal_response negativeValue: value < 0 => false
+    */`).temporal;
+    const bounded = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 });
+    expect(bounded).toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-response-trigger", name: "negativeValue",
+    }));
+    expect(bounded).not.toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-response-trigger", name: "negativeValue",
+    }));
+    const strengthened = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      strengtheningProperties: ["gateNonnegative"],
+    });
+    expect(strengthened).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-response-trigger", name: "negativeValue", relatedName: "gateNonnegative",
+    }));
+  });
+
   it("distinguishes strong fairness from intermittent weak fairness", async () => {
     const model = (fairness: "weak" | "strong") => parseSpec("strong-fairness-lasso.ts", `/* uneffect:
       state ready: bool

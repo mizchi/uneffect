@@ -419,6 +419,16 @@ that the response already holds whenever the trigger holds. Cheap syntax lint
 catches the corresponding literal-false and identical/true predicate cases
 without starting a solver. These checks classify all typed states; they do not
 claim transition-system reachability.
+Reachability lint then distinguishes a globally satisfiable trigger that still
+cannot occur from `init`. `bounded-unreachable-response-trigger` carries only
+the configured search depth. `inductively-unreachable-response-trigger` is
+added when exclusion is initialized and preserved by every transition, while
+`finite-state-unreachable-response-trigger` is added only after the complete
+finite state space has been covered.
+The same explicitly selected, automatically discovered, or synthesized
+inductive strengthening pool used for unreachable actions may produce
+`strengthened-unreachable-response-trigger`. The strengthening candidates are
+admitted only after their initialization and preservation obligations pass Z3.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
