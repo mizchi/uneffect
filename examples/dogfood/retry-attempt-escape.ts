@@ -35,7 +35,7 @@ export async function brokenRetry(enabled: boolean): Promise<void> {
     await using attempt = openAttempt();
     lastAttempt = attempt;
     forwardedState.active[attemptSlot] = lastAttempt;
-    await Promise.resolve("flush");
+    await Promise.resolve("flush").then((value) => value);
   }
   retryState.active.forwardedAttempt?.flush();
 }

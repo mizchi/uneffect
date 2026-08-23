@@ -501,7 +501,13 @@ lowering. The separate `resourceAliases` evidence now preserves the matching
 acquisition index, whether the acquisition site repeats, and a stable symbolic
 snapshot such as `generation_0@412`. This identifies which abstract generation
 must eventually be connected to alias-state lowering; it does not yet prove
-relations between snapshots from different iterations.
+relations between snapshots from different iterations. Unified Quint now emits
+`alias_generation_N`, capture, and use events for every reported escape. A use
+whose captured generation equals the resource's disposed generation marks the
+model broken, and lexical disposal is placed before a known post-scope use.
+This catches the modeled one-iteration witness for repeated acquisition sites;
+general normal-loop repetition and relations among multiple captured snapshots
+remain unsupported.
 
 The TypeChecker frontend separately recognizes source-ordered assignments from
 a `using`/`await using` binding through local symbol alias chains. If an alias is read

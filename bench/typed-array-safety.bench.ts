@@ -506,6 +506,12 @@ describe("typed-array static verification", () => {
     analyzeAsyncSafetyInProgram(program, program.getSourceFile(retryAttemptEscapeFile)!);
   }, { time: 500, iterations: 20 });
 
+  bench("lower retry alias generations to unified Quint", () => {
+    const program = createAsyncSafetyBenchmarkProgram();
+    const result = analyzeAsyncSafetyInProgram(program, program.getSourceFile(retryAttemptEscapeFile)!);
+    generateUnifiedAsyncQuint("retry_alias_generations", result, "brokenRetry");
+  }, { time: 500, iterations: 20 });
+
   bench("construct the retry resource TypeScript Program", () => {
     createAsyncSafetyBenchmarkProgram();
   }, { time: 500, iterations: 20 });

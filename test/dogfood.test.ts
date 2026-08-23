@@ -243,6 +243,10 @@ describe("Uneffect dogfood", () => {
     }));
     expect(broken.resourceAliases.find((alias) => alias.owner === "brokenRetry")?.generation.snapshot)
       .toMatch(/^generation_0@\d+$/);
+    const brokenAliasQuint = generateUnifiedAsyncQuint("broken_retry_alias", broken, "brokenRetry");
+    expect(brokenAliasQuint).toContain("var alias_generation_0: int");
+    expect(brokenAliasQuint).toMatch(/action capture_alias_0 = all \{[\s\S]*?alias_generation_0' = generation_0,/);
+    expect(brokenAliasQuint).toMatch(/action use_disposed_alias_0 = all \{[\s\S]*?disposed_generation_0 == alias_generation_0,/);
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
     }));

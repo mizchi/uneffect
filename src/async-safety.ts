@@ -1548,6 +1548,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
 export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean } = {}): string {
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
+  const aliases = result.resourceAliases.filter((item) => item.owner === owner);
   const awaited = result.promises
     .filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined)
     .sort((left, right) => left.span.start - right.span.start);
@@ -1558,7 +1559,9 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   type NormalEvent =
     | { kind: "acquire"; index: number; position: number }
     | { kind: "await"; index: number; position: number }
-    | { kind: "dispose"; index: number; position: number };
+    | { kind: "dispose"; index: number; position: number }
+    | { kind: "alias-capture"; index: number; position: number }
+    | { kind: "alias-use"; index: number; position: number };
   const awaitsInStatement = (statement: AsyncControlStatement): number[] => awaited
     .map((observation, index) => ({ observation, index }))
     .filter(({ observation }) => observation.span.start >= statement.span.start && observation.span.end <= statement.span.end)
@@ -1585,15 +1588,20 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
         : [];
     }),
-  ].sort((left, right) => left.position - right.position || ({ acquire: 0, await: 1, dispose: 2 }[left.kind] - { acquire: 0, await: 1, dispose: 2 }[right.kind]));
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[right.kind]));
   const normalEvents: NormalEvent[] = [
     ...resources.flatMap((resource, index): NormalEvent[] => handlerResourceIndexes.has(index) ? [] : [{ kind: "acquire", index, position: resource.span.start }]),
     ...awaited.flatMap((observation, index): NormalEvent[] => handlerAwaitIndexes.has(index) ? [] : [{ kind: "await", index, position: observation.span.start }]),
+    ...aliases.flatMap((alias, index): NormalEvent[] => [
+      { kind: "alias-capture", index, position: alias.assignmentSpan.end },
+      { kind: "alias-use", index, position: alias.useSpan.start },
+    ]),
     ...disposals.flatMap((disposal, index): NormalEvent[] =>
-      !handlerDisposalIndexes.has(index) && awaited.some((observation) => observation.span.start > disposal.disposalPoint)
+      !handlerDisposalIndexes.has(index) && (awaited.some((observation) => observation.span.start > disposal.disposalPoint)
+        || aliases.some((alias) => alias.useSpan.start > disposal.disposalPoint))
         ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
         : []),
-  ].sort((left, right) => left.position - right.position || ({ acquire: 0, await: 1, dispose: 2 }[left.kind] - { acquire: 0, await: 1, dispose: 2 }[right.kind]));
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[right.kind]));
   let nextPc = 0;
   const normalLayout = normalEvents.map((event) => {
     const pc = nextPc;
@@ -1665,9 +1673,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`, `  var generation_${index}: int`, `  var disposed_generation_${index}: int`));
+  aliases.forEach((_, index) => lines.push(`  var alias_generation_${index}: int`));
   lines.push("", "  action init = all {", "    pc' = 0,", "    completion' = 0,", "    broken' = false,");
   branchIds.forEach((_, index) => lines.push(`    branch_${index}' = -1,`));
   resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`, `    generation_${index}' = 0,`, `    disposed_generation_${index}' = -1,`));
+  aliases.forEach((_, index) => lines.push(`    alias_generation_${index}' = -1,`));
   lines.push("  }");
   const actions: string[] = [];
   const emit = (name: string, guards: string[], updates = new Map<string, string>()): void => {
@@ -1675,6 +1685,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`);
     branchIds.forEach((_, index) => lines.push(`    branch_${index}' = ${updates.get(`branch_${index}`) ?? `branch_${index}`},`));
     resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`, `    generation_${index}' = ${updates.get(`generation_${index}`) ?? `generation_${index}`},`, `    disposed_generation_${index}' = ${updates.get(`disposed_generation_${index}`) ?? `disposed_generation_${index}`},`));
+    aliases.forEach((_, index) => lines.push(`    alias_generation_${index}' = ${updates.get(`alias_generation_${index}`) ?? `alias_generation_${index}`},`));
     lines.push("  }");
   };
   const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
@@ -1706,6 +1717,31 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const next = exitsRegion && eventRegionLayout?.finallyLayout.length
       ? eventRegionLayout.finallyPc
       : nextEvent?.pc ?? cleanupPc;
+    if (event.kind === "alias-capture") {
+      const alias = aliases[event.index]!;
+      const resourceIndex = resources.findIndex((resource) => resource.acquisitionIndex === alias.generation.acquisitionIndex);
+      if (resourceIndex < 0) throw new Error(`${owner} alias ${alias.alias} references missing acquisition ${alias.generation.acquisitionIndex}`);
+      emit(`capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`], new Map([
+        ["pc", String(next)],
+        [`alias_generation_${event.index}`, `generation_${resourceIndex}`],
+      ]));
+      return;
+    }
+    if (event.kind === "alias-use") {
+      const alias = aliases[event.index]!;
+      const resourceIndex = resources.findIndex((resource) => resource.acquisitionIndex === alias.generation.acquisitionIndex);
+      if (resourceIndex < 0) throw new Error(`${owner} alias ${alias.alias} references missing acquisition ${alias.generation.acquisitionIndex}`);
+      emit(`use_disposed_alias_${event.index}`, [
+        `pc == ${pc}`,
+        `alias_generation_${event.index} >= 0`,
+        `disposed_generation_${resourceIndex} == alias_generation_${event.index}`,
+      ], new Map([["pc", String(next)], ["broken", "true"]]));
+      emit(`use_live_or_absent_alias_${event.index}`, [
+        `pc == ${pc}`,
+        `(alias_generation_${event.index} < 0 or disposed_generation_${resourceIndex} != alias_generation_${event.index})`,
+      ], new Map([["pc", String(next)]]));
+      return;
+    }
     if (event.kind === "acquire") {
       const resource = resources[event.index]!;
       const guards = [`pc == ${pc}`, ...conditionPathGuards(resource.controlPaths)];

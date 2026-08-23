@@ -1423,7 +1423,7 @@ describe("async error and explicit resource safety", () => {
         while (enabled) {
           await using resource = open()
           escaped = resource
-          await Promise.resolve()
+          await Promise.resolve().then(() => "attempt")
         }
         escaped?.send()
       }
@@ -1455,6 +1455,11 @@ describe("async error and explicit resource safety", () => {
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "cleared", kind: "disposed-resource-use",
     }));
+    const aliasQuint = generateUnifiedAsyncQuint("escaping_resource_alias", result, "broken");
+    expect(aliasQuint).toContain("var alias_generation_0: int");
+    expect(aliasQuint).toContain("action capture_alias_0");
+    expect(aliasQuint).toContain("action use_disposed_alias_0");
+    expect(run(aliasQuint).status).not.toBe(0);
   });
 
   it("propagates disposed resource identity through local alias chains", () => {
