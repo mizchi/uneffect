@@ -15,13 +15,15 @@ export const dashboardSnapshotValues = {
 };
 
 export function dashboardFailures(details: {
+  useCache: boolean;
+  useNetwork: boolean;
   cache: { reason: string };
   network: { services: readonly [string] };
 }): Iterable<Promise<never>> {
   return {
     *[Symbol.iterator](): Generator<Promise<never>> {
-      yield Promise.reject(`${details.cache.reason}`);
-      yield Promise.reject(new TypeError(`${details.network.services[0]}-down`));
+      yield Promise.reject(details.useCache ? `${details.cache.reason}` : "cache-disabled");
+      yield Promise.reject(new TypeError(details.useNetwork ? `${details.network.services[0]}-down` : "network-disabled"));
     },
   };
 }

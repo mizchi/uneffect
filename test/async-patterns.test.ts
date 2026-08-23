@@ -1306,6 +1306,38 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("folds generator conditional expressions only for literal call-site guards", () => {
+    const model = analyzeAsyncPatterns("generator-conditional-expression.ts", `
+      function* failures(useNetwork: boolean, networkReason: string) {
+        yield Promise.reject(useNetwork ? networkReason : "cache-miss")
+        yield Promise.reject(new Error(useNetwork ? \`\${networkReason}!\` : "cached"))
+      }
+      async function network() { return Promise.any(failures(true, "network-down")) }
+      async function cache() { return Promise.any(failures(false, "unused")) }
+      async function dynamic(flag: boolean, reason: string) { return Promise.any(failures(flag, reason)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      owner: "network",
+      branches: ['Promise.reject("network-down")', 'Promise.reject(new Error(`${"network-down"}!`))'],
+      aggregateErrorReasons: [
+        { kind: "literal", value: "network-down" },
+        { kind: "error", errorType: "Error", message: "network-down!" },
+      ],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      owner: "cache",
+      branches: ['Promise.reject("cache-miss")', 'Promise.reject(new Error("cached"))'],
+      aggregateErrorReasons: [
+        { kind: "literal", value: "cache-miss" },
+        { kind: "error", errorType: "Error", message: "cached" },
+      ],
+    });
+    expect(model.combinators[2]).toMatchObject({
+      owner: "dynamic",
+      aggregateErrorReasons: [null, { kind: "error", errorType: "Error" }],
+    });
+  });
+
   it("rejects recursive generator delegation without recursing indefinitely", () => {
     const model = analyzeAsyncPatterns("recursive-generator-delegation.ts", `
       function* recursive(): Generator<number> {

@@ -188,6 +188,11 @@ Literal indices also project from direct array/readonly-tuple literals when the
 index is a canonical non-negative integer and the array contains no spread or
 hole. Dynamic, out-of-range, sparse, and spread-dependent indexing remains
 unknown rather than borrowing a neighboring element.
+Conditional expressions inside a yielded call/constructor argument are rebuilt
+after substitution. A literal `true` or `false` condition selects exactly one
+branch; a dynamic condition remains a conditional expression and contributes no
+concrete rejection reason. This specialization is expression-local and does not
+replace the correlated generator-path model used for statement-level `if`.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing

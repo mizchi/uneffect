@@ -401,6 +401,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const inner = substitute(expression.expression, bindings, seen);
         return inner === expression.expression ? expression : ts.factory.createParenthesizedExpression(inner);
       }
+      if (ts.isConditionalExpression(expression)) {
+        const condition = substitute(expression.condition, bindings, new Set(seen));
+        const whenTrue = substitute(expression.whenTrue, bindings, new Set(seen));
+        const whenFalse = substitute(expression.whenFalse, bindings, new Set(seen));
+        if (condition.kind === ts.SyntaxKind.TrueKeyword) return whenTrue;
+        if (condition.kind === ts.SyntaxKind.FalseKeyword) return whenFalse;
+        return condition === expression.condition && whenTrue === expression.whenTrue && whenFalse === expression.whenFalse
+          ? expression
+          : ts.factory.createConditionalExpression(condition, expression.questionToken, whenTrue, expression.colonToken, whenFalse);
+      }
       if (ts.isCallExpression(expression)) {
         const args = expression.arguments.map((argument) => substitute(argument, bindings, new Set(seen)));
         return args.every((argument, index) => argument === expression.arguments[index]) ? expression
