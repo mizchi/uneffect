@@ -1461,6 +1461,7 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("transitive-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
+      declare function mayThrow(): void
       async function broken() {
         let first: Resource | undefined
         let second: Resource | undefined
@@ -1553,6 +1554,36 @@ describe("async error and explicit resource safety", () => {
         }
         alias?.send()
       }
+      async function clearedInFinally() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        try { mayThrow() }
+        finally { alias = undefined }
+        alias?.send()
+      }
+      async function clearedOnlyAfterRiskyTry() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        try { mayThrow(); alias = undefined }
+        catch {}
+        alias?.send()
+      }
+      async function clearedOnlyInCatch() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        try { mayThrow() }
+        catch { alias = undefined }
+        alias?.send()
+      }
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "broken", resource: "resource", alias: "second",
@@ -1580,6 +1611,15 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "unclearedSwitchCase", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedInFinally", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "clearedOnlyAfterRiskyTry", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "clearedOnlyInCatch", kind: "disposed-resource-use",
     }));
   });
 

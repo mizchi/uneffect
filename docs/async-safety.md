@@ -519,6 +519,11 @@ aggregate root share the same canonical slot identity; an unconditional root
 alias reassignment detaches it, and overwriting a parent slot invalidates all
 known descendant facts. Exhaustive terminal nullish clears join for these
 static slots too, including a parent slot that clears known descendants.
+Assignments in a `try` body or `catch` clause are not must-kills: execution may
+leave the `try` before the assignment, or may never enter the `catch`. A clear
+in `finally` remains unconditional because every completion that continues
+past the statement executes it. Abrupt completion from `finally` is outside
+this source-ordered alias subset.
 Computed string and finite-number keys are resolved
 through reassignment-free `const` alias chains, including `as const`,
 parenthesized, `satisfies`, and non-null wrappers. The Program frontend follows

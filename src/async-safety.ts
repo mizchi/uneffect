@@ -878,6 +878,15 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         && !clause.statements.slice(0, index).some(containsAbruptCompletion)
         && terminallyClears(clause.statements[index]!, matchesTarget);
     };
+    const isConditionalResourceExecution = (node: ts.Node): boolean => {
+      if (isConditionalExecution(node)) return true;
+      let child = node;
+      for (let parent = node.parent; parent && parent !== ownerNode; child = parent, parent = parent.parent) {
+        if (ts.isCatchClause(parent)) return true;
+        if (ts.isTryStatement(parent) && (child === parent.tryBlock || child === parent.catchClause)) return true;
+      }
+      return false;
+    };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
@@ -946,10 +955,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (ts.isIdentifier(node.left)) {
           const symbol = checker.getSymbolAtLocation(node.left);
           if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
-          else if (symbol && !isConditionalExecution(node)) escapedAliases.delete(symbol);
+          else if (symbol && !isConditionalResourceExecution(node)) escapedAliases.delete(symbol);
           const rightSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
           if (symbol && rightSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(rightSymbol));
-          else if (symbol && !isConditionalExecution(node)) aggregateRootAliases.delete(symbol);
+          else if (symbol && !isConditionalResourceExecution(node)) aggregateRootAliases.delete(symbol);
         } else {
           const slot = staticSlot(node.left);
           if (slot && fact) {
@@ -957,7 +966,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
             slots.set(slot.key, { resource: fact.resource, alias: slot.alias, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
             escapedAggregateAliases.set(slot.root, slots);
-          } else if (slot && !isConditionalExecution(node)) {
+          } else if (slot && !isConditionalResourceExecution(node)) {
             const slots = escapedAggregateAliases.get(slot.root);
             if (slots) for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
           }

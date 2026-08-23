@@ -6,6 +6,7 @@ interface Attempt {
 }
 
 declare function openAttempt(): Attempt;
+declare function prepareFlush(): void;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
 /* uneffect: retains_resource_when 0: enabled */
@@ -83,4 +84,26 @@ export async function safeClearedAttempt(status: "flushed" | "cancelled"): Promi
     default: state.active = undefined;
   }
   state.active?.flush();
+}
+
+export async function safeFinallyClearedAttempt(): Promise<void> {
+  let active: Attempt | undefined;
+  {
+    await using attempt = openAttempt();
+    active = attempt;
+  }
+  try { prepareFlush(); }
+  finally { active = undefined; }
+  active?.flush();
+}
+
+export async function brokenCatchOnlyCleanup(): Promise<void> {
+  let active: Attempt | undefined;
+  {
+    await using attempt = openAttempt();
+    active = attempt;
+  }
+  try { prepareFlush(); }
+  catch { active = undefined; }
+  active?.flush();
 }
