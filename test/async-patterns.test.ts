@@ -1068,8 +1068,8 @@ describe("builtin async temporal patterns", () => {
         if (e) yield "e1"; else yield "e0"
         if (f) yield "f1"; else yield "f0"
       }
-      async function load(...flags: boolean[]) {
-        return Promise.all(choices(flags[0]!, flags[1]!, flags[2]!, flags[3]!, flags[4]!, flags[5]!))
+      async function load(a: boolean, b: boolean, c: boolean, d: boolean, e: boolean, f: boolean) {
+        return Promise.all(choices(a, b, c, d, e, f))
       }
     `);
     expect(model.combinators[0]).toMatchObject({
@@ -1110,6 +1110,45 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toContain('val join_0_path_1_aggregate_error_reason_1 = "literal:string:secondary"');
     expect(quint).toContain("if (join_0_iterable_choice == 0) 1 else if (join_0_iterable_choice == 1) 2 else 0");
     expect(run(quint, "asyncSafe").status).toBe(0);
+  });
+
+  it("folds boolean generator guards and refuses effectful computed guards", () => {
+    const model = analyzeAsyncPatterns("generator-guards.ts", `
+      declare function danger(): boolean
+      function* folded() {
+        if (true) yield "reachable"; else yield Promise.reject("dead")
+      }
+      function* computed() {
+        if (danger()) yield "yes"; else yield "no"
+      }
+      async function loadFolded() { return Promise.all(folded()) }
+      async function loadComputed() { return Promise.all(computed()) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['"reachable"'],
+      branchKinds: ["value"],
+    });
+    expect(model.combinators[0]).not.toHaveProperty("iterablePaths");
+    expect(model.combinators[1]).toMatchObject({
+      staticIterable: false,
+      unsupportedReason: "dynamic-cardinality",
+    });
+  });
+
+  it("models a bare generator yield as a fulfilled undefined value", () => {
+    const model = analyzeAsyncPatterns("bare-yield.ts", `
+      function* values() { yield; yield Promise.resolve(1) }
+      async function load() { return Promise.all(values()) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ["undefined", "Promise.resolve(1)"],
+      branchKinds: ["value", "thenable"],
+    });
+    const quint = generateAsyncPatternsQuint("bare_yield", model);
+    expect(quint).toContain("action fulfill_0_0");
+    expect(quint).not.toContain("action reject_0_0");
   });
 
   it("models local iterator acquisition and generator step failures", () => {

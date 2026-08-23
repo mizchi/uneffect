@@ -505,6 +505,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Guard path-specific generator step failure with the correlated iterable choice, preserve normal join actions on the non-failing path, and exclude suffix yields after abrupt completion.
     - [x] Compose multiple correlated generator spreads with deterministic array prefix/suffix as a finite choice product while retaining effects, branch kinds, reason order, and path-specific failure guards.
     - [x] Correlate repeated TypeChecker-resolved boolean conditions and negated generator arguments across finite paths, removing contradictory choice products before Quint lowering.
+    - [x] Fold literal generator guards and reject call/property/general-expression guards from the finite fragment instead of ignoring condition-evaluation effects or throws.
+    - [x] Treat a bare generator `yield;` as an exact fulfilled `undefined` Promise-combinator slot.
     - [x] Bound finite iterable choice products at 32 paths and fall back to an explicit unsupported dynamic boundary instead of truncating proof state.
     - [x] Distinguish `finite-path-limit` from general `dynamic-cardinality` in async IR and rejected Quint generation.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.

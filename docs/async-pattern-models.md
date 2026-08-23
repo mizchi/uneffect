@@ -179,7 +179,11 @@ Repeated reads of the same TypeScript-resolved boolean condition, including a
 negated call-site argument such as a second spread of `values(!flag)`, share a
 path constraint. Contradictory products are removed before Quint generation.
 This identity fragment does not prove equivalence between general boolean
-expressions; syntactically different computed predicates remain independent.
+expressions. Guards outside a boolean identifier, its direct negation, or a
+boolean literal remain dynamic because evaluating a call, property, or general
+expression may itself invoke user code or throw. Literal guards are folded, so
+an unreachable branch does not enter the path product. A bare `yield;` is an
+exact fulfilled `undefined` value slot, not an unknown thenable.
 Finite correlated generator spreads compose by Cartesian product with other
 spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product

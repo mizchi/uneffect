@@ -111,12 +111,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const timers: TimerPattern[] = [], combinators: PromiseCombinatorPattern[] = [], cancellations: TimerCancellation[] = [], abortCompositions: AbortCompositionPattern[] = [], timerEscapes: TimerHandleEscape[] = [];
   const branchKind = (element: ts.Expression | ts.OmittedExpression): "value" | "thenable" | "unknown" => {
     if (ts.isOmittedExpression(element)) return "value";
+    if (ts.isYieldExpression(element) && !element.expression) return "value";
     const type = checker.getTypeAtLocation(element);
     const members = type.isUnion() ? type.types : [type];
     if (members.some((member) => Boolean(member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)))) return "unknown";
     const thenable = members.map((member) => Boolean(checker.getPropertyOfType(member, "then")));
     return thenable.every(Boolean) ? "thenable" : thenable.some(Boolean) ? "unknown" : "value";
   };
+  const branchText = (element: ts.Expression | ts.OmittedExpression): string => ts.isOmittedExpression(element) ? "<hole>"
+    : ts.isYieldExpression(element) && !element.expression ? "undefined" : element.getText(element.getSourceFile());
   const resolvedSymbol = (node: ts.Node): ts.Symbol | undefined => {
     const symbol = checker.getSymbolAtLocation(node);
     return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
@@ -323,8 +326,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     const substitute = (expression: ts.Expression): ts.Expression => ts.isIdentifier(expression)
       ? substitutions.get(resolvedSymbol(expression)!) ?? expression : expression;
     type FlowPath = { branches: ts.Expression[]; failure?: "step"; completes: boolean; conditions?: Map<ts.Symbol | string, boolean> };
-    const conditionConstraint = (expression: ts.Expression): { key: ts.Symbol | string; value: boolean } => {
+    type ConditionConstraint = { key: ts.Symbol | string; value: boolean } | { constant: boolean };
+    const conditionConstraint = (expression: ts.Expression): ConditionConstraint | undefined => {
       while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+      if (expression.kind === ts.SyntaxKind.TrueKeyword) return { constant: true };
+      if (expression.kind === ts.SyntaxKind.FalseKeyword) return { constant: false };
       if (ts.isIdentifier(expression)) {
         const replacement = substitutions.get(resolvedSymbol(expression)!);
         if (replacement) return conditionConstraint(replacement);
@@ -332,15 +338,18 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
       if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
         const inner = conditionConstraint(expression.operand);
-        return { ...inner, value: !inner.value };
+        if (!inner) return undefined;
+        return "constant" in inner ? { constant: !inner.constant } : { ...inner, value: !inner.value };
       }
-      return { key: `text:${expression.getText(expression.getSourceFile())}`, value: true };
+      return undefined;
     };
-    const constrain = (path: FlowPath, constraint: { key: ts.Symbol | string; value: boolean }): FlowPath | undefined => {
+    const constrain = (path: FlowPath, constraint: ConditionConstraint, branch: boolean): FlowPath | undefined => {
+      if ("constant" in constraint) return constraint.constant === branch ? path : undefined;
+      const required = branch ? constraint.value : !constraint.value;
       const existing = path.conditions?.get(constraint.key);
-      if (existing !== undefined && existing !== constraint.value) return undefined;
+      if (existing !== undefined && existing !== required) return undefined;
       const conditions = new Map(path.conditions);
-      conditions.set(constraint.key, constraint.value);
+      conditions.set(constraint.key, required);
       return { ...path, conditions };
     };
     const statementsOf = (node: ts.Statement): readonly ts.Statement[] => ts.isBlock(node) ? node.statements : [node];
@@ -352,14 +361,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         for (const path of paths) {
           if (!path.completes) { next.push(path); continue; }
           if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
-            && statement.expression.expression && !statement.expression.asteriskToken) {
-            next.push({ ...path, branches: [...path.branches, substitute(statement.expression.expression)] });
+            && !statement.expression.asteriskToken) {
+            next.push({ ...path, branches: [...path.branches, statement.expression.expression
+              ? substitute(statement.expression.expression) : statement.expression] });
           } else if (ts.isThrowStatement(statement)) next.push({ ...path, failure: "step", completes: false });
           else if (ts.isReturnStatement(statement)) next.push({ ...path, completes: false });
           else if (ts.isIfStatement(statement)) {
             const condition = conditionConstraint(statement.expression);
-            const trueInput = constrain({ ...path, branches: [...path.branches] }, condition);
-            const falseInput = constrain({ ...path, branches: [...path.branches] }, { ...condition, value: !condition.value });
+            if (!condition) return undefined;
+            const trueInput = constrain({ ...path, branches: [...path.branches] }, condition, true);
+            const falseInput = constrain({ ...path, branches: [...path.branches] }, condition, false);
             const truePaths = trueInput ? flow(statementsOf(statement.thenStatement), [trueInput]) : [];
             const falsePaths = statement.elseStatement
               ? falseInput ? flow(statementsOf(statement.elseStatement), [falseInput]) : []
@@ -1058,16 +1069,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ? [expressionPaths[0]!.branches, expressionPaths[1]!.branches] as const
             : boundedConditionalArrays ?? (array ? arrayEvidence.alternatives : undefined) ?? local?.alternatives;
           const branchAlternatives = iterableAlternatives ? Array.from({ length: Math.max(iterableAlternatives[0].length, iterableAlternatives[1].length) }, (_, index) =>
-            [iterableAlternatives[0][index], iterableAlternatives[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText())) : undefined;
+            [iterableAlternatives[0][index], iterableAlternatives[1][index]].map((candidate) => candidate === undefined ? "<absent>" : branchText(candidate))) : undefined;
           const branchPresence = iterableAlternatives ? branchAlternatives!.map((_, index) =>
             iterableAlternatives[0][index] === undefined ? "when-false" : iterableAlternatives[1][index] === undefined ? "when-true" : "always" as const) : undefined;
           const pathWidth = expressionPaths ? Math.max(...expressionPaths.map((path) => path.branches.length)) : 0;
           const branches = expressionPaths && expressionPaths.length > 2
             ? Array.from({ length: pathWidth }, (_, index) => expressionPaths
-              .flatMap((path) => path.branches[index] === undefined ? [] : [path.branches[index]!.getText()])
+              .flatMap((path) => path.branches[index] === undefined ? [] : [branchText(path.branches[index]!)])
               .filter((value, itemIndex, values) => values.indexOf(value) === itemIndex).join(" | "))
             : branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
-            : boundedElements ? boundedElements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText()) : branchNodes?.map((item) => item.getText()) ?? [];
+            : boundedElements ? boundedElements.map(branchText) : branchNodes?.map(branchText) ?? [];
           const branchKinds = expressionPaths && expressionPaths.length > 2
             ? branches.map((_, index) => {
               const kinds = expressionPaths.flatMap((path) => path.branches[index] === undefined ? [] : [branchKind(path.branches[index]!)]);
@@ -1087,7 +1098,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             current = current.parent;
           }
           const iterablePaths = expressionPaths ? expressionPaths.map((path) => ({
-            branches: path.branches.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText()),
+            branches: path.branches.map(branchText),
             branchKinds: path.branches.map(branchKind),
             ...(path.failure ? { iteratorFailure: path.failure } : {}),
           })) : undefined;
