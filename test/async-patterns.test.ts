@@ -1168,6 +1168,51 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("unrolls a generator for-of over a directly finite builtin iterable", () => {
+    const model = analyzeAsyncPatterns("finite-generator-loop.ts", `
+      function* values() {
+        for (const item of ["cached", Promise.resolve("fresh")] as const) {
+          yield item
+        }
+        for (const item of new Set([1, 1, 2])) yield item
+        for (const enabled of [true, false] as const) {
+          if (enabled) yield "enabled"; else yield "disabled"
+        }
+        yield "tail"
+      }
+      async function load() { return Promise.all(values()) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['"cached"', 'Promise.resolve("fresh")', "1", "2", '"enabled"', '"disabled"', '"tail"'],
+      branchKinds: ["value", "thenable", "value", "value", "value", "value", "value"],
+    });
+  });
+
+  it("specializes immutable literal and identifier aliases inside a finite generator", () => {
+    const model = analyzeAsyncPatterns("generator-local-alias.ts", `
+      function* values(flag: boolean, remote: PromiseLike<string>) {
+        const selected = flag
+        const cached = "cached"
+        const forwarded = remote
+        if (selected) yield forwarded
+        else yield cached
+      }
+      async function load(flag: boolean, network: PromiseLike<string>) {
+        return Promise.all(values(flag, network))
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branchAlternatives: [["network", '"cached"']],
+      branchKinds: ["unknown"],
+      iterablePaths: [
+        { branches: ["network"], branchKinds: ["thenable"] },
+        { branches: ['"cached"'], branchKinds: ["value"] },
+      ],
+    });
+  });
+
   it("models local iterator acquisition and generator step failures", () => {
     const model = analyzeAsyncPatterns("iterator-failures.ts", `
       const broken = {

@@ -190,6 +190,16 @@ and thenable classification reuse the same iterable rules. Generator/custom
 iterator delegation remains outside this slice because recursion, iterator
 failure, and delegated return semantics require an interprocedural termination
 model.
+Synchronous `for...of` is unrolled over the same direct finite array/readonly
+tuple and builtin-Set subset. A directly yielded loop binding is specialized by
+TypeChecker symbol identity, and boolean literal elements can fold restricted
+guards in the loop body. `for await`, dynamic operands, destructuring bindings,
+and general expression substitution remain unsupported generator control flow.
+Reassignment-free generator-local `const` bindings with identifier or primitive
+literal initializers are substituted by symbol identity. This covers boolean
+guard aliases and directly yielded value/thenable aliases without evaluating
+user code. Mutable bindings, destructuring, and call/property initializers stay
+outside the finite fragment.
 Finite correlated generator spreads compose by Cartesian product with other
 spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product

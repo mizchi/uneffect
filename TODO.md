@@ -508,6 +508,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Fold literal generator guards and reject call/property/general-expression guards from the finite fragment instead of ignoring condition-evaluation effects or throws.
     - [x] Treat a bare generator `yield;` as an exact fulfilled `undefined` Promise-combinator slot.
     - [x] Flatten `yield*` over recursively finite arrays/readonly tuples and direct finite builtin Sets; retain generator/custom delegation as an explicit unsupported boundary.
+    - [x] Unroll synchronous generator `for...of` over the same direct finite builtin iterable subset with symbol-based direct-yield substitution and literal guard folding.
+    - [x] Specialize generator-local immutable identifier/primitive aliases for restricted guards and direct yields while rejecting mutable, destructured, and effectful initializers.
     - [x] Bound finite iterable choice products at 32 paths and fall back to an explicit unsupported dynamic boundary instead of truncating proof state.
     - [x] Distinguish `finite-path-limit` from general `dynamic-cardinality` in async IR and rejected Quint generation.
     - [x] Report recognized but unsupported generator guards/loops/delegation as `unsupported-generator-control-flow` rather than generic dynamic cardinality.

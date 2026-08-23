@@ -324,21 +324,34 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     body: ts.Block,
     substitutions = new Map<ts.Symbol, ts.Expression>(),
   ): FiniteIterableExpansion | undefined => {
-    const substitute = (expression: ts.Expression): ts.Expression => ts.isIdentifier(expression)
-      ? substitutions.get(resolvedSymbol(expression)!) ?? expression : expression;
-    type FlowPath = { branches: ts.Expression[]; failure?: "step"; completes: boolean; conditions?: Map<ts.Symbol | string, boolean> };
+    const substitute = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>, seen = new Set<ts.Symbol>()): ts.Expression => {
+      if (!ts.isIdentifier(expression)) return expression;
+      const symbol = resolvedSymbol(expression);
+      if (!symbol || seen.has(symbol)) return expression;
+      const replacement = bindings?.get(symbol) ?? substitutions.get(symbol);
+      if (!replacement) return expression;
+      seen.add(symbol);
+      return substitute(replacement, bindings, seen);
+    };
+    const safeAliasExpression = (expression: ts.Expression): boolean => ts.isIdentifier(expression)
+      || ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression) || ts.isBigIntLiteral(expression)
+      || expression.kind === ts.SyntaxKind.TrueKeyword || expression.kind === ts.SyntaxKind.FalseKeyword
+      || expression.kind === ts.SyntaxKind.NullKeyword;
+    type FlowPath = { branches: ts.Expression[]; failure?: "step"; completes: boolean; conditions?: Map<ts.Symbol | string, boolean>; bindings?: Map<ts.Symbol, ts.Expression> };
     type ConditionConstraint = { key: ts.Symbol | string; value: boolean } | { constant: boolean };
-    const conditionConstraint = (expression: ts.Expression): ConditionConstraint | undefined => {
+    const conditionConstraint = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>): ConditionConstraint | undefined => {
       while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
       if (expression.kind === ts.SyntaxKind.TrueKeyword) return { constant: true };
       if (expression.kind === ts.SyntaxKind.FalseKeyword) return { constant: false };
       if (ts.isIdentifier(expression)) {
+        const bound = bindings?.get(resolvedSymbol(expression)!);
+        if (bound) return conditionConstraint(bound, bindings);
         const replacement = substitutions.get(resolvedSymbol(expression)!);
-        if (replacement) return conditionConstraint(replacement);
+        if (replacement) return conditionConstraint(replacement, bindings);
         return { key: resolvedSymbol(expression) ?? `text:${expression.getText(expression.getSourceFile())}`, value: true };
       }
       if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
-        const inner = conditionConstraint(expression.operand);
+        const inner = conditionConstraint(expression.operand, bindings);
         if (!inner) return undefined;
         return "constant" in inner ? { constant: !inner.constant } : { ...inner, value: !inner.value };
       }
@@ -368,15 +381,26 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               ?? expandStaticSet(statement.expression.expression);
             if (!delegated || evidence.paths || evidence.failure || evidence.invokesUserCode) return undefined;
             next.push({ ...path, branches: [...path.branches, ...delegated.map((branch) =>
-              ts.isOmittedExpression(branch) ? branch : substitute(branch))] as ts.Expression[] });
+              ts.isOmittedExpression(branch) ? branch : substitute(branch, path.bindings))] as ts.Expression[] });
           } else if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
             && !statement.expression.asteriskToken) {
             next.push({ ...path, branches: [...path.branches, statement.expression.expression
-              ? substitute(statement.expression.expression) : statement.expression] });
+              ? substitute(statement.expression.expression, path.bindings) : statement.expression] });
+          } else if (ts.isVariableStatement(statement)
+            && (statement.declarationList.flags & ts.NodeFlags.Const) !== 0
+            && statement.declarationList.declarations.every((declaration) => ts.isIdentifier(declaration.name)
+              && Boolean(declaration.initializer && safeAliasExpression(declaration.initializer)))) {
+            const bindings = new Map(path.bindings);
+            for (const declaration of statement.declarationList.declarations) {
+              const symbol = resolvedSymbol(declaration.name as ts.Identifier);
+              if (!symbol || !declaration.initializer) return undefined;
+              bindings.set(symbol, substitute(declaration.initializer, bindings));
+            }
+            next.push({ ...path, bindings });
           } else if (ts.isThrowStatement(statement)) next.push({ ...path, failure: "step", completes: false });
           else if (ts.isReturnStatement(statement)) next.push({ ...path, completes: false });
           else if (ts.isIfStatement(statement)) {
-            const condition = conditionConstraint(statement.expression);
+            const condition = conditionConstraint(statement.expression, path.bindings);
             if (!condition) return undefined;
             const trueInput = constrain({ ...path, branches: [...path.branches] }, condition, true);
             const falseInput = constrain({ ...path, branches: [...path.branches] }, condition, false);
@@ -386,6 +410,33 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               : falseInput ? [falseInput] : [];
             if (!truePaths || !falsePaths) return undefined;
             next.push(...truePaths, ...falsePaths);
+          } else if (ts.isForOfStatement(statement) && !statement.awaitModifier
+            && ts.isVariableDeclarationList(statement.initializer)
+            && statement.initializer.declarations.length === 1
+            && ts.isIdentifier(statement.initializer.declarations[0]!.name)) {
+            const declaration = statement.initializer.declarations[0]!, symbol = resolvedSymbol(declaration.name);
+            const evidence: StaticArrayExpansionEvidence = { invokesUserCode: false };
+            const elements = expandStaticArray(statement.expression, new Set(), evidence) ?? expandStaticSet(statement.expression);
+            if (!symbol || !elements || elements.some(ts.isOmittedExpression)
+              || evidence.paths || evidence.failure || evidence.invokesUserCode) return undefined;
+            let loopPaths: FlowPath[] = [path];
+            const previous = path.bindings?.get(symbol);
+            for (const element of elements) {
+              const inputs = loopPaths.map((loopPath) => {
+                if (!loopPath.completes) return loopPath;
+                const bindings = new Map(loopPath.bindings);
+                bindings.set(symbol, substitute(element as ts.Expression, loopPath.bindings));
+                return { ...loopPath, bindings };
+              });
+              const iteration = flow(statementsOf(statement.statement), inputs);
+              if (!iteration) return undefined;
+              loopPaths = iteration;
+            }
+            next.push(...loopPaths.map((loopPath) => {
+              const bindings = new Map(loopPath.bindings);
+              if (previous) bindings.set(symbol, previous); else bindings.delete(symbol);
+              return { ...loopPath, ...(bindings.size ? { bindings } : { bindings: undefined }) };
+            }));
           } else if (ts.isEmptyStatement(statement)) next.push(path);
           else return undefined;
         }
