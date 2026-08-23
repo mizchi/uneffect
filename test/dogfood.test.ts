@@ -278,6 +278,13 @@ describe("Uneffect dogfood", () => {
       id: getterAliases[0]?.generation.controlPaths[0]?.[0]?.id,
       expected: false,
     });
+    const proxyAliases = broken.resourceAliases.filter((alias) => alias.owner === "brokenProxyRetry");
+    expect(proxyAliases).toHaveLength(2);
+    expect(proxyAliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(proxyAliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: proxyAliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
     }));

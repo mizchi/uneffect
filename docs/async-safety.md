@@ -574,7 +574,11 @@ restricted tries compose their completion identities. Direct property access,
 literal computed access, exact const key aliases, and finite string/number
 literal-union keys are also risky when the TypeChecker resolves at least one
 candidate property symbol to a concrete getter declaration. Interface-only
-properties, open key domains, proxy traps, coercions, finally-dependent joins,
+properties and open key domains remain unknown. Property access through a
+direct standard `new Proxy(...)` receiver, including a cycle-safe chain of
+immutable local `const` aliases, is conservatively treated as a preceding
+throw risk because its `get` trap can invoke user code. Mutable aliases,
+imported/interprocedural Proxy provenance, coercions, finally-dependent joins,
 and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved.

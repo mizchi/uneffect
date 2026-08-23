@@ -1758,6 +1758,60 @@ describe("async error and explicit resource safety", () => {
     expect(result.resourceAliases.find((alias) => alias.owner === "finiteKeyGetter")?.generation.relation).toBe("conditional");
   });
 
+  it("treats property access through an immutable Proxy receiver as a try risk", () => {
+    const result = analyzeAsyncSafety("proxy-try-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      declare const fail: boolean
+      const direct = new Proxy({ value: 1 }, {
+        get(target, key, receiver) {
+          if (fail) throw new Error("proxy get")
+          return Reflect.get(target, key, receiver)
+        }
+      })
+      const forwarded = direct
+      let mutable = direct
+      async function immutableProxy(enabled: boolean) {
+        let success: Resource | undefined
+        let failure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            forwarded.value
+            success = resource
+          } catch {
+            failure = resource
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        failure?.send()
+      }
+      async function mutableProxy(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            mutable.value
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "immutableProxy");
+    expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
+    expect(aliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
+    expect(result.resourceAliases.find((alias) => alias.owner === "mutableProxy")?.generation.relation).toBe("latest");
+    const quint = generateUnifiedAsyncQuint("proxy_try_resource_generations", result, "immutableProxy");
+    expect(run(quint, 28).status).not.toBe(0);
+  });
+
   it("composes nested try completion identities for alias generations", () => {
     const result = analyzeAsyncSafety("nested-try-resource-generations.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

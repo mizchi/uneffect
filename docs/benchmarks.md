@@ -147,6 +147,11 @@ the established cold Program-construction distribution.
 After routing the same getter through an exact const computed key, the benchmark
 measured 125.14 ms mean over 20 samples (1.72% RME), showing no regression from
 finite key-domain resolution.
+The corresponding immutable-Proxy receiver slice measured 122.14 ms mean over
+20 samples (1.80% RME). This includes TypeChecker symbol validation, cycle-safe
+`const` receiver resolution, alias-generation analysis, and unified Quint
+lowering; imported and mutable Proxy provenance remain outside the benchmarked
+proof fragment.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

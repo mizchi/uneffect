@@ -15,6 +15,13 @@ class FlushGate {
 }
 const flushGate = new FlushGate();
 const flushGateKey = "ready" as const;
+const proxiedFlushGate = new Proxy({ ready: true }, {
+  get(target, key, receiver) {
+    prepareFlush();
+    return Reflect.get(target, key, receiver);
+  },
+});
+const forwardedProxiedFlushGate = proxiedFlushGate;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;
 /* uneffect: retains_resource_when 0: enabled */
@@ -85,6 +92,23 @@ export async function brokenGetterRetry(enabled: boolean): Promise<void> {
     await using attempt = openAttempt();
     try {
       flushGate[flushGateKey];
+      preparedAttempt = attempt;
+    } catch {
+      failedAttempt = attempt;
+    }
+    await Promise.resolve("flush").then((value) => value);
+  }
+  preparedAttempt?.flush();
+  failedAttempt?.flush();
+}
+
+export async function brokenProxyRetry(enabled: boolean): Promise<void> {
+  let preparedAttempt: Attempt | undefined;
+  let failedAttempt: Attempt | undefined;
+  while (enabled) {
+    await using attempt = openAttempt();
+    try {
+      forwardedProxiedFlushGate.ready;
       preparedAttempt = attempt;
     } catch {
       failedAttempt = attempt;

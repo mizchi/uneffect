@@ -553,6 +553,25 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     if (!ownerNode.body) return;
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [], resourceSymbols = new Map<ts.Symbol, ResourceBinding>();
     const repeatedResourceSymbols = new Set<ts.Symbol>();
+    const targetSymbol = (node: ts.Node): ts.Symbol | undefined => {
+      const symbol = checker.getSymbolAtLocation(node);
+      return symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+    };
+    const immutableInitializer = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression | undefined => {
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
+        return immutableInitializer(expression.expression, seen);
+      }
+      if (!ts.isIdentifier(expression)) return expression;
+      const symbol = targetSymbol(expression), declaration = symbol?.valueDeclaration;
+      if (!symbol || seen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+      return immutableInitializer(declaration.initializer, new Set([...seen, symbol]));
+    };
+    const isBuiltinProxyReceiver = (expression: ts.Expression): boolean => {
+      const initializer = immutableInitializer(expression);
+      if (!initializer || !ts.isNewExpression(initializer) || !ts.isIdentifier(initializer.expression) || initializer.expression.text !== "Proxy") return false;
+      return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+    };
     const isInsideIteration = (node: ts.Node): boolean => {
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
         if (ts.isWhileStatement(parent) || ts.isDoStatement(parent) || ts.isForStatement(parent)
@@ -569,6 +588,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           return;
         }
         if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+          if (isBuiltinProxyReceiver(current.expression)) {
+            risky = true;
+            return;
+          }
           const symbol = ts.isPropertyAccessExpression(current)
             ? checker.getSymbolAtLocation(current.name)
             : (() => {
