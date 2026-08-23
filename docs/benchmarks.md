@@ -500,6 +500,14 @@ with the preceding 721.71 ms and 792.94 ms observations, this is approximately
 candidate discharges the current obligation; it does not weaken eager checking
 of explicitly selected strengthening properties.
 
+Extending prioritized seeds to strict comparison guards reduced the existing
+three-counter accounting fixture from 671.14 ms to 569.23 ms (1.18x) and the
+four-counter routing fixture from 2,301.65 ms to 1,056.75 ms (2.18x), each from
+one cold sample on 2026-08-23. These whole-lint measurements include bounded
+reachability and vacuity checks that are unaffected by candidate ordering, so
+the smaller three-counter gain is expected. More samples are needed before
+treating these one-shot ratios as stable performance claims.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured

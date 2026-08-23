@@ -261,7 +261,7 @@ function synthesizedRelationalStrengtheningProperties(
       ? [...candidates(expression.left), ...candidates(expression.right)]
       : [expression];
     return action.guard ? candidates(action.guard.expressionAst).flatMap((expression) => {
-      if (expression.kind !== "binary" || expression.operator !== "neq") return [];
+      if (expression.kind !== "binary" || !["neq", "lt", "lte", "gt", "gte"].includes(expression.operator)) return [];
       const withinCoefficientBound = (value: TemporalExpression): boolean => {
         if (value.kind === "binary" && value.operator === "multiply") {
           const literals = [value.left, value.right].filter((operand) => operand.kind === "integer");
@@ -277,10 +277,30 @@ function synthesizedRelationalStrengtheningProperties(
       if (left === undefined || right === undefined) return [];
       const references = new Set([...referencedNames(expression.left), ...referencedNames(expression.right)]);
       if (references.size < 2 || references.size > maxArity || [...references].some((name) => !integers.some((state) => state.name === name))) return [];
-      return [`${left} === ${right}`];
+      const initialValue = (value: TemporalExpression): bigint | undefined => {
+        if (value.kind === "integer") return BigInt(value.value);
+        if (value.kind === "name") return initialInteger(value.name);
+        if (value.kind === "unary" && value.operator === "negate") {
+          const operand = initialValue(value.operand);
+          return operand === undefined ? undefined : -operand;
+        }
+        if (value.kind !== "binary" || !["add", "subtract", "multiply"].includes(value.operator)) return undefined;
+        const leftValue = initialValue(value.left), rightValue = initialValue(value.right);
+        if (leftValue === undefined || rightValue === undefined) return undefined;
+        return value.operator === "add" ? leftValue + rightValue : value.operator === "subtract" ? leftValue - rightValue : leftValue * rightValue;
+      };
+      const leftInitial = initialValue(expression.left), rightInitial = initialValue(expression.right);
+      const equality = leftInitial !== undefined && leftInitial === rightInitial ? [`${left} === ${right}`] : [];
+      const complement = expression.operator === "lt" ? `${left} >= ${right}`
+        : expression.operator === "lte" ? `${left} > ${right}`
+          : expression.operator === "gt" ? `${left} <= ${right}`
+            : expression.operator === "gte" ? `${left} < ${right}`
+              : `${left} === ${right}`;
+      return [...equality, complement];
     }) : [];
   });
-  const expressions = [...new Set([...seededExpressions, ...pairwiseExpressions, ...conservationExpressions])];
+  const boundedConservationExpressions = [...new Set([...seededExpressions, ...conservationExpressions])].slice(0, candidateLimit);
+  const expressions = [...new Set([...pairwiseExpressions, ...boundedConservationExpressions])];
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
     expression,

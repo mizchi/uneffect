@@ -1158,6 +1158,34 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("prioritizes an initial equality boundary from a strict unreachable guard", async () => {
+    const temporal = parseSpec("guarded-conservation-seed.ts", `/* uneffect:
+      state accepted: int
+      state rejected: int
+      state attempted: int
+      state armed: bool
+      init accepted = 0
+      init rejected = 0
+      init attempted = 0
+      init armed = false
+      action accept: accepted' = accepted + 1, attempted' = attempted + 1
+      action reject: rejected' = rejected + 1, attempted' = attempted + 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && accepted + rejected < attempted
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningCandidateLimit: 1,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:accepted + rejected === attempted>",
+    }));
+  });
+
   it("synthesizes bounded weighted conservation equalities", async () => {
     const temporal = parseSpec("weighted-conservation-strengthening.ts", `/* uneffect:
       state accepted: int
@@ -1303,15 +1331,27 @@ describe("spec IR and generated verifier programs", () => {
       name: "impossible",
     }));
 
-    const candidateCappedDiagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+    const candidateDisabledDiagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,
       relationalStrengtheningMaxArity: 4,
-      relationalStrengtheningCandidateLimit: 12,
+      relationalStrengtheningCandidateLimit: 0,
     });
-    expect(candidateCappedDiagnostics).not.toContainEqual(expect.objectContaining({
+    expect(candidateDisabledDiagnostics).not.toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
       name: "impossible",
+    }));
+
+    const prioritizedDiagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxArity: 4,
+      relationalStrengtheningCandidateLimit: 1,
+    });
+    expect(prioritizedDiagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:accepted + dropped + retried === attempted>",
     }));
   });
 

@@ -215,6 +215,12 @@ same initialization and one-step preservation proofs. Synthesized candidates
 are checked lazily until the current unreachability or vacuity obligation is
 discharged; explicitly selected and declared discovery candidates remain eager
 so invalid user-selected strengthening is always diagnosed.
+Strict comparison guards use the same path. When both arithmetic sides have
+the same constant initial value, their equality boundary is tried first; the
+logical comparison complement is the fallback candidate. Guard-derived seeds
+count against `relationalStrengtheningCandidateLimit`, so zero disables
+multi-variable conservation seeds and a small nonzero budget prioritizes the
+model's own suspicious boundary over generic enumeration.
 Same-shaped Set, Map, and record pairs have a separate equality template pool
 behind `synthesizeCollectionStrengtheningProperties` and
 `--synthesize-collection-strengthening`. The same opt-in recursively discovers
