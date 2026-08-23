@@ -437,6 +437,10 @@ Replacing that branch with a proof-pure local `const` conditional selector
 measured 123.45 ms mean over 20 samples (1.88% RME). This remains within the
 same cold-analysis range; effectful local initializers are intentionally not
 eligible for this proof.
+Expressing the dogfood Proxy handler with a literal-computed `["get"]` name
+measured 121.16 ms mean over 20 samples (1.36% RME). The small decrease is
+within ordinary cold-run variance; the relevant result is that computed-name
+resolution preserves the exact rejection proof without runtime instrumentation.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

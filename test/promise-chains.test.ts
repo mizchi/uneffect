@@ -566,6 +566,39 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("resolves a literal-computed Proxy get handler", () => {
+    const exact = analyzePromiseChains("proxy-computed-get.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          ["get"](_target, property) {
+            return property === "then" ? rejectThen : undefined
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const dynamic = analyzePromiseChains("proxy-dynamic-computed-get.ts", `
+      declare const trapName: string
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          [trapName](_target: unknown, property: PropertyKey) {
+            return property === "then" ? rejectThen : undefined
+          }
+        } as ProxyHandler<{ then(): void }>)
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(dynamic.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("selects the concrete then branch of a forwarding Proxy trap", () => {
     const model = analyzePromiseChains("proxy-forwarded-then.ts", `
       function run() {

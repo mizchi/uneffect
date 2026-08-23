@@ -147,6 +147,10 @@ The two-statement guard-clause form is symmetric: both
 `if (property === "then") return callback; return fallback` and
 `if (property !== "then") return fallback; return callback` follow the branch
 selected by the known assimilation lookup.
+Proxy handler lookup recognizes ordinary `get`, quoted `"get"`, and
+literal-computed `["get"]`/``[`get`]`` names. A computed identifier or other
+dynamic property expression is not treated as the handler merely because its
+runtime value might be `"get"`.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

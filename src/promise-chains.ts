@@ -229,8 +229,15 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         return immutableInitializer(declaration.initializer, new Set([...aliasSeen, symbol]));
       };
       const handler = expression.arguments?.[1] && immutableInitializer(expression.arguments[1]!);
+      const staticPropertyName = (name: ts.PropertyName | undefined): string | undefined => {
+        if (!name) return undefined;
+        if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+        if (!ts.isComputedPropertyName(name)) return undefined;
+        return ts.isStringLiteral(name.expression) || ts.isNoSubstitutionTemplateLiteral(name.expression)
+          ? name.expression.text : undefined;
+      };
       const getTrap = handler && ts.isObjectLiteralExpression(handler)
-        ? handler.properties.find((item) => item.name?.getText(handler.getSourceFile()) === "get")
+        ? handler.properties.find((item) => staticPropertyName(item.name) === "get")
         : undefined;
       const assignedTrap = getTrap && ts.isPropertyAssignment(getTrap) ? immutableInitializer(getTrap.initializer) : undefined;
       const trapFunction = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap
