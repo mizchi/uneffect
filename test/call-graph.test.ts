@@ -216,6 +216,14 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function consumeOpaquePromiseAll(log: boolean) {
           void Promise.all(choosePartial(log))
         }
+        export function consumeIteratorParameter(iterator: Generator<string>) { iterator.next() }
+        export function outerIteratorParameter(iterator: Generator<string>) { consumeIteratorParameter(iterator) }
+        export function consumeIteratorProperty(holder: { iterator: Generator<string> }) { holder.iterator.next() }
+        export function consumeStandardIterator() {
+          const iterator = [1, 2, 3].values()
+          const forwarded = iterator
+          forwarded.next()
+        }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
         /* uneffect: effect Console */
@@ -293,6 +301,14 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeOpaquePromiseAll"))
         .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "outerIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorProperty"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeStandardIterator"))
+        .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
         functionName: "shadowedArrayFromDoesNotConsume", effect: "Console", kind: "missing",
       }));

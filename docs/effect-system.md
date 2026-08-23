@@ -95,6 +95,10 @@ cannot be completely resolved, the Program summary becomes `evidence:
 factories are not degraded by this generator-specific check.
 The same unknown evidence is retained when that iterator is first stored in an
 immutable local binding or forwarded through immutable local aliases.
+Calling `.next()` through an unresolved iterator parameter or property is also
+unknown and propagates through callers. Iterators created by standard-library
+factories such as `Array.prototype.values` are tracked as pure through immutable
+local aliases, avoiding an unknown result merely because they are stored first.
 
 ## Domain effects and semantic footprints
 
