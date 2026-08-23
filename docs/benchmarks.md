@@ -20,9 +20,16 @@ improvement. This measures `2 * accepted <= byteBudget` template generation,
 induction checks, and reachability diagnostics together; it is not a general
 polyhedral benchmark. After raising the explicit coefficient bound from two to
 three and changing the dogfood invariant to
-`3 * accepted === byteBudget`, the same local Node 24 benchmark measured
-284.95 ms mean over two samples (4.72% RME). The extra candidate pairs explain
+`3 * accepted === byteBudget`, then adding both sum and difference orientations,
+the same local Node 24 benchmark measured 472.73 ms mean over five samples
+(7.57% RME). The larger coefficient pool and doubled orientation set explain
 the increase; this remains an observational benchmark rather than a CI budget.
+
+The two-counter telemetry quota model exercises the new opposite-motion
+template `sent + remaining === 100`. It measured 253.03 ms mean over eight
+samples (3.24% RME) on the same run. The scaled coefficient-three model was
+1.87x slower because it considers more reduced coefficient pairs; this is a
+candidate-pool comparison, not a general solver-performance claim.
 
 The three-counter telemetry accounting model measured 345.42 ms mean over two
 samples (3.84% RME) after adding bounded coefficient-1 conservation templates.

@@ -395,6 +395,33 @@ describe("Uneffect dogfood", () => {
       .resolves.toMatchObject({ status: "counterexample", depth: 1 });
   });
 
+  it("proves a two-counter telemetry quota conservation law", async () => {
+    const fileName = "examples/dogfood/telemetry-quota.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "observeQuotaDrift",
+      relatedName: "<synth:sent + remaining === 100>",
+    }));
+
+    const broken = parseSpec(fileName, source.replaceAll("remaining' = remaining - 1", "remaining' = remaining").replaceAll("this.remaining -= 1", "this.remaining += 0")).temporal;
+    const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:sent + remaining === 100>",
+    }));
+    await expect(findTemporalCounterexampleWithZ3(broken, "quotaConserved", { maxSteps: 1 }))
+      .resolves.toMatchObject({ status: "counterexample", depth: 1 });
+  });
+
   it("verifies a Node callback-checkpoint application model through the project API", async () => {
     const source = `
         import { nextTick } from "node:process"

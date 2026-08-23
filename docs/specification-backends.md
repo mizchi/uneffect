@@ -184,6 +184,11 @@ coefficient is two. Set `relationalStrengtheningMaxCoefficient` or CLI
 eight. Common factors are removed so equivalent scaled relations are not
 generated twice. Unbounded coefficients, conjunction discovery, and general
 polyhedra remain unsupported.
+For each reduced coefficient pair, the pool considers both difference and sum
+orientations. The sum orientation admits fixed-budget laws such as
+`sent + remaining === 100` when the counters move in opposite directions.
+Every candidate still has to pass initialization and transition-preservation
+checks before it can strengthen another obligation.
 The same opt-in includes bounded conservation equalities such as
 `accepted + dropped === attempted`, with an offset derived from constant
 initializers. The default maximum arity is three, preserving the original

@@ -277,7 +277,15 @@ describe("typed-array static verification", () => {
       synthesizeRelationalStrengtheningProperties: true,
       relationalStrengtheningMaxCoefficient: 3,
     });
-  }, { time: 500, iterations: 1 });
+  }, { time: 2_000, iterations: 1 });
+
+  bench("synthesize a pairwise affine quota conservation invariant", async () => {
+    const temporal = parseSpec("telemetry-quota.ts", readFileSync(new URL("../examples/dogfood/telemetry-quota.ts", import.meta.url), "utf8")).temporal;
+    await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+  }, { time: 2_000, iterations: 1 });
 
   bench("synthesize a three-counter conservation invariant", async () => {
     const temporal = parseSpec("telemetry-accounting.ts", readFileSync(new URL("../examples/dogfood/telemetry-accounting.ts", import.meta.url), "utf8")).temporal;

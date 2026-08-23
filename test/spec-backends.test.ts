@@ -1093,6 +1093,30 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes pairwise affine sum conservation", async () => {
+    const temporal = parseSpec("pairwise-sum-strengthening.ts", `/* uneffect:
+      state used: int
+      state remaining: int
+      state armed: bool
+      init used = 1
+      init remaining = 9
+      init armed = false
+      action consume: used' = used + 1, remaining' = remaining - 1
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && used + remaining !== 10
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:used + remaining === 10>",
+    }));
+  });
+
   it("exposes the affine coefficient bound through the CLI", () => {
     const expanded = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=3"], {

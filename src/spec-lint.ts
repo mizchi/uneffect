@@ -160,11 +160,20 @@ function synthesizedRelationalStrengtheningProperties(
         .map((right) => [BigInt(left), BigInt(right)] as const));
     const affine = coefficientPairs.flatMap(([leftCoefficient, rightCoefficient]) => {
       const difference = leftCoefficient * leftInitial - rightCoefficient * rightInitial;
-      if (leftCoefficient === 1n && rightCoefficient === 1n && difference === 0n) return [];
       const rightTerm = term(rightCoefficient, right.name);
       const rightWithOffset = difference > 0n ? `${rightTerm} + ${difference}` : difference < 0n ? `${rightTerm} - ${-difference}` : rightTerm;
       const leftTerm = term(leftCoefficient, left.name);
-      return [`${leftTerm} === ${rightWithOffset}`, `${leftTerm} <= ${rightWithOffset}`, `${leftTerm} >= ${rightWithOffset}`];
+      const differenceRelations = leftCoefficient === 1n && rightCoefficient === 1n && difference === 0n
+        ? []
+        : [`${leftTerm} === ${rightWithOffset}`, `${leftTerm} <= ${rightWithOffset}`, `${leftTerm} >= ${rightWithOffset}`];
+      const sum = leftCoefficient * leftInitial + rightCoefficient * rightInitial;
+      const sumTerm = `${leftTerm} + ${rightTerm}`;
+      return [
+        ...differenceRelations,
+        `${sumTerm} === ${sum}`,
+        `${sumTerm} <= ${sum}`,
+        `${sumTerm} >= ${sum}`,
+      ];
     });
     return [...direct, ...affine];
   }));
