@@ -76,6 +76,9 @@ spec-web-event-loop file:
 spec-node-event-loop file:
     pnpm tsx src/spec-cli.ts node-loop-quint {{ file }}
 
+spec-node-esm-event-loop file:
+    pnpm tsx src/spec-cli.ts node-loop-quint {{ file }} --node-top-level=esm
+
 build:
     pnpm build
 

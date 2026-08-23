@@ -633,7 +633,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Preserve the multiplicity of pending one-shot timeout instances registered by a repeating parent with an unbounded integer count.
       - [x] Preserve exact FIFO due times for repeated-parent one-shot timeout instances with a Quint `List[int]` queue.
       - [x] Model repeated creation of recurring intervals by retaining each instance and rotating its next due time through the same FIFO queue.
-      - [ ] Model concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
+      - [x] Analyze top-level timer/microtask and Promise-reaction calls and add an explicit Node ESM mode where initial V8 jobs precede initial `nextTick` jobs.
+      - [ ] Model concrete poll/I/O and close callbacks, dynamic abort composition, and polymorphic parent callback dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

@@ -99,7 +99,8 @@ export interface AsyncPatternModel {
   timerEscapes: TimerHandleEscape[];
 }
 
-function functionName(node: ts.FunctionLikeDeclaration): string {
+function functionName(node: ts.FunctionLikeDeclaration | ts.SourceFile): string {
+  if (ts.isSourceFile(node)) return "<module>";
   if ((ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isMethodDeclaration(node)) && node.name) return node.name.getText();
   if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) return node.parent.name.text;
   return "<anonymous>";
@@ -940,8 +941,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     ts.forEachChild(node, (child) => collectScheduledCallbacks(child, currentOwner));
   };
   collectScheduledCallbacks(source);
-  const visitFunction = (owner: ts.FunctionLikeDeclaration): void => {
-    if (!owner.body) return;
+  const visitFunction = (owner: ts.FunctionLikeDeclaration | ts.SourceFile): void => {
+    const ownerBody = ts.isSourceFile(owner) ? owner : owner.body;
+    if (!ownerBody) return;
     const ownerName = functionName(owner);
     const handleAliases = new Map<string, string>();
     const handleTargets = new Map<string, number>();
@@ -1141,7 +1143,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
     };
     const visit = (node: ts.Node): void => {
-      if (node !== owner.body && ts.isFunctionLike(node)) return;
+      if (node !== ownerBody && ts.isFunctionLike(node)) return;
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)) {
         handleAliases.set(node.name.text, resolveHandle(node.initializer.text));
         const target = handleTargets.get(node.initializer.text);
@@ -1306,7 +1308,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
           let current: ts.Node = node;
           let definite = true;
-          while (current.parent && current.parent !== owner.body) {
+          while (current.parent && current.parent !== ownerBody) {
             current = current.parent;
             if (ts.isIfStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)
               || ts.isWhileStatement(current) || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isConditionalExpression(current)) definite = false;
@@ -1366,7 +1368,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const awaited = ts.isAwaitExpression(current.parent);
           if (awaited) current = current.parent;
           let catchesRejection = false;
-          while (current.parent && current.parent !== owner.body) {
+          while (current.parent && current.parent !== ownerBody) {
             if (ts.isTryStatement(current.parent) && current.parent.tryBlock === current && current.parent.catchClause) catchesRejection = true;
             current = current.parent;
           }
@@ -1392,7 +1394,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
       ts.forEachChild(node, visit);
     };
-    visit(owner.body);
+    visit(ownerBody);
   };
   const visit = (node: ts.Node): void => {
     if (ts.isFunctionLike(node) && "body" in node && node.body) {
@@ -1406,6 +1408,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     ts.forEachChild(node, visit);
   };
+  visitFunction(source);
   visit(source);
   for (const cancellation of cancellations) {
     if (cancellation.timer !== undefined) continue;
@@ -1614,7 +1617,13 @@ export function generateAsyncPatternsQuint(moduleName: string, model: AsyncPatte
 export function generateNodeEventLoopQuint(
   moduleName: string,
   model: AsyncPatternModel,
-  options: { allowMicrotaskBeforeNextTick?: boolean; allowMacroBeforeCheckpoint?: boolean; allowWrongPhase?: boolean } = {},
+  options: {
+    allowMicrotaskBeforeNextTick?: boolean;
+    allowMacroBeforeCheckpoint?: boolean;
+    allowWrongPhase?: boolean;
+    topLevelMode?: "commonjs" | "esm";
+    allowEsmNextTickBeforeMicrotask?: boolean;
+  } = {},
   promiseModel?: PromiseChainModel,
 ): string {
   for (const timer of model.timers) if (timer.delay === undefined
@@ -1638,20 +1647,26 @@ export function generateNodeEventLoopQuint(
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
-    if (chain.links.length && executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending) initialReactions.add(`${chainIndex}:0`);
+    if (chain.links.length && (chain.initialSettlement !== undefined
+      || (executor && executor.possibleSettlements.length > 0 && !executor.mayRemainPending))) initialReactions.add(`${chainIndex}:0`);
   });
   const initialV8Jobs = [
     ...microtasks.flatMap((index) => model.timers[index]!.enqueuedBy === undefined ? [{ key: `callback:${index}`, span: model.timers[index]!.span.start }] : []),
     ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((link, stage) =>
       initialReactions.has(`${chainIndex}:${stage}`) ? [{ key: `reaction:${chainIndex}:${stage}`, span: link.span.start }] : [])) ?? []),
   ].sort((left, right) => left.span - right.span);
+  const esmInitialNextTicks = new Set(nextTicks.filter((index) => model.timers[index]!.owner === "<module>"
+    && model.timers[index]!.enqueuedBy === undefined));
+  const initialV8Pending = initialV8Jobs.map((job) => job.key.startsWith("callback:")
+    ? `callback_${job.key.slice("callback:".length)}_pending`
+    : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool"];
   supported.forEach((index) => {
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
     if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`, `  var callback_${index}_due_times: List[int]`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
-  lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
+  lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
   supported.forEach((index) => {
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
@@ -1703,11 +1718,16 @@ export function generateNodeEventLoopQuint(
     action(`drain_next_tick_${index}`, [
       ...phaseGuard(0), `callback_${index}_pending`,
       ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
+      ...(options.topLevelMode === "esm" && esmInitialNextTicks.has(index) && !options.allowEsmNextTickBeforeMicrotask
+        ? initialV8Pending.map((pending) => `not(${pending})`) : []),
       ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
     ], updates);
   });
   microtasks.forEach((index, order) => {
-    const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
+    const esmInitialJob = options.topLevelMode === "esm" && model.timers[index]!.owner === "<module>"
+      && model.timers[index]!.enqueuedBy === undefined;
+    const pendingNextTick = nextTicks.filter((nextTick) => !esmInitialJob || !esmInitialNextTicks.has(nextTick))
+      .map((nextTick) => `callback_${nextTick}_pending`);
     const key = `callback:${index}`;
     const position = initialV8Jobs.findIndex((job) => job.key === key);
     const earlierV8 = (position >= 0 ? initialV8Jobs.slice(0, position) : microtasks
@@ -1728,9 +1748,11 @@ export function generateNodeEventLoopQuint(
       ...earlierV8.map((pending) => `not(${pending})`),
     ], updates);
   });
-  const pendingNextTick = nextTicks.map((nextTick) => `callback_${nextTick}_pending`);
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     const key = `reaction:${chainIndex}:${stage}`;
+    const esmInitialJob = options.topLevelMode === "esm" && initialReactions.has(key);
+    const pendingNextTick = nextTicks.filter((nextTick) => !esmInitialJob || !esmInitialNextTicks.has(nextTick))
+      .map((nextTick) => `callback_${nextTick}_pending`);
     const position = initialV8Jobs.findIndex((job) => job.key === key);
     const earlierV8 = stage === 0 && position >= 0 ? initialV8Jobs.slice(0, position).map((job) =>
       job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`

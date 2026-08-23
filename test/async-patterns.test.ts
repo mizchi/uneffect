@@ -2075,6 +2075,35 @@ describe("builtin async temporal patterns", () => {
     expect(run(generateNodeEventLoopQuint("node_phase_broken", model, { allowWrongPhase: true }), "nodeEventLoopSafe").status).not.toBe(0);
   }, 20_000);
 
+  it("models ESM top-level evaluation as a V8 job before its initial nextTick queue", () => {
+    const source = `
+      import { nextTick } from "node:process"
+      const root = Promise.resolve(1)
+      root.then(() => 2)
+      queueMicrotask(() => undefined)
+      nextTick(() => undefined)
+    `;
+    const patterns = analyzeAsyncPatterns("node-esm-top-level.ts", source);
+    const promises = analyzePromiseChains("node-esm-top-level.ts", source);
+    expect(promises.chains).toMatchObject([{ owner: "<module>", initialSettlement: "fulfilled" }]);
+    expect(patterns.timers).toMatchObject([
+      { owner: "<module>", queue: "microtask" },
+      { owner: "<module>", queue: "next-tick" },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_esm_top_level", patterns, { topLevelMode: "esm" }, promises);
+    expect(quint).toContain("promise_reaction_0_0_pending' = true");
+    const nextTickAction = quint.slice(quint.indexOf("action drain_next_tick_1"), quint.indexOf("action drain_microtask_0"));
+    const microtaskAction = quint.slice(quint.indexOf("action drain_microtask_0"), quint.indexOf("action drain_promise_reaction_0_0"));
+    expect(nextTickAction).toContain("not(callback_0_pending)");
+    expect(nextTickAction).toContain("not(promise_reaction_0_0_pending)");
+    expect(microtaskAction).not.toContain("not(callback_1_pending)");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+    expect(run(generateNodeEventLoopQuint("node_esm_top_level_broken", patterns, {
+      topLevelMode: "esm",
+      allowEsmNextTickBeforeMicrotask: true,
+    }, promises), "nodeEventLoopSafe").status).not.toBe(0);
+  }, 20_000);
+
   it("shares the Node V8 microtask FIFO between queueMicrotask and Promise reactions", () => {
     const source = `
       import { nextTick } from "node:process"

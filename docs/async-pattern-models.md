@@ -52,6 +52,15 @@ same source-ordered V8 FIFO with `queueMicrotask` jobs. A broken option permits
 a V8 job to overtake a pending next-tick callback and is rejected by
 `nodeEventLoopSafe`.
 
+Top-level calls are represented with owner `<module>`. The default
+`commonjs` mode drains initial `process.nextTick` jobs before initial V8 jobs.
+Use `just spec-node-esm-event-loop <file>`, CLI option
+`--node-top-level=esm`, generator option `topLevelMode: "esm"`, or project
+option `nodeTopLevelMode: "esm"` when the entry module is ESM. In that mode,
+Promise reactions and `queueMicrotask` jobs queued by module evaluation precede
+the initial top-level next-tick queue. Jobs created later inside callbacks keep
+the ordinary next-tick-before-V8 checkpoint rule.
+
 The generated state machine makes the modeled host phase explicit:
 callback checkpoint (`0`), timers (`1`), abstract poll (`2`), check (`3`), and
 close/iteration boundary (`4`). Every modeled timer or immediate callback
@@ -95,10 +104,9 @@ following the [Node timers contract](https://nodejs.org/docs/latest-v24.x/api/ti
 This host-specific normalization does not apply to Web timers or
 `AbortSignal.timeout`.
 
-This is intentionally not a complete libuv model. Node documents a special
-ESM top-level case where module evaluation is already executing as a
-microtask, so `queueMicrotask` can precede `nextTick`; that case is excluded
-from this callback-checkpoint profile. Poll callbacks outside the reviewed
+This is intentionally not a complete libuv model. The ESM mode covers only
+the initial jobs queued during top-level module evaluation; dynamic imports
+and loader hooks remain outside the model. Poll callbacks outside the reviewed
 one-shot fs set, poll ordering/readiness details, close callbacks,
 pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check

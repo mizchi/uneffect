@@ -33,8 +33,13 @@ if (relationalStrengtheningMaxCoefficient !== undefined && (relationalStrengthen
   throw new Error("relational-max-coefficient must be between 1 and 8");
 }
 const synthesizeCollectionStrengtheningProperties = arguments_.includes("--synthesize-collection-strengthening");
+const nodeTopLevelArgument = arguments_.find((argument) => argument.startsWith("--node-top-level="));
+const nodeTopLevelMode = nodeTopLevelArgument?.slice("--node-top-level=".length);
+if (nodeTopLevelMode !== undefined && nodeTopLevelMode !== "commonjs" && nodeTopLevelMode !== "esm") {
+  throw new Error("node-top-level must be commonjs or esm");
+}
 if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--relational-max-arity=3..6] [--relational-max-coefficient=1..8] [--relational-candidate-limit=256] [--synthesize-collection-strengthening]");
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--node-top-level=commonjs|esm] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--relational-max-arity=3..6] [--relational-max-coefficient=1..8] [--relational-candidate-limit=256] [--synthesize-collection-strengthening]");
   process.exit(2);
 }
 
@@ -68,7 +73,9 @@ if (command === "ir") {
   process.stdout.write(generateWebEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
 } else if (command === "node-loop-quint") {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
-  process.stdout.write(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source)));
+  process.stdout.write(generateNodeEventLoopQuint(moduleName, analyzeAsyncPatterns(fileName, source), {
+    topLevelMode: nodeTopLevelMode ?? "commonjs",
+  }, analyzePromiseChains(fileName, source)));
 } else {
   const moduleName = basename(fileName).replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
   process.stdout.write(generatePromiseChainsQuint(moduleName, analyzePromiseChains(fileName, source)));

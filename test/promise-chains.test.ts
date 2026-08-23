@@ -1334,6 +1334,24 @@ describe("Promise state and reaction chains", () => {
     `)).toEqual({ executors: [], thenables: [], chains: [] });
   });
 
+  it("records builtin settled roots at module scope through immutable aliases", () => {
+    const model = analyzePromiseChains("settled-roots.ts", `
+      const fulfilled = Promise.resolve(1)
+      const rejected = Promise.reject(new Error("no"))
+      fulfilled.then(value => value + 1)
+      rejected.catch(() => 0)
+    `);
+    expect(model.chains).toMatchObject([
+      { owner: "<module>", source: "fulfilled", initialSettlement: "fulfilled" },
+      { owner: "<module>", source: "rejected", initialSettlement: "rejected" },
+    ]);
+    const quint = generatePromiseChainsQuint("settled_roots", model);
+    expect(quint).toContain("action settle_0_fulfilled");
+    expect(quint).not.toContain("action settle_0_rejected");
+    expect(quint).toContain("action settle_1_rejected");
+    expect(quint).not.toContain("action settle_1_fulfilled");
+  });
+
   it("distinguishes omitted handlers from handlers that may reject", () => {
     const model = analyzePromiseChains("omitted.ts", `
       declare const promise: Promise<number>

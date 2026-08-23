@@ -505,6 +505,18 @@ describe("typed-array static verification", () => {
     generateNodeEventLoopQuint("repeated_parent_timeout", model);
   }, { time: 500, iterations: 20 });
 
+  bench("model Node ESM top-level microtask ordering", () => {
+    const source = `
+      import { nextTick } from "node:process"
+      Promise.resolve(1).then(value => value + 1)
+      queueMicrotask(() => undefined)
+      nextTick(() => undefined)
+    `;
+    generateNodeEventLoopQuint("node_esm_top_level", analyzeAsyncPatterns("node-esm.ts", source), {
+      topLevelMode: "esm",
+    }, analyzePromiseChains("node-esm.ts", source));
+  }, { time: 500, iterations: 20 });
+
   bench("verify a Web callback temporal product with Quint", async () => {
     const entry = "examples/dogfood/telemetry-once.ts";
     await verifyUneffectProject({ temporalRuntime: "web", files: { [entry]: readFileSync(entry, "utf8") } });

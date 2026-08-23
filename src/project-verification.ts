@@ -18,6 +18,7 @@ export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
   runtimeAssertions?: "off" | "fallback";
   temporalRuntime?: "web" | "node";
+  nodeTopLevelMode?: "commonjs" | "esm";
   temporalRoot?: string;
   assumptionPolicy?: AssumptionPolicy;
 }
@@ -167,7 +168,9 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
       temporalProperties.push(verifyQuintInvariant(quint, "eventLoopSafe"));
       for (const property of temporalComposition?.properties ?? []) temporalProperties.push(verifyQuintInvariant(quint, property.name));
     } else if (options.temporalRuntime === "node") {
-      const quint = generateNodeEventLoopQuint(fileName.replace(/[^A-Za-z0-9_]/g, "_"), analyzeAsyncPatterns(fileName, source), {}, analyzePromiseChains(fileName, source));
+      const quint = generateNodeEventLoopQuint(fileName.replace(/[^A-Za-z0-9_]/g, "_"), analyzeAsyncPatterns(fileName, source), {
+        topLevelMode: options.nodeTopLevelMode ?? "commonjs",
+      }, analyzePromiseChains(fileName, source));
       temporalModels.push({ fileName, kind: "node-event-loop", quint });
       temporalProperties.push(verifyQuintInvariant(quint, "nodeEventLoopSafe"));
     }
