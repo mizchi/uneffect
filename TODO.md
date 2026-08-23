@@ -496,6 +496,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Bound direct builtin `Set` construction over a static array, preserving insertion order and only removing statically provable duplicate identities while leaving custom or mutable Sets dynamic.
     - [x] Resolve imported finite generator functions by TypeChecker symbol identity and substitute directly yielded parameters with their call-site arguments.
     - [x] Resolve imported immutable object literals whose standard iterator is a finite linear generator method, preserving yield order and thenable classification.
+    - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.

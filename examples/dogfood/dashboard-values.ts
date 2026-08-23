@@ -1,6 +1,10 @@
-export function* dashboardValues(remote: PromiseLike<string>): Generator<string | PromiseLike<string>> {
-  yield "cached-profile";
-  yield remote;
+export function dashboardValues(remote: PromiseLike<string>): Iterable<string | PromiseLike<string>> {
+  return {
+    *[Symbol.iterator](): Generator<string | PromiseLike<string>> {
+      yield "cached-profile";
+      yield remote;
+    },
+  };
 }
 
 export const dashboardSnapshotValues = {

@@ -218,6 +218,23 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       return true;
     });
   }
+  const linearGeneratorBody = (
+    body: ts.Block,
+    substitutions = new Map<ts.Symbol, ts.Expression>(),
+  ): { branches: ts.Expression[]; failure?: "step" } | undefined => {
+    const branches: ts.Expression[] = [];
+    let failure: "step" | undefined;
+    for (const statement of body.statements) {
+      if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
+        && statement.expression.expression && !statement.expression.asteriskToken) {
+        const yielded = statement.expression.expression;
+        const substitution = ts.isIdentifier(yielded) ? substitutions.get(resolvedSymbol(yielded)!) : undefined;
+        branches.push(substitution ?? yielded);
+      } else if (ts.isThrowStatement(statement)) failure = "step";
+      else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
+    }
+    return { branches, failure };
+  };
   const localIterable = (expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined => {
     if (!expression) return undefined;
     let declaration: ts.Declaration | undefined;
@@ -235,16 +252,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       });
       if (iterator && ts.isMethodDeclaration(iterator) && iterator.body) {
         if (iterator.asteriskToken) {
-          const branches: ts.Expression[] = [];
-          let failure: "step" | undefined;
-          for (const statement of iterator.body.statements) {
-            if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
-              && statement.expression.expression && !statement.expression.asteriskToken) {
-              branches.push(statement.expression.expression);
-            } else if (ts.isThrowStatement(statement)) failure = "step";
-            else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
-          }
-          return { branches, failure };
+          return linearGeneratorBody(iterator.body);
         }
         const containsThrow = (node: ts.Node): boolean => {
           if (ts.isThrowStatement(node)) return true;
@@ -268,26 +276,35 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         return { branches: [] };
       }
     }
+    if (declaration && ts.isFunctionDeclaration(declaration) && !declaration.asteriskToken && declaration.body
+      && ts.isCallExpression(expression) && declaration.body.statements.length === 1) {
+      const returned = declaration.body.statements[0];
+      const object = ts.isReturnStatement(returned) && returned.expression && ts.isObjectLiteralExpression(returned.expression)
+        ? returned.expression : undefined;
+      const iterator = object?.properties.find((property) => {
+        if (!property.name || !ts.isComputedPropertyName(property.name) || !ts.isPropertyAccessExpression(property.name.expression)) return false;
+        const access = property.name.expression;
+        return access.expression.getText() === "Symbol" && access.name.text === "iterator"
+          && (resolvedSymbol(access.name)?.declarations?.some((item) => item.getSourceFile().isDeclarationFile) ?? false);
+      });
+      if (iterator && ts.isMethodDeclaration(iterator) && iterator.asteriskToken && iterator.body) {
+        const substitutions = new Map<ts.Symbol, ts.Expression>();
+        declaration.parameters.forEach((parameter, index) => {
+          if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
+          const symbol = resolvedSymbol(parameter.name);
+          if (symbol) substitutions.set(symbol, expression.arguments[index]);
+        });
+        return linearGeneratorBody(iterator.body, substitutions);
+      }
+    }
     if (declaration && ts.isFunctionDeclaration(declaration) && declaration.asteriskToken && declaration.body) {
-      const branches: ts.Expression[] = [];
       const substitutions = new Map<ts.Symbol, ts.Expression>();
       if (ts.isCallExpression(expression)) declaration.parameters.forEach((parameter, index) => {
         if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
         const symbol = resolvedSymbol(parameter.name);
         if (symbol) substitutions.set(symbol, expression.arguments[index]);
       });
-      let failure: "step" | undefined;
-      for (const statement of declaration.body.statements) {
-        if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
-          && statement.expression.expression && !statement.expression.asteriskToken) {
-          const yielded = statement.expression.expression;
-          const substitution = ts.isIdentifier(yielded) ? substitutions.get(resolvedSymbol(yielded)!) : undefined;
-          branches.push(substitution ?? yielded);
-        }
-        else if (ts.isThrowStatement(statement)) failure = "step";
-        else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
-      }
-      return { branches, failure };
+      return linearGeneratorBody(declaration.body, substitutions);
     }
     return undefined;
   };

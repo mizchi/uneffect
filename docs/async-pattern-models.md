@@ -161,10 +161,11 @@ statically inspectable forms are accepted: an object whose standard
 generator containing only direct `yield`, `throw`, and `return` statements.
 That restricted generator may be imported from another TypeScript source file.
 The same finite body is accepted for the standard iterator generator method of
-an imported immutable object literal. The analyzer resolves aliases by
-TypeChecker symbol identity and substitutes a directly yielded function
-parameter with its call-site argument. Yield expressions that require general
-expression substitution remain outside this finite fragment.
+an imported immutable object literal, or an object literal returned directly by
+an imported factory whose body contains only that return. The analyzer resolves
+aliases by TypeChecker symbol identity and substitutes a directly yielded
+factory or generator parameter with its call-site argument. Yield expressions
+that require general expression substitution remain outside this finite fragment.
 Acquisition or step failure rejects every Promise combinator, including
 `allSettled`, before any yielded Promise reaction can settle the aggregate.
 Sparse literal holes are retained as `undefined` value slots, matching array
