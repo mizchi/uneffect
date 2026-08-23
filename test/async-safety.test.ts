@@ -6,12 +6,12 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 
-function run(program: string) {
+function run(program: string, maxSteps = 12) {
   const directory = mkdtempSync(join(tmpdir(), "uneffect-resource-"));
   const path = join(directory, "model.qnt");
   writeFileSync(path, program);
   return spawnSync("pnpm", ["exec", "quint", "run", path,
-    "--invariant=resourceSafe", "--max-steps=12", "--max-samples=400",
+    "--invariant=resourceSafe", `--max-steps=${maxSteps}`, "--max-samples=400",
     "--seed=0x123456789abcdef", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
 }
 
@@ -1495,6 +1495,43 @@ describe("async error and explicit resource safety", () => {
     expect(quint).toContain("action use_disposed_alias_0");
     expect(quint).toContain("action use_disposed_alias_1");
     expect(run(quint).status).not.toBe(0);
+  });
+
+  it("keeps nested repeated resource generations and loop targets distinct", () => {
+    const result = analyzeAsyncSafety("nested-repeated-resource-aliases.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken(outerEnabled: boolean, innerEnabled: boolean) {
+        let outerAlias: Resource | undefined
+        let innerAlias: Resource | undefined
+        while (outerEnabled) {
+          await using outerResource = open()
+          outerAlias = outerResource
+          while (innerEnabled) {
+            await using innerResource = open()
+            innerAlias = innerResource
+            await Promise.resolve("tick").then((value) => value)
+          }
+        }
+        innerAlias?.send()
+        outerAlias?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases.map((alias) => ({ alias: alias.alias, acquisition: alias.generation.acquisitionIndex, repeated: alias.generation.repeated }))).toEqual(expect.arrayContaining([
+      { alias: "outerAlias", acquisition: 0, repeated: true },
+      { alias: "innerAlias", acquisition: 1, repeated: true },
+    ]));
+
+    const quint = generateUnifiedAsyncQuint("nested_repeated_resource_aliases", result, "broken");
+    const outerAcquirePc = /action acquire_outerResource = all \{\s*pc == (\d+),/.exec(quint)?.[1];
+    const innerAcquirePc = /action acquire_innerResource = all \{\s*pc == (\d+),/.exec(quint)?.[1];
+    const outerRepeatPc = /action alias_loop_0_repeat = all \{[\s\S]*?pc' = (\d+),/.exec(quint)?.[1];
+    const innerRepeatPc = /action alias_loop_1_repeat = all \{[\s\S]*?pc' = (\d+),/.exec(quint)?.[1];
+    expect(outerRepeatPc).toBe(outerAcquirePc);
+    expect(innerRepeatPc).toBe(innerAcquirePc);
+    expect(outerRepeatPc).not.toBe(innerRepeatPc);
+    expect(run(quint, 32).status).not.toBe(0);
   });
 
   it("propagates disposed resource identity through local alias chains", () => {

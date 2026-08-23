@@ -548,9 +548,14 @@ lowering increments that generation on every modeled acquisition, captures it
 for each alias, and compares it with the generation recorded by lexical
 disposal. Repeated acquisitions share one repeat/exit decision per acquisition,
 even when several aliases capture the same resource generation; their capture
-and post-scope use evidence remains independent. Nested interacting acquisition
-loops and alias relations that retain older generations separately are still
-outside this finite lowering.
+and post-scope use evidence remains independent. Source-ordered nested
+acquisition loops retain distinct generations and repeat targets; the generated
+model is checked deeply enough to reach both asynchronous scope exits and the
+first post-loop alias use. Generated alias identities are ordered by their
+assignment spans, so reordering post-scope uses does not churn Quint action or
+state names. General CFG joins between interacting loops and alias
+relations that retain older generations separately are still outside this
+finite lowering.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

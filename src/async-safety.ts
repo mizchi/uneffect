@@ -1548,7 +1548,9 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
 export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean } = {}): string {
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
-  const aliases = result.resourceAliases.filter((item) => item.owner === owner);
+  const aliases = result.resourceAliases
+    .filter((item) => item.owner === owner)
+    .sort((left, right) => left.assignmentSpan.start - right.assignmentSpan.start || left.useSpan.start - right.useSpan.start);
   const awaited = result.promises
     .filter((item) => item.owner === owner && item.observation === "await" && item.promiseChain !== undefined)
     .sort((left, right) => left.span.start - right.span.start);

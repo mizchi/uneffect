@@ -126,6 +126,10 @@ After normalizing two aliases of one repeated acquisition to a shared loop
 decision, a dedicated end-to-end analysis and unified-Quint-lowering benchmark
 measured 126.58 ms mean over 20 samples (2.27% RME). This benchmark retains two
 independent generation captures and uses, but emits only one repeat/exit pair.
+A nested two-acquisition variant measured 165.67 ms mean over 20 samples
+(10.50% RME). The run includes distinct inner/outer generation and repeat-target
+lowering; its high variance and 314.12 ms maximum make it a regression sentinel,
+not evidence of a stable 31% cost increase over the shared-alias case.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end
