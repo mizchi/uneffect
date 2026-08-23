@@ -155,6 +155,12 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const generators = returnedGeneratorDeclarations(target);
         if (binding && generators) generatorBindings.set(binding, generators);
       }
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)
+        && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+        const source = generatorBindings.get(resolvedSymbol(checker, node.initializer)!);
+        const binding = resolvedSymbol(checker, node.name);
+        if (binding && source) generatorBindings.set(binding, source);
+      }
       const addStoredGeneratorConsumption = (expression: ts.Expression): void => {
         if (!ts.isIdentifier(expression)) return;
         const targets = generatorBindings.get(resolvedSymbol(checker, expression)!);

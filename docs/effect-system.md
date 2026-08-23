@@ -80,8 +80,9 @@ returns are resolved generator/factory calls are specialized at direct
 consumption sites, including sequential early returns, exhaustive `if` branches,
 and conditional expressions. Every normal return path must resolve; candidates
 are unioned while the factory's own immediate body effects remain on the normal
-call edge. General iterator escape, partial/dynamic factories, alias chains, and
-opaque consumer APIs are not proof that their transitive effects were checked.
+call edge. Immutable local aliases such as `const forwarded = iterator` preserve
+the iterator identity. Mutable aliases, property/collection escape, and opaque
+consumer APIs are not proof that their transitive effects were checked.
 When a direct consumption call has an iterator-like `next` type but its factory
 cannot be completely resolved, the Program summary becomes `evidence:
 "unknown"`; this status propagates through callers. Non-iterator collection
