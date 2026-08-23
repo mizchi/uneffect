@@ -199,7 +199,9 @@ Reassignment-free generator-local `const` bindings with identifier or primitive
 literal initializers are substituted by symbol identity. This covers boolean
 guard aliases and directly yielded value/thenable aliases without evaluating
 user code. Mutable bindings, destructuring, and call/property initializers stay
-outside the finite fragment.
+outside the finite fragment. Nested lexical blocks are analyzed with a scoped
+binding environment; generated yields survive the block while local aliases do
+not leak into following statements or loop iterations.
 Finite correlated generator spreads compose by Cartesian product with other
 spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product

@@ -1213,6 +1213,22 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("restores immutable alias bindings after a nested generator block", () => {
+    const model = analyzeAsyncPatterns("generator-block-scope.ts", `
+      function* values(remote: PromiseLike<string>) {
+        { const value = "nested"; yield value }
+        { const value = remote; yield value }
+        yield "tail"
+      }
+      async function load(network: PromiseLike<string>) { return Promise.all(values(network)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['"nested"', "network", '"tail"'],
+      branchKinds: ["value", "thenable", "value"],
+    });
+  });
+
   it("models local iterator acquisition and generator step failures", () => {
     const model = analyzeAsyncPatterns("iterator-failures.ts", `
       const broken = {

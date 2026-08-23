@@ -409,7 +409,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               ? falseInput ? flow(statementsOf(statement.elseStatement), [falseInput]) : []
               : falseInput ? [falseInput] : [];
             if (!truePaths || !falsePaths) return undefined;
-            next.push(...truePaths, ...falsePaths);
+            next.push(...[...truePaths, ...falsePaths].map((branchPath) => ({ ...branchPath, bindings: path.bindings })));
           } else if (ts.isForOfStatement(statement) && !statement.awaitModifier
             && ts.isVariableDeclarationList(statement.initializer)
             && statement.initializer.declarations.length === 1
@@ -420,7 +420,6 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             if (!symbol || !elements || elements.some(ts.isOmittedExpression)
               || evidence.paths || evidence.failure || evidence.invokesUserCode) return undefined;
             let loopPaths: FlowPath[] = [path];
-            const previous = path.bindings?.get(symbol);
             for (const element of elements) {
               const inputs = loopPaths.map((loopPath) => {
                 if (!loopPath.completes) return loopPath;
@@ -430,13 +429,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               });
               const iteration = flow(statementsOf(statement.statement), inputs);
               if (!iteration) return undefined;
-              loopPaths = iteration;
+              loopPaths = iteration.map((iterationPath) => {
+                const bindings = new Map(path.bindings);
+                if (iterationPath.completes) bindings.set(symbol, substitute(element as ts.Expression, path.bindings));
+                return { ...iterationPath, bindings };
+              });
             }
-            next.push(...loopPaths.map((loopPath) => {
-              const bindings = new Map(loopPath.bindings);
-              if (previous) bindings.set(symbol, previous); else bindings.delete(symbol);
-              return { ...loopPath, ...(bindings.size ? { bindings } : { bindings: undefined }) };
-            }));
+            next.push(...loopPaths.map((loopPath) => ({ ...loopPath, bindings: path.bindings })));
+          } else if (ts.isBlock(statement)) {
+            const scoped = flow(statement.statements, [{ ...path, bindings: path.bindings }]);
+            if (!scoped) return undefined;
+            next.push(...scoped.map((blockPath) => ({ ...blockPath, bindings: path.bindings })));
           } else if (ts.isEmptyStatement(statement)) next.push(path);
           else return undefined;
         }
