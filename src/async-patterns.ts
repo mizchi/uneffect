@@ -59,7 +59,7 @@ export interface PromiseCombinatorPattern {
 export type PromiseRejectionReason =
   | { kind: "literal"; value: string | number | boolean }
   | { kind: "error"; errorType: string; message?: string };
-export type UnsupportedIterableReason = "dynamic-cardinality" | "finite-path-limit" | "unsupported-generator-control-flow";
+export type UnsupportedIterableReason = "dynamic-cardinality" | "finite-element-limit" | "finite-path-limit" | "unsupported-generator-control-flow";
 
 export interface TimerCancellation {
   owner: string;
@@ -183,6 +183,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     conditions?: Map<ts.Symbol | string, boolean>;
   };
   const MAX_FINITE_ITERABLE_PATHS = 32;
+  const MAX_FINITE_ITERABLE_ELEMENTS = 256;
   function expandStaticArray(
     expression: ts.Expression,
     seen = new Set<ts.Symbol>(),
@@ -1163,12 +1164,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ? conditionalArrays as readonly [NonNullable<typeof conditionalArrays[0]>, NonNullable<typeof conditionalArrays[1]>] : undefined;
           const boundedElements = array ?? set ?? boundedConditionalArrays?.[0];
           const local = boundedElements ? undefined : localIterable(iterable);
-          const staticIterable = Boolean(boundedElements || (local && !local.unsupportedReason));
-          const branchNodes = local?.unsupportedReason ? undefined : local?.branches;
-          const expressionPaths: FiniteIterablePath[] | undefined = boundedConditionalArrays
+          const candidatePaths: FiniteIterablePath[] | undefined = boundedConditionalArrays
             ? boundedConditionalArrays.map((branches) => ({ branches }))
             : array ? arrayEvidence.paths
               : local?.paths;
+          const finiteElementLimitExceeded = candidatePaths
+            ? candidatePaths.some((path) => path.branches.length > MAX_FINITE_ITERABLE_ELEMENTS)
+            : (boundedElements?.length ?? local?.branches.length ?? 0) > MAX_FINITE_ITERABLE_ELEMENTS;
+          const staticIterable = !finiteElementLimitExceeded && Boolean(boundedElements || (local && !local.unsupportedReason));
+          const branchNodes = finiteElementLimitExceeded || local?.unsupportedReason ? undefined : local?.branches;
+          const expressionPaths = finiteElementLimitExceeded ? undefined : candidatePaths;
+          const modelElements = finiteElementLimitExceeded ? undefined : boundedElements;
           const iterableAlternatives = expressionPaths?.length === 2
             ? [expressionPaths[0]!.branches, expressionPaths[1]!.branches] as const
             : boundedConditionalArrays ?? (array ? arrayEvidence.alternatives : undefined) ?? local?.alternatives;
@@ -1182,7 +1188,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               .flatMap((path) => path.branches[index] === undefined ? [] : [branchText(path.branches[index]!)])
               .filter((value, itemIndex, values) => values.indexOf(value) === itemIndex).join(" | "))
             : branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
-            : boundedElements ? boundedElements.map(branchText) : branchNodes?.map(branchText) ?? [];
+            : modelElements ? modelElements.map(branchText) : branchNodes?.map(branchText) ?? [];
           const branchKinds = expressionPaths && expressionPaths.length > 2
             ? branches.map((_, index) => {
               const kinds = expressionPaths.flatMap((path) => path.branches[index] === undefined ? [] : [branchKind(path.branches[index]!)]);
@@ -1191,7 +1197,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             : iterableAlternatives ? branchAlternatives!.map((_, index) => {
             const kinds = [iterableAlternatives[0][index], iterableAlternatives[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
             return kinds.every((kind) => kind === kinds[0]) ? kinds[0]! : "unknown";
-          }) : (boundedElements ? boundedElements.map(branchKind) : branchNodes?.map(branchKind) ?? []);
+          }) : (modelElements ? modelElements.map(branchKind) : branchNodes?.map(branchKind) ?? []);
           let current: ts.Node = node;
           while (ts.isParenthesizedExpression(current.parent)) current = current.parent;
           const awaited = ts.isAwaitExpression(current.parent);
@@ -1212,9 +1218,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: pathFailure ?? arrayEvidence.failure ?? local?.failure,
             iteratorFailurePresence: arrayEvidence.failurePresence ?? local?.failurePresence,
-            unsupportedReason: staticIterable ? undefined : arrayEvidence.unsupportedReason ?? local?.unsupportedReason ?? "dynamic-cardinality",
+            unsupportedReason: staticIterable ? undefined : finiteElementLimitExceeded ? "finite-element-limit" : arrayEvidence.unsupportedReason ?? local?.unsupportedReason ?? "dynamic-cardinality",
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && !expressionPaths && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
+            aggregateErrorReasons: operation.combinator === "any" && !expressionPaths && !finiteElementLimitExceeded && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
             aggregateErrorReasonPaths: operation.combinator === "any" && expressionPaths
               ? expressionPaths.map((path) => path.branches.map(rejectionReason)) : undefined,

@@ -1206,6 +1206,18 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("rejects a statically finite iterable wider than the model element budget", () => {
+    const values = Array.from({ length: 257 }, (_, index) => index).join(", ");
+    const model = analyzeAsyncPatterns("oversized-static-iterable.ts", `
+      async function load() { return Promise.all([${values}]) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: false,
+      branches: [],
+      unsupportedReason: "finite-element-limit",
+    });
+  });
+
   it("propagates delegated step failure and correlates parent and child guards", () => {
     const model = analyzeAsyncPatterns("guarded-generator-delegation.ts", `
       function* child(flag: boolean) {

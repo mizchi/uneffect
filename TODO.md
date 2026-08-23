@@ -514,6 +514,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve lexical alias scope across nested generator blocks, conditional branches, and finite-loop iterations.
     - [x] Dogfood imported finite-loop and local-alias specialization in the dashboard Promise batch across a multi-file TypeScript Program.
     - [x] Bound finite iterable choice products at 32 paths and fall back to an explicit unsupported dynamic boundary instead of truncating proof state.
+    - [x] Bound every finite Promise-combinator path at 256 elements and report `finite-element-limit` before generating an oversized formal model.
     - [x] Distinguish `finite-path-limit` from general `dynamic-cardinality` in async IR and rejected Quint generation.
     - [x] Report recognized but unsupported generator guards/loops/delegation as `unsupported-generator-control-flow` rather than generic dynamic cardinality.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.

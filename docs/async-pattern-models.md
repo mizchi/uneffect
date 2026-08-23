@@ -220,6 +220,10 @@ specific reason when it refuses an unbounded model. A recognized generator
 whose loop, guard, or delegation is outside the accepted finite fragment uses
 `unsupported-generator-control-flow`, separating an implementation boundary
 from genuinely unknown iterable cardinality.
+Each path is separately capped at 256 Promise-combinator elements. Wider static
+arrays, Sets, conditional paths, and finite generators are reported as
+`finite-element-limit` before Quint generation. This is a model/build budget,
+not a JavaScript runtime restriction.
 `Promise.any` retains path-dependent aggregate cardinality and emits concrete
 rejection-reason constants under the same path index; one path is never
 presented as representative of another.
