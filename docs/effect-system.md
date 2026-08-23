@@ -99,6 +99,13 @@ Calling `.next()` through an unresolved iterator parameter or property is also
 unknown and propagates through callers. Iterators created by standard-library
 factories such as `Array.prototype.values` are tracked as pure through immutable
 local aliases, avoiding an unknown result merely because they are stored first.
+Functions that directly consume iterator parameters expose an iterator-effect
+parameter contract in the Program call graph. Calls with a resolved generator
+factory or immutable binding are specialized to the generator body effects; a
+standard pure iterator contributes no effect, and an opaque argument remains
+unknown. Parameter-derived unknown evidence is tracked separately from intrinsic
+unknown consumption, so specializing every iterator parameter never hides an
+unrelated property escape or dynamic factory inside the consumer.
 
 ## Domain effects and semantic footprints
 

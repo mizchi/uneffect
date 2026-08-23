@@ -366,6 +366,7 @@ describe("Uneffect dogfood", () => {
           if (preferCache) return flushSteps()
           return failedFlushSteps()
         }
+        function consumeFlushSteps(iterator: Generator<string>) { Array.from(iterator) }
         const flushDispatcher = {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
@@ -375,6 +376,8 @@ describe("Uneffect dogfood", () => {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps(true)
+          try { consumeFlushSteps(buildFlushSteps(preferCache)) }
+          catch { console.warn("skipping generic flush consumer") }
           void Promise.all(buildFlushSteps(preferCache))
             .catch(() => console.warn("skipping async flush steps"))
           try { Array.from(buildFlushSteps(preferCache)) }
@@ -392,7 +395,9 @@ describe("Uneffect dogfood", () => {
     const verified = await verifyUneffectProject({ temporalRuntime: "node", files: { "src/node-service.ts": source } });
     expect(verified.diagnostics).toEqual([]);
     const scheduleSummary = verified.effects.summaries.find((summary) => summary.functionName === "scheduleFlush");
-    expect(scheduleSummary).toMatchObject({ fileName: "src/node-service.ts", id: expect.stringMatching(/^src\/node-service\.ts:\d+$/), span: { start: expect.any(Number), end: expect.any(Number) } });
+    expect(scheduleSummary).toMatchObject({ fileName: "src/node-service.ts", evidence: "verified", id: expect.stringMatching(/^src\/node-service\.ts:\d+$/), span: { start: expect.any(Number), end: expect.any(Number) } });
+    expect(verified.effects.summaries.find((summary) => summary.functionName === "consumeFlushSteps"))
+      .toMatchObject({ evidence: "unknown" });
     expect(scheduleSummary?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind)).toEqual(expect.arrayContaining(["FsRead", "Console", "Timer"]));
     expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("action run_poll_0") }));
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_next_tick_1");

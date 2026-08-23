@@ -32,7 +32,7 @@ describe("multi-file call graph and effect polymorphism", () => {
   });
 
   it("instantiates callback effects and preserves invocation timing", () => {
-    const node = { id: "f", name: "later", kind: "function" as const, fileName: "f.ts", span: { start: 0, end: 1 }, overloads: [], effectParameters: [{ index: 0, name: "cb", timing: "deferred" as const }] };
+    const node = { id: "f", name: "later", kind: "function" as const, fileName: "f.ts", span: { start: 0, end: 1 }, overloads: [], effectParameters: [{ index: 0, name: "cb", timing: "deferred" as const }], iteratorEffectParameters: [] };
     const result = instantiateCallbackEffects(node, new Map([[0, [parseEffectExpression("Console")]]]));
     expect(result).toMatchObject({ evidence: "inferred", suspends: true });
     expect(result.effects).toHaveLength(1);
@@ -217,8 +217,19 @@ describe("multi-file call graph and effect polymorphism", () => {
           void Promise.all(choosePartial(log))
         }
         export function consumeIteratorParameter(iterator: Generator<string>) { iterator.next() }
+        export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
+        export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
         export function outerIteratorParameter(iterator: Generator<string>) { consumeIteratorParameter(iterator) }
+        export function consumePromiseIteratorParameter(iterator: Generator<string>) { void Promise.all(iterator) }
+        export function consumeKnownPromiseIteratorParameter() { consumePromiseIteratorParameter(generate()) }
         export function consumeIteratorProperty(holder: { iterator: Generator<string> }) { holder.iterator.next() }
+        export function consumeMixedIteratorParameter(iterator: Generator<string>, holder: { iterator: Generator<string> }) {
+          iterator.next()
+          holder.iterator.next()
+        }
+        export function consumeKnownMixedIteratorParameter(holder: { iterator: Generator<string> }) {
+          consumeMixedIteratorParameter(generate(), holder)
+        }
         export function consumeStandardIterator() {
           const iterator = [1, 2, 3].values()
           const forwarded = iterator
@@ -302,6 +313,28 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeOpaquePromiseAll"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeKnownIteratorParameter"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownIteratorParameter", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownIteratorParameter", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumePureIteratorParameter"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumePromiseIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeKnownPromiseIteratorParameter"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownPromiseIteratorParameter", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownPromiseIteratorParameter", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumeKnownMixedIteratorParameter"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "outerIteratorParameter"))
         .toMatchObject({ evidence: "unknown" });

@@ -487,14 +487,22 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     visit(node.body, false);
   }
   const inferred = new Map([...direct].map(([id, effects]) => [id, [...effects]]));
-  const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>();
+  const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>(), unknownGeneratorParameterEvidence = new Set<string>();
   let changed = true;
   while (changed) {
     changed = false;
     for (const edge of [...graph.edges, ...implicitDisposalEdges]) {
-      if ((edge.unknownGeneratorConsumption || (edge.executesBody !== false && edge.callee && unknownGeneratorEvidence.has(edge.callee)))
-        && !unknownGeneratorEvidence.has(edge.caller)) {
+      const intrinsicUnknown = (edge.unknownGeneratorConsumption && edge.unknownGeneratorParameterIndex === undefined)
+        || (edge.executesBody !== false && edge.callee && unknownGeneratorEvidence.has(edge.callee));
+      if (intrinsicUnknown && !unknownGeneratorEvidence.has(edge.caller)) {
         unknownGeneratorEvidence.add(edge.caller);
+        changed = true;
+      }
+      const parameterUnknown = (edge.unknownGeneratorConsumption && edge.unknownGeneratorParameterIndex !== undefined)
+        || (edge.executesBody !== false && edge.callee && unknownGeneratorParameterEvidence.has(edge.callee)
+          && !edge.dischargesUnknownGeneratorParameters);
+      if (parameterUnknown && !unknownGeneratorParameterEvidence.has(edge.caller)) {
+        unknownGeneratorParameterEvidence.add(edge.caller);
         changed = true;
       }
       if (!edge.callee || !inferred.has(edge.callee)) continue;
@@ -525,7 +533,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const effect of actual) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "missing", severity: "error", line, message: `${graphNode.name} requires /* uneffect: effect ${formatEffect(effect)} */` });
     for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}` });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
-    const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });
   }
   return { diagnostics, summaries };

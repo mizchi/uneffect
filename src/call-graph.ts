@@ -6,6 +6,7 @@ import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./fronten
 export type CallableKind = "function" | "method" | "arrow" | "function-expression";
 export type InvocationTiming = "inline" | "deferred" | "unknown";
 export interface EffectParameter { index: number; name: string; timing: InvocationTiming }
+export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
 export interface CallGraphNode {
   id: string;
   name: string;
@@ -14,6 +15,7 @@ export interface CallGraphNode {
   span: { start: number; end: number };
   overloads: string[];
   effectParameters: EffectParameter[];
+  iteratorEffectParameters: IteratorEffectParameter[];
 }
 export interface CallGraphEdge {
   caller: string;
@@ -27,6 +29,8 @@ export interface CallGraphEdge {
   dischargesThrow?: boolean;
   executesBody?: boolean;
   unknownGeneratorConsumption?: boolean;
+  unknownGeneratorParameterIndex?: number;
+  dischargesUnknownGeneratorParameters?: boolean;
 }
 export interface ProgramCallGraph { nodes: CallGraphNode[]; edges: CallGraphEdge[] }
 export interface InstantiatedCallbackEffects { effects: Effect[]; evidence: EvidenceStatus; suspends: boolean }
@@ -78,7 +82,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
   const nodes = declarations.map((declaration): CallGraphNode => {
     const nameNode = callableName(declaration), symbol = nameNode ? resolvedSymbol(checker, nameNode) : undefined;
     const overloads = symbol?.declarations?.filter((item): item is ts.FunctionDeclaration | ts.MethodDeclaration => (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body).map((item) => checker.signatureToString(checker.getSignatureFromDeclaration(item)!)) ?? [];
-    return { id: stableId(declaration), name: nameNode?.getText() ?? "<anonymous>", kind: kindOf(declaration), fileName: declaration.getSourceFile().fileName, span: { start: declaration.getStart(), end: declaration.getEnd() }, overloads, effectParameters: [] };
+    return { id: stableId(declaration), name: nameNode?.getText() ?? "<anonymous>", kind: kindOf(declaration), fileName: declaration.getSourceFile().fileName, span: { start: declaration.getStart(), end: declaration.getEnd() }, overloads, effectParameters: [], iteratorEffectParameters: [] };
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
   type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
@@ -160,11 +164,58 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
   const promiseIterableConsumerArgument = (parent: ts.Node, expression: ts.Expression): boolean =>
     ts.isCallExpression(parent) && parent.arguments[0] === expression && isStandardLibraryCall(parent)
     && ["Promise.all", "Promise.allSettled", "Promise.any", "Promise.race"].includes(parent.expression.getText());
+  const iteratorParameterCache = new Map<ts.FunctionLikeDeclaration, IteratorEffectParameter[]>();
+  const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
+    const cached = iteratorParameterCache.get(declaration);
+    if (cached) return cached;
+    const parameterIndices = new Map<ts.Symbol, number>();
+    declaration.parameters.forEach((parameter, index) => {
+      if (ts.isIdentifier(parameter.name)) {
+        const symbol = resolvedSymbol(checker, parameter.name);
+        if (symbol) parameterIndices.set(symbol, index);
+      }
+    });
+    const consumed = new Map<number, boolean>();
+    const record = (expression: ts.Expression, convertsThrowToRejection = false): void => {
+      if (!ts.isIdentifier(expression)) return;
+      const index = parameterIndices.get(resolvedSymbol(checker, expression)!);
+      if (index === undefined || !checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) return;
+      const previous = consumed.get(index);
+      consumed.set(index, previous === false ? false : convertsThrowToRejection);
+    };
+    const visit = (node: ts.Node): void => {
+      if (node !== declaration && ts.isFunctionLike(node)) return;
+      if (ts.isForOfStatement(node)) record(node.expression);
+      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) record(node.expression);
+      if (ts.isSpreadElement(node)) record(node.expression);
+      if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) record(node.initializer);
+      if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
+        && iterableConsumerArgument(node, node.arguments[0])) record(
+          node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
+        );
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
+        && node.expression.name.text === "next") record(node.expression.expression);
+      ts.forEachChild(node, visit);
+    };
+    visit(declaration.body!);
+    const result = [...consumed].map(([index, convertsThrowToRejection]) => ({
+      index, name: declaration.parameters[index]!.name.getText(), convertsThrowToRejection,
+    }));
+    iteratorParameterCache.set(declaration, result);
+    return result;
+  };
+  for (const declaration of declarations) byId.get(stableId(declaration))!.iteratorEffectParameters = iteratorParametersOf(declaration);
   const edges: CallGraphEdge[] = [];
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
+    const iteratorParameterIndices = new Map<ts.Symbol, number>();
     const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>(), unknownGeneratorBindings = new Set<ts.Symbol>(), pureIteratorBindings = new Set<ts.Symbol>();
     declaration.parameters.forEach((parameter, index) => { if (ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)) parameters.set(parameter.name.text, index); });
+    declaration.parameters.forEach((parameter, index) => {
+      if (!ts.isIdentifier(parameter.name)) return;
+      const symbol = resolvedSymbol(checker, parameter.name);
+      if (symbol) iteratorParameterIndices.set(symbol, index);
+    });
     const timings = new Map<number, InvocationTiming>();
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
@@ -201,12 +252,44 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         if (unknownGeneratorBindings.has(binding)) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true });
         return Boolean(targets || unknownGeneratorBindings.has(binding) || pureIteratorBindings.has(binding));
       };
-      if (ts.isForOfStatement(node)) addStoredGeneratorConsumption(node.expression);
-      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) addStoredGeneratorConsumption(node.expression);
-      if (ts.isSpreadElement(node)) addStoredGeneratorConsumption(node.expression);
-      if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) addStoredGeneratorConsumption(node.initializer);
+      const addUnknownGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): void => {
+        const parameterIndex = ts.isIdentifier(expression)
+          ? iteratorParameterIndices.get(resolvedSymbol(checker, expression)!) : undefined;
+        edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true, unknownGeneratorParameterIndex: parameterIndex });
+      };
+      const specializeIteratorArgument = (expression: ts.Expression, convertsThrowToRejection: boolean): boolean => {
+        if (addStoredGeneratorConsumption(expression, convertsThrowToRejection)) return true;
+        if (ts.isCallExpression(expression)) {
+          const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
+          const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
+          const generators = returnedGeneratorDeclarations(target);
+          if (generators) {
+            for (const generator of generators) edges.push({ caller, callee: stableId(generator), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
+            return true;
+          }
+          if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
+            if (!isStandardLibraryCall(expression)) addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+            return true;
+          }
+        }
+        if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
+          addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+          return true;
+        }
+        return false;
+      };
+      const consumeStoredOrUnknown = (expression: ts.Expression, convertsThrowToRejection = false): void => {
+        if (addStoredGeneratorConsumption(expression, convertsThrowToRejection) || ts.isCallExpression(expression)) return;
+        if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
+          addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+        }
+      };
+      if (ts.isForOfStatement(node)) consumeStoredOrUnknown(node.expression);
+      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) consumeStoredOrUnknown(node.expression);
+      if (ts.isSpreadElement(node)) consumeStoredOrUnknown(node.expression);
+      if (ts.isVariableDeclaration(node) && ts.isArrayBindingPattern(node.name) && node.initializer) consumeStoredOrUnknown(node.initializer);
       if ((ts.isCallExpression(node) || ts.isNewExpression(node)) && node.arguments?.[0]
-        && iterableConsumerArgument(node, node.arguments[0])) addStoredGeneratorConsumption(
+        && iterableConsumerArgument(node, node.arguments[0])) consumeStoredOrUnknown(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
         );
       if (ts.isCallExpression(node)) {
@@ -229,13 +312,19 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const convertsThrowToRejection = promiseIterableConsumerArgument(node.parent, node);
         const unknownGeneratorConsumption = consumptionSyntax && !returnedGenerators
           && isOpaqueIteratorCall(node);
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption });
+        const iteratorContracts = targetDeclaration ? iteratorParametersOf(targetDeclaration) : [];
+        const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
+          && iteratorContracts.every((contract) => {
+            const argument = node.arguments[contract.index];
+            return Boolean(argument && specializeIteratorArgument(argument, contract.convertsThrowToRejection));
+          });
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") {
           const receiver = node.expression.expression;
           const resolved = ts.isCallExpression(receiver) || addStoredGeneratorConsumption(receiver);
           if (!resolved && checker.getPropertyOfType(checker.getTypeAtLocation(receiver), "next")) {
-            edges.push({ caller, kind: "direct", timing: "inline", span: { start: receiver.getStart(), end: receiver.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true, unknownGeneratorConsumption: true });
+            addUnknownGeneratorConsumption(receiver);
           }
         }
         if (parameterIndex !== undefined) timings.set(parameterIndex, "inline");
