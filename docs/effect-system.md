@@ -81,8 +81,11 @@ consumption sites, including sequential early returns, exhaustive `if` branches,
 and conditional expressions. Every normal return path must resolve; candidates
 are unioned while the factory's own immediate body effects remain on the normal
 call edge. General iterator escape, partial/dynamic factories, alias chains, and
-opaque consumer APIs are not yet modeled as consumption and must not be used as
-proof that their transitive effects were checked.
+opaque consumer APIs are not proof that their transitive effects were checked.
+When a direct consumption call has an iterator-like `next` type but its factory
+cannot be completely resolved, the Program summary becomes `evidence:
+"unknown"`; this status propagates through callers. Non-iterator collection
+factories are not degraded by this generator-specific check.
 
 ## Domain effects and semantic footprints
 

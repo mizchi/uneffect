@@ -154,9 +154,15 @@ describe("multi-file call graph and effect polymorphism", () => {
           if (log) return logOnly()
           return failOnly()
         }
+        declare function externalIterator(): Generator<string>
+        export function choosePartial(log: boolean) {
+          if (log) return logOnly()
+          return externalIterator()
+        }
+        export function values() { return [1, 2, 3] }
       `);
       writeFileSync(main, `
-        import { generate, chooseIterator } from "./library.js"
+        import { generate, chooseIterator, choosePartial, values } from "./library.js"
         export function constructOnly() { generate() }
         export function buildIterator() { return generate() }
         export function consumeNext() { const iterator = generate(); iterator.next() }
@@ -165,6 +171,11 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function consumeBranchingFactory(log: boolean) {
           for (const value of chooseIterator(log)) void value
         }
+        export function consumePartialFactory(log: boolean) {
+          for (const value of choosePartial(log)) void value
+        }
+        export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
+        export function consumeArrayFactory() { for (const value of values()) void value }
         /* uneffect: effect Console */
         export function caughtConsumption() { try { generate().next() } catch {} }
       `);
@@ -201,6 +212,12 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeBranchingFactory", effect: "Throw<TypeError>", kind: "missing",
       }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumePartialFactory"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "outerPartialFactory"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeArrayFactory"))
+        .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });

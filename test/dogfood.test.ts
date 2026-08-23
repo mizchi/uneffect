@@ -361,6 +361,7 @@ describe("Uneffect dogfood", () => {
         function* flushSteps() { console.log("prepare flush"); yield "ready" }
         /* uneffect: effect Throw<TypeError> */
         function* failedFlushSteps() { throw new TypeError("flush unavailable") }
+        declare function externalFlushSteps(): Generator<string>
         function buildFlushSteps(preferCache: boolean) {
           if (preferCache) return flushSteps()
           return failedFlushSteps()
@@ -400,6 +401,11 @@ describe("Uneffect dogfood", () => {
 
     const broken = await verifyUneffectProject({ temporalRuntime: "node", files: { "src/node-service.ts": source.replace(' | Console', '') } });
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({ functionName: "scheduleFlush", effect: "Console" }));
+    const partialFactory = await verifyUneffectProject({ temporalRuntime: "node", files: {
+      "src/node-service.ts": source.replace("return failedFlushSteps()", "return externalFlushSteps()"),
+    } });
+    expect(partialFactory.effects.summaries.find((summary) => summary.functionName === "scheduleFlush"))
+      .toMatchObject({ evidence: "unknown" });
   });
 
   it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {

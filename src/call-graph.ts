@@ -26,6 +26,7 @@ export interface CallGraphEdge {
   arguments: string[];
   dischargesThrow?: boolean;
   executesBody?: boolean;
+  unknownGeneratorConsumption?: boolean;
 }
 export interface ProgramCallGraph { nodes: CallGraphNode[]; edges: CallGraphEdge[] }
 export interface InstantiatedCallbackEffects { effects: Effect[]; evidence: EvidenceStatus; suspends: boolean }
@@ -174,8 +175,13 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
           || (ts.isYieldExpression(node.parent) && node.parent.asteriskToken !== undefined && node.parent.expression === node)
         );
         const generatorConsumption = Boolean(targetDeclaration?.asteriskToken) && consumptionSyntax;
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow, executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true });
         const returnedGenerators = consumptionSyntax ? returnedGeneratorDeclarations(targetDeclaration) : undefined;
+        const signatureSource = signatureDeclaration?.getSourceFile();
+        const unknownGeneratorConsumption = consumptionSyntax && !returnedGenerators
+          && Boolean(checker.getPropertyOfType(checker.getTypeAtLocation(node), "next"))
+          && !(signatureSource?.isDeclarationFile
+            && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(signatureSource.fileName));
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow, executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") addStoredGeneratorConsumption(node.expression.expression);
         if (parameterIndex !== undefined) timings.set(parameterIndex, "inline");

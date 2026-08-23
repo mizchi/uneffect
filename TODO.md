@@ -356,6 +356,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Defer Generator effects from iterator construction to direct `.next()`, `for..of`/`for await`, and `yield*` consumption edges in local and Program call graphs.
   - [x] Resolve acyclic definite-return generator factories at direct consumption sites while retaining the factory's own immediate effects.
   - [x] Expand every resolved candidate of branching/conditional generator factories only when all normal return paths are known; partial factories remain unsupported.
+  - [x] Mark iterator-like consumption through unresolved/partial generator factories as `unknown` evidence and propagate that status transitively to callers.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.
