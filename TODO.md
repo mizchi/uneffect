@@ -638,7 +638,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Resolve the imported `node:net` `Server.close(callback)` member by TypeChecker identity and model its external completion and close-phase execution without matching user-defined `close` methods.
       - [x] Propagate capability effects from inline and named deferred builtin callback bodies into the enclosing callable summary without treating callback registration itself as that capability; keep synchronous `Throw` separate across the deferred boundary.
       - [x] Model TypeChecker-resolved `node:dns` `lookup` and `lookupService` as `Net`-capable externally completed poll callbacks while ignoring shadowed names; narrow literal `lookup` hostnames to `Net<"host">` and retain dynamic/reverse lookups as broad `Net`.
-      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, dynamic abort composition, and polymorphic parent callback dispatch.
+      - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
+      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, aliased or mutated dynamic abort composition, and polymorphic parent callback dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

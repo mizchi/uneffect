@@ -80,6 +80,8 @@ export interface AbortCompositionPattern {
   sourceCompositions?: (number | undefined)[];
   sourceReasons: (string | undefined)[];
   initiallyAbortedSource?: number;
+  sourcePaths?: number[][];
+  initiallyAbortedSources?: (number | undefined)[];
   span: { start: number; end: number };
 }
 type AbortTarget = { timer?: number; composition?: number; alreadyAborted?: boolean; reason?: string };
@@ -1030,11 +1032,26 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const existing = bindings.size === 0 ? inlineAbortCompositionTargets.get(expression) : undefined;
         if (existing !== undefined) return existing;
         const argument = expression.arguments[operation.signalsArgument];
-        const elements = argument ? expandStaticArray(argument) : undefined;
-        if (!elements || !elements.every((element): element is ts.Expression => !ts.isOmittedExpression(element))) return undefined;
+        let normalizedArgument = argument;
+        while (normalizedArgument && ts.isParenthesizedExpression(normalizedArgument)) normalizedArgument = normalizedArgument.expression;
+        const conditionalPaths = normalizedArgument && ts.isConditionalExpression(normalizedArgument)
+          ? [expandStaticArray(normalizedArgument.whenTrue), expandStaticArray(normalizedArgument.whenFalse)] : undefined;
+        const validConditionalPaths = conditionalPaths?.every((path): path is (ts.Expression | ts.OmittedExpression)[] => Boolean(path))
+          ? conditionalPaths as (ts.Expression | ts.OmittedExpression)[][] : undefined;
+        const singlePath = validConditionalPaths ? undefined : argument ? expandStaticArray(argument) : undefined;
+        const paths = validConditionalPaths ?? (singlePath ? [singlePath] : undefined);
+        if (!paths || !paths.flat().every((element): element is ts.Expression => !ts.isOmittedExpression(element))) return undefined;
+        const elements = paths.flat() as ts.Expression[];
         const targets = elements.map((element) => abortTarget(element, seen, bindings));
+        let offset = 0;
+        const sourcePaths = paths.map((path) => {
+          const start = offset;
+          offset += path.length;
+          return Array.from({ length: path.length }, (_, index) => start + index);
+        });
+        const initiallyAbortedSources = sourcePaths.map((path) => path.find((source) => targets[source]?.alreadyAborted));
         const composition = abortCompositions.length;
-        const initiallyAbortedSource = targets.findIndex((target) => target?.alreadyAborted);
+        const initiallyAbortedSource = validConditionalPaths ? -1 : targets.findIndex((target) => target?.alreadyAborted);
         const expressionSource = expression.getSourceFile();
         abortCompositions.push({
           owner: ownerName,
@@ -1043,6 +1060,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           sourceCompositions: targets.map((target) => target?.composition),
           sourceReasons: targets.map((target) => target?.reason),
           initiallyAbortedSource: initiallyAbortedSource < 0 ? undefined : initiallyAbortedSource,
+          ...(validConditionalPaths ? { sourcePaths, initiallyAbortedSources } : {}),
           span: { start: expression.getStart(expressionSource), end: expression.getEnd() },
         });
         const target: AbortTarget = {
@@ -1915,7 +1933,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   const lines = [`module ${safe(moduleName)} {`, `  var ${clock}: int`, `  var ${phase}: int`, "  var wrong_phase: bool", "  var fifo_broken: bool", "  var scheduler_priority_broken: bool", "  var scheduler_abort_broken: bool", "  var abort_source_broken: bool", "  var callback_precondition_broken: bool", "  var next_microtask_ticket: int"];
   temporalStates.forEach((state) => lines.push(`  var ${safe(state.name)}: ${formatTemporalValueType(state.type)}`));
   model.timers.forEach((timer, index) => lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`, ...(timer.externalAbortSignal ? [`  var callback_${index}_external_aborted: bool`] : []), ...(timer.priorityChanges?.length ? [`  var callback_${index}_priority: int`, `  var callback_${index}_priority_step: int`] : [])));
-  abortCompositions.forEach((_, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`));
+  abortCompositions.forEach((composition, index) => lines.push(`  var abort_${index}_aborted: bool`, `  var abort_${index}_reason_source: int`, `  var abort_${index}_reason_overwritten: bool`, ...(composition.sourcePaths ? [`  var abort_${index}_path: int`] : [])));
   microtasks.forEach((index) => lines.push(`  var callback_${index}_ticket: int`));
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`, `  var promise_reaction_${chainIndex}_${stage}_ticket: int`)));
   lines.push("", "  action init = all {", `    ${clock}' = 0,`, `    ${phase}' = 1,`, "    wrong_phase' = false,", "    fifo_broken' = false,", "    scheduler_priority_broken' = false,", "    scheduler_abort_broken' = false,", "    abort_source_broken' = false,", "    callback_precondition_broken' = false,", `    next_microtask_ticket' = ${initialJobs.length},`);
@@ -1934,6 +1952,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   abortCompositions.forEach((composition, index) => {
     const source = composition.initiallyAbortedSource;
     lines.push(`    abort_${index}_aborted' = ${source !== undefined},`, `    abort_${index}_reason_source' = ${source === undefined ? 0 : source + 1},`, `    abort_${index}_reason_overwritten' = false,`);
+    if (composition.sourcePaths) lines.push(`    abort_${index}_path' = -1,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => {
     chain.links.forEach((_, stage) => {
@@ -1943,7 +1962,7 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   });
   lines.push("  }");
   const promiseVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`, `promise_reaction_${chainIndex}_${stage}_ticket`])) ?? [];
-  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.priorityChanges?.length ? [`callback_${index}_priority`, `callback_${index}_priority_step`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((_, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`]), ...promiseVariables];
+  const variables = [clock, phase, "wrong_phase", "fifo_broken", "scheduler_priority_broken", "scheduler_abort_broken", "abort_source_broken", "callback_precondition_broken", "next_microtask_ticket", ...temporalStates.map((state) => safe(state.name)), ...model.timers.flatMap((timer, index) => [`callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`, ...(timer.externalAbortSignal ? [`callback_${index}_external_aborted`] : []), ...(timer.priorityChanges?.length ? [`callback_${index}_priority`, `callback_${index}_priority_step`] : []), ...(timer.queue === "microtask" ? [`callback_${index}_ticket`] : [])]), ...abortCompositions.flatMap((composition, index) => [`abort_${index}_aborted`, `abort_${index}_reason_source`, `abort_${index}_reason_overwritten`, ...(composition.sourcePaths ? [`abort_${index}_path`] : [])]), ...promiseVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
     actions.push(name); lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`));
@@ -1951,6 +1970,14 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     lines.push("  }");
   };
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [] : [`${phase} == ${expected}`];
+  abortCompositions.forEach((composition, compositionIndex) => composition.sourcePaths?.forEach((_, pathIndex) => {
+    const initialSource = composition.initiallyAbortedSources?.[pathIndex];
+    action(`choose_abort_${compositionIndex}_path_${pathIndex}`, [`abort_${compositionIndex}_path == -1`], new Map([
+      [`abort_${compositionIndex}_path`, String(pathIndex)],
+      [`abort_${compositionIndex}_aborted`, String(initialSource !== undefined)],
+      [`abort_${compositionIndex}_reason_source`, String(initialSource === undefined ? 0 : initialSource + 1)],
+    ]));
+  }));
   const jobs = [...microtasks.map((index) => ({ pending: `callback_${index}_pending`, ticket: `callback_${index}_ticket` })), ...(promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.map((_, stage) => ({ pending: `promise_reaction_${chainIndex}_${stage}_pending`, ticket: `promise_reaction_${chainIndex}_${stage}_ticket` }))) ?? [])];
   const fifoViolation = (ticket: string): string => jobs.map((job) => `(${job.pending} and ${job.ticket} < ${ticket})`).join(" or ") || "false";
   const fifoGuards = (ticket: string): string[] => options.allowOutOfOrderMicrotasks ? [] : [`not(${fifoViolation(ticket)})`];
@@ -2027,11 +2054,13 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     });
     const violation = outranking.join(" or ") || "false";
     const abortViolation = [timer.abortComposition === undefined ? undefined : `abort_${timer.abortComposition}_aborted`, timer.abortTimer === undefined ? undefined : `callback_${timer.abortTimer}_fires > 0`].filter((term): term is string => Boolean(term)).join(" or ") || "false";
+    const abortChoiceGuards = timer.abortComposition !== undefined && abortCompositions[timer.abortComposition]?.sourcePaths
+      ? [`abort_${timer.abortComposition}_path >= 0`] : [];
     const updates = new Map<string, string>([
       [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
     ]);
     enqueueChildren(index, updates);
-    const guards = [...phaseGuard(0), ...pendingPriorityChanges, `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
+    const guards = [...phaseGuard(0), ...pendingPriorityChanges, ...abortChoiceGuards, `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
     applyCallbackSummary(index, guards, updates);
     action(timerAction("run", timer, index), guards, updates);
     if (options.allowRunAbortedSchedulerTask && abortViolation !== "false") action(`run_aborted_scheduler_task_${index}`, [`callback_${index}_pending`, `(${abortViolation})`], new Map([
@@ -2060,7 +2089,10 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
       const timer = composition.sourceTimers[sourceIndex];
       const sourceComposition = composition.sourceCompositions?.[sourceIndex];
       const source = sourceIndex + 1;
-      const firstAbortGuard = options.allowAbortReasonOverwrite ? [] : [`not(abort_${compositionIndex}_aborted)`];
+      const pathGuard = composition.sourcePaths
+        ? [`(${composition.sourcePaths.flatMap((path, pathIndex) => path.includes(sourceIndex) ? [`abort_${compositionIndex}_path == ${pathIndex}`] : []).join(" or ") || "false"})`]
+        : [];
+      const firstAbortGuard = [...pathGuard, ...(options.allowAbortReasonOverwrite ? [] : [`not(abort_${compositionIndex}_aborted)`])];
       if (sourceComposition !== undefined) action(`abort_${compositionIndex}_from_composition_${sourceComposition}`, [...firstAbortGuard, ...(options.allowEarlyAbortComposition ? [] : [`abort_${sourceComposition}_aborted`])], new Map([
         [`abort_${compositionIndex}_aborted`, "true"], [`abort_${compositionIndex}_reason_source`, String(source)], [`abort_${compositionIndex}_reason_overwritten`, `abort_${compositionIndex}_aborted`], ["abort_source_broken", `not(abort_${sourceComposition}_aborted)`],
       ]));

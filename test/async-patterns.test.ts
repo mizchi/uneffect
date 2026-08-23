@@ -356,6 +356,32 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("preserves conditional AbortSignal.any source paths without inventing an always-present source", () => {
+    const model = analyzeAsyncPatterns("conditional-abort-any.ts", `
+      function request(flag: boolean) {
+        const signal = AbortSignal.any(flag
+          ? [AbortSignal.abort("stop")]
+          : [AbortSignal.timeout(25)])
+        scheduler.postTask(() => undefined, { signal })
+        return signal
+      }
+    `);
+    expect(model.abortCompositions).toEqual([
+      expect.objectContaining({
+        sources: ['AbortSignal.abort("stop")', "AbortSignal.timeout(25)"],
+        sourcePaths: [[0], [1]],
+        initiallyAbortedSources: [0, undefined],
+      }),
+    ]);
+    const quint = generateWebEventLoopQuint("conditional_abort_any", model);
+    expect(quint).toMatch(/action choose_abort_0_path_0[\s\S]*abort_0_aborted' = true/);
+    expect(quint).toMatch(/action choose_abort_0_path_1[\s\S]*abort_0_aborted' = false/);
+    expect(quint).toMatch(/action abort_0_from_timer_0[\s\S]*abort_0_path == 1/);
+    const runTask = quint.slice(quint.indexOf("action run_scheduler_task_1"), quint.indexOf("action cancel_scheduler_task_1"));
+    expect(runTask).toContain("abort_0_path >= 0");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("propagates abort from one local AbortSignal.any composition into another", () => {
     const model = analyzeAsyncPatterns("nested-abort-any.ts", `
       function request(controller: AbortController) {

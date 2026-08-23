@@ -1117,4 +1117,19 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action complete_poll_0");
     expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2/);
   });
+
+  it("keeps conditional cancellation policies path-correlated", () => {
+    const fileName = "examples/dogfood/conditional-abort-task.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.abortCompositions).toMatchObject([{
+      sourcePaths: [[0], [1, 2]],
+      initiallyAbortedSources: [0, undefined],
+    }]);
+    const quint = generateWebEventLoopQuint("conditional_abort_task", model);
+    expect(quint).toContain("action choose_abort_0_path_0");
+    expect(quint).toContain("action choose_abort_0_path_1");
+    expect(quint).toMatch(/action abort_0_from_timer_0[\s\S]*abort_0_path == 1/);
+  }, 20_000);
 });
