@@ -70,6 +70,11 @@ export interface ResourceAliasEscape {
   owner: string;
   resource: string;
   alias: string;
+  generation: {
+    acquisitionIndex: number;
+    repeated: boolean;
+    snapshot: string;
+  };
   assignmentSpan: { start: number; end: number };
   useSpan: { start: number; end: number };
 }
@@ -545,6 +550,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const visitFunction = (ownerNode: ts.FunctionLikeDeclaration): void => {
     if (!ownerNode.body) return;
     const owner = functionName(ownerNode), ownedResources: ResourceBinding[] = [], resourceSymbols = new Map<ts.Symbol, ResourceBinding>();
+    const repeatedResourceSymbols = new Set<ts.Symbol>();
+    const isInsideIteration = (node: ts.Node): boolean => {
+      for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
+        if (ts.isWhileStatement(parent) || ts.isDoStatement(parent) || ts.isForStatement(parent)
+          || ts.isForInStatement(parent) || ts.isForOfStatement(parent)) return true;
+      }
+      return false;
+    };
     const controlPaths = (node: ts.Node): AsyncControlCondition[][] => {
       let paths: AsyncControlCondition[][] = [[]];
       let child = node;
@@ -649,7 +662,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             span: { start: declaration.getStart(source), end: declaration.getEnd() } };
           resources.push(resource); ownedResources.push(resource);
           const resourceSymbol = checker.getSymbolAtLocation(declaration.name);
-          if (resourceSymbol) resourceSymbols.set(resourceSymbol, resource);
+          if (resourceSymbol) {
+            resourceSymbols.set(resourceSymbol, resource);
+            if (isInsideIteration(declaration)) repeatedResourceSymbols.add(resourceSymbol);
+          }
           if ((!asynchronous && !protocol.sync) || (asynchronous && !protocol.async && !protocol.sync)) diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, declaration.getStart(source)), kind: "invalid-disposable", severity: "error", message: `${declaration.name.text} does not provide the ${asynchronous ? "Symbol.asyncDispose or Symbol.dispose" : "Symbol.dispose"} protocol required by ${asynchronous ? "await using" : "using"}` });
         }
       }
@@ -679,7 +695,12 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.forEachChild(node, visit);
     };
     visit(ownerNode.body);
-    type ResourceAliasFact = { resource: ResourceBinding; alias: string; assignmentSpan: { start: number; end: number } };
+    type ResourceAliasFact = {
+      resource: ResourceBinding;
+      alias: string;
+      generation: ResourceAliasEscape["generation"];
+      assignmentSpan: { start: number; end: number };
+    };
     const escapedAliases = new Map<ts.Symbol, ResourceAliasFact>();
     const escapedAggregateAliases = new Map<ts.Symbol, Map<string, ResourceAliasFact>>();
     const aggregateRootAliases = new Map<ts.Symbol, ts.Symbol>();
@@ -759,7 +780,17 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const symbolAliasFact = (symbol: ts.Symbol | undefined, alias: string, node: ts.Node): ResourceAliasFact | undefined => {
       const resource = symbol && resourceSymbols.get(symbol);
-      return resource ? { resource, alias, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } }
+      const repeated = Boolean(symbol && repeatedResourceSymbols.has(symbol));
+      return resource ? {
+        resource,
+        alias,
+        generation: {
+          acquisitionIndex: resource.acquisitionIndex,
+          repeated,
+          snapshot: repeated ? `generation_${resource.acquisitionIndex}@${node.getStart(source)}` : `single_${resource.acquisitionIndex}`,
+        },
+        assignmentSpan: { start: node.getStart(source), end: node.getEnd() },
+      }
         : symbol ? escapedAliases.get(symbol) : undefined;
     };
     const aliasFact = (expression: ts.Expression | undefined): ResourceAliasFact | undefined => {
@@ -773,7 +804,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     };
     const reportAliasUse = (node: ts.Expression, escaped: ResourceAliasFact, identity: ts.Symbol | string): void => {
       if (reportedAliasUses.has(identity) || node.getStart(source) < escaped.resource.scopeEnd) return;
-      const alias: ResourceAliasEscape = { owner, resource: escaped.resource.binding, alias: escaped.alias, assignmentSpan: escaped.assignmentSpan, useSpan: { start: node.getStart(source), end: node.getEnd() } };
+      const alias: ResourceAliasEscape = { owner, resource: escaped.resource.binding, alias: escaped.alias, generation: escaped.generation, assignmentSpan: escaped.assignmentSpan, useSpan: { start: node.getStart(source), end: node.getEnd() } };
       resourceAliases.push(alias); reportedAliasUses.add(identity);
       diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
     };
@@ -1081,7 +1112,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const fact = aliasFact(node.right);
         if (ts.isIdentifier(node.left)) {
           const symbol = checker.getSymbolAtLocation(node.left);
-          if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+          if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
           else if (symbol && !isConditionalResourceExecution(node)) escapedAliases.delete(symbol);
           const rightSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
           if (symbol && rightSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(rightSymbol));
@@ -1091,7 +1122,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (slot && fact) {
             const slots = escapedAggregateAliases.get(slot.root) ?? new Map<string, ResourceAliasFact>();
             for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
-            slots.set(slot.key, { resource: fact.resource, alias: slot.alias, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+            slots.set(slot.key, { resource: fact.resource, alias: slot.alias, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
             escapedAggregateAliases.set(slot.root, slots);
           } else if (slot && !isConditionalResourceExecution(node)) {
             const slots = escapedAggregateAliases.get(slot.root);
@@ -1103,7 +1134,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const symbol = checker.getSymbolAtLocation(node.name), fact = aliasFact(node.initializer);
-        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
         const initializerSymbol = node.initializer && ts.isIdentifier(node.initializer) ? checker.getSymbolAtLocation(node.initializer) : undefined;
         if (symbol && initializerSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(initializerSymbol));
         if (node.initializer && !ts.isIdentifier(node.initializer)) collectDisposedAliasFlow(node.initializer);

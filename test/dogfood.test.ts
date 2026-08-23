@@ -239,7 +239,10 @@ describe("Uneffect dogfood", () => {
     const broken = analyzeAsyncSafetyInProgram(brokenProgram, brokenProgram.getSourceFile(brokenFile)!);
     expect(broken.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "brokenRetry", resource: "attempt", alias: "forwardedState.active[attemptSlot]",
+      generation: expect.objectContaining({ acquisitionIndex: 0, repeated: true }),
     }));
+    expect(broken.resourceAliases.find((alias) => alias.owner === "brokenRetry")?.generation.snapshot)
+      .toMatch(/^generation_0@\d+$/);
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "brokenRetry", kind: "disposed-resource-use", severity: "error",
     }));

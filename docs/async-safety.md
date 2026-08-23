@@ -497,7 +497,11 @@ rejects the resulting terminal execution.
 It proves cleanup ordering when the resource cannot escape its lexical
 iteration. This is not a data-state fixed point: loop-carried values and
 escaping aliases that retain an older generation remain outside the unified
-lowering.
+lowering. The separate `resourceAliases` evidence now preserves the matching
+acquisition index, whether the acquisition site repeats, and a stable symbolic
+snapshot such as `generation_0@412`. This identifies which abstract generation
+must eventually be connected to alias-state lowering; it does not yet prove
+relations between snapshots from different iterations.
 
 The TypeChecker frontend separately recognizes source-ordered assignments from
 a `using`/`await using` binding through local symbol alias chains. If an alias is read

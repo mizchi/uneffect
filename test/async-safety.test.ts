@@ -1774,7 +1774,9 @@ describe("async error and explicit resource safety", () => {
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "broken", resource: "resource", alias: "second",
+      generation: expect.objectContaining({ acquisitionIndex: 0, repeated: false }),
     }));
+    expect(result.resourceAliases.find((alias) => alias.owner === "broken")?.generation.snapshot).toBe("single_0");
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "broken", kind: "disposed-resource-use",
     }));
