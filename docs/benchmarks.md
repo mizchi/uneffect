@@ -162,6 +162,9 @@ Replacing that selector with a boolean-only compound predicate
 (`mode === "proxy" && enabled`) measured 122.20 ms mean over 20 samples (1.80%
 RME). This single run does not establish an improvement, but shows no visible
 regression from left-to-right short-circuit folding in the same workload.
+Expressing the selector as a conditional expression and reusing the same
+predicate evaluator measured 123.30 ms mean over 20 samples (1.87% RME), again
+inside the preceding cold-analysis range.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

@@ -1873,6 +1873,9 @@ describe("async error and explicit resource safety", () => {
         if (enabled || opaqueBoolean()) return new Proxy({ ready: true }, { get: Reflect.get })
         return { ready: true }
       }
+      function conditionalExpressionGate<T>(enabled: boolean, value: T): T | { ready: boolean } {
+        return enabled ? value : { ready: true }
+      }
       function switchGate(mode: "alias" | "proxy" | "plain") {
         switch (mode) {
           case "alias":
@@ -1912,6 +1915,8 @@ describe("async error and explicit resource safety", () => {
       const compoundOrProxyGate = compoundOrGate("plain", true)
       const shortCircuitedProxyGate = shortCircuitGate(true)
       const dynamicCompoundGate = compoundAndGate("proxy", dynamicChoice)
+      const conditionalExpressionProxyGate = conditionalExpressionGate(true, new Proxy({ ready: true }, { get: Reflect.get }))
+      const dynamicConditionalExpressionGate = conditionalExpressionGate(dynamicChoice, new Proxy({ ready: true }, { get: Reflect.get }))
       const stringSwitchGate = switchGate("alias")
       const numberSwitchGate = numericSwitchGate(200)
       const fallbackSwitchGate = defaultSwitchGate("fallback")
@@ -2111,6 +2116,24 @@ describe("async error and explicit resource safety", () => {
         }
         success?.send()
       }
+      async function literalConditionalExpressionFactoryProxy(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { conditionalExpressionProxyGate.ready; success = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function dynamicConditionalExpressionIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { dynamicConditionalExpressionGate.ready; success = resource } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
     `);
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "factoryProxy");
     expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
@@ -2135,6 +2158,8 @@ describe("async error and explicit resource safety", () => {
     expect(result.resourceAliases.find((alias) => alias.owner === "dynamicSwitchIsUnknown")?.generation.relation).toBe("latest");
     expect(result.resourceAliases.filter((alias) => alias.owner === "literalCompoundFactoryProxy").map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional", "conditional"]);
     expect(result.resourceAliases.find((alias) => alias.owner === "dynamicCompoundIsUnknown")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.find((alias) => alias.owner === "literalConditionalExpressionFactoryProxy")?.generation.relation).toBe("conditional");
+    expect(result.resourceAliases.find((alias) => alias.owner === "dynamicConditionalExpressionIsUnknown")?.generation.relation).toBe("latest");
   });
 
   it("tracks an imported Proxy factory through a re-export", () => {
@@ -2152,8 +2177,9 @@ describe("async error and explicit resource safety", () => {
           return selectCompoundGate(mode, true)
         }
         function selectCompoundGate(mode: "proxy" | "plain", enabled: boolean) {
-          if (mode === "proxy" && enabled) return new Proxy({ ready: true }, { get: Reflect.get })
-          return { ready: true }
+          return mode === "proxy" && enabled
+            ? new Proxy({ ready: true }, { get: Reflect.get })
+            : { ready: true }
         }
       `);
       writeFileSync(barrel, `export { createGate as makeGate, forwardGate as forward, selectGate as select } from "./factory.js"`);

@@ -606,6 +606,11 @@ Both reached operands must resolve to booleans: general JavaScript truthiness,
 dynamic residual operands, explicit `undefined` defaulting, and mutable
 condition sources are not specialized.
 
+The same static predicate evaluator selects one branch of a conditional
+expression before Proxy provenance is joined. If its condition remains
+dynamic, both expression branches must independently resolve to Proxy values;
+a mixed Proxy/plain ternary remains unknown.
+
 Strict equality and inequality are folded when both operands resolve to finite
 string, number, or boolean literals through the same immutable/substitution
 rules. Operand order is irrelevant. Coercive `==`/`!=`, relational comparisons,

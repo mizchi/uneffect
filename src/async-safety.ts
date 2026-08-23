@@ -570,50 +570,55 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     type ProxyFactoryDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
     const isProxyFactoryDeclaration = (declaration: ts.Node): declaration is ProxyFactoryDeclaration =>
       ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
+    type StaticPrimitive = { value: string | number | boolean };
+    const staticPrimitive = (
+      expression: ts.Expression,
+      substitutions: ReadonlyMap<ts.Symbol, ts.Expression>,
+      seen = new Set<ts.Symbol>(),
+    ): StaticPrimitive | undefined => {
+      if (expression.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
+      if (expression.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
+      if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return { value: expression.text };
+      if (ts.isNumericLiteral(expression)) return { value: Number(expression.text) };
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticPrimitive(expression.expression, substitutions, seen);
+      if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
+        const operand = staticPrimitive(expression.operand, substitutions, seen);
+        return typeof operand?.value === "boolean" ? { value: !operand.value } : undefined;
+      }
+      if (ts.isBinaryExpression(expression)
+        && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+          || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+        const left = staticPrimitive(expression.left, substitutions, new Set(seen));
+        if (typeof left?.value !== "boolean") return undefined;
+        if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left.value) return { value: false };
+        if (expression.operatorToken.kind === ts.SyntaxKind.BarBarToken && left.value) return { value: true };
+        const right = staticPrimitive(expression.right, substitutions, new Set(seen));
+        return typeof right?.value === "boolean" ? right : undefined;
+      }
+      if (ts.isBinaryExpression(expression)
+        && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+          || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+        const left = staticPrimitive(expression.left, substitutions, new Set(seen));
+        const right = staticPrimitive(expression.right, substitutions, new Set(seen));
+        if (!left || !right) return undefined;
+        const equal = left.value === right.value;
+        return { value: expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ? equal : !equal };
+      }
+      if (!ts.isIdentifier(expression)) return undefined;
+      const symbol = targetSymbol(expression);
+      if (!symbol || seen.has(symbol)) return undefined;
+      const replacement = substitutions.get(symbol) ?? immutableInitializer(expression);
+      return replacement && replacement !== expression
+        ? staticPrimitive(replacement, substitutions, new Set([...seen, symbol])) : undefined;
+    };
     type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
     const returnedExpressions = (declaration: ProxyFactoryDeclaration, substitutions: ReadonlyMap<ts.Symbol, ts.Expression>): ts.Expression[] | undefined => {
       if (!declaration.body) return undefined;
       if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return [declaration.body];
       if (!ts.isBlock(declaration.body)) return undefined;
-      type StaticPrimitive = { value: string | number | boolean };
-      const staticPrimitive = (expression: ts.Expression, seen = new Set<ts.Symbol>()): StaticPrimitive | undefined => {
-        if (expression.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
-        if (expression.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
-        if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return { value: expression.text };
-        if (ts.isNumericLiteral(expression)) return { value: Number(expression.text) };
-        if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticPrimitive(expression.expression, seen);
-        if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
-          const operand = staticPrimitive(expression.operand, seen);
-          return typeof operand?.value === "boolean" ? { value: !operand.value } : undefined;
-        }
-        if (ts.isBinaryExpression(expression)
-          && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-            || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
-          const left = staticPrimitive(expression.left, new Set(seen));
-          if (typeof left?.value !== "boolean") return undefined;
-          if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left.value) return { value: false };
-          if (expression.operatorToken.kind === ts.SyntaxKind.BarBarToken && left.value) return { value: true };
-          const right = staticPrimitive(expression.right, new Set(seen));
-          return typeof right?.value === "boolean" ? right : undefined;
-        }
-        if (ts.isBinaryExpression(expression)
-          && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
-            || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
-          const left = staticPrimitive(expression.left, new Set(seen));
-          const right = staticPrimitive(expression.right, new Set(seen));
-          if (!left || !right) return undefined;
-          const equal = left.value === right.value;
-          return { value: expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ? equal : !equal };
-        }
-        if (!ts.isIdentifier(expression)) return undefined;
-        const symbol = targetSymbol(expression);
-        if (!symbol || seen.has(symbol)) return undefined;
-        const replacement = substitutions.get(symbol) ?? immutableInitializer(expression);
-        return replacement && replacement !== expression ? staticPrimitive(replacement, new Set([...seen, symbol])) : undefined;
-      };
       const staticBoolean = (expression: ts.Expression): boolean | undefined => {
-        const primitive = staticPrimitive(expression);
+        const primitive = staticPrimitive(expression, substitutions);
         return typeof primitive?.value === "boolean" ? primitive.value : undefined;
       };
       const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
@@ -648,7 +653,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const blockFlow = (block: ts.Block): ReturnFlow | undefined => statementsFlow(block.statements);
       const switchFlow = (statement: ts.SwitchStatement): ReturnFlow | undefined => {
-        const discriminant = staticPrimitive(statement.expression);
+        const discriminant = staticPrimitive(statement.expression, substitutions);
         if (!discriminant) return undefined;
         let entry: number | undefined, defaultEntry: number | undefined;
         for (const [index, clause] of statement.caseBlock.clauses.entries()) {
@@ -656,7 +661,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             defaultEntry = index;
             continue;
           }
-          const candidate = staticPrimitive(clause.expression);
+          const candidate = staticPrimitive(clause.expression, substitutions);
           if (!candidate) return undefined;
           if (candidate.value === discriminant.value) {
             entry = index;
@@ -699,6 +704,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       }
       if (ts.isConditionalExpression(initializer)) {
+        const selected = staticPrimitive(initializer.condition, substitutions);
+        if (typeof selected?.value === "boolean") {
+          return isBuiltinProxyReceiver(
+            selected.value ? initializer.whenTrue : initializer.whenFalse,
+            new Set(seen), substitutions, new Set(substituted),
+          );
+        }
         return isBuiltinProxyReceiver(initializer.whenTrue, new Set(seen), substitutions, new Set(substituted))
           && isBuiltinProxyReceiver(initializer.whenFalse, new Set(seen), substitutions, new Set(substituted));
       }

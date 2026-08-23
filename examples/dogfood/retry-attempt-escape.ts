@@ -31,8 +31,7 @@ function forwardProxiedFlushGate<T>(value: T): T {
   return value;
 }
 function selectProxiedFlushGate<T>(mode: "proxy" | "plain", enabled: boolean, value: T): T | { ready: boolean } {
-  if (mode === "proxy" && enabled) return value;
-  return { ready: true };
+  return mode === "proxy" && enabled ? value : { ready: true };
 }
 const proxiedFlushGate = forwardProxiedFlushGate(selectProxiedFlushGate("proxy", true, createProxiedFlushGate()));
 const forwardedProxiedFlushGate = proxiedFlushGate;
