@@ -352,6 +352,21 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     substitutions = new Map<ts.Symbol, ts.Expression>(),
     generatorStack = new Set<ts.Symbol>(),
   ): FiniteIterableExpansion | undefined => {
+    const unwrapProjectionBase = (expression: ts.Expression): ts.Expression => {
+      while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+      return expression;
+    };
+    const projectObjectProperty = (expression: ts.Expression, key: string): ts.Expression | undefined => {
+      const object = unwrapProjectionBase(expression);
+      if (key === "__proto__" || !ts.isObjectLiteralExpression(object)
+        || object.properties.some((property) => !ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property.name))) return undefined;
+      const properties = [...object.properties].reverse() as ts.PropertyAssignment[];
+      return properties.find((property) => {
+        const name = property.name;
+        return (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) && name.text === key;
+      })?.initializer;
+    };
     const substitute = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>, seen = new Set<ts.Symbol>()): ts.Expression => {
       if (ts.isIdentifier(expression)) {
         const symbol = resolvedSymbol(expression);
@@ -361,6 +376,21 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const nextSeen = new Set(seen);
         nextSeen.add(symbol);
         return substitute(replacement, bindings, nextSeen);
+      }
+      if (ts.isPropertyAccessExpression(expression)) {
+        const base = substitute(expression.expression, bindings, new Set(seen));
+        const projected = projectObjectProperty(base, expression.name.text);
+        if (projected) return substitute(projected, bindings, new Set(seen));
+        return base === expression.expression ? expression : ts.factory.createPropertyAccessExpression(base, expression.name);
+      }
+      if (ts.isElementAccessExpression(expression) && expression.argumentExpression) {
+        const base = substitute(expression.expression, bindings, new Set(seen));
+        const argument = substitute(expression.argumentExpression, bindings, new Set(seen));
+        const key = ts.isStringLiteral(argument) || ts.isNumericLiteral(argument) ? argument.text : undefined;
+        const projected = key === undefined ? undefined : projectObjectProperty(base, key);
+        if (projected) return substitute(projected, bindings, new Set(seen));
+        return base === expression.expression && argument === expression.argumentExpression ? expression
+          : ts.factory.createElementAccessExpression(base, argument);
       }
       if (ts.isParenthesizedExpression(expression)) {
         const inner = substitute(expression.expression, bindings, seen);

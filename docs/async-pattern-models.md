@@ -178,8 +178,12 @@ rebuilt, and string/number literal operands are folded only for rejection-reason
 evidence. If either operand remains dynamic, the batch stays finite but its
 reason remains unknown. Template-literal spans use the same substitution rule
 and fold to a concrete string only when every embedded expression is literal.
-Property/index rewriting, other operators, and general expression substitution
-remain outside this finite fragment and do not receive call-site specialization.
+Property and literal-index reads are projected recursively when the substituted
+base is a direct immutable object literal containing only non-computed property
+assignments. Spreads, getters, methods, computed/dynamic keys, `__proto__`, other
+operators, and general expression substitution remain outside this finite
+fragment and do not receive value specialization; their finite slot still
+exists, but its rejection reason remains unknown.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing

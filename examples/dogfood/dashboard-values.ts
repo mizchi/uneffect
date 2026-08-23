@@ -14,11 +14,14 @@ export const dashboardSnapshotValues = {
   },
 };
 
-export function dashboardFailures(cacheReason: string, networkService: string): Iterable<Promise<never>> {
+export function dashboardFailures(details: {
+  cache: { reason: string };
+  network: { service: string };
+}): Iterable<Promise<never>> {
   return {
     *[Symbol.iterator](): Generator<Promise<never>> {
-      yield Promise.reject(`${cacheReason}`);
-      yield Promise.reject(new TypeError(`${networkService}-down`));
+      yield Promise.reject(`${details.cache.reason}`);
+      yield Promise.reject(new TypeError(`${details.network.service}-down`));
     },
   };
 }

@@ -1244,6 +1244,43 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("projects finite generator arguments through immutable object properties", () => {
+    const model = analyzeAsyncPatterns("generator-property-substitution.ts", `
+      type Failure = { reason: string; nested: { message: string }; codes: { quota: string } }
+      function* failures(details: Failure) {
+        yield Promise.reject(details.reason)
+        yield Promise.reject(new Error(details.nested.message))
+        yield Promise.reject(details.codes["quota"])
+      }
+      async function fixed() {
+        return Promise.any(failures({
+          reason: "quota-exceeded",
+          nested: { message: "storage full" },
+          codes: { quota: "Q1" },
+        } as const))
+      }
+      async function dynamic(info: Failure) { return Promise.any(failures(info)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: [
+        'Promise.reject("quota-exceeded")',
+        'Promise.reject(new Error("storage full"))',
+        'Promise.reject("Q1")',
+      ],
+      aggregateErrorReasons: [
+        { kind: "literal", value: "quota-exceeded" },
+        { kind: "error", errorType: "Error", message: "storage full" },
+        { kind: "literal", value: "Q1" },
+      ],
+    });
+    expect(model.combinators[1]).toMatchObject({
+      staticIterable: true,
+      branches: ["Promise.reject(info.reason)", "Promise.reject(new Error(info.nested.message))", 'Promise.reject(info.codes["quota"])'],
+      aggregateErrorReasons: [null, { kind: "error", errorType: "Error" }, null],
+    });
+  });
+
   it("rejects recursive generator delegation without recursing indefinitely", () => {
     const model = analyzeAsyncPatterns("recursive-generator-delegation.ts", `
       function* recursive(): Generator<number> {
