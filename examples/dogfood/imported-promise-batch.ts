@@ -22,7 +22,7 @@ export async function loadImportedDashboardSnapshot(): Promise<string[]> {
 }
 
 export async function loadImportedDashboardFallback(): Promise<never> {
-  return Promise.any([...dashboardFailures("cache-miss", "network-down")]);
+  return Promise.any([...dashboardFailures("cache-miss", "network")]);
 }
 
 export async function loadConditionalDashboard(

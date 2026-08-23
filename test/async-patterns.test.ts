@@ -1199,12 +1199,15 @@ describe("builtin async temporal patterns", () => {
         yield Promise.reject(new TypeError(message))
         yield Promise.reject(reason + "!")
         yield Promise.reject(new Error(message + " unavailable"))
+        yield Promise.reject(\`\${reason}?\`)
+        yield Promise.reject(new Error(\`service: \${message}\`))
       }
       function* values(remote: PromiseLike<string>) {
         yield Promise.resolve(remote)
       }
       function* dynamicFailure(reason: string) {
         yield Promise.reject(reason + "!")
+        yield Promise.reject(\`\${reason}?\`)
       }
       async function fallback() { return Promise.any(failures("network-down", "bad gateway")) }
       async function load(network: PromiseLike<string>) { return Promise.all(values(network)) }
@@ -1217,12 +1220,16 @@ describe("builtin async temporal patterns", () => {
         'Promise.reject(new TypeError("bad gateway"))',
         'Promise.reject("network-down" + "!")',
         'Promise.reject(new Error("bad gateway" + " unavailable"))',
+        'Promise.reject(\`${"network-down"}?\`)',
+        'Promise.reject(new Error(\`service: ${"bad gateway"}\`))',
       ],
       aggregateErrorReasons: [
         { kind: "literal", value: "network-down" },
         { kind: "error", errorType: "TypeError", message: "bad gateway" },
         { kind: "literal", value: "network-down!" },
         { kind: "error", errorType: "Error", message: "bad gateway unavailable" },
+        { kind: "literal", value: "network-down?" },
+        { kind: "error", errorType: "Error", message: "service: bad gateway" },
       ],
     });
     expect(model.combinators[1]).toMatchObject({
@@ -1232,8 +1239,8 @@ describe("builtin async temporal patterns", () => {
     });
     expect(model.combinators[2]).toMatchObject({
       staticIterable: true,
-      branches: ['Promise.reject(reason + "!")'],
-      aggregateErrorReasons: [null],
+      branches: ['Promise.reject(reason + "!")', 'Promise.reject(\`${reason}?\`)'],
+      aggregateErrorReasons: [null, null],
     });
   });
 

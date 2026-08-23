@@ -14,11 +14,11 @@ export const dashboardSnapshotValues = {
   },
 };
 
-export function dashboardFailures(cacheReason: string, networkMessage: string): Iterable<Promise<never>> {
+export function dashboardFailures(cacheReason: string, networkService: string): Iterable<Promise<never>> {
   return {
     *[Symbol.iterator](): Generator<Promise<never>> {
-      yield Promise.reject(cacheReason);
-      yield Promise.reject(new TypeError(networkMessage));
+      yield Promise.reject(`${cacheReason}`);
+      yield Promise.reject(new TypeError(`${networkService}-down`));
     },
   };
 }

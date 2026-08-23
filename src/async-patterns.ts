@@ -159,6 +159,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           ? String(left) + String(right) : left + right;
       }
     }
+    if (ts.isTemplateExpression(expression)) {
+      let value = expression.head.text;
+      for (const span of expression.templateSpans) {
+        const embedded = literalReason(span.expression);
+        if (embedded === undefined) return undefined;
+        value += String(embedded) + span.literal.text;
+      }
+      return value;
+    }
     return undefined;
   };
   const immutableInitializer = (expression: ts.Expression, seen = new Set<ts.Symbol>()): ts.Expression => {
@@ -372,6 +381,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const right = substitute(expression.right, bindings, new Set(seen));
         return left === expression.left && right === expression.right ? expression
           : ts.factory.createBinaryExpression(left, expression.operatorToken, right);
+      }
+      if (ts.isTemplateExpression(expression)) {
+        const spans = expression.templateSpans.map((span) => {
+          const embedded = substitute(span.expression, bindings, new Set(seen));
+          return embedded === span.expression ? span : ts.factory.createTemplateSpan(embedded, span.literal);
+        });
+        return spans.every((span, index) => span === expression.templateSpans[index]) ? expression
+          : ts.factory.createTemplateExpression(expression.head, spans);
       }
       return expression;
     };
