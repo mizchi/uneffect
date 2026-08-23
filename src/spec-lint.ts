@@ -10,7 +10,7 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -1048,6 +1048,18 @@ export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLi
   for (const action of spec.actions) if (action.guard && await check(spec, [temporalToSmt(action.guard.expressionAst, (name) => name, symbols)]) === "unsat") diagnostics.push({
     code: "unreachable-action", name: action.name, backend: "z3", message: `${action.name} has an unsatisfiable guard for every typed state`,
   });
+  for (const property of spec.responses) {
+    const trigger = temporalToSmt(property.triggerAst, (name) => name, symbols);
+    const response = temporalToSmt(property.responseAst, (name) => name, symbols);
+    if (await check(spec, [trigger]) === "unsat") diagnostics.push({
+      code: "unsatisfiable-response-trigger", name: property.name, backend: "z3",
+      message: `${property.name} has an unsatisfiable trigger for every typed state, so its response obligation can never start`,
+    });
+    else if (await check(spec, [trigger, `(not ${response})`]) === "unsat") diagnostics.push({
+      code: "statewise-vacuous-response", name: property.name, backend: "z3",
+      message: `${property.name} is already satisfied whenever its trigger holds in any typed state, so it imposes no future response obligation`,
+    });
+  }
 
   for (let index = 0; index < spec.properties.length; index++) {
     const current = spec.properties[index]!;
@@ -1118,6 +1130,17 @@ export function lintTemporalSpec(spec: TemporalSpec): SpecLintDiagnostic[] {
     else if (![...referencedNames(property.expressionAst)].some((name) => stateNames.has(name))) diagnostics.push({
       code: "state-independent-invariant", name: property.name,
       message: `${property.name} does not reference temporal state`,
+    });
+  }
+  for (const property of spec.responses) {
+    const trigger = constantBoolean(property.triggerAst);
+    if (trigger === false) diagnostics.push({
+      code: "unsatisfiable-response-trigger", name: property.name,
+      message: `${property.name} has a statically false trigger, so its response obligation can never start`,
+    });
+    else if (same(property.triggerAst, property.responseAst) || constantBoolean(property.responseAst) === true) diagnostics.push({
+      code: "statewise-vacuous-response", name: property.name,
+      message: `${property.name} is already satisfied whenever its trigger holds, so it imposes no future response obligation`,
     });
   }
   for (const action of spec.actions) if (action.assignments.length > 0

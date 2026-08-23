@@ -722,11 +722,15 @@ describe("spec IR and generated verifier programs", () => {
       action idle: epoch' = epoch
       temporal tautology: epoch === epoch
       temporal contradiction: epoch !== epoch
+      temporal_response neverStarts: false => epoch === 1
+      temporal_response alreadyDone: epoch === 0 => epoch === 0
     */`);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "tautological-invariant", name: "tautology" }),
       expect.objectContaining({ code: "contradictory-invariant", name: "contradiction" }),
       expect.objectContaining({ code: "no-op-action", name: "idle" }),
+      expect.objectContaining({ code: "unsatisfiable-response-trigger", name: "neverStarts" }),
+      expect.objectContaining({ code: "statewise-vacuous-response", name: "alreadyDone" }),
     ]));
   });
 
@@ -754,6 +758,27 @@ describe("spec IR and generated verifier programs", () => {
       expect.objectContaining({ code: "duplicate-property", name: "positiveAgain" }),
       expect.objectContaining({ code: "subsumed-property", name: "nonnegative", relatedName: "positive" }),
     ]));
+  });
+
+  it("uses Z3 to reject response properties with impossible or immediately satisfied triggers", async () => {
+    const temporal = parseSpec("response-vacuity.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action advance: epoch' = epoch + 1
+      temporal_response impossible: epoch < 0 && epoch >= 0 => epoch === 0
+      temporal_response immediate: epoch > 0 => epoch >= 0
+      temporal_response meaningful: epoch > 0 => epoch === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalSpecWithZ3(temporal);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "unsatisfiable-response-trigger", name: "impossible", backend: "z3",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "statewise-vacuous-response", name: "immediate", backend: "z3",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "statewise-vacuous-response", name: "meaningful",
+    }));
   });
 
   it("combines syntax and solver diagnostics from source text", async () => {

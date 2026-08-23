@@ -12,7 +12,7 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
-import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3 } from "../src/spec-lint.js";
+import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
@@ -287,11 +287,14 @@ describe("Uneffect dogfood", () => {
     const fileName = "examples/realtime.ts";
     const temporal = parseSpec(fileName, readFileSync(fileName, "utf8")).temporal;
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 3 });
+    const semanticDiagnostics = await lintTemporalSpecWithZ3(temporal);
     expect(temporal.responses).toContainEqual(expect.objectContaining({
       name: "requestCompletes", trigger: "pending", response: "!pending",
     }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "initially-vacuous-liveness", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }));
+    expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "unsatisfiable-response-trigger", name: "requestCompletes" }));
+    expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-response", name: "requestCompletes" }));
     expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal requestCompletes = pending leadsTo not(pending)");
   });
 

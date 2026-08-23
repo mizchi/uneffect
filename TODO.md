@@ -198,6 +198,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Find bounded reachable lassos violating `temporal_eventually`, enforcing weak and strong action fairness on the loop before reporting an unbounded witness.
     - [x] Diagnose an eventuality that is already true in every initial state and therefore imposes no future progress obligation.
     - [x] Add TypeScript-style `temporal_response name: trigger => response`, lower it to Quint `leadsTo`, and find fairness-respecting Z3 lasso violations.
+    - [x] Reject response properties whose trigger is impossible or whose response is already guaranteed whenever the trigger holds.
     - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support nested/general temporal formulas beyond `eventually`.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.

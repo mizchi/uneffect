@@ -413,6 +413,12 @@ reachability lint reports `reachable-response-cycle` only for a complete
 reachable lasso where the trigger occurs, the response stays false through the
 loop, and all declared weak/strong action fairness constraints hold. It does
 not mislabel a finite prefix with a pending response as an infinite violation.
+Semantic lint separately reports `unsatisfiable-response-trigger` when no typed
+state can start the obligation, and `statewise-vacuous-response` when Z3 proves
+that the response already holds whenever the trigger holds. Cheap syntax lint
+catches the corresponding literal-false and identical/true predicate cases
+without starting a solver. These checks classify all typed states; they do not
+claim transition-system reachability.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
