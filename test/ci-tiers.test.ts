@@ -44,6 +44,13 @@ describe("CI test tier manifest", () => {
     expect(justfile).toContain("tsx ci/run-test-tiers.ts integration");
   });
 
+  it("retries transport failures while preserving checksum-pinned CI tool downloads", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).toContain("curl --fail --location --retry 3 --retry-all-errors --retry-delay 2");
+    expect(workflow).toContain('echo "$JUST_SHA256  $archive" | sha256sum --check');
+    expect(workflow).toContain('echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check');
+  });
+
   it("keeps per-test process isolation selectors synchronized with their files", () => {
     for (const [file, selected] of Object.entries(ciIsolatedTestNames)) {
       const source = readFileSync(join(process.cwd(), file), "utf8");

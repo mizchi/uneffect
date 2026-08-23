@@ -35,7 +35,7 @@ jobs:
         run: |
           archive="$RUNNER_TEMP/just.tar.gz"
           bin_dir="$RUNNER_TEMP/just-bin"
-          curl --fail --location --retry 3 --output "$archive" "https://github.com/casey/just/releases/download/$JUST_VERSION/just-$JUST_VERSION-x86_64-unknown-linux-musl.tar.gz"
+          curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 --output "$archive" "https://github.com/casey/just/releases/download/$JUST_VERSION/just-$JUST_VERSION-x86_64-unknown-linux-musl.tar.gz"
           echo "$JUST_SHA256  $archive" | sha256sum --check
           install -d "$bin_dir"
           tar -xzf "$archive" -C "$bin_dir" just
@@ -74,7 +74,7 @@ jobs:
         run: |
           archive="$RUNNER_TEMP/quint-evaluator.tar.gz"
           destination="$HOME/.quint/rust-evaluator-$QUINT_EVALUATOR_VERSION"
-          curl --fail --location --retry 3 --output "$archive" "https://github.com/informalsystems/quint/releases/download/evaluator%2F$QUINT_EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --location --retry 3 --retry-all-errors --retry-delay 2 --output "$archive" "https://github.com/informalsystems/quint/releases/download/evaluator%2F$QUINT_EVALUATOR_VERSION/quint_evaluator-x86_64-unknown-linux-gnu.tar.gz"
           echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check
           install -d "$destination"
           tar -xzf "$archive" -C "$destination"
