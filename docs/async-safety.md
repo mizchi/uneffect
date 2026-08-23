@@ -523,6 +523,14 @@ and mandatory clears, either as a switch clause or as a standalone statement;
 this applies equally to direct aliases and static aggregate slots. `throw`,
 `break`, `continue`, and earlier conditional
 abrupt completion remain conservative in this alias-flow subset. The same
+flow recognizes loop-local resource aliases that are terminally cleared on
+every executed iteration. Zero-iteration `for` and `while` paths retain their
+entry state, while `do...while` applies its mandatory first iteration. A
+`break`, `continue`, `return`, or `throw` before the terminal clear prevents
+this loop join; general loop invariants and inter-iteration alias generations
+remain unsupported.
+
+The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the

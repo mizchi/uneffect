@@ -30,3 +30,16 @@ export async function finalizeConditional(alreadyClosed: boolean): Promise<void>
   else pending = undefined;
   pending?.flush();
 }
+
+export async function finalizeDeliveryBatch(deliveryIds: readonly string[]): Promise<void> {
+  let pending: DeliverySession | undefined;
+  for (const deliveryId of deliveryIds) {
+    {
+      await using session = openDeliverySession();
+      pending = session;
+      void deliveryId;
+    }
+    pending = undefined; // iteration cleanup
+  }
+  pending?.flush();
+}

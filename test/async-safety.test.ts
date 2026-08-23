@@ -1539,6 +1539,64 @@ describe("async error and explicit resource safety", () => {
         else return
         alias?.send()
       }
+      async function clearedEveryIteration(items: readonly number[]) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+          alias = undefined
+        }
+        alias?.send()
+      }
+      async function unclearedIteration(items: readonly number[]) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+        }
+        alias?.send()
+      }
+      async function zeroIterationPreservesEscape(items: readonly number[]) {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        for (const item of items) {
+          void item
+          alias = undefined
+        }
+        alias?.send()
+      }
+      async function doWhileClearsEscape() {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        do alias = undefined
+        while (false)
+        alias?.send()
+      }
+      async function breakBeforeClear(items: readonly number[], stop: boolean) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+          if (stop) break
+          alias = undefined
+        }
+        alias?.send()
+      }
       async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
         let alias: Resource | undefined
         {
@@ -1696,6 +1754,21 @@ describe("async error and explicit resource safety", () => {
       functionName: "returnedOrCleared", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedEveryIteration", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "unclearedIteration", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "zeroIterationPreservesEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "doWhileClearsEscape", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "breakBeforeClear", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -1837,6 +1910,18 @@ describe("async error and explicit resource safety", () => {
         else holder["current"] = undefined
         holder.current?.send()
       }
+      async function aggregateClearedEveryIteration(items: readonly number[]) {
+        const holder: { current?: Resource } = {}
+        for (const item of items) {
+          {
+            await using resource = open()
+            holder.current = resource
+            void item
+          }
+          holder.current = undefined
+        }
+        holder.current?.send()
+      }
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "propertyEscape", resource: "resource", alias: "holder.current",
@@ -1864,6 +1949,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "aggregateReturnedOrCleared", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "aggregateClearedEveryIteration", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",

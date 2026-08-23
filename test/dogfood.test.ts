@@ -27,6 +27,9 @@ describe("Uneffect dogfood", () => {
     expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "finalizeConditional", kind: "disposed-resource-use",
     }));
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "finalizeDeliveryBatch", kind: "disposed-resource-use",
+    }));
 
     const broken = analyzeAsyncSafety(fileName, source.replace(
       "case \"expired\": pending = undefined; break;",
@@ -42,6 +45,14 @@ describe("Uneffect dogfood", () => {
     ));
     expect(brokenConditional.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "finalizeConditional", kind: "disposed-resource-use",
+    }));
+
+    const brokenBatch = analyzeAsyncSafety(fileName, source.replace(
+      "pending = undefined; // iteration cleanup",
+      "void deliveryId; // missing iteration cleanup",
+    ));
+    expect(brokenBatch.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "finalizeDeliveryBatch", kind: "disposed-resource-use",
     }));
   });
 

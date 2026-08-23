@@ -531,6 +531,10 @@ control, the same benchmark measured 137.89 ms mean over five cold samples
 (17.34% relative margin of error). The sample variance is too high to attribute
 the difference to the two-statement join; it establishes only that the expanded
 dogfood remains in the same approximate cold-analysis range.
+After adding loop-carried delivery-session cleanup and its missing-clear
+negative control, the fixture measured 126.77 ms mean over five cold samples
+(2.13% relative margin of error). This is below the preceding noisy sample and
+does not indicate a regression from the restricted loop-state join.
 
 ## Collection refinement receiver identity
 

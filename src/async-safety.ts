@@ -853,6 +853,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return undefined;
     };
+    const containsAbruptCompletion = (node: ts.Node): boolean => {
+      if (ts.isBreakStatement(node) || ts.isContinueStatement(node) || ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
+      if (node !== ownerNode.body && ts.isFunctionLike(node)) return false;
+      let found = false;
+      ts.forEachChild(node, (child) => { if (!found) found = containsAbruptCompletion(child); });
+      return found;
+    };
+    const hasAbruptCompletionBeforeTerminal = (statement: ts.Statement): boolean => {
+      if (!ts.isBlock(statement)) return false;
+      let terminalIndex = statement.statements.length - 1;
+      while (terminalIndex >= 0 && ts.isEmptyStatement(statement.statements[terminalIndex]!)) terminalIndex -= 1;
+      for (let index = 0; index < terminalIndex; index++) {
+        if (containsAbruptCompletion(statement.statements[index]!)) return true;
+      }
+      return false;
+    };
     type AliasClearTarget = { kind: "symbol"; symbol: ts.Symbol } | { kind: "slot"; root: ts.Symbol; key: string };
     const matchesClearTarget = (left: ts.Expression, target: AliasClearTarget): boolean => {
       if (target.kind === "symbol") return ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === target.symbol;
@@ -883,13 +899,6 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const clauseTerminallyClears = (clause: ts.CaseOrDefaultClause, target: AliasClearTarget): boolean => {
       let index = clause.statements.length - 1;
       while (index >= 0 && (ts.isEmptyStatement(clause.statements[index]!) || ts.isBreakStatement(clause.statements[index]!))) index -= 1;
-      const containsAbruptCompletion = (node: ts.Node): boolean => {
-        if (ts.isBreakStatement(node) || ts.isContinueStatement(node) || ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
-        if (node !== clause && ts.isFunctionLike(node)) return false;
-        let found = false;
-        ts.forEachChild(node, (child) => { if (!found) found = containsAbruptCompletion(child); });
-        return found;
-      };
       return index >= 0
         && !clause.statements.slice(0, index).some(containsAbruptCompletion)
         && terminallyClearsOrReturns(clause.statements[index]!, target);
@@ -977,6 +986,42 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             if (terminallyClearsOrReturns(node.thenStatement, target)
               && terminallyClearsOrReturns(node.elseStatement, target)) slots.delete(key);
           }
+        }
+        return;
+      }
+      if (ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)
+        || ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+        const aliasesBefore = new Map(escapedAliases);
+        const slotsBefore = new Map([...escapedAggregateAliases].map(([root, slots]) => [root, new Map(slots)]));
+        if (ts.isForStatement(node)) {
+          if (node.initializer) collectDisposedAliasFlow(node.initializer);
+          if (node.condition) collectDisposedAliasFlow(node.condition);
+        } else if (ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+          collectDisposedAliasFlow(node.initializer);
+          collectDisposedAliasFlow(node.expression);
+        } else if (ts.isWhileStatement(node)) collectDisposedAliasFlow(node.expression);
+        collectDisposedAliasFlow(node.statement);
+        if (ts.isForStatement(node) && node.incrementor) collectDisposedAliasFlow(node.incrementor);
+        if (ts.isDoStatement(node)) collectDisposedAliasFlow(node.expression);
+
+        const maySkip = !ts.isDoStatement(node);
+        for (const [symbol, fact] of [...escapedAliases]) {
+          const before = aliasesBefore.get(symbol);
+          if (fact === before) continue;
+          const target: AliasClearTarget = { kind: "symbol", symbol };
+          if (hasAbruptCompletionBeforeTerminal(node.statement)
+            || !terminallyClearsOrReturns(node.statement, target)) continue;
+          if (maySkip && before) escapedAliases.set(symbol, before);
+          else escapedAliases.delete(symbol);
+        }
+        for (const [root, slots] of escapedAggregateAliases) for (const [key, fact] of [...slots]) {
+          const before = slotsBefore.get(root)?.get(key);
+          if (fact === before) continue;
+          const target: AliasClearTarget = { kind: "slot", root, key };
+          if (hasAbruptCompletionBeforeTerminal(node.statement)
+            || !terminallyClearsOrReturns(node.statement, target)) continue;
+          if (maySkip && before) slots.set(key, before);
+          else slots.delete(key);
         }
         return;
       }
