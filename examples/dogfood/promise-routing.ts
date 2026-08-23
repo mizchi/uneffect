@@ -35,11 +35,12 @@ export function adaptRejectedProxy(): Promise<number> {
     const requested = property;
     switch (requested) {
       case "then":
-        if (rejectEnabled) return selectCallback(true, forwardAgain(rejectThen), resolveThen);
-        return resolveThen;
+        break;
       default:
         return undefined;
     }
+    if (rejectEnabled) return selectCallback(true, forwardAgain(rejectThen), resolveThen);
+    return resolveThen;
   };
   const trapName = "get" as const;
   const baseHandler: ProxyHandler<PromiseLike<number>> = { [trapName]: getTrap };

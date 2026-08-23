@@ -458,6 +458,9 @@ Adding a second realistic Proxy whose guarded `then` lookup throws measured
 126.45 ms mean over 20 samples (1.84% RME). The fixture now proves both callback
 rejection and getter rejection, so this increase also includes another Promise
 chain and thenable node rather than only the completion-kind check.
+Moving callback selection after an unlabeled switch `break` measured 127.81 ms
+mean over 20 samples (2.44% RME). The noisier sample remains close to the
+expanded two-Proxy fixture and does not establish a regression.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

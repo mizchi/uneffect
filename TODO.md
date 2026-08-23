@@ -529,6 +529,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Replace ad-hoc Proxy trap branch matching with a restricted return walker for nested blocks, static `if`/`else`, early returns, and proof-pure local `const` declarations; effectful statements remain conservative.
     - [x] Walk static Proxy trap `switch` routing with source-ordered case-label evaluation, default selection, and empty-clause fallthrough; reached effectful labels remain conservative.
     - [x] Propagate statically selected `throw` completion through nested Proxy trap control flow; opaque prefixes remain conservative for nontermination and hidden effects.
+    - [x] Consume an unlabeled `break` at the selected Proxy trap switch and continue into following statements; labeled breaks remain unsupported.
     - [x] Select the `then` callback from the equivalent conditional-expression Proxy forwarding shape while keeping other property selectors dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for a selected Proxy `then` callback while retaining mutable callback bindings as dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for an object-literal Proxy handler while retaining mutable handlers as dynamic.

@@ -869,6 +869,50 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("continues after an unlabeled break from a static Proxy trap switch", () => {
+    const exact = analyzePromiseChains("proxy-switch-break-trap.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            switch (property) {
+              case "then":
+                break
+              default:
+                return undefined
+            }
+            return rejectThen
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const labeled = analyzePromiseChains("proxy-labeled-switch-break-trap.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            route: switch (property) {
+              case "then":
+                break route
+              default:
+                return undefined
+            }
+            return rejectThen
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(labeled.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("resolves an immutable identity wrapper around a Proxy then callback", () => {
     const exact = analyzePromiseChains("proxy-identity-forwarded-then.ts", `
       function forward<T>(value: T): T { return value }

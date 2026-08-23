@@ -301,7 +301,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           || operator === ts.SyntaxKind.EqualsEqualsEqualsToken || operator === ts.SyntaxKind.ExclamationEqualsEqualsToken)
           && isPureTrapExpression(candidate.left) && isPureTrapExpression(candidate.right);
       };
-      type TrapReturn = { kind: "return"; expression: ts.Expression } | { kind: "throw" } | { kind: "continue" };
+      type TrapReturn = { kind: "return"; expression: ts.Expression } | { kind: "throw" }
+        | { kind: "break" } | { kind: "continue" };
       const trapStatementsReturn = (statements: readonly ts.Statement[]): TrapReturn | undefined => {
         for (const statement of statements) {
           const selected = trapStatementReturn(statement);
@@ -331,6 +332,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         for (const clause of statement.caseBlock.clauses.slice(entry)) {
           const selected = trapStatementsReturn(clause.statements);
           if (!selected) return undefined;
+          if (selected.kind === "break") return { kind: "continue" };
           if (selected.kind !== "continue") return selected;
         }
         return { kind: "continue" };
@@ -339,6 +341,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (ts.isReturnStatement(statement)) return statement.expression
           ? { kind: "return", expression: statement.expression } : undefined;
         if (ts.isThrowStatement(statement)) return { kind: "throw" };
+        if (ts.isBreakStatement(statement)) return statement.label ? undefined : { kind: "break" };
         if (ts.isEmptyStatement(statement)) return { kind: "continue" };
         if (ts.isBlock(statement)) return trapStatementsReturn(statement.statements);
         if (ts.isSwitchStatement(statement)) return trapSwitchReturn(statement);

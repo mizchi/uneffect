@@ -175,6 +175,10 @@ lookup selects a guarded or nested throw, assimilation rejects without a
 fabricated fulfillment path. An unsupported statement before that throw keeps
 the result dynamic because the prefix may not return or may have unmodeled
 observable behavior.
+An unlabeled `break` reached within the selected switch clause exits that
+switch and resumes the enclosing statement sequence. Labeled breaks are not
+collapsed into local fallthrough because their target identity is outside this
+restricted walker.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.
