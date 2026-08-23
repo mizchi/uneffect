@@ -430,6 +430,17 @@ inductive strengthening pool used for unreachable actions may produce
 `strengthened-unreachable-response-trigger`. The strengthening candidates are
 admitted only after their initialization and preservation obligations pass Z3.
 
+`temporal_repeatedly name: predicate` expresses recurrence: the predicate must
+hold infinitely often. It lowers to Quint's native composition
+`always(eventually(predicate))`. The Z3 backend reports
+`reachable-recurrence-cycle` only when it finds a complete reachable lasso on
+which the predicate is false throughout the loop and all declared action
+fairness constraints hold. A false finite prefix is insufficient. Semantic
+lint reports `unsatisfiable-recurrence-target` when no typed state can satisfy
+the predicate and `statewise-vacuous-recurrence` when every typed state already
+satisfies it. As with the other lasso searches, absence of a bounded witness is
+evidence rather than an unbounded proof.
+
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
 ## Epistemic status
@@ -445,5 +456,5 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |
-| Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality plus weak/strong action fairness |
+| Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality, response, recurrence, and weak/strong action fairness |
 | Transfer ownership state model | Implemented in TypeScript/Rust with positive and broken Quint controls |

@@ -130,7 +130,9 @@ selected strengthening properties whose own induction obligations pass.
 Automatic invariant discovery, finite-state completeness, bounded fair-lasso
 detection for `eventually`, and selected sign, relational, affine-offset, and
 collection templates are implemented. General polyhedral/quantified synthesis
-and nested temporal formulas remain open.
+and arbitrary nested temporal formulas remain open. Uneffect now supports the
+specific eventuality, response, and recurrence fragments without accepting raw
+backend syntax.
 
 Effect declarations remain equally important. The existing function/program
 effect checker diagnoses missing effects and unused upper-bound effects for its

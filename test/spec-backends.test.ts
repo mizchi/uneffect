@@ -698,6 +698,31 @@ describe("spec IR and generated verifier programs", () => {
     */`)).toThrow(/response trigger .* must be boolean/);
   });
 
+  it("parses a typed recurrence property and lowers it to always-eventually", () => {
+    const temporal = parseSpec("recurrence.ts", `/* uneffect:
+      state idle: bool
+      init idle = true
+      action toggle: idle' = !idle
+      temporal_repeatedly returnsIdle: idle
+    */`).temporal;
+    expect(temporal.recurrences).toEqual([expect.objectContaining({
+      name: "returnsIdle",
+      expression: "idle",
+    })]);
+    const quint = generateQuint("recurrence", temporal);
+    expect(quint).toContain("temporal returnsIdle = always(eventually(idle))");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-recurrence-"));
+    const path = join(directory, "recurrence.qnt");
+    writeFileSync(path, quint);
+    const typecheck = spawnSync("pnpm", ["exec", "quint", "typecheck", path], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(typecheck.status, typecheck.stdout + typecheck.stderr).toBe(0);
+    expect(() => parseSpec("typed-recurrence.ts", `/* uneffect:
+      state attempts: int
+      temporal_repeatedly retries: attempts
+    */`)).toThrow(/recurrence property .* must be boolean/);
+  });
+
   it("protects structured clocks from arbitrary writes", () => {
     expect(() => parseSpec("clock.ts", `/*
       * uneffect:
@@ -779,6 +804,25 @@ describe("spec IR and generated verifier programs", () => {
     expect(diagnostics).not.toContainEqual(expect.objectContaining({
       code: "statewise-vacuous-response", name: "meaningful",
     }));
+  });
+
+  it("rejects impossible and statewise-vacuous recurrence targets", async () => {
+    const temporal = parseSpec("recurrence-vacuity.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action advance: epoch' = epoch + 1
+      temporal_repeatedly impossible: epoch < 0 && epoch >= 0
+      temporal_repeatedly automatic: epoch > 0 || epoch <= 0
+      temporal_repeatedly meaningful: epoch === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalSpecWithZ3(temporal);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "unsatisfiable-recurrence-target", name: "impossible", backend: "z3",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "statewise-vacuous-recurrence", name: "automatic", backend: "z3",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "meaningful" }));
   });
 
   it("combines syntax and solver diagnostics from source text", async () => {
@@ -1322,6 +1366,27 @@ describe("spec IR and generated verifier programs", () => {
     );
     await expect(lintTemporalReachabilityWithZ3(model(true), { maxSteps: 3 })).resolves.not.toContainEqual(
       expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }),
+    );
+  });
+
+  it("finds a recurrence lasso and discharges it only with matching weak fairness", async () => {
+    const model = (fair: boolean) => parseSpec("recurrence-lasso.ts", `/* uneffect:
+      state idle: bool
+      init idle = true
+      action start: idle' = false
+      action_when start: idle
+      action wait: idle' = idle
+      action_when wait: !idle
+      action complete: idle' = true
+      action_when complete: !idle
+      ${fair ? "action_fair complete: weak" : ""}
+      temporal_repeatedly returnsIdle: idle
+    */`).temporal;
+    await expect(lintTemporalReachabilityWithZ3(model(false), { maxSteps: 3 })).resolves.toContainEqual(
+      expect.objectContaining({ code: "reachable-recurrence-cycle", name: "returnsIdle", depth: 2, loopStart: 1 }),
+    );
+    await expect(lintTemporalReachabilityWithZ3(model(true), { maxSteps: 3 })).resolves.not.toContainEqual(
+      expect.objectContaining({ code: "reachable-recurrence-cycle", name: "returnsIdle" }),
     );
   });
 

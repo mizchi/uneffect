@@ -10,7 +10,7 @@ export interface SpecLintDiagnostic {
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-unreachable-response-trigger" | "inductively-unreachable-response-trigger" | "strengthened-unreachable-response-trigger" | "finite-state-unreachable-response-trigger" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-recurrence-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-recurrence-target" | "statewise-vacuous-recurrence" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-unreachable-response-trigger" | "inductively-unreachable-response-trigger" | "strengthened-unreachable-response-trigger" | "finite-state-unreachable-response-trigger" | "bounded-vacuous-property" | "unsupported-backend-domain";
   name: string;
   message: string;
   relatedName?: string;
@@ -437,6 +437,7 @@ function finiteCollectionUniverse(spec: TemporalSpec): { int: number[]; bool: bo
   for (const action of spec.actions) if (action.guard) visit(action.guard.expressionAst);
   for (const property of spec.properties) visit(property.expressionAst);
   for (const property of spec.liveness) visit(property.expressionAst);
+  for (const property of spec.recurrences) visit(property.expressionAst);
   for (const property of spec.responses) { visit(property.triggerAst); visit(property.responseAst); }
   return { int: [...integers].sort((a, b) => a - b), bool: [...booleans].sort((a, b) => Number(a) - Number(b)), complete };
 }
@@ -463,6 +464,7 @@ function supportsZ3SpecExpressions(spec: TemporalSpec): boolean {
   for (const action of spec.actions) if (action.guard && !supportsZ3Expression(action.guard.expressionAst)) return false;
   for (const property of spec.properties) if (!supportsZ3Expression(property.expressionAst)) return false;
   for (const property of spec.liveness) if (!supportsZ3Expression(property.expressionAst)) return false;
+  for (const property of spec.recurrences) if (!supportsZ3Expression(property.expressionAst)) return false;
   for (const property of spec.responses) if (!supportsZ3Expression(property.triggerAst) || !supportsZ3Expression(property.responseAst)) return false;
   return true;
 }
@@ -923,6 +925,23 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
       break;
     }
   }
+  if (initStatus === "sat" && spec.actions.length > 0 && spec.recurrences.length > 0) for (const property of spec.recurrences) {
+    let found = false;
+    for (let depth = 1; depth <= maxSteps && !found; depth++) for (let loopStart = 0; loopStart < depth; loopStart++) {
+      const transitions = Array.from({ length: depth }, (_, index) => selectedStep(index));
+      const loop = spec.states.map((state) => `(= ${at(state.name, depth)} ${at(state.name, loopStart)})`);
+      const absentFromLoop = Array.from({ length: depth - loopStart }, (_, offset) =>
+        `(not ${temporalToSmt(property.expressionAst, (name) => at(name, loopStart + offset), symbols)})`);
+      const fairness = fairnessAssertions(loopStart, depth);
+      if (await checkAssertions([...init, ...transitions, ...loop, ...absentFromLoop, ...fairness]) !== "sat") continue;
+      diagnostics.push({
+        code: "reachable-recurrence-cycle", name: property.name, backend: "z3", depth, loopStart,
+        message: `${property.name} is false throughout a reachable loop starting at ${loopStart}, so it never recurs on that infinite execution while all declared action fairness constraints hold`,
+      });
+      found = true;
+      break;
+    }
+  }
   if (initStatus === "sat" && spec.actions.length > 0 && spec.responses.length > 0) for (const property of spec.responses) {
     let found = false;
     for (let depth = 1; depth <= maxSteps && !found; depth++) for (let loopStart = 0; loopStart < depth && !found; loopStart++) {
@@ -1083,6 +1102,17 @@ export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLi
   for (const action of spec.actions) if (action.guard && await check(spec, [temporalToSmt(action.guard.expressionAst, (name) => name, symbols)]) === "unsat") diagnostics.push({
     code: "unreachable-action", name: action.name, backend: "z3", message: `${action.name} has an unsatisfiable guard for every typed state`,
   });
+  for (const property of spec.recurrences) {
+    const expression = temporalToSmt(property.expressionAst, (name) => name, symbols);
+    if (await check(spec, [expression]) === "unsat") diagnostics.push({
+      code: "unsatisfiable-recurrence-target", name: property.name, backend: "z3",
+      message: `${property.name} is false for every typed state, so its recurrence obligation cannot be satisfied`,
+    });
+    else if (await check(spec, [`(not ${expression})`]) === "unsat") diagnostics.push({
+      code: "statewise-vacuous-recurrence", name: property.name, backend: "z3",
+      message: `${property.name} is true for every typed state, so its recurrence obligation imposes no temporal constraint`,
+    });
+  }
   for (const property of spec.responses) {
     const trigger = temporalToSmt(property.triggerAst, (name) => name, symbols);
     const response = temporalToSmt(property.responseAst, (name) => name, symbols);
@@ -1161,6 +1191,20 @@ export function lintTemporalSpec(spec: TemporalSpec): SpecLintDiagnostic[] {
       code: constant ? "tautological-invariant" : "contradictory-invariant",
       name: property.name,
       message: `${property.name} is statically ${constant}; it does not constrain reachable states`,
+    });
+    else if (![...referencedNames(property.expressionAst)].some((name) => stateNames.has(name))) diagnostics.push({
+      code: "state-independent-invariant", name: property.name,
+      message: `${property.name} does not reference temporal state`,
+    });
+  }
+  for (const property of spec.recurrences) {
+    const constant = constantBoolean(property.expressionAst);
+    if (constant !== undefined) diagnostics.push({
+      code: constant ? "statewise-vacuous-recurrence" : "unsatisfiable-recurrence-target",
+      name: property.name,
+      message: constant
+        ? `${property.name} is statically true, so its recurrence obligation imposes no temporal constraint`
+        : `${property.name} is statically false, so its recurrence obligation cannot be satisfied`,
     });
     else if (![...referencedNames(property.expressionAst)].some((name) => stateNames.has(name))) diagnostics.push({
       code: "state-independent-invariant", name: property.name,

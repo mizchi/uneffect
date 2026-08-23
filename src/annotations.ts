@@ -6,7 +6,7 @@ export type UneffectDirective =
   | "returns" | "state" | "clock" | "init" | "action" | "action_when" | "action_fair" | "temporal"
   | "temporal_requires" | "temporal_ensures" | "temporal_modifies" | "temporal_throws"
   | "temporal_rejects" | "temporal_suspends" | "temporal_cancellable"
-  | "temporal_eventually" | "temporal_response" | "temporal_fair" | "consumes_rejection" | "consumes_callback_rejection"
+  | "temporal_eventually" | "temporal_repeatedly" | "temporal_response" | "temporal_fair" | "consumes_rejection" | "consumes_callback_rejection"
   | "consumes_rejection_when" | "consumes_callback_rejection_when" | "retains_resource" | "retains_resource_when";
 
 export interface SourceSpan { start: number; end: number }
@@ -75,7 +75,7 @@ const directives = new Set<UneffectDirective>([
   "temporal_requires", "temporal_ensures", "temporal_modifies",
   "temporal_throws",
   "temporal_rejects", "temporal_suspends", "temporal_cancellable",
-  "temporal_eventually", "temporal_response", "temporal_fair", "consumes_rejection", "consumes_callback_rejection",
+  "temporal_eventually", "temporal_repeatedly", "temporal_response", "temporal_fair", "consumes_rejection", "consumes_callback_rejection",
   "consumes_rejection_when", "consumes_callback_rejection_when", "retains_resource", "retains_resource_when",
 ]);
 

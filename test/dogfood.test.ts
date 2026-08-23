@@ -291,12 +291,18 @@ describe("Uneffect dogfood", () => {
     expect(temporal.responses).toContainEqual(expect.objectContaining({
       name: "requestCompletes", trigger: "pending", response: "!pending",
     }));
+    expect(temporal.recurrences).toContainEqual(expect.objectContaining({
+      name: "returnsIdle", expression: "!pending",
+    }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "initially-vacuous-liveness", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-unreachable-response-trigger", name: "requestCompletes" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-recurrence-cycle", name: "returnsIdle" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "unsatisfiable-response-trigger", name: "requestCompletes" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-response", name: "requestCompletes" }));
+    expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-recurrence", name: "returnsIdle" }));
     expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal requestCompletes = pending leadsTo not(pending)");
+    expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal returnsIdle = always(eventually(not(pending)))");
   });
 
   it("proves four-way telemetry routing accounting and rejects a missing update", async () => {

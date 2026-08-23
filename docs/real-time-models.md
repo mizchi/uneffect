@@ -157,6 +157,7 @@ remaining frame callbacks and paint continue.
  * action_fair tick_clock: weak
  * temporal deadlineSafe: !pending || clock <= deadline
  * temporal_response requestCompletes: pending => !pending
+ * temporal_repeatedly returnsIdle: !pending
 */
 ```
 
@@ -166,6 +167,12 @@ Quint receives this as native `leadsTo`. Z3 searches for a reachable,
 fairness-respecting lasso where the trigger occurs and the response remains
 false forever. Absence of a lasso within the configured depth is bounded
 evidence, not a general liveness proof.
+
+`temporal_repeatedly returnsIdle: !pending` is stronger than one eventual
+completion: every suffix of an infinite execution must eventually return to an
+idle state. Uneffect lowers this typed fragment to
+`always(eventually(!pending))`; its bounded Z3 lasso search remains evidence,
+not a completeness claim.
 
 `action_when name: predicate` is TypeScript-like Uneffect syntax. It is parsed
 into the neutral expression AST and emitted as a Quint action guard; Quint
