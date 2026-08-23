@@ -473,6 +473,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Substitute supplied call arguments for identifier parameters through nested and imported/re-exported Proxy factory chains; reject missing, rest, and destructured parameter bindings.
       - [x] Specialize restricted factory `if` branches from substituted boolean literals, immutable aliases, negation, and boolean default parameters while retaining dynamic mixed branches as unknown.
       - [x] Fold strict equality and inequality between substituted string/number/boolean literals for factory branch specialization without applying coercive equality.
+      - [x] Select static string/number/boolean `switch` entries with ordered case evaluation, default selection, and fallthrough until return or unlabeled break; dynamic labels and discriminants remain unknown.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

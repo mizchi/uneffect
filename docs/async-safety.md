@@ -609,6 +609,15 @@ template interpolation, symbols, bigint, and object identity are deliberately
 not evaluated. This supports mode/status selectors without importing general
 JavaScript evaluation into the verifier.
 
+A `switch` over the same finite primitive domain is supported when the
+discriminant and every case label evaluated before selection are static. Case
+labels are checked in source order; a matching case stops label evaluation,
+while `default` is chosen only after no case matches. Return flow then proceeds
+from the selected entry through ordinary fallthrough. A top-level unlabeled
+`break` exits the switch without proving a return. Dynamic discriminants or
+encountered dynamic labels, labeled breaks, and nested abrupt control remain
+unknown.
+
 The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate

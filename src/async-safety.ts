@@ -622,16 +622,48 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             definite: whenTrue.definite && whenFalse.definite,
           } : undefined;
         }
+        if (ts.isSwitchStatement(statement)) return switchFlow(statement);
         return ts.isExpressionStatement(statement) || ts.isVariableStatement(statement) || ts.isEmptyStatement(statement)
           ? { expressions: [], definite: false } : undefined;
       };
-      const blockFlow = (block: ts.Block): ReturnFlow | undefined => {
+      const statementsFlow = (statements: readonly ts.Statement[]): ReturnFlow | undefined => {
         const expressions: ts.Expression[] = [];
-        for (const statement of block.statements) {
+        for (const statement of statements) {
           const flow = statementFlow(statement);
           if (!flow) return undefined;
           expressions.push(...flow.expressions);
           if (flow.definite) return { expressions, definite: true };
+        }
+        return { expressions, definite: false };
+      };
+      const blockFlow = (block: ts.Block): ReturnFlow | undefined => statementsFlow(block.statements);
+      const switchFlow = (statement: ts.SwitchStatement): ReturnFlow | undefined => {
+        const discriminant = staticPrimitive(statement.expression);
+        if (!discriminant) return undefined;
+        let entry: number | undefined, defaultEntry: number | undefined;
+        for (const [index, clause] of statement.caseBlock.clauses.entries()) {
+          if (ts.isDefaultClause(clause)) {
+            defaultEntry = index;
+            continue;
+          }
+          const candidate = staticPrimitive(clause.expression);
+          if (!candidate) return undefined;
+          if (candidate.value === discriminant.value) {
+            entry = index;
+            break;
+          }
+        }
+        entry ??= defaultEntry;
+        if (entry === undefined) return { expressions: [], definite: false };
+        const expressions: ts.Expression[] = [];
+        for (const clause of statement.caseBlock.clauses.slice(entry)) {
+          for (const clauseStatement of clause.statements) {
+            if (ts.isBreakStatement(clauseStatement) && !clauseStatement.label) return { expressions, definite: false };
+            const flow = statementFlow(clauseStatement);
+            if (!flow) return undefined;
+            expressions.push(...flow.expressions);
+            if (flow.definite) return { expressions, definite: true };
+          }
         }
         return { expressions, definite: false };
       };

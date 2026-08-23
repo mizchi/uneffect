@@ -653,8 +653,10 @@ describe("typed-array static verification", () => {
       const wrapGate = () => createGate()
       function forward<T>(value: T): T { return value }
       function select<T>(mode: "proxy" | "plain", value: T): T | { ready: boolean } {
-        if (mode === "proxy") return value
-        return { ready: true }
+        switch (mode) {
+          case "proxy": return value
+          default: return { ready: true }
+        }
       }
       const gate = forward(select("proxy", wrapGate()))
       async function retry(enabled: boolean) {
