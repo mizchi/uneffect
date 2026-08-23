@@ -701,10 +701,10 @@ describe("Uneffect dogfood", () => {
     expect(model.combinators).toEqual([
       expect.objectContaining({
         owner: "loadImportedDashboard",
-        branches: ['"cached-profile"', "network"],
-        branchKinds: ["value", "thenable"],
+        branches: ['"dashboard-header"', '"cached-profile"', "network"],
+        branchKinds: ["value", "value", "thenable"],
         staticIterable: true,
-        iteratorKind: "local",
+        iteratorKind: "array",
         iteratorEffects: ["InvokeUserCode"],
       }),
       expect.objectContaining({
@@ -727,7 +727,7 @@ describe("Uneffect dogfood", () => {
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
     expect(quint).not.toContain("action reject_0_0");
-    expect(quint).toContain("action assimilate_0_1");
+    expect(quint).toContain("action assimilate_0_2");
     expect(quint).toContain("action assimilate_1_1");
     expect(quint).toContain('val join_2_aggregate_error_reason_0 = "literal:string:cache-miss"');
     expect(quint).toContain('val join_2_aggregate_error_reason_1 = "error:TypeError:network-down"');

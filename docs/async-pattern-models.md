@@ -155,7 +155,10 @@ through a separate join transition rather than synchronously in `init`.
 Dynamic iterables and spreads whose operand is not itself a nested array
 literal are rejected as unsupported instead of being assigned a guessed
 cardinality. Nested array-literal spreads are recursively flattened while
-preserving holes and element order. Two other local,
+preserving holes and element order. A spread of the finite imported
+generator/custom-iterable subset is flattened as well, but retains
+`InvokeUserCode` and any iterator acquisition or step failure rather than
+becoming a pure array operation. Two other local,
 statically inspectable forms are accepted: an object whose standard
 `[Symbol.iterator]()` method directly throws during acquisition, and a linear
 generator containing only direct `yield`, `throw`, and `return` statements.

@@ -1,7 +1,7 @@
 import { dashboardFailures, dashboardSnapshotValues, dashboardValues } from "./dashboard-values.js";
 
 export async function loadImportedDashboard(network: PromiseLike<string>): Promise<string[]> {
-  return Promise.all(dashboardValues(network));
+  return Promise.all(["dashboard-header", ...dashboardValues(network)]);
 }
 
 export async function loadImportedDashboardSnapshot(): Promise<string[]> {
@@ -9,5 +9,5 @@ export async function loadImportedDashboardSnapshot(): Promise<string[]> {
 }
 
 export async function loadImportedDashboardFallback(): Promise<never> {
-  return Promise.any(dashboardFailures());
+  return Promise.any([...dashboardFailures()]);
 }
