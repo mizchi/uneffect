@@ -864,6 +864,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         && terminallyClears(terminal.thenStatement, matchesTarget)
         && terminallyClears(terminal.elseStatement!, matchesTarget);
     };
+    const clauseTerminallyClears = (clause: ts.CaseOrDefaultClause, matchesTarget: (left: ts.Expression) => boolean): boolean => {
+      let index = clause.statements.length - 1;
+      while (index >= 0 && (ts.isEmptyStatement(clause.statements[index]!) || ts.isBreakStatement(clause.statements[index]!))) index -= 1;
+      const containsAbruptCompletion = (node: ts.Node): boolean => {
+        if (ts.isBreakStatement(node) || ts.isContinueStatement(node) || ts.isReturnStatement(node) || ts.isThrowStatement(node)) return true;
+        if (node !== clause && ts.isFunctionLike(node)) return false;
+        let found = false;
+        ts.forEachChild(node, (child) => { if (!found) found = containsAbruptCompletion(child); });
+        return found;
+      };
+      return index >= 0
+        && !clause.statements.slice(0, index).some(containsAbruptCompletion)
+        && terminallyClears(clause.statements[index]!, matchesTarget);
+    };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
@@ -903,6 +917,26 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             };
             if (terminallyClears(node.thenStatement, matchesSlot)
               && terminallyClears(node.elseStatement, matchesSlot)) slots.delete(key);
+          }
+        }
+        return;
+      }
+      if (ts.isSwitchStatement(node)) {
+        collectDisposedAliasFlow(node.expression);
+        for (const clause of node.caseBlock.clauses) for (const statement of clause.statements) collectDisposedAliasFlow(statement);
+        const clauses = node.caseBlock.clauses;
+        if (clauses.some(ts.isDefaultClause)) {
+          for (const symbol of [...escapedAliases.keys()]) {
+            const matchesSymbol = (left: ts.Expression): boolean =>
+              ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;
+            if (clauses.every((clause) => clauseTerminallyClears(clause, matchesSymbol))) escapedAliases.delete(symbol);
+          }
+          for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
+            const matchesSlot = (left: ts.Expression): boolean => {
+              const slot = staticSlot(left);
+              return Boolean(slot && slot.root === root && (key === slot.key || key.startsWith(`${slot.key}/`)));
+            };
+            if (clauses.every((clause) => clauseTerminallyClears(clause, matchesSlot))) slots.delete(key);
           }
         }
         return;

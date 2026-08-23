@@ -1527,6 +1527,32 @@ describe("async error and explicit resource safety", () => {
         else alias = undefined
         alias?.send()
       }
+      async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done": alias = undefined; break
+          case "cancelled": alias = undefined; break
+          default: alias = undefined
+        }
+        alias?.send()
+      }
+      async function unclearedSwitchCase(mode: "done" | "cancelled") {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done": alias = undefined; break
+          case "cancelled": break
+          default: alias = undefined
+        }
+        alias?.send()
+      }
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "broken", resource: "resource", alias: "second",
@@ -1549,6 +1575,12 @@ describe("async error and explicit resource safety", () => {
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInBothBranches", kind: "disposed-resource-use",
     }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "unclearedSwitchCase", kind: "disposed-resource-use",
+    }));
   });
 
   it("tracks disposed resources through static local property and array slots", () => {
@@ -1560,6 +1592,19 @@ describe("async error and explicit resource safety", () => {
         {
           await using resource = open()
           holder.current = resource
+        }
+        holder.current?.send()
+      }
+      async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        switch (mode) {
+          case "done": holder.current = undefined; break
+          case "cancelled": holder["current"] = undefined; break
+          default: holder.current = undefined
         }
         holder.current?.send()
       }
@@ -1633,6 +1678,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInBothBranches", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",
     }));
   });
 

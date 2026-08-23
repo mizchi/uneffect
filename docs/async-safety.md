@@ -508,7 +508,10 @@ fact. A single conditional reassignment is conservatively not a must-kill, but
 an exhaustive `if`/`else` whose terminal statement on both sides assigns a
 value proven to be only `null | undefined` is joined as a definite clear. This
 restricted join also accepts nested exhaustive terminal branches; it does not
-claim arbitrary control-flow equivalence. The same
+claim arbitrary control-flow equivalence. A `switch` joins under the analogous
+restricted rule only when it has a `default`, every clause owns a terminal
+nullish clear, and no earlier statement can complete abruptly. Fallthrough and
+default-free switches remain conservative. The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the
