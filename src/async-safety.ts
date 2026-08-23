@@ -572,7 +572,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
     type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
     const returnedExpressions = (declaration: ProxyFactoryDeclaration): ts.Expression[] | undefined => {
-      if (declaration.parameters.length !== 0 || !declaration.body) return undefined;
+      if (!declaration.body) return undefined;
       if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return [declaration.body];
       if (!ts.isBlock(declaration.body)) return undefined;
       const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
@@ -603,21 +603,42 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const flow = blockFlow(declaration.body);
       return flow?.definite && flow.expressions.length > 0 ? flow.expressions : undefined;
     };
-    const isBuiltinProxyReceiver = (expression: ts.Expression, seen = new Set<ProxyFactoryDeclaration>()): boolean => {
+    const isBuiltinProxyReceiver = (
+      expression: ts.Expression,
+      seen = new Set<ProxyFactoryDeclaration>(),
+      substitutions = new Map<ts.Symbol, ts.Expression>(),
+      substituted = new Set<ts.Symbol>(),
+    ): boolean => {
+      if (ts.isIdentifier(expression)) {
+        const symbol = targetSymbol(expression), replacement = symbol && substitutions.get(symbol);
+        if (symbol && replacement) {
+          if (substituted.has(symbol)) return false;
+          return isBuiltinProxyReceiver(replacement, new Set(seen), substitutions, new Set([...substituted, symbol]));
+        }
+      }
       const initializer = immutableInitializer(expression);
       if (!initializer) return false;
       if (ts.isNewExpression(initializer) && ts.isIdentifier(initializer.expression) && initializer.expression.text === "Proxy") {
         return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       }
       if (ts.isConditionalExpression(initializer)) {
-        return isBuiltinProxyReceiver(initializer.whenTrue, new Set(seen)) && isBuiltinProxyReceiver(initializer.whenFalse, new Set(seen));
+        return isBuiltinProxyReceiver(initializer.whenTrue, new Set(seen), substitutions, new Set(substituted))
+          && isBuiltinProxyReceiver(initializer.whenFalse, new Set(seen), substitutions, new Set(substituted));
       }
-      if (!ts.isCallExpression(initializer) || initializer.arguments.length !== 0) return false;
+      if (!ts.isCallExpression(initializer)) return false;
       const declaration = checker.getResolvedSignature(initializer)?.declaration;
       if (!declaration || !isProxyFactoryDeclaration(declaration) || seen.has(declaration)) return false;
       const returned = returnedExpressions(declaration);
       const nextSeen = new Set([...seen, declaration]);
-      return returned !== undefined && returned.every((candidate) => isBuiltinProxyReceiver(candidate, new Set(nextSeen)));
+      const nextSubstitutions = new Map(substitutions);
+      for (const [index, parameter] of declaration.parameters.entries()) {
+        if (!ts.isIdentifier(parameter.name) || parameter.dotDotDotToken || !initializer.arguments[index]) return false;
+        const symbol = targetSymbol(parameter.name);
+        if (!symbol) return false;
+        nextSubstitutions.set(symbol, initializer.arguments[index]!);
+      }
+      return returned !== undefined && returned.every((candidate) =>
+        isBuiltinProxyReceiver(candidate, new Set(nextSeen), nextSubstitutions, new Set(substituted)));
     };
     const isInsideIteration = (node: ts.Node): boolean => {
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {

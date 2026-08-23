@@ -1812,7 +1812,7 @@ describe("async error and explicit resource safety", () => {
     expect(run(quint, 28).status).not.toBe(0);
   });
 
-  it("tracks a Proxy receiver returned by a resolved zero-argument factory", () => {
+  it("tracks a Proxy receiver returned by resolved factory chains", () => {
     const result = analyzeAsyncSafety("proxy-factory-try-resource-generations.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
@@ -1832,10 +1832,18 @@ describe("async error and explicit resource safety", () => {
       function maybeProxyGate() {
         if (selectPrimary) return new Proxy({ ready: true }, { get: Reflect.get })
       }
+      function identityGate<T>(value: T): T { return value }
+      function forwardGate<T>(value: T): T { return identityGate(value) }
+      function optionalGate(value?: { ready: boolean }) { return value }
+      function destructuredGate({ value }: { value: { ready: boolean } }) { return value }
       const gate = wrapGate()
       const dynamicGate = chooseGate(true)
       const conditionalProxyGate = chooseProxyGate()
       const fallthroughGate = maybeProxyGate()
+      const substitutedProxyGate = forwardGate(new Proxy({ ready: true }, { get: Reflect.get }))
+      const substitutedPlainGate = forwardGate({ ready: true })
+      const missingGate = optionalGate()
+      const destructuredProxyGate = destructuredGate({ value: new Proxy({ ready: true }, { get: Reflect.get }) })
       async function factoryProxy(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined
@@ -1884,6 +1892,40 @@ describe("async error and explicit resource safety", () => {
         }
         success?.send()
       }
+      async function substitutedFactoryProxy(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { substitutedProxyGate.ready; success = resource }
+          catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function substitutedPlainIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { substitutedPlainGate.ready; success = resource }
+          catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function unsupportedSubstitutionIsUnknown(enabled: boolean) {
+        let missing: Resource | undefined
+        let destructured: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try { missingGate?.ready; missing = resource }
+          catch {}
+          try { destructuredProxyGate.ready; destructured = resource }
+          catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        missing?.send()
+        destructured?.send()
+      }
     `);
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "factoryProxy");
     expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
@@ -1895,6 +1937,9 @@ describe("async error and explicit resource safety", () => {
     expect(result.resourceAliases.find((alias) => alias.owner === "conditionalFactoryIsUnknown")?.generation.relation).toBe("latest");
     expect(result.resourceAliases.find((alias) => alias.owner === "allReturnPathsAreProxies")?.generation.relation).toBe("conditional");
     expect(result.resourceAliases.find((alias) => alias.owner === "fallthroughFactoryIsUnknown")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.find((alias) => alias.owner === "substitutedFactoryProxy")?.generation.relation).toBe("conditional");
+    expect(result.resourceAliases.find((alias) => alias.owner === "substitutedPlainIsUnknown")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.filter((alias) => alias.owner === "unsupportedSubstitutionIsUnknown").map((alias) => alias.generation.relation)).toEqual(["latest", "latest"]);
   });
 
   it("tracks an imported Proxy factory through a re-export", () => {
@@ -1907,13 +1952,15 @@ describe("async error and explicit resource safety", () => {
           if (selectPrimary) return new Proxy({ ready: true }, { get: Reflect.get })
           return new Proxy({ ready: false }, { get: Reflect.get })
         }
+        export function forwardGate<T>(value: T): T { return value }
       `);
-      writeFileSync(barrel, `export { createGate as makeGate } from "./factory.js"`);
+      writeFileSync(barrel, `export { createGate as makeGate, forwardGate as forward } from "./factory.js"`);
       writeFileSync(main, `
-        import { makeGate } from "./index.js"
+        import { makeGate, forward } from "./index.js"
         interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
         declare function open(): Resource
         const gate = makeGate()
+        const forwarded = forward(new Proxy({ ready: true }, { get: Reflect.get }))
         async function importedFactoryProxy(enabled: boolean) {
           let success: Resource | undefined
           let failure: Resource | undefined
@@ -1925,6 +1972,16 @@ describe("async error and explicit resource safety", () => {
           }
           success?.send()
           failure?.send()
+        }
+        async function importedArgumentProxy(enabled: boolean) {
+          let success: Resource | undefined
+          while (enabled) {
+            await using resource = open()
+            try { forwarded.ready; success = resource }
+            catch {}
+            await Promise.resolve("tick").then((value) => value)
+          }
+          success?.send()
         }
       `);
       const program = ts.createProgram([factory, barrel, main], {
@@ -1939,6 +1996,7 @@ describe("async error and explicit resource safety", () => {
         id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
         expected: false,
       });
+      expect(result.resourceAliases.find((alias) => alias.owner === "importedArgumentProxy")?.generation.relation).toBe("conditional");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

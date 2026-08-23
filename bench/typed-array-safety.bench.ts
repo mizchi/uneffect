@@ -651,7 +651,8 @@ describe("typed-array static verification", () => {
         return new Proxy({ ready: false }, { get: Reflect.get })
       }
       const wrapGate = () => createGate()
-      const gate = wrapGate()
+      function forward<T>(value: T): T { return value }
+      const gate = forward(wrapGate())
       async function retry(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined

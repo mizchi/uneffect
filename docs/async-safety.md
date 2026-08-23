@@ -584,10 +584,14 @@ imports, and re-exports. A restricted definite-return walk also accepts nested
 blocks and `if`/`else` when every normal return expression recursively resolves
 to a Proxy; terminal throws do not create a non-Proxy receiver. Fallthrough,
 mixed return values, loops, `switch`, `try`, mutable aliases,
-argument-dependent factories, methods and dynamic dispatch, coercions,
-finally-dependent joins, and cross-loop
+methods and dynamic dispatch, coercions, finally-dependent joins, and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
-are not claimed as proved.
+are not claimed as proved. For ordinary function and arrow calls, supplied
+arguments are substituted by parameter symbol through nested factory chains,
+including imports and re-exports. This handles identity/forwarding helpers
+without trusting parameter names. Missing arguments, rest or destructured
+parameters, default-dependent flows, and mutation of parameter-derived values
+remain unknown.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

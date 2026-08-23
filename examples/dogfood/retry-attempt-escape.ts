@@ -27,7 +27,10 @@ function createProxiedFlushGate() {
     },
   });
 }
-const proxiedFlushGate = createProxiedFlushGate();
+function forwardProxiedFlushGate<T>(value: T): T {
+  return value;
+}
+const proxiedFlushGate = forwardProxiedFlushGate(createProxiedFlushGate());
 const forwardedProxiedFlushGate = proxiedFlushGate;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;

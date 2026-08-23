@@ -153,9 +153,10 @@ The corresponding immutable-Proxy receiver slice measured 122.14 ms mean over
 lowering; imported and mutable Proxy provenance remain outside the benchmarked
 proof fragment.
 Resolving the same receiver through a two-function zero-argument factory chain
-whose leaf has two Proxy-valued return paths measured 122.59 ms mean over 20
-samples (2.25% RME). The additional TypeChecker call-signature, cycle, and
-definite-return checks remain inside the existing cold Program-construction
+whose leaf has two Proxy-valued return paths, then forwarding it through a
+generic identity parameter, measured 124.44 ms mean over 20 samples (2.66%
+RME). The additional TypeChecker call-signature, cycle, definite-return, and
+symbol-substitution checks remain inside the existing cold Program-construction
 distribution.
 
 After changing the same dogfood to address the nested slot through a local
