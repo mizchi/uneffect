@@ -613,6 +613,48 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("resolves immutable Proxy handler object spreads with last-write-wins semantics", () => {
+    const exact = analyzePromiseChains("proxy-spread-get.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const base: ProxyHandler<PromiseLike<number>> = { get: (_target, property) => property === "then" ? rejectThen : undefined }
+        const handler: ProxyHandler<PromiseLike<number>> = { ...base }
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, handler)
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const exactOverride = analyzePromiseChains("proxy-spread-get-override.ts", `
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const base: ProxyHandler<PromiseLike<number>> = { get: () => rejectThen }
+        const handler: ProxyHandler<PromiseLike<number>> = { ...base, get: () => resolveThen }
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, handler)
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exactOverride.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["fulfilled"], mayRemainPending: false,
+    });
+
+    const opaqueOverride = analyzePromiseChains("proxy-opaque-spread-get.ts", `
+      declare const opaque: ProxyHandler<PromiseLike<number>>
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const handler: ProxyHandler<PromiseLike<number>> = { get: () => rejectThen, ...opaque }
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, handler)
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(opaqueOverride.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("selects the concrete then branch of a forwarding Proxy trap", () => {
     const model = analyzePromiseChains("proxy-forwarded-then.ts", `
       function run() {

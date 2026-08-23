@@ -237,9 +237,30 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         return key && (ts.isStringLiteral(key) || ts.isNoSubstitutionTemplateLiteral(key) || ts.isNumericLiteral(key))
           ? key.text : undefined;
       };
-      const getTrap = handler && ts.isObjectLiteralExpression(handler)
-        ? handler.properties.find((item) => staticPropertyName(item.name) === "get")
-        : undefined;
+      type HandlerPropertyLookup = { kind: "found"; property: ts.ObjectLiteralElementLike }
+        | { kind: "absent" } | { kind: "unknown" };
+      const findHandlerProperty = (
+        candidate: ts.Expression,
+        name: string,
+        objectSeen = new Set<ts.ObjectLiteralExpression>(),
+      ): HandlerPropertyLookup => {
+        const resolved = immutableInitializer(candidate);
+        if (!resolved || !ts.isObjectLiteralExpression(resolved) || objectSeen.has(resolved)) return { kind: "unknown" };
+        const nextSeen = new Set([...objectSeen, resolved]);
+        for (const property of [...resolved.properties].reverse()) {
+          if (ts.isSpreadAssignment(property)) {
+            const nested = findHandlerProperty(property.expression, name, nextSeen);
+            if (nested.kind !== "absent") return nested;
+            continue;
+          }
+          const propertyName = staticPropertyName(property.name);
+          if (propertyName === undefined) return { kind: "unknown" };
+          if (propertyName === name) return { kind: "found", property };
+        }
+        return { kind: "absent" };
+      };
+      const getTrapLookup = handler ? findHandlerProperty(handler, "get") : { kind: "unknown" as const };
+      const getTrap = getTrapLookup.kind === "found" ? getTrapLookup.property : undefined;
       const assignedTrap = getTrap && ts.isPropertyAssignment(getTrap) ? immutableInitializer(getTrap.initializer) : undefined;
       const trapFunction = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap
         : assignedTrap && (ts.isArrowFunction(assignedTrap) || ts.isFunctionExpression(assignedTrap)) ? assignedTrap : undefined;

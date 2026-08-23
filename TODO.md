@@ -525,6 +525,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Follow the fallthrough side of a static negated Proxy guard clause into its trailing callback return.
     - [x] Resolve identifier and literal-computed `get` property names on Proxy handler objects; dynamic computed names remain conservative.
     - [x] Resolve literal keys through cycle-safe immutable `const` aliases for computed Proxy handler properties; mutable and unresolved keys remain conservative.
+    - [x] Resolve immutable Proxy handler object spreads in reverse last-write-wins order; opaque spreads, dynamic computed overrides, and cycles remain conservative.
     - [x] Select the `then` callback from the equivalent conditional-expression Proxy forwarding shape while keeping other property selectors dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for a selected Proxy `then` callback while retaining mutable callback bindings as dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for an object-literal Proxy handler while retaining mutable handlers as dynamic.

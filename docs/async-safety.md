@@ -154,6 +154,11 @@ runtime value might be `"get"`.
 Computed names may also follow a cycle-safe immutable `const` alias to a string,
 numeric, or no-substitution-template literal. Mutable aliases and declarations
 without an initializer remain unresolved.
+Immutable object-literal handlers may be composed with spreads. Lookup walks
+properties in reverse evaluation order, so a later exact `get` overrides an
+earlier spread. An opaque spread or dynamic computed property encountered
+before finding the winning property may itself override `get`, so the result
+remains dynamic. Cyclic object graphs are also rejected conservatively.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

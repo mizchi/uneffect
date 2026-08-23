@@ -444,6 +444,9 @@ resolution preserves the exact rejection proof without runtime instrumentation.
 Routing the same handler name through an immutable `const` key measured
 121.74 ms mean over 20 samples (1.56% RME). This is effectively unchanged from
 the literal-computed measurement while exercising symbol-based key resolution.
+Composing that keyed handler through an immutable object spread measured
+122.75 ms mean over 20 samples (1.59% RME). Reverse-order override analysis did
+not move the fixture outside its established cold-analysis range.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
