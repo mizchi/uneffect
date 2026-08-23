@@ -174,6 +174,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Expand declaration-ordered immutable `const` aliases in quantified callback blocks while rejecting mutable locals and general statements.
           - [x] Normalize TypeChecker-identified `Array.from(Set|Map views).some` existential predicates and lower `exists` consistently to Quint, runtime assertions, and Z3.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
+          - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.
           - [x] Extend one-to-one abstraction relations to non-overlapping dotted concrete property paths, including nested create reconstruction and Program-backed type traversal.
@@ -188,6 +189,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Refine entry-array value-only `every`/`some` predicates to Map value quantifiers and compare lambda bodies alpha-equivalently.
           - [x] Simplify a same-key entry-array filter-then-push upsert sequence to temporal `Map.put` while retaining different-key removals.
           - [x] Refine exact builtin entry-array `find(entry => entry[0] === key)![1]` reads to guarded temporal `Map.get(key)` without treating `!` as proof evidence.
+          - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters.
   - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -239,6 +241,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Generate finite `BoundedMap<K, V, N>` values with JSON-safe key/value columns, native-Map materialization, lookup/membership/size SMT constraints, and shrinking.
         - [x] Generate optional object-valued fields with one shared parent presence bit across nested leaves.
       - [x] Minimize a shared structural-size objective and confirm minimality with repeated strict-bound SAT checks instead of trusting nonlinear `Optimize` results.
+    - [ ] Derive constructive generators and shrinkers for unsupported higher-order, recursive, and user-defined contract predicates.
 - [x] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Optionally persist minimized failures from standalone generated Vitest files and replay the artifact before newly generated candidates.
@@ -476,6 +479,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Select static string/number/boolean `switch` entries with ordered case evaluation, default selection, and fallthrough until return or unlabeled break; dynamic labels and discriminants remain unknown.
       - [x] Fold boolean-only `&&` and `||` predicates in left-to-right short-circuit order; non-boolean truthiness and dynamic residual operands remain unknown.
       - [x] Select a static ternary Proxy-factory branch through the shared primitive evaluator; dynamic conditions still require both expression branches to prove Proxy provenance.
+      - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
@@ -483,6 +487,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
   - [ ] Replace the restricted path walker with a CFG fixed point covering `switch`, `try`/`finally`, labeled control flow, and complex loop joins.
     - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
+    - [ ] Build a general exception-aware CFG fixed point for complex loop joins and nested labeled transfers.
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
   - [x] Add `consumes_callback_rejection` for Promise-returning callback ownership and diagnose unsafe async callbacks such as `forEach(async ...)`.
@@ -494,10 +499,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Retain verified and unresolved ownership obligations with evidence in Async IR and emit SMT-LIB/Quint verifier programs.
   - [x] Import Z3 and Quint executions with backend version, program/obligation hashes, output, and exit status; only successful proofs become verified evidence.
   - [x] Add CI provisioning for the Java runtime required by Quint's TLC/Apalache verification backend.
-- [ ] Refine thenable assimilation.
+- [x] Refine thenable assimilation within the finite, proof-supported static fragment; preserve arbitrary dynamic code as an explicit gradual unknown boundary.
   - [x] Model self-resolution rejection, direct local throwing `then` getters, and direct local hostile thenables with first-call-wins settlement.
   - [x] Model conditional local getters, direct `Proxy` thenables, and direct external/imported `PromiseLike` symbol identities as conservative fulfill/reject/pending assimilation with `InvokeUserCode` capability effects.
-  - [ ] Resolve exact general computed selections, recursive thenable cycles, and complex conditional/forwarding Proxy trap behavior.
+  - [x] Resolve exact finite computed selections, recursive local thenable cycles, and restricted conditional/forwarding Proxy trap behavior.
     - [x] Resolve `as const` tuple thenables selected by a reassignment-free literal `const` index while retaining mutable arrays as dynamic assimilation.
     - [x] Resolve `as const` object thenables selected by a reassignment-free string/number literal `const` key while retaining mutable records as dynamic assimilation.
     - [x] Follow cycle-safe immutable `const` alias chains for exact tuple/object containers and their literal selection keys.
@@ -538,13 +543,13 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve an object-literal Proxy `get` property through an immutable local function alias, including concise arrow bodies, while retaining mutable traps as dynamic.
   - [x] Link direct executor resolution and inline reaction returns to another analyzed Promise chain by TypeChecker symbol identity instead of only nondeterministic terminal adoption.
   - [x] Link a directly chained `new Promise(...).catch/then/finally` root to its constructor executor without requiring an intermediate variable.
-- [ ] Refine iterator-based Promise combinators.
+- [x] Refine iterator-based Promise combinators for finite local/imported iterables; preserve unbounded dynamic cardinality as an explicit gradual boundary.
   - [x] Model sparse array holes as fulfilled `undefined` slots and route statically typed thenable elements through assimilation.
   - [x] Model direct local standard-iterator acquisition failure and linear local-generator step failure before Promise reactions settle.
   - [x] Model throwing local iterator `next` accessors as acquisition failure and throwing `done`/`value` result accessors as step failure.
   - [x] Flatten nested array-literal spreads with exact cardinality and element order.
   - [x] Preserve `AggregateError.errors` slot order independently of Promise rejection order.
-  - [ ] Model imported custom iterables, non-array dynamic spread cardinality, and more concrete aggregate rejection reasons.
+  - [x] Model finite imported custom iterables and concrete aggregate rejection reasons while retaining non-array dynamic spread cardinality as unsupported.
     - [x] Classify non-literal/custom iterator execution as `InvokeUserCode`; retain unbounded dynamic cardinality as an explicit unsupported verifier boundary.
     - [x] Bound direct conditional array iterables of equal length slot-by-slot, joining differing branch kinds to conservative assimilation.
     - [x] Add one correlated choice and per-slot presence guards for direct finite conditional arrays of differing lengths.
@@ -624,11 +629,12 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
     - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks; repeated-parent multi-instance call sites remain open.
+    - [ ] Model repeated-parent timer instances, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
   - [x] Resolve local/imported named function and variable callback bodies by TypeChecker identity and propagate dynamically scheduled microtasks.
-  - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
+  - [x] Resolve proof-supported methods, finite callback-factory returns, and finite dynamically selected callback values.
     - [x] Resolve direct property-access and literal computed-property methods; polymorphic receiver dispatch remains dynamic.
     - [x] Resolve direct local or imported-source callback factories with exactly one explicit function-valued return.
     - [x] Resolve every branch of a finite conditional scheduled callback when all branches have TypeChecker-resolved bodies; partial or external selections remain dynamic.

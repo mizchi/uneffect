@@ -18,6 +18,7 @@ export const ciTestTiers = {
     "test/refinement-bindings.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
+    "test/todo-consistency.test.ts",
   ],
   z3: [
     "test/contracts.test.ts",
