@@ -358,6 +358,14 @@ one immediate cached value, one sparse `undefined` slot, and one thenable that
 must pass through assimilation. The high variance and fresh TypeScript Program
 construction make this a baseline observation, not an editor-latency budget.
 
+Enumerating the maximum accepted 32 paths from five consecutive binary
+generator choices measured 137.29 ms mean over five cold samples (3.91% RME).
+This includes fresh TypeScript Program construction, symbol-based builtin
+classification, and materializing every correlated iterable path. Quint
+generation and verification are excluded. The 32-path limit is a soundness
+boundary against state explosion, not a claim that larger programs are fast or
+verified; larger products become an explicit unsupported dynamic iterable.
+
 Analyzing the fetch dogfood fixture with a timeout/request composition feeding
 a second application-shutdown `AbortSignal.any` measured 233.76 ms mean over
 five cold samples (5.82% relative margin of error). The pass resolves the DOM

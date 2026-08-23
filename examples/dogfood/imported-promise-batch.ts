@@ -25,3 +25,18 @@ export async function loadConditionalDashboard(
 ): Promise<string[]> {
   return Promise.all(["conditional-metadata", ...conditionalDashboardValues(preferNetwork, network)]);
 }
+
+/** Compare two snapshots, but stop constructing the batch if either source iterator fails. */
+export async function compareConditionalDashboards(
+  preferPrimaryNetwork: boolean,
+  preferSecondaryNetwork: boolean,
+  primaryNetwork: PromiseLike<string>,
+  secondaryNetwork: PromiseLike<string>,
+): Promise<string[]> {
+  return Promise.all([
+    "comparison-header",
+    ...conditionalDashboardValues(preferPrimaryNetwork, primaryNetwork),
+    "comparison-separator",
+    ...conditionalDashboardValues(preferSecondaryNetwork, secondaryNetwork),
+  ]);
+}

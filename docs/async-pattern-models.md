@@ -171,16 +171,18 @@ an imported factory whose body contains only that return. The analyzer resolves
 aliases by TypeChecker symbol identity and substitutes a directly yielded
 factory or generator parameter with its call-site argument. Yield expressions
 that require general expression substitution remain outside this finite fragment.
-A generator with one complete top-level `if`/`else`, surrounded only by the
-same linear statements, becomes two finite paths under one correlated iterable
-choice. Unequal path lengths use presence guards. Nested/multiple conditionals,
-loops, and partial `if` statements remain dynamic. One correlated generator
-spread can be composed with deterministic array prefix/suffix. A second
-correlated spread remains dynamic until the IR can represent a product of
-independent choices.
-`Promise.any` retains the path-dependent aggregate cardinality, but concrete
-rejection reasons are left unknown until the IR can associate reasons with the
-same iterable choice; one branch is never presented as representative of both.
+A generator with direct `if`/`else` statements becomes a finite set of complete,
+correlated execution paths. Unequal path lengths use choice-indexed presence
+guards, and nested or consecutive conditionals are composed rather than mixing
+values from incompatible paths. Partial `if` statements use an empty else path.
+Finite correlated generator spreads compose by Cartesian product with other
+spreads and deterministic array prefix/suffix. The analyzer refuses the model
+as dynamic when that product exceeds 32 paths; it never truncates the product
+and reports the remainder as proved. Loops and conditions whose bodies leave
+the restricted direct-yield/throw/return fragment remain dynamic.
+`Promise.any` retains path-dependent aggregate cardinality and emits concrete
+rejection-reason constants under the same path index; one path is never
+presented as representative of another.
 Iterator failure confined to one branch uses that choice as a failure guard;
 the other path retains its normal branch and join actions. A `throw` or `return`
 also terminates that generator path, so suffix yields are not fabricated after
@@ -246,10 +248,9 @@ assimilation state before fulfillment or rejection; `allSettled` does not count
 that intermediate state as settled. Unknown unions retain both the immediate
 value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
-thenable IR is not yet composed into each combinator branch. Conditional
-generator control flow, custom iterators outside the immutable linear-generator
-subset, non-array dynamic spread
-cardinality, concrete `AggregateError` reasons, cancellation,
+thenable IR is not yet composed into each combinator branch. Custom iterators
+outside the immutable finite-generator subset, non-array dynamic spread
+cardinality, general rejection expressions, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.
 

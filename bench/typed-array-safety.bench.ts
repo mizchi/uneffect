@@ -38,6 +38,18 @@ const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
 const dynamicThenableSource = `declare const flag: boolean; declare const external: PromiseLike<number>; function run() { const conditional = { get then() { if (flag) throw new Error(); return (resolve: (value: number) => void) => resolve(1) } }; const proxied = new Proxy({ then(resolve: (value: number) => void) { resolve(1) } }, {}); const a = new Promise<number>(resolve => resolve(conditional)); const b = new Promise<number>(resolve => resolve(proxied)); const c = new Promise<number>(resolve => resolve(external)); a.catch(() => 0); b.catch(() => 0); return c.catch(() => 0) }`;
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
+const finitePromisePathProductSource = `
+  function* values(a: boolean, b: boolean, c: boolean, d: boolean, e: boolean) {
+    if (a) yield Promise.resolve("a1"); else yield "a0"
+    if (b) yield Promise.resolve("b1"); else yield "b0"
+    if (c) yield Promise.resolve("c1"); else yield "c0"
+    if (d) yield Promise.resolve("d1"); else yield "d0"
+    if (e) yield Promise.resolve("e1"); else yield "e0"
+  }
+  async function load(a: boolean, b: boolean, c: boolean, d: boolean, e: boolean) {
+    return Promise.all(values(a, b, c, d, e))
+  }
+`;
 const fetchTimeoutSource = readFileSync(new URL("../examples/dogfood/fetch-timeout.ts", import.meta.url), "utf8");
 const telemetryPacketSource = readFileSync(new URL("../examples/dogfood/telemetry-packet.ts", import.meta.url), "utf8");
 const retryAttemptsSource = readFileSync(new URL("../examples/dogfood/retry-attempts.ts", import.meta.url), "utf8");
@@ -179,6 +191,10 @@ describe("typed-array static verification", () => {
 
   bench("classify mixed Promise combinator elements", () => {
     analyzeAsyncPatterns("mixed-promise-batch.ts", mixedPromiseBatchSource);
+  }, { time: 500, iterations: 5 });
+
+  bench("enumerate a bounded 32-path Promise iterable", () => {
+    analyzeAsyncPatterns("finite-promise-path-product.ts", finitePromisePathProductSource);
   }, { time: 500, iterations: 5 });
 
   bench("analyze AbortSignal fetch deadline", () => {

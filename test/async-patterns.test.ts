@@ -912,6 +912,14 @@ describe("builtin async temporal patterns", () => {
       async function loadDoubleSpread(flag: boolean, remote: PromiseLike<string>) {
         return Promise.all([...values(flag, remote), ...values(!flag, remote)])
       }
+      function* twoChoices(first: boolean, second: boolean) {
+        if (first) yield "a"; else yield "b"
+        yield "middle"
+        if (second) yield Promise.resolve("c"); else { yield "d"; yield "e" }
+      }
+      async function loadTwoChoices(first: boolean, second: boolean) {
+        return Promise.all(twoChoices(first, second))
+      }
     `);
     expect(model.combinators[0]).toMatchObject({
       staticIterable: true,
@@ -952,10 +960,30 @@ describe("builtin async temporal patterns", () => {
     });
     expect(model.combinators[3]).toMatchObject({
       owner: "loadDoubleSpread",
-      staticIterable: false,
-      iteratorKind: "dynamic",
+      staticIterable: true,
+      iteratorKind: "array",
+      iterablePaths: [
+        { branches: ['"head"', 'Promise.resolve("fresh")', '"tail"', '"head"', 'Promise.resolve("fresh")', '"tail"'] },
+        { branches: ['"head"', 'Promise.resolve("fresh")', '"tail"', '"head"', '"cached"', 'remote', '"tail"'] },
+        { branches: ['"head"', '"cached"', 'remote', '"tail"', '"head"', 'Promise.resolve("fresh")', '"tail"'] },
+        { branches: ['"head"', '"cached"', 'remote', '"tail"', '"head"', '"cached"', 'remote', '"tail"'] },
+      ],
     });
-    expect(model.combinators[3]).not.toHaveProperty("branchAlternatives");
+    const product = generateAsyncPatternsQuint("conditional_generator_product", { ...model, combinators: [model.combinators[3]!] });
+    expect(product).toContain("action choose_iterable_0_path_0");
+    expect(product).toContain("action choose_iterable_0_path_3");
+    expect(product).toMatch(/action fulfill_0_7[\s\S]*join_0_iterable_choice == 3/);
+    expect(run(product, "asyncSafe").status).toBe(0);
+    expect(model.combinators[4]).toMatchObject({
+      owner: "loadTwoChoices",
+      staticIterable: true,
+      iterablePaths: [
+        { branches: ['"a"', '"middle"', 'Promise.resolve("c")'] },
+        { branches: ['"a"', '"middle"', '"d"', '"e"'] },
+        { branches: ['"b"', '"middle"', 'Promise.resolve("c")'] },
+        { branches: ['"b"', '"middle"', '"d"', '"e"'] },
+      ],
+    });
   });
 
   it("guards a conditional generator step failure with the same iterable choice", () => {
@@ -969,6 +997,16 @@ describe("builtin async temporal patterns", () => {
         yield "tail"
       }
       async function load(fail: boolean) { return Promise.all(values(fail)) }
+      function* staged(first: boolean, second: boolean) {
+        if (first) throw new Error("first")
+        else yield Promise.resolve("ok")
+        if (second) throw new Error("second")
+        else yield "tail"
+      }
+      async function loadStaged(first: boolean, second: boolean) { return Promise.all(staged(first, second)) }
+      async function loadStagedSpread(first: boolean, second: boolean) {
+        return Promise.all(["before", ...staged(first, second), "after"])
+      }
     `);
     expect(model.combinators[0]).toMatchObject({
       iteratorFailure: "step",
@@ -983,6 +1021,46 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action fail_iterator_0[\s\S]*join_0_iterable_choice == 1/);
     expect(quint).toMatch(/action assimilate_0_0[\s\S]*join_0_iterable_choice == 0/);
     expect(quint).toMatch(/action step = any \{[\s\S]*fail_iterator_0,[\s\S]*assimilate_0_0,/);
+    expect(model.combinators[1]).toMatchObject({
+      iterablePaths: [
+        { branches: [], iteratorFailure: "step" },
+        { branches: ['Promise.resolve("ok")'], iteratorFailure: "step" },
+        { branches: ['Promise.resolve("ok")', '"tail"'] },
+      ],
+    });
+    const staged = generateAsyncPatternsQuint("staged_generator_failure", { ...model, combinators: [model.combinators[1]!] });
+    expect(staged).toMatch(/action fail_iterator_0[\s\S]*join_0_iterable_choice == 0 or join_0_iterable_choice == 1/);
+    expect(staged).toMatch(/action fulfill_0_1[\s\S]*join_0_iterable_choice == 2/);
+    expect(run(staged, "asyncSafe").status).toBe(0);
+    expect(model.combinators[2]).toMatchObject({
+      iterablePaths: [
+        { branches: ['"before"'], iteratorFailure: "step" },
+        { branches: ['"before"', 'Promise.resolve("ok")'], iteratorFailure: "step" },
+        { branches: ['"before"', 'Promise.resolve("ok")', '"tail"', '"after"'] },
+      ],
+    });
+  });
+
+  it("falls back to an unsupported dynamic iterable instead of truncating an exploding path product", () => {
+    const model = analyzeAsyncPatterns("generator-path-cap.ts", `
+      function* choices(a: boolean, b: boolean, c: boolean, d: boolean, e: boolean, f: boolean) {
+        if (a) yield "a1"; else yield "a0"
+        if (b) yield "b1"; else yield "b0"
+        if (c) yield "c1"; else yield "c0"
+        if (d) yield "d1"; else yield "d0"
+        if (e) yield "e1"; else yield "e0"
+        if (f) yield "f1"; else yield "f0"
+      }
+      async function load(...flags: boolean[]) {
+        return Promise.all(choices(flags[0]!, flags[1]!, flags[2]!, flags[3]!, flags[4]!, flags[5]!))
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: false,
+      iteratorKind: "dynamic",
+      iteratorEffects: ["InvokeUserCode"],
+    });
+    expect(() => generateAsyncPatternsQuint("generator_path_cap", model)).toThrow(/statically bounded iterable/);
   });
 
   it("models local iterator acquisition and generator step failures", () => {
@@ -1164,8 +1242,8 @@ describe("builtin async temporal patterns", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
       });
       expect(analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!).combinators[0]).toMatchObject({
-        branches: ['"head"', '"cached-profile"', "network", '"tail"'],
-        branchKinds: ["value", "value", "thenable", "value"],
+        branches: ['"head"', '"cached-profile"', "network"],
+        branchKinds: ["value", "value", "thenable"],
         staticIterable: true,
         iteratorKind: "array",
         iteratorEffects: ["InvokeUserCode"],

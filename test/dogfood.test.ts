@@ -738,6 +738,31 @@ describe("Uneffect dogfood", () => {
         iteratorFailure: "step",
         iteratorFailurePresence: "when-true",
       }),
+      expect.objectContaining({
+        owner: "compareConditionalDashboards",
+        staticIterable: true,
+        iteratorKind: "array",
+        iteratorEffects: ["InvokeUserCode"],
+        iterablePaths: [
+          expect.objectContaining({
+            branches: ['"comparison-header"', '"dashboard-head"', "primaryNetwork"],
+            iteratorFailure: "step",
+          }),
+          expect.objectContaining({
+            branches: [
+              '"comparison-header"', '"dashboard-head"', '"cached-primary"', '"cached-secondary"', '"dashboard-tail"',
+              '"comparison-separator"', '"dashboard-head"', "secondaryNetwork",
+            ],
+            iteratorFailure: "step",
+          }),
+          expect.objectContaining({
+            branches: [
+              '"comparison-header"', '"dashboard-head"', '"cached-primary"', '"cached-secondary"', '"dashboard-tail"',
+              '"comparison-separator"', '"dashboard-head"', '"cached-primary"', '"cached-secondary"', '"dashboard-tail"',
+            ],
+          }),
+        ],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
     expect(quint).not.toContain("action reject_0_0");
@@ -748,6 +773,9 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action choose_iterable_3_true");
     expect(quint).toContain("action choose_iterable_3_false");
     expect(quint).toMatch(/action fail_iterator_3[\s\S]*join_3_iterable_choice == 1/);
+    expect(quint).toContain("action choose_iterable_4_path_0");
+    expect(quint).toContain("action choose_iterable_4_path_2");
+    expect(quint).toMatch(/action fail_iterator_4[\s\S]*join_4_iterable_choice == 0 or join_4_iterable_choice == 1/);
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {
