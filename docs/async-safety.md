@@ -165,6 +165,11 @@ nested blocks, statically decidable `if`/`else`, early returns, and local
 selector language. Calls, property reads, construction, `await`, mutation, and
 unsupported control flow stop the exact proof, since skipping them could hide
 a thrown error or another observable effect.
+The walker also selects string, number, or boolean `switch` entries. Case
+labels are evaluated in source order only until the first match, then clause
+bodies fall through without evaluating later labels, matching JavaScript.
+Default is selected only after no case matches. A dynamic or effectful label
+reached before the match keeps the trap dynamic.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

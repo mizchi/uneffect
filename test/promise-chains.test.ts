@@ -784,6 +784,55 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("walks source-ordered static switch routing in a Proxy trap", () => {
+    const exact = analyzePromiseChains("proxy-static-switch-trap.ts", `
+      declare function unreachableLabel(): string
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            const requested = property
+            switch (requested) {
+              case "then":
+                return rejectThen
+              case unreachableLabel():
+                return undefined
+              default:
+                return undefined
+            }
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const effectfulLeadingLabel = analyzePromiseChains("proxy-effectful-switch-trap.ts", `
+      declare function dynamicLabel(): string
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            switch (property) {
+              case dynamicLabel():
+                return undefined
+              case "then":
+                return rejectThen
+              default:
+                return undefined
+            }
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(effectfulLeadingLabel.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("resolves an immutable identity wrapper around a Proxy then callback", () => {
     const exact = analyzePromiseChains("proxy-identity-forwarded-then.ts", `
       function forward<T>(value: T): T { return value }

@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { evaluateStaticBoolean, evaluateStaticPrimitive } from "./static-evaluation.js";
+import { evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export type PromiseReactionKind = "then" | "catch" | "finally";
 export type PromiseExecutorSettlement = "fulfilled" | "rejected" | "assimilating";
@@ -270,13 +270,23 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       }
       const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
-      const thenLookupBoolean = (condition: ts.Expression): boolean | undefined => evaluateStaticBoolean(condition, {
+      const directImmutableInitializer = (identifier: ts.Identifier): ts.Expression | undefined => {
+        const declaration = targetSymbol(checker, identifier)?.valueDeclaration;
+        return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+          && ts.isVariableDeclarationList(declaration.parent) && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+          ? declaration.initializer : undefined;
+      };
+      const trapStaticPrimitive = (condition: ts.Expression): string | number | boolean | undefined => evaluateStaticPrimitive(condition, {
         resolveIdentifier(identifier) {
           const symbol = targetSymbol(checker, identifier);
           if (!symbol) return undefined;
-          return symbol === propertySymbol ? { key: symbol, value: "then" } : { key: symbol, expression: immutableInitializer(identifier) };
+          return symbol === propertySymbol ? { key: symbol, value: "then" } : { key: symbol, expression: directImmutableInitializer(identifier) };
         },
       });
+      const thenLookupBoolean = (condition: ts.Expression): boolean | undefined => {
+        const value = trapStaticPrimitive(condition);
+        return typeof value === "boolean" ? value : undefined;
+      };
       const isPureTrapExpression = (candidate: ts.Expression): boolean => {
         if (ts.isIdentifier(candidate) || ts.isStringLiteral(candidate) || ts.isNoSubstitutionTemplateLiteral(candidate)
           || ts.isNumericLiteral(candidate) || candidate.kind === ts.SyntaxKind.TrueKeyword
@@ -303,11 +313,37 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         }
         return { kind: "continue" };
       };
+      const trapSwitchReturn = (statement: ts.SwitchStatement): TrapReturn | undefined => {
+        const discriminant = trapStaticPrimitive(statement.expression);
+        if (discriminant === undefined) return undefined;
+        let entry: number | undefined, defaultEntry: number | undefined;
+        for (const [index, clause] of statement.caseBlock.clauses.entries()) {
+          if (ts.isDefaultClause(clause)) {
+            defaultEntry = index;
+            continue;
+          }
+          const label = trapStaticPrimitive(clause.expression);
+          if (label === undefined) return undefined;
+          if (label === discriminant) {
+            entry = index;
+            break;
+          }
+        }
+        entry ??= defaultEntry;
+        if (entry === undefined) return { kind: "continue" };
+        for (const clause of statement.caseBlock.clauses.slice(entry)) {
+          const selected = trapStatementsReturn(clause.statements);
+          if (!selected) return undefined;
+          if (selected.kind === "return") return selected;
+        }
+        return { kind: "continue" };
+      };
       const trapStatementReturn = (statement: ts.Statement): TrapReturn | undefined => {
         if (ts.isReturnStatement(statement)) return statement.expression
           ? { kind: "return", expression: statement.expression } : undefined;
         if (ts.isEmptyStatement(statement)) return { kind: "continue" };
         if (ts.isBlock(statement)) return trapStatementsReturn(statement.statements);
+        if (ts.isSwitchStatement(statement)) return trapSwitchReturn(statement);
         if (ts.isVariableStatement(statement)) {
           if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
           return statement.declarationList.declarations.every((declaration) => ts.isIdentifier(declaration.name)

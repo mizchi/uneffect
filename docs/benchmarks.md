@@ -450,6 +450,10 @@ not move the fixture outside its established cold-analysis range.
 Replacing the trap's expression body with a pure local selector and nested
 static branches measured 124.21 ms mean over 20 samples (1.92% RME). The
 restricted return walker remains within the same observed cold-analysis band.
+Routing the property alias through a source-ordered `switch` measured
+122.69 ms mean over 20 samples (1.46% RME). The alias exposed and fixed a
+one-step-versus-transitive initializer-resolution bug; the corrected walker
+remains in the established range.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has
