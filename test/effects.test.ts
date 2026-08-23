@@ -244,6 +244,42 @@ describe("effect checker", () => {
     }));
   });
 
+  it("moves generator effects from construction to iterator consumption", () => {
+    const source = `
+      /* uneffect: effect Console | Throw<RangeError> */
+      function* generate() { console.log("step"); throw new RangeError("step") }
+      function constructOnly() { generate() }
+      function consumeNext() { generate().next() }
+      function consumeLoop() { for (const value of generate()) void value }
+      /* uneffect: effect Console */
+      function caughtConsumption() { try { generate().next() } catch {} }
+      /* uneffect: effect Console | Throw<URIError> */
+      async function* generateAsync() { console.log("async step"); throw new URIError("async step") }
+      async function consumeAsync() { for await (const value of generateAsync()) void value }
+    `;
+    const diagnostics = analyzeEffects("generator-effects.ts", source);
+    expect(diagnostics.filter((item) => item.functionName === "constructOnly")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeNext", effect: "Console", kind: "missing",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeNext", effect: "Throw<RangeError>", kind: "missing",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeLoop", effect: "Console", kind: "missing",
+    }));
+    expect(diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "generateAsync", effect: "Throw<URIError>", kind: "unused",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeAsync", effect: "Console", kind: "missing",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "consumeAsync", effect: "Throw<URIError>", kind: "missing",
+    }));
+  });
+
   it("does not admit a class that is not assignable to Error", () => {
     const source = `class NotAnError {} /* uneffect: effect Throw<Error> */ function f() { throw new NotAnError() }`;
     expect(analyzeEffects("throw.ts", source)).toContainEqual(expect.objectContaining({ functionName: "f", effect: "Throw<unknown>", kind: "missing" }));

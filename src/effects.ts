@@ -244,6 +244,13 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   });
   for (const info of functions.values()) {
     const asyncOwner = isAsyncFunction(info.node);
+    const generatorBindings = new Map<string, string>();
+    const generatorTarget = (call: ts.CallExpression): string | undefined =>
+      ts.isIdentifier(call.expression) && functions.get(call.expression.text)?.node.asteriskToken
+        ? call.expression.text : undefined;
+    const addGeneratorConsumption = (target: string, dischargesThrow: boolean): void => {
+      info.calls.push({ target, arguments: [], dischargesThrow });
+    };
     if (mayAssimilateUserCode(promiseModel, info.node)) addEffect(info.direct, capability("InvokeUserCode"));
     const visit = (node: ts.Node, dischargesThrow: boolean): void => {
       if (node !== info.node && ts.isFunctionLike(node)) return;
@@ -254,6 +261,18 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
         return;
       }
       if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
+        const target = generatorTarget(node.initializer);
+        if (target) generatorBindings.set(node.name.text, target);
+      }
+      if (ts.isForOfStatement(node) && ts.isIdentifier(node.expression)) {
+        const target = generatorBindings.get(node.expression.text);
+        if (target) addGeneratorConsumption(target, dischargesThrow);
+      }
+      if (ts.isYieldExpression(node) && node.asteriskToken && node.expression && ts.isIdentifier(node.expression)) {
+        const target = generatorBindings.get(node.expression.text);
+        if (target) addGeneratorConsumption(target, dischargesThrow);
+      }
       if (checker && ts.isVariableStatement(node)) {
         const flags = ts.getCombinedNodeFlags(node.declarationList);
         if ((flags & ts.NodeFlags.Using) === ts.NodeFlags.Using) for (const resource of node.declarationList.declarations) {
@@ -270,10 +289,20 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
         for (const effect of primitiveEffects(node, adapter)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
-        if (ts.isIdentifier(node.expression) && functions.has(node.expression.text)) info.calls.push({
-          target: node.expression.text,
-          arguments: node.arguments.map((arg) => arg.getText()),
-          dischargesThrow,
+        const directGenerator = generatorTarget(node);
+        if (directGenerator) {
+          const parent = node.parent;
+          const consumed = (ts.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "next"
+              && ts.isCallExpression(parent.parent) && parent.parent.expression === parent)
+            || (ts.isForOfStatement(parent) && parent.expression === node)
+            || (ts.isYieldExpression(parent) && parent.asteriskToken !== undefined && parent.expression === node);
+          if (consumed) addGeneratorConsumption(directGenerator, dischargesThrow);
+        } else if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next"
+          && ts.isIdentifier(node.expression.expression)) {
+          const target = generatorBindings.get(node.expression.expression.text);
+          if (target) addGeneratorConsumption(target, dischargesThrow);
+        } else if (ts.isIdentifier(node.expression) && functions.has(node.expression.text)) info.calls.push({
+          target: node.expression.text, arguments: node.arguments.map((arg) => arg.getText()), dischargesThrow,
         });
       }
       ts.forEachChild(node, (child) => visit(child, dischargesThrow));
@@ -414,6 +443,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     changed = false;
     for (const edge of [...graph.edges, ...implicitDisposalEdges]) {
       if (!edge.callee || !inferred.has(edge.callee)) continue;
+      if (edge.executesBody === false) continue;
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
       for (const raw of inferred.get(edge.callee)!) {

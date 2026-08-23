@@ -139,6 +139,47 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("executes imported generator effects only when the iterator is consumed", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-program-generator-effects-"));
+    try {
+      const library = join(directory, "library.ts"), main = join(directory, "main.ts");
+      writeFileSync(library, `
+        /* uneffect: effect Console | Throw<RangeError> */
+        export function* generate() { console.log("step"); throw new RangeError("step") }
+      `);
+      writeFileSync(main, `
+        import { generate } from "./library.js"
+        export function constructOnly() { generate() }
+        export function consumeNext() { const iterator = generate(); iterator.next() }
+        export function consumeLoop() { for (const value of generate()) void value }
+        /* uneffect: effect Console */
+        export function caughtConsumption() { try { generate().next() } catch {} }
+      `);
+      const program = ts.createProgram([library, main], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const graph = buildProgramCallGraph(program);
+      const construct = graph.nodes.find((node) => node.name === "constructOnly")!;
+      const consumeNext = graph.nodes.find((node) => node.name === "consumeNext")!;
+      expect(graph.edges).toContainEqual(expect.objectContaining({ caller: construct.id, executesBody: false }));
+      expect(graph.edges).toContainEqual(expect.objectContaining({ caller: consumeNext.id, executesBody: true }));
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      expect(result.diagnostics.filter((item) => item.functionName === "constructOnly")).toEqual([]);
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeNext", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeNext", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeLoop", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("classifies Array.from mapping as synchronous inline invocation", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-array-from-"));
     const source = join(directory, "array.ts");
