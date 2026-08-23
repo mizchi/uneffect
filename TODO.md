@@ -358,6 +358,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Expand every resolved candidate of branching/conditional generator factories only when all normal return paths are known; partial factories remain unsupported.
   - [x] Mark iterator-like consumption through unresolved/partial generator factories as `unknown` evidence and propagate that status transitively to callers.
   - [x] Preserve generator identities through immutable local iterator alias chains before `.next()`, loop, or `yield*` consumption.
+  - [x] Preserve unknown evidence when an opaque or partial generator factory is stored and consumed through immutable local aliases.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.

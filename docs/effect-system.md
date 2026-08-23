@@ -87,6 +87,8 @@ When a direct consumption call has an iterator-like `next` type but its factory
 cannot be completely resolved, the Program summary becomes `evidence:
 "unknown"`; this status propagates through callers. Non-iterator collection
 factories are not degraded by this generator-specific check.
+The same unknown evidence is retained when that iterator is first stored in an
+immutable local binding or forwarded through immutable local aliases.
 
 ## Domain effects and semantic footprints
 

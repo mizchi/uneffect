@@ -180,6 +180,15 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function consumePartialFactory(log: boolean) {
           for (const value of choosePartial(log)) void value
         }
+        export function consumeOpaqueStored() {
+          const iterator = choosePartial(false)
+          iterator.next()
+        }
+        export function consumeOpaqueAliasLoop() {
+          const iterator = choosePartial(false)
+          const forwarded = iterator
+          for (const value of forwarded) void value
+        }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
         /* uneffect: effect Console */
@@ -227,6 +236,10 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumePartialFactory"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "outerPartialFactory"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeOpaqueStored"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((summary) => summary.functionName === "consumeOpaqueAliasLoop"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeArrayFactory"))
         .not.toMatchObject({ evidence: "unknown" });

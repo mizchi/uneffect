@@ -134,10 +134,16 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
     }
     return [...new Set(candidates)];
   };
+  const isOpaqueIteratorCall = (call: ts.CallExpression): boolean => {
+    if (!checker.getPropertyOfType(checker.getTypeAtLocation(call), "next")) return false;
+    const source = checker.getResolvedSignature(call)?.declaration?.getSourceFile();
+    return !(source?.isDeclarationFile
+      && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(source.fileName));
+  };
   const edges: CallGraphEdge[] = [];
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
-    const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>();
+    const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>(), unknownGeneratorBindings = new Set<ts.Symbol>();
     declaration.parameters.forEach((parameter, index) => { if (ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)) parameters.set(parameter.name.text, index); });
     const timings = new Map<number, InvocationTiming>();
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
@@ -154,17 +160,22 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const binding = resolvedSymbol(checker, node.name);
         const generators = returnedGeneratorDeclarations(target);
         if (binding && generators) generatorBindings.set(binding, generators);
+        else if (binding && isOpaqueIteratorCall(node.initializer)) unknownGeneratorBindings.add(binding);
       }
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)
         && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
         const source = generatorBindings.get(resolvedSymbol(checker, node.initializer)!);
+        const unknownSource = unknownGeneratorBindings.has(resolvedSymbol(checker, node.initializer)!);
         const binding = resolvedSymbol(checker, node.name);
         if (binding && source) generatorBindings.set(binding, source);
+        if (binding && unknownSource) unknownGeneratorBindings.add(binding);
       }
       const addStoredGeneratorConsumption = (expression: ts.Expression): void => {
         if (!ts.isIdentifier(expression)) return;
-        const targets = generatorBindings.get(resolvedSymbol(checker, expression)!);
+        const binding = resolvedSymbol(checker, expression)!;
+        const targets = generatorBindings.get(binding);
         for (const target of targets ?? []) edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
+        if (unknownGeneratorBindings.has(binding)) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true, unknownGeneratorConsumption: true });
       };
       if (ts.isForOfStatement(node)) addStoredGeneratorConsumption(node.expression);
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) addStoredGeneratorConsumption(node.expression);
@@ -182,11 +193,8 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         );
         const generatorConsumption = Boolean(targetDeclaration?.asteriskToken) && consumptionSyntax;
         const returnedGenerators = consumptionSyntax ? returnedGeneratorDeclarations(targetDeclaration) : undefined;
-        const signatureSource = signatureDeclaration?.getSourceFile();
         const unknownGeneratorConsumption = consumptionSyntax && !returnedGenerators
-          && Boolean(checker.getPropertyOfType(checker.getTypeAtLocation(node), "next"))
-          && !(signatureSource?.isDeclarationFile
-            && /(?:^|[/\\])typescript[/\\]lib[/\\]lib\.[^/\\]+\.d\.ts$/.test(signatureSource.fileName));
+          && isOpaqueIteratorCall(node);
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow, executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") addStoredGeneratorConsumption(node.expression.expression);
