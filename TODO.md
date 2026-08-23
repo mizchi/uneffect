@@ -522,6 +522,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Analyze a direct Proxy `get` trap whose sole return is a concrete arrow/function then callback.
     - [x] Select a concrete callback from the canonical `if (property === "then") return callback; return forwardingValue` Proxy trap shape.
     - [x] Select a concrete callback from a single exhaustive static `if`/`else` Proxy trap while retaining dynamic guards conservatively.
+    - [x] Follow the fallthrough side of a static negated Proxy guard clause into its trailing callback return.
     - [x] Select the `then` callback from the equivalent conditional-expression Proxy forwarding shape while keeping other property selectors dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for a selected Proxy `then` callback while retaining mutable callback bindings as dynamic.
     - [x] Follow cycle-safe immutable local `const` aliases for an object-literal Proxy handler while retaining mutable handlers as dynamic.

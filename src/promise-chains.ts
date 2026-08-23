@@ -262,9 +262,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (selected) returned = returnedExpression(selected);
       }
       if (returned && ts.isConditionalExpression(returned) && thenLookupBoolean(returned.condition) === true) returned = returned.whenTrue;
-      if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
+      if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!)
+        && !trapBody.statements[0]!.elseStatement && ts.isReturnStatement(trapBody.statements[1]!)) {
         const branch = trapBody.statements[0]!, condition = branch.expression;
-        if (thenLookupBoolean(condition) === true) returned = returnedExpression(branch.thenStatement);
+        const selected = thenLookupBoolean(condition);
+        if (selected === true) returned = returnedExpression(branch.thenStatement);
+        else if (selected === false) returned = trapBody.statements[1]!.expression;
       }
       const isAssignmentOperator = (kind: ts.SyntaxKind): boolean => kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
       const isReassigned = (symbol: ts.Symbol): boolean => {

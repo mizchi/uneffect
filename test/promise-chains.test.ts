@@ -619,6 +619,22 @@ describe("Promise state and reaction chains", () => {
       provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
     });
 
+    const negatedGuard = analyzePromiseChains("proxy-negated-guard-forwarded-then.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(target, property, receiver) {
+            if (property !== "then") return Reflect.get(target, property, receiver)
+            return (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(negatedGuard.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
     const wrongSelector = analyzePromiseChains("proxy-wrong-selector.ts", `
       function run() {
         const hostile = new Proxy({ then() {} }, {
