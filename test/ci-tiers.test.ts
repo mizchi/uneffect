@@ -38,6 +38,7 @@ describe("CI test tier manifest", () => {
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
     expect(runner).toContain('tier === "fast" ? [undefined] : ciTestTiers[tier]');
     expect(runner).toContain("ciIsolatedTestNames[file]");
+    expect(runner).toContain("const maxSolverAttempts = 3");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts z3");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts quint");

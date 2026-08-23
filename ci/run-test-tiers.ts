@@ -3,6 +3,7 @@ import { ciIsolatedTestNames, ciTestTiers, shouldRetryIsolatedSolverFailure, typ
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
+const maxSolverAttempts = 3;
 const requested = process.argv[2] as CiTestTier | undefined;
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
 const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
@@ -22,13 +23,14 @@ for (const tier of tiers) {
       };
       let result;
       if (testName) {
-        result = runIsolated();
-        emit(result);
-        const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-        if (result.status !== 0 && shouldRetryIsolatedSolverFailure(output)) {
-          process.stderr.write(`retrying isolated test after a recognized transient solver-process failure: ${file} -t ${testName}\n`);
+        let attempt = 1;
+        for (;;) {
           result = runIsolated();
           emit(result);
+          const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+          if (result.status === 0 || attempt >= maxSolverAttempts || !shouldRetryIsolatedSolverFailure(output)) break;
+          attempt++;
+          process.stderr.write(`retrying isolated test after a recognized transient solver-process failure (attempt ${attempt}/${maxSolverAttempts}): ${file} -t ${testName}\n`);
         }
       } else {
         result = spawnSync(pnpm, args, {
