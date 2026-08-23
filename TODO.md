@@ -365,6 +365,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Mark iterator-like `.next()` through unresolved parameters/properties as unknown evidence while preserving standard-library pure iterator aliases.
   - [x] Specialize iterator-consuming function parameters at call sites from known generator factories/bindings, pure standard iterators, or explicit unknown arguments.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
+  - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.

@@ -106,6 +106,12 @@ standard pure iterator contributes no effect, and an opaque argument remains
 unknown. Parameter-derived unknown evidence is tracked separately from intrinsic
 unknown consumption, so specializing every iterator parameter never hides an
 unrelated property escape or dynamic factory inside the consumer.
+Simple mutable local bindings are flow-sensitive. A straight-line assignment
+kills the previous iterator state and replaces it with the classified RHS;
+assignments under branches, loops, switch, or try/catch join generator targets,
+standard pure alternatives, and opaque uncertainty. This is a source-order
+may-analysis rather than a general CFG fixed point; complex labeled control flow
+and iterator identities stored in objects or collections remain unsupported.
 
 ## Domain effects and semantic footprints
 

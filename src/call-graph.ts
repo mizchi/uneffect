@@ -217,6 +217,50 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       if (symbol) iteratorParameterIndices.set(symbol, index);
     });
     const timings = new Map<number, InvocationTiming>();
+    type IteratorBindingState = { generators: ts.FunctionLikeDeclaration[]; unknown: boolean; pure: boolean };
+    const emptyIteratorState = (): IteratorBindingState => ({ generators: [], unknown: false, pure: false });
+    const iteratorStateOf = (raw: ts.Expression): IteratorBindingState => {
+      const expression = ts.isParenthesizedExpression(raw) || ts.isAsExpression(raw)
+        || ts.isTypeAssertionExpression(raw) || ts.isNonNullExpression(raw) ? raw.expression : raw;
+      if (ts.isConditionalExpression(expression)) {
+        const left = iteratorStateOf(expression.whenTrue), right = iteratorStateOf(expression.whenFalse);
+        return { generators: [...new Set([...left.generators, ...right.generators])], unknown: left.unknown || right.unknown, pure: left.pure || right.pure };
+      }
+      if (ts.isIdentifier(expression)) {
+        const symbol = resolvedSymbol(checker, expression)!;
+        return { generators: generatorBindings.get(symbol) ?? [], unknown: unknownGeneratorBindings.has(symbol), pure: pureIteratorBindings.has(symbol) };
+      }
+      if (ts.isCallExpression(expression)) {
+        const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
+        const generators = returnedGeneratorDeclarations(symbolNodes.get(resolvedSymbol(checker, lookup)!));
+        if (generators) return { generators, unknown: false, pure: false };
+        if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
+          return { generators: [], unknown: !isStandardLibraryCall(expression), pure: isStandardLibraryCall(expression) };
+        }
+        return emptyIteratorState();
+      }
+      return checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")
+        ? { generators: [], unknown: true, pure: false } : emptyIteratorState();
+    };
+    const updateIteratorBinding = (binding: ts.Symbol, state: IteratorBindingState, join: boolean): void => {
+      if (!join) {
+        generatorBindings.delete(binding);
+        unknownGeneratorBindings.delete(binding);
+        pureIteratorBindings.delete(binding);
+      }
+      if (state.generators.length) {
+        generatorBindings.set(binding, [...new Set([...(generatorBindings.get(binding) ?? []), ...state.generators])]);
+      }
+      if (state.unknown) unknownGeneratorBindings.add(binding);
+      if (state.pure) pureIteratorBindings.add(binding);
+    };
+    const conditionallyExecuted = (node: ts.Node): boolean => {
+      for (let current = node.parent; current && current !== declaration.body; current = current.parent) {
+        if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
+          || ts.isTryStatement(current) || ts.isCatchClause(current) || ts.isIterationStatement(current, false)) return true;
+      }
+      return false;
+    };
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
       if (ts.isTryStatement(node)) {
@@ -225,24 +269,17 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         if (node.finallyBlock) visit(node.finallyBlock, catchesThrow);
         return;
       }
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
-        const lookup = ts.isPropertyAccessExpression(node.initializer.expression) ? node.initializer.expression.name : node.initializer.expression;
-        const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const binding = resolvedSymbol(checker, node.name);
-        const generators = returnedGeneratorDeclarations(target);
-        if (binding && generators) generatorBindings.set(binding, generators);
-        else if (binding && isOpaqueIteratorCall(node.initializer)) unknownGeneratorBindings.add(binding);
-        else if (binding && checker.getPropertyOfType(checker.getTypeAtLocation(node.initializer), "next")) pureIteratorBindings.add(binding);
+        if (binding && node.initializer) updateIteratorBinding(binding, iteratorStateOf(node.initializer), false);
+        else if (binding && checker.getPropertyOfType(checker.getTypeAtLocation(node.name), "next")) {
+          updateIteratorBinding(binding, { generators: [], unknown: true, pure: false }, false);
+        }
       }
-      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isIdentifier(node.initializer)
-        && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
-        const source = generatorBindings.get(resolvedSymbol(checker, node.initializer)!);
-        const unknownSource = unknownGeneratorBindings.has(resolvedSymbol(checker, node.initializer)!);
-        const pureSource = pureIteratorBindings.has(resolvedSymbol(checker, node.initializer)!);
-        const binding = resolvedSymbol(checker, node.name);
-        if (binding && source) generatorBindings.set(binding, source);
-        if (binding && unknownSource) unknownGeneratorBindings.add(binding);
-        if (binding && pureSource) pureIteratorBindings.add(binding);
+      if (ts.isBinaryExpression(node) && ts.isIdentifier(node.left)
+        && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(node.operatorToken.kind)) {
+        const binding = resolvedSymbol(checker, node.left);
+        if (binding) updateIteratorBinding(binding, iteratorStateOf(node.right), node.operatorToken.kind !== ts.SyntaxKind.EqualsToken || conditionallyExecuted(node));
       }
       const addStoredGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): boolean => {
         if (!ts.isIdentifier(expression)) return false;

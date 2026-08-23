@@ -376,6 +376,12 @@ describe("Uneffect dogfood", () => {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps(true)
+          let reassignedSteps: Iterator<string> = ["fallback"].values()
+          reassignedSteps = buildFlushSteps(preferCache)
+          try { Array.from(reassignedSteps) } catch { console.warn("skipping reassigned steps") }
+          let conditionalSteps: Iterator<string> = ["fallback"].values()
+          if (!preferCache) conditionalSteps = buildFlushSteps(preferCache)
+          try { Array.from(conditionalSteps) } catch { console.warn("skipping conditional steps") }
           try { consumeFlushSteps(buildFlushSteps(preferCache)) }
           catch { console.warn("skipping generic flush consumer") }
           void Promise.all(buildFlushSteps(preferCache))

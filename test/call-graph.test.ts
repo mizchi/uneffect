@@ -235,6 +235,36 @@ describe("multi-file call graph and effect polymorphism", () => {
           const forwarded = iterator
           forwarded.next()
         }
+        export function consumeReassignedGenerator() {
+          let iterator = [1, 2, 3].values()
+          iterator = generate()
+          iterator.next()
+        }
+        export function consumeReassignedPure() {
+          let iterator = generate()
+          iterator = [1, 2, 3].values()
+          iterator.next()
+        }
+        export function consumeBranchReassignment(useGenerator: boolean) {
+          let iterator = [1, 2, 3].values()
+          if (useGenerator) iterator = generate()
+          iterator.next()
+        }
+        export function consumeOpaqueReassignment() {
+          let iterator = [1, 2, 3].values()
+          iterator = choosePartial(false)
+          iterator.next()
+        }
+        export function consumeMutableAliasReassignment() {
+          const iterator = generate()
+          let forwarded = iterator
+          forwarded = [1, 2, 3].values()
+          forwarded.next()
+        }
+        export function consumeConditionalExpression(useGenerator: boolean) {
+          const iterator = useGenerator ? generate() : [1, 2, 3].values()
+          iterator.next()
+        }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
         /* uneffect: effect Console */
@@ -341,6 +371,28 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorProperty"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeStandardIterator"))
+        .not.toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeReassignedGenerator", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeReassignedGenerator", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeReassignedPure", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeBranchReassignment", effect: "Console", kind: "missing",
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumeOpaqueReassignment"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeMutableAliasReassignment", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeConditionalExpression", effect: "Console", kind: "missing",
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumeConditionalExpression"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
         functionName: "shadowedArrayFromDoesNotConsume", effect: "Console", kind: "missing",
