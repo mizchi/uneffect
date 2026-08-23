@@ -467,7 +467,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Reuse ordered switch entry/fallthrough paths for alias generations and correlate a restricted post-risk `try` continuation with its `catch` through one completion identity.
       - [x] Compose nested restricted try completion identities and recognize TypeChecker-resolved direct/literal-computed getters as preceding throw risks.
       - [x] Resolve computed getter candidates from exact const aliases and finite string/number literal-union key domains while retaining open keys as unknown.
-      - [x] Treat property reads from a direct standard `Proxy` or cycle-safe immutable local receiver alias as a preceding throw risk; mutable and interprocedural Proxy provenance remains unknown.
+      - [x] Treat property reads from a direct standard `Proxy` or cycle-safe immutable local receiver alias as a preceding throw risk; mutable receiver provenance remains unknown.
+      - [x] Follow cycle-safe zero-argument single-return Proxy factories through TypeChecker-resolved local/imported functions, re-exports, and immutable wrapper chains; conditional and argument-dependent factories remain unknown.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

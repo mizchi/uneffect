@@ -15,12 +15,15 @@ class FlushGate {
 }
 const flushGate = new FlushGate();
 const flushGateKey = "ready" as const;
-const proxiedFlushGate = new Proxy({ ready: true }, {
-  get(target, key, receiver) {
-    prepareFlush();
-    return Reflect.get(target, key, receiver);
-  },
-});
+function createProxiedFlushGate() {
+  return new Proxy({ ready: true }, {
+    get(target, key, receiver) {
+      prepareFlush();
+      return Reflect.get(target, key, receiver);
+    },
+  });
+}
+const proxiedFlushGate = createProxiedFlushGate();
 const forwardedProxiedFlushGate = proxiedFlushGate;
 /* uneffect: retains_resource 0 */
 declare function registerAttempt(attempt: Attempt): void;

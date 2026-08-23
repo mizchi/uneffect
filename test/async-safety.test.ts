@@ -1812,6 +1812,102 @@ describe("async error and explicit resource safety", () => {
     expect(run(quint, 28).status).not.toBe(0);
   });
 
+  it("tracks a Proxy receiver returned by a resolved zero-argument factory", () => {
+    const result = analyzeAsyncSafety("proxy-factory-try-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      function createGate() {
+        return new Proxy({ ready: true }, { get: Reflect.get })
+      }
+      const wrapGate = () => createGate()
+      function chooseGate(enabled: boolean) {
+        if (enabled) return new Proxy({ ready: true }, { get: Reflect.get })
+        return { ready: true }
+      }
+      const gate = wrapGate()
+      const dynamicGate = chooseGate(true)
+      async function factoryProxy(enabled: boolean) {
+        let success: Resource | undefined
+        let failure: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            gate.ready
+            success = resource
+          } catch {
+            failure = resource
+          }
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+        failure?.send()
+      }
+      async function conditionalFactoryIsUnknown(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            dynamicGate.ready
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "factoryProxy");
+    expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
+    expect(aliases[0]?.generation.controlPaths[0]?.[0]).toMatchObject({ expected: true });
+    expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+      id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
+      expected: false,
+    });
+    expect(result.resourceAliases.find((alias) => alias.owner === "conditionalFactoryIsUnknown")?.generation.relation).toBe("latest");
+  });
+
+  it("tracks an imported Proxy factory through a re-export", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-proxy-factory-"));
+    try {
+      const factory = join(directory, "factory.ts"), barrel = join(directory, "index.ts"), main = join(directory, "main.ts");
+      writeFileSync(factory, `
+        export function createGate() {
+          return new Proxy({ ready: true }, { get: Reflect.get })
+        }
+      `);
+      writeFileSync(barrel, `export { createGate as makeGate } from "./factory.js"`);
+      writeFileSync(main, `
+        import { makeGate } from "./index.js"
+        interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+        declare function open(): Resource
+        const gate = makeGate()
+        async function importedFactoryProxy(enabled: boolean) {
+          let success: Resource | undefined
+          let failure: Resource | undefined
+          while (enabled) {
+            await using resource = open()
+            try { gate.ready; success = resource }
+            catch { failure = resource }
+            await Promise.resolve("tick").then((value) => value)
+          }
+          success?.send()
+          failure?.send()
+        }
+      `);
+      const program = ts.createProgram([factory, barrel, main], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.esnext.d.ts", "lib.esnext.disposable.d.ts"], noEmit: true,
+      });
+      const result = analyzeAsyncSafetyInProgram(program, program.getSourceFile(main)!);
+      const aliases = result.resourceAliases.filter((alias) => alias.owner === "importedFactoryProxy");
+      expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
+      expect(aliases[1]?.generation.controlPaths[0]?.[0]).toMatchObject({
+        id: aliases[0]?.generation.controlPaths[0]?.[0]?.id,
+        expected: false,
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("composes nested try completion identities for alias generations", () => {
     const result = analyzeAsyncSafety("nested-try-resource-generations.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

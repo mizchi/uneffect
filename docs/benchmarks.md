@@ -152,6 +152,10 @@ The corresponding immutable-Proxy receiver slice measured 122.14 ms mean over
 `const` receiver resolution, alias-generation analysis, and unified Quint
 lowering; imported and mutable Proxy provenance remain outside the benchmarked
 proof fragment.
+Resolving the same receiver through a two-function zero-argument factory chain
+measured 123.00 ms mean over 20 samples (2.41% RME). The additional
+TypeChecker call-signature and cycle checks remain inside the existing cold
+Program-construction distribution.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

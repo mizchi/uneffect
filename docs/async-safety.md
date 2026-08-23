@@ -577,8 +577,11 @@ candidate property symbol to a concrete getter declaration. Interface-only
 properties and open key domains remain unknown. Property access through a
 direct standard `new Proxy(...)` receiver, including a cycle-safe chain of
 immutable local `const` aliases, is conservatively treated as a preceding
-throw risk because its `get` trap can invoke user code. Mutable aliases,
-imported/interprocedural Proxy provenance, coercions, finally-dependent joins,
+throw risk because its `get` trap can invoke user code. The same proof follows
+a cycle-safe chain of TypeChecker-resolved zero-argument functions when each
+body is exactly one return expression, including immutable arrow wrappers,
+imports, and re-exports. Mutable aliases, conditional or argument-dependent
+factories, methods and dynamic dispatch, coercions, finally-dependent joins,
 and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved.

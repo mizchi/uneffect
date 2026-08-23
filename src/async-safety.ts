@@ -567,10 +567,27 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
       return immutableInitializer(declaration.initializer, new Set([...seen, symbol]));
     };
-    const isBuiltinProxyReceiver = (expression: ts.Expression): boolean => {
+    type ProxyFactoryDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
+    const isProxyFactoryDeclaration = (declaration: ts.Node): declaration is ProxyFactoryDeclaration =>
+      ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
+    const returnedExpression = (declaration: ProxyFactoryDeclaration): ts.Expression | undefined => {
+      if (declaration.parameters.length !== 0 || !declaration.body) return undefined;
+      if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return declaration.body;
+      if (!ts.isBlock(declaration.body) || declaration.body.statements.length !== 1) return undefined;
+      const statement = declaration.body.statements[0];
+      return statement && ts.isReturnStatement(statement) ? statement.expression : undefined;
+    };
+    const isBuiltinProxyReceiver = (expression: ts.Expression, seen = new Set<ProxyFactoryDeclaration>()): boolean => {
       const initializer = immutableInitializer(expression);
-      if (!initializer || !ts.isNewExpression(initializer) || !ts.isIdentifier(initializer.expression) || initializer.expression.text !== "Proxy") return false;
-      return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+      if (!initializer) return false;
+      if (ts.isNewExpression(initializer) && ts.isIdentifier(initializer.expression) && initializer.expression.text === "Proxy") {
+        return targetSymbol(initializer.expression)?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
+      }
+      if (!ts.isCallExpression(initializer) || initializer.arguments.length !== 0) return false;
+      const declaration = checker.getResolvedSignature(initializer)?.declaration;
+      if (!declaration || !isProxyFactoryDeclaration(declaration) || seen.has(declaration)) return false;
+      const returned = returnedExpression(declaration);
+      return returned ? isBuiltinProxyReceiver(returned, new Set([...seen, declaration])) : false;
     };
     const isInsideIteration = (node: ts.Node): boolean => {
       for (let parent = node.parent; parent && parent !== ownerNode; parent = parent.parent) {
