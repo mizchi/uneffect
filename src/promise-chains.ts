@@ -231,7 +231,10 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       const getTrap = handler && ts.isObjectLiteralExpression(handler)
         ? handler.properties.find((item) => item.name?.getText(handler.getSourceFile()) === "get")
         : undefined;
-      const trapBody = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.body : undefined;
+      const assignedTrap = getTrap && ts.isPropertyAssignment(getTrap) ? immutableInitializer(getTrap.initializer) : undefined;
+      const trapFunction = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap
+        : assignedTrap && (ts.isArrowFunction(assignedTrap) || ts.isFunctionExpression(assignedTrap)) ? assignedTrap : undefined;
+      const trapBody = trapFunction?.body && ts.isBlock(trapFunction.body) ? trapFunction.body : undefined;
       if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
         return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
       }
@@ -240,7 +243,7 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0]!)
           ? statement.statements[0]!.expression : undefined;
       };
-      const propertyParameter = getTrap && (ts.isMethodDeclaration(getTrap) || ts.isGetAccessorDeclaration(getTrap)) ? getTrap.parameters[1]?.name : undefined;
+      const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
       const selectsThen = (condition: ts.Expression): boolean => {
         if (!ts.isBinaryExpression(condition) || condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
@@ -248,7 +251,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
         return matches(condition.left, condition.right) || matches(condition.right, condition.left);
       };
-      let returned = trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
+      let returned = trapFunction?.body && !ts.isBlock(trapFunction.body) ? trapFunction.body
+        : trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
       if (returned && ts.isConditionalExpression(returned) && selectsThen(returned.condition)) returned = returned.whenTrue;
       if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
         const branch = trapBody.statements[0]!, condition = branch.expression;

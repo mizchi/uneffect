@@ -23,9 +23,8 @@ export function adaptRejectedProxy(): Promise<number> {
   const rejectThen = (_resolve: (value: number) => void, reject: (reason: Error) => void) => {
     reject(new Error("upstream unavailable"));
   };
-  const handler = {
-    get() { return rejectThen; },
-  };
+  const getTrap = () => rejectThen;
+  const handler = { get: getTrap };
   const upstream = new Proxy({ then() {} }, handler);
   return new Promise<number>((resolve) => resolve(upstream)).catch(() => 503);
 }

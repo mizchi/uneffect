@@ -100,8 +100,9 @@ analyzed local thenable symbols retain every branch identity and emit distinct
 adoption actions. A direct Proxy `get` trap that solely throws or returns a
 concrete then callback is analyzed exactly. A selected callback may also pass
 through a cycle-safe chain of local `const` bindings. The object-literal handler
-itself may use the same immutable alias form; mutable handlers and callback
-bindings remain dynamic. The canonical
+itself may use the same immutable alias form. A `get` property assigned an
+immutable local function, including a concise arrow, is also exact; mutable
+handlers, traps, and callback bindings remain dynamic. The canonical
 `if (property === "then") return callback; return forwardingValue` shape is
 also narrowed by TypeScript symbol identity. Immutable `as const` tuples and
 object literals can be selected exactly through reassignment-free literal
