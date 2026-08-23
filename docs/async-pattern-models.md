@@ -174,7 +174,10 @@ that require general expression substitution remain outside this finite fragment
 A generator with one complete top-level `if`/`else`, surrounded only by the
 same linear statements, becomes two finite paths under one correlated iterable
 choice. Unequal path lengths use presence guards. Nested/multiple conditionals,
-branching spread composition, loops, and partial `if` statements remain dynamic.
+loops, and partial `if` statements remain dynamic. One correlated generator
+spread can be composed with deterministic array prefix/suffix. A second
+correlated spread remains dynamic until the IR can represent a product of
+independent choices.
 `Promise.any` retains the path-dependent aggregate cardinality, but concrete
 rejection reasons are left unknown until the IR can associate reasons with the
 same iterable choice; one branch is never presented as representative of both.

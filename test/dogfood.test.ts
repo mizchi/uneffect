@@ -727,13 +727,14 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({
         owner: "loadConditionalDashboard",
         branchAlternatives: [
+          ['"conditional-metadata"', '"conditional-metadata"'],
           ['"dashboard-head"', '"dashboard-head"'],
           ["network", '"cached-primary"'],
           ["<absent>", '"cached-secondary"'],
           ["<absent>", '"dashboard-tail"'],
         ],
-        branchPresence: ["always", "always", "when-false", "when-false"],
-        iteratorKind: "local",
+        branchPresence: ["always", "always", "always", "when-false", "when-false"],
+        iteratorKind: "array",
         iteratorFailure: "step",
         iteratorFailurePresence: "when-true",
       }),

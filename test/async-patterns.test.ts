@@ -909,6 +909,9 @@ describe("builtin async temporal patterns", () => {
       async function loadAny(flag: boolean, remote: PromiseLike<string>) {
         return Promise.any(values(flag, remote))
       }
+      async function loadDoubleSpread(flag: boolean, remote: PromiseLike<string>) {
+        return Promise.all([...values(flag, remote), ...values(!flag, remote)])
+      }
     `);
     expect(model.combinators[0]).toMatchObject({
       staticIterable: true,
@@ -929,8 +932,17 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action fulfill_0_3[\s\S]*join_0_iterable_choice == 0/);
     expect(model.combinators[1]).toMatchObject({
       owner: "loadSpread",
-      staticIterable: false,
-      iteratorKind: "dynamic",
+      staticIterable: true,
+      iteratorKind: "array",
+      branchAlternatives: [
+        ['"prefix"', '"prefix"'],
+        ['"head"', '"head"'],
+        ['Promise.resolve("fresh")', '"cached"'],
+        ['"tail"', "remote"],
+        ["<absent>", '"tail"'],
+      ],
+      branchPresence: ["always", "always", "always", "always", "when-false"],
+      iteratorEffects: ["InvokeUserCode"],
     });
     expect(model.combinators[2]).toMatchObject({
       owner: "loadAny",
@@ -938,6 +950,12 @@ describe("builtin async temporal patterns", () => {
       aggregateErrorReasons: undefined,
       branchPresence: ["always", "always", "always", "when-false"],
     });
+    expect(model.combinators[3]).toMatchObject({
+      owner: "loadDoubleSpread",
+      staticIterable: false,
+      iteratorKind: "dynamic",
+    });
+    expect(model.combinators[3]).not.toHaveProperty("branchAlternatives");
   });
 
   it("guards a conditional generator step failure with the same iterable choice", () => {

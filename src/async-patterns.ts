@@ -157,7 +157,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return null;
   };
-  type StaticArrayExpansionEvidence = { invokesUserCode: boolean; failure?: "acquire" | "step" };
+  type StaticArrayExpansionEvidence = {
+    invokesUserCode: boolean;
+    alternatives?: readonly [(ts.Expression | ts.OmittedExpression)[], (ts.Expression | ts.OmittedExpression)[]];
+    failure?: "acquire" | "step";
+    failurePresence?: "when-true" | "when-false";
+  };
   function expandStaticArray(
     expression: ts.Expression,
     seen = new Set<ts.Symbol>(),
@@ -184,21 +189,47 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (!ts.isArrayLiteralExpression(expression)) return undefined;
     const expanded: (ts.Expression | ts.OmittedExpression)[] = [];
     for (const element of expression.elements) {
-      if (!ts.isSpreadElement(element)) expanded.push(element);
+      if (!ts.isSpreadElement(element)) {
+        expanded.push(element);
+        evidence?.alternatives?.[0].push(element);
+        evidence?.alternatives?.[1].push(element);
+      }
       else {
-        let nested = expandStaticArray(element.expression, seen, evidence) ?? expandStaticSet(element.expression);
+        const nestedEvidence: StaticArrayExpansionEvidence = { invokesUserCode: false };
+        let nested = expandStaticArray(element.expression, seen, nestedEvidence) ?? expandStaticSet(element.expression);
+        let alternatives = nestedEvidence.alternatives;
+        let invokesUserCode = nestedEvidence.invokesUserCode;
+        let failure = nestedEvidence.failure;
+        let failurePresence = nestedEvidence.failurePresence;
         if (!nested) {
           const local = localIterable(element.expression);
-          if (local && !local.alternatives) {
+          if (local) {
             nested = local.branches;
-            if (evidence) {
-              evidence.invokesUserCode = true;
-              evidence.failure ??= local.failure;
-            }
+            alternatives = local.alternatives;
+            invokesUserCode = true;
+            failure = local.failure;
+            failurePresence = local.failurePresence;
           }
         }
         if (!nested) return undefined;
+        if (alternatives) {
+          if (!evidence || evidence.alternatives) return undefined;
+          const prefix = [...expanded];
+          evidence.alternatives = [[...prefix, ...alternatives[0]], [...prefix, ...alternatives[1]]];
+          evidence.invokesUserCode ||= invokesUserCode;
+          evidence.failure ??= failure;
+          evidence.failurePresence ??= failurePresence;
+          expanded.push(...alternatives[0]);
+          continue;
+        }
         expanded.push(...nested);
+        evidence?.alternatives?.[0].push(...nested);
+        evidence?.alternatives?.[1].push(...nested);
+        if (evidence) {
+          evidence.invokesUserCode ||= invokesUserCode;
+          evidence.failure ??= failure;
+          evidence.failurePresence ??= failurePresence;
+        }
       }
     }
     return expanded;
@@ -946,7 +977,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const local = boundedElements ? undefined : localIterable(iterable);
           const staticIterable = Boolean(boundedElements || local);
           const branchNodes = local?.branches;
-          const iterableAlternatives = boundedConditionalArrays ?? local?.alternatives;
+          const iterableAlternatives = boundedConditionalArrays ?? (array ? arrayEvidence.alternatives : undefined) ?? local?.alternatives;
           const branchAlternatives = iterableAlternatives ? Array.from({ length: Math.max(iterableAlternatives[0].length, iterableAlternatives[1].length) }, (_, index) =>
             [iterableAlternatives[0][index], iterableAlternatives[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText())) : undefined;
           const branchPresence = iterableAlternatives ? branchAlternatives!.map((_, index) =>
@@ -970,7 +1001,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local ? "local" : "dynamic",
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: arrayEvidence.failure ?? local?.failure,
-            iteratorFailurePresence: local?.failurePresence,
+            iteratorFailurePresence: arrayEvidence.failurePresence ?? local?.failurePresence,
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
             aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? (local?.alternatives ? undefined : branchNodes))
               ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,

@@ -23,5 +23,5 @@ export async function loadConditionalDashboard(
   preferNetwork: boolean,
   network: PromiseLike<string>,
 ): Promise<string[]> {
-  return Promise.all(conditionalDashboardValues(preferNetwork, network));
+  return Promise.all(["conditional-metadata", ...conditionalDashboardValues(preferNetwork, network)]);
 }

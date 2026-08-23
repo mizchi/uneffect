@@ -503,6 +503,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Model one complete top-level generator `if`/`else` as two finite paths under one correlated Quint choice, including unequal path lengths and call-site parameter substitution.
     - [x] Keep conditional-generator `Promise.any` reasons unknown instead of unsoundly projecting one path; path-correlated reason values remain future IR work.
     - [x] Guard path-specific generator step failure with the correlated iterable choice, preserve normal join actions on the non-failing path, and exclude suffix yields after abrupt completion.
+    - [x] Compose one correlated generator spread with deterministic array prefix/suffix while retaining its choice, effects, and failure guard; reject multiple correlated spreads pending choice-product IR.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
