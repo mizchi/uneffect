@@ -1106,8 +1106,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           if (ts.isCallExpression(node)) {
             const operation = adapter.resolveCall(node)?.operation;
             if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "timer" || operation.queue === "check")) {
-              if (operation.queue === "timer" && (node.getStart(node.getSourceFile()) === timers[parent]!.span.start
-                || (timers[parent]!.repeats && operation.repeats))) return;
+              if (operation.queue === "timer" && node.getStart(node.getSourceFile()) === timers[parent]!.span.start) return;
               const child = timers.length;
               const callbackNode = node.arguments[operation.callbackArgument];
               const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
@@ -1633,7 +1632,7 @@ export function generateNodeEventLoopQuint(
   const checks = supported.filter((index) => model.timers[index]!.queue === "check");
   const multiInstanceTimers = new Set(supported.filter((index) => {
     const timer = model.timers[index]!;
-    return timer.queue === "timer" && !timer.repeats && timer.enqueuedBy !== undefined
+    return timer.queue === "timer" && timer.enqueuedBy !== undefined
       && Boolean(model.timers[timer.enqueuedBy]?.repeats);
   }));
   const initialReactions = new Set<string>();
@@ -1758,10 +1757,14 @@ export function generateNodeEventLoopQuint(
   const macro = (index: number, earlier: number[], phase: number): void => {
     const timer = model.timers[index]!;
     const updates = new Map<string, string>([
-      [`callback_${index}_pending`, multiInstanceTimers.has(index) ? `callback_${index}_instances > 1` : String(timer.repeats)],
+      [`callback_${index}_pending`, multiInstanceTimers.has(index)
+        ? timer.repeats ? "true" : `callback_${index}_instances > 1`
+        : String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
       [`callback_${index}_due`, multiInstanceTimers.has(index)
-        ? `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else callback_${index}_due`
+        ? timer.repeats
+          ? `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else clock + ${nodeDelay(timer)}`
+          : `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else callback_${index}_due`
         : timer.repeats ? `clock + ${nodeDelay(timer)}` : `callback_${index}_due`],
       ["node_phase", "0"],
       ["resume_phase", String(phase)],
@@ -1769,8 +1772,10 @@ export function generateNodeEventLoopQuint(
       ["wrong_phase", phaseViolation(phase)],
     ]);
     if (multiInstanceTimers.has(index)) {
-      updates.set(`callback_${index}_instances`, `callback_${index}_instances - 1`);
-      updates.set(`callback_${index}_due_times`, `callback_${index}_due_times.tail()`);
+      updates.set(`callback_${index}_instances`, timer.repeats ? `callback_${index}_instances` : `callback_${index}_instances - 1`);
+      updates.set(`callback_${index}_due_times`, timer.repeats
+        ? `callback_${index}_due_times.tail().append(clock + ${nodeDelay(timer)})`
+        : `callback_${index}_due_times.tail()`);
     }
     enqueueNodeChildren(index, updates);
     action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : `run_timer_${index}`, [

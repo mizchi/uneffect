@@ -84,8 +84,9 @@ repeating parent has an unbounded integer instance count: every parent firing
 registers another instance and every child firing consumes one. A Quint
 `List[int]` stores the normalized due time of each instance in registration
 order; the child can run only when the head is due and then advances to the
-next head. Repeated creation of recurring intervals remains outside this
-projection rather than being collapsed into one interval.
+next head. A recurring child interval stays in the instance count and appends
+its next normalized due time after firing, so repeated creation of the same
+static interval call-site is not collapsed into one interval.
 
 For Node `Timeout`/`Interval` handles, the projection normalizes a static delay
 below `1`, above `2147483647`, or equal to the standard global `NaN` to `1`,

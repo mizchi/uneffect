@@ -499,6 +499,7 @@ describe("typed-array static verification", () => {
     const model = analyzeAsyncPatterns("repeated-parent-timeout.ts", `
       function schedule() {
         setInterval(() => setTimeout(() => undefined, 5), 1)
+        setInterval(() => setInterval(() => undefined, 7), 2)
       }
     `);
     generateNodeEventLoopQuint("repeated_parent_timeout", model);

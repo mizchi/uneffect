@@ -2253,6 +2253,13 @@ describe("builtin async temporal patterns", () => {
         setInterval(() => setInterval(() => undefined, 5), 1)
       }
     `);
-    expect(recurringChild.timers).toHaveLength(1);
+    expect(recurringChild.timers).toMatchObject([
+      { queue: "timer", repeats: true },
+      { queue: "timer", repeats: true, enqueuedBy: 0 },
+    ]);
+    const recurringQuint = generateNodeEventLoopQuint("node_repeated_parent_interval", recurringChild);
+    expect(recurringQuint).toContain("var callback_1_due_times: List[int]");
+    expect(recurringQuint).toMatch(/action run_timer_1[\s\S]*callback_1_instances' = callback_1_instances/);
+    expect(recurringQuint).toMatch(/action run_timer_1[\s\S]*callback_1_due_times' = callback_1_due_times.tail\(\).append\(clock \+ 5\)/);
   }, 20_000);
 });
