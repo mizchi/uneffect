@@ -159,10 +159,12 @@ preserving holes and element order. Two other local,
 statically inspectable forms are accepted: an object whose standard
 `[Symbol.iterator]()` method directly throws during acquisition, and a linear
 generator containing only direct `yield`, `throw`, and `return` statements.
-That restricted generator may be imported from another TypeScript source file;
-the analyzer resolves aliases by TypeChecker symbol identity and substitutes a
-directly yielded parameter with its call-site argument. Yield expressions that
-require general expression substitution remain outside this finite fragment.
+That restricted generator may be imported from another TypeScript source file.
+The same finite body is accepted for the standard iterator generator method of
+an imported immutable object literal. The analyzer resolves aliases by
+TypeChecker symbol identity and substitutes a directly yielded function
+parameter with its call-site argument. Yield expressions that require general
+expression substitution remain outside this finite fragment.
 Acquisition or step failure rejects every Promise combinator, including
 `allSettled`, before any yielded Promise reaction can settle the aggregate.
 Sparse literal holes are retained as `undefined` value slots, matching array
@@ -224,7 +226,8 @@ that intermediate state as settled. Unknown unions retain both the immediate
 value and thenable paths. Promise-chain analysis separately recognizes a
 restricted set of direct throwing and hostile thenables, but that richer
 thenable IR is not yet composed into each combinator branch. Conditional
-generator control flow, arbitrary custom iterables, non-array dynamic spread
+generator control flow, custom iterators outside the immutable linear-generator
+subset, non-array dynamic spread
 cardinality, concrete `AggregateError` reasons, cancellation,
 combinator result values, and branch effect interleavings remain unsupported.
 Rejection is possible but not forced immediately without a fairness assumption.

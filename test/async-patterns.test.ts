@@ -950,6 +950,39 @@ describe("builtin async temporal patterns", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("bounds an imported object with a finite generator iterator method", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-custom-iterable-"));
+    try {
+      const values = join(directory, "values.ts"), main = join(directory, "main.ts");
+      writeFileSync(values, `
+        declare const remote: PromiseLike<string>
+        export const dashboardValues = {
+          *[Symbol.iterator]() {
+            yield "cached-profile"
+            yield remote
+          }
+        }
+      `);
+      writeFileSync(main, `
+        import { dashboardValues as values } from "./values.js"
+        export async function load() { return Promise.all(values) }
+      `);
+      const program = ts.createProgram([main, values], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!).combinators[0]).toMatchObject({
+        owner: "load",
+        combinator: "all",
+        branches: ['"cached-profile"', "remote"],
+        branchKinds: ["value", "thenable"],
+        staticIterable: true,
+        iteratorKind: "local",
+        iteratorEffects: ["InvokeUserCode"],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("bounds direct builtin Set iterables without collapsing distinct object identities", () => {
     const model = analyzeAsyncPatterns("set-iterable.ts", `
       declare const remote: PromiseLike<number>

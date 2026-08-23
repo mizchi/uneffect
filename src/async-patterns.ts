@@ -221,16 +221,31 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const localIterable = (expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined => {
     if (!expression) return undefined;
     let declaration: ts.Declaration | undefined;
-    if (ts.isIdentifier(expression)) declaration = resolvedSymbol(expression)?.valueDeclaration;
+    if (ts.isIdentifier(expression)) {
+      const symbol = resolvedSymbol(expression);
+      declaration = symbol?.valueDeclaration ?? symbol?.declarations?.find(ts.isVariableDeclaration);
+    }
     else if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)) declaration = resolvedSymbol(expression.expression)?.valueDeclaration;
     if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isObjectLiteralExpression(declaration.initializer)) {
       const iterator = declaration.initializer.properties.find((property) => {
         if (!property.name || !ts.isComputedPropertyName(property.name) || !ts.isPropertyAccessExpression(property.name.expression)) return false;
         const access = property.name.expression;
-        return access.expression.getText(source) === "Symbol" && access.name.text === "iterator"
+        return access.expression.getText() === "Symbol" && access.name.text === "iterator"
           && (resolvedSymbol(access.name)?.declarations?.some((item) => item.getSourceFile().isDeclarationFile) ?? false);
       });
       if (iterator && ts.isMethodDeclaration(iterator) && iterator.body) {
+        if (iterator.asteriskToken) {
+          const branches: ts.Expression[] = [];
+          let failure: "step" | undefined;
+          for (const statement of iterator.body.statements) {
+            if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
+              && statement.expression.expression && !statement.expression.asteriskToken) {
+              branches.push(statement.expression.expression);
+            } else if (ts.isThrowStatement(statement)) failure = "step";
+            else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
+          }
+          return { branches, failure };
+        }
         const containsThrow = (node: ts.Node): boolean => {
           if (ts.isThrowStatement(node)) return true;
           let found = false;
@@ -240,13 +255,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         if (iterator.body.statements.some(containsThrow)) return { branches: [], failure: "acquire" };
         const returned = iterator.body.statements.find((statement): statement is ts.ReturnStatement => ts.isReturnStatement(statement) && Boolean(statement.expression));
         const iteratorObject = returned?.expression && ts.isObjectLiteralExpression(returned.expression) ? returned.expression : undefined;
-        const next = iteratorObject?.properties.find((item) => item.name?.getText(source) === "next");
+        const next = iteratorObject?.properties.find((item) => item.name?.getText() === "next");
         if (next && ts.isGetAccessorDeclaration(next) && next.body && containsThrow(next.body)) return { branches: [], failure: "acquire" };
         if (next && ts.isMethodDeclaration(next) && next.body) {
           if (next.body.statements.some(containsThrow)) return { branches: [], failure: "step" };
           const resultReturn = next.body.statements.find((statement): statement is ts.ReturnStatement => ts.isReturnStatement(statement) && Boolean(statement.expression));
           const result = resultReturn?.expression && ts.isObjectLiteralExpression(resultReturn.expression) ? resultReturn.expression : undefined;
-          const failingResultGetter = result?.properties.some((item) => item.name && ["done", "value"].includes(item.name.getText(source))
+          const failingResultGetter = result?.properties.some((item) => item.name && ["done", "value"].includes(item.name.getText())
             && ts.isGetAccessorDeclaration(item) && item.body && containsThrow(item.body));
           if (failingResultGetter) return { branches: [], failure: "step" };
         }

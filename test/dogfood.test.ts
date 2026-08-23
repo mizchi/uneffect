@@ -707,10 +707,19 @@ describe("Uneffect dogfood", () => {
         iteratorKind: "local",
         iteratorEffects: ["InvokeUserCode"],
       }),
+      expect.objectContaining({
+        owner: "loadImportedDashboardSnapshot",
+        branches: ['"cached-snapshot"', 'Promise.resolve("network-snapshot")'],
+        branchKinds: ["value", "thenable"],
+        staticIterable: true,
+        iteratorKind: "local",
+        iteratorEffects: ["InvokeUserCode"],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
     expect(quint).not.toContain("action reject_0_0");
     expect(quint).toContain("action assimilate_0_1");
+    expect(quint).toContain("action assimilate_1_1");
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {
