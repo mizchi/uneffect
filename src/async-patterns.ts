@@ -377,8 +377,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (expression.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
       if (expression.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
       if (expression.kind === ts.SyntaxKind.NullKeyword) return { kind: "null", value: null };
-      if (ts.isNumericLiteral(expression)) return { kind: "number", value: Number(expression.text) };
-      if (ts.isStringLiteralLike(expression)) return { kind: "string", value: expression.text };
+      const literal = literalReason(expression);
+      if (typeof literal === "number") return { kind: "number", value: literal };
+      if (typeof literal === "string") return { kind: "string", value: literal };
       return undefined;
     };
     const substitute = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>, seen = new Set<ts.Symbol>()): ts.Expression => {

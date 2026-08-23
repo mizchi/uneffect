@@ -240,7 +240,8 @@ literal initializers are substituted by symbol identity. A computed initializer
 is also accepted when call-site substitution and the restricted expression
 folder reduce it to a primitive literal; otherwise the generator remains
 unsupported. This covers boolean guard aliases and directly yielded
-value/thenable aliases without evaluating user code. Mutable bindings,
+value/thenable aliases, including fully concrete template strings, without
+evaluating user code. Mutable bindings,
 destructuring, unresolved computed expressions, and call initializers stay
 outside the finite fragment. Nested lexical blocks are analyzed with a scoped
 binding environment; generated yields survive the block while local aliases do

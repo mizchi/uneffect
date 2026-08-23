@@ -1342,7 +1342,7 @@ describe("builtin async temporal patterns", () => {
     const model = analyzeAsyncPatterns("generator-computed-const.ts", `
       function* failures(flag: boolean, reason: string) {
         const enabled = flag === true
-        const selected = enabled ? reason : "cache-miss"
+        const selected = enabled ? \`service:\${reason}\` : "cache-miss"
         yield Promise.reject(selected)
       }
       async function network() { return Promise.any(failures(true, "network-down")) }
@@ -1351,8 +1351,8 @@ describe("builtin async temporal patterns", () => {
     expect(model.combinators[0]).toMatchObject({
       owner: "network",
       staticIterable: true,
-      branches: ['Promise.reject("network-down")'],
-      aggregateErrorReasons: [{ kind: "literal", value: "network-down" }],
+      branches: ['Promise.reject(`service:${"network-down"}`)'],
+      aggregateErrorReasons: [{ kind: "literal", value: "service:network-down" }],
     });
     expect(model.combinators[1]).toMatchObject({
       owner: "dynamic",
