@@ -37,7 +37,14 @@ export async function finalizeDeliveryBatch(deliveryIds: readonly string[]): Pro
     {
       await using session = openDeliverySession();
       pending = session;
-      void deliveryId;
+    }
+    if (deliveryId === "skip") {
+      pending = undefined;
+      continue;
+    }
+    if (deliveryId === "stop") {
+      pending = undefined;
+      break;
     }
     pending = undefined; // iteration cleanup
   }

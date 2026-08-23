@@ -526,9 +526,11 @@ abrupt completion remain conservative in this alias-flow subset. The same
 flow recognizes loop-local resource aliases that are terminally cleared on
 every executed iteration. Zero-iteration `for` and `while` paths retain their
 entry state, while `do...while` applies its mandatory first iteration. A
-`break`, `continue`, `return`, or `throw` before the terminal clear prevents
-this loop join; general loop invariants and inter-iteration alias generations
-remain unsupported.
+The restricted path summary accepts `break` and `continue` only after the
+target is cleared, treats `return` as unable to reach the post-loop use, and
+rejects `throw` conservatively. Reassigning the target after a clear resets the
+proof. Nested loops, switches, try/finally, general loop invariants, and
+inter-iteration alias generations remain unsupported by this join.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

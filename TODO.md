@@ -456,6 +456,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Keep resource-alias kills inside `try` and `catch` conditional while recognizing mandatory `finally` clears, preventing exception-path false negatives.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
       - [x] Join resource aliases introduced in `for`/`for...in`/`for...of`/`while`/`do...while` bodies when every executed iteration terminally clears or returns; preserve zero-iteration state and reject pre-clear abrupt completion.
+      - [x] Compute a finite per-target loop exit summary so clear-before-`break`/`continue` paths join safely, while uncleared exits and clear-then-reassign paths remain escaping.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

@@ -1597,6 +1597,49 @@ describe("async error and explicit resource safety", () => {
         }
         alias?.send()
       }
+      async function continueAfterClear(items: readonly number[]) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+          alias = undefined
+          continue
+        }
+        alias?.send()
+      }
+      async function conditionalBreakAfterClear(items: readonly number[], stop: boolean) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+          if (stop) {
+            alias = undefined
+            break
+          }
+          alias = undefined
+        }
+        alias?.send()
+      }
+      async function reassignedBeforeBreak(items: readonly number[]) {
+        let alias: Resource | undefined
+        for (const item of items) {
+          {
+            await using resource = open()
+            alias = resource
+            void item
+          }
+          alias = undefined
+          alias = open()
+          break
+        }
+        alias?.send()
+      }
       async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
         let alias: Resource | undefined
         {
@@ -1767,6 +1810,15 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "breakBeforeClear", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "continueAfterClear", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "conditionalBreakAfterClear", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "reassignedBeforeBreak", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",

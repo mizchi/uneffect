@@ -535,6 +535,9 @@ After adding loop-carried delivery-session cleanup and its missing-clear
 negative control, the fixture measured 126.77 ms mean over five cold samples
 (2.13% relative margin of error). This is below the preceding noisy sample and
 does not indicate a regression from the restricted loop-state join.
+With clear-before-continue and clear-before-break paths added to the batch,
+the fixture measured 128.81 ms mean over five cold samples (6.73% relative
+margin of error), remaining within the prior cold-run range.
 
 ## Collection refinement receiver identity
 

@@ -860,15 +860,6 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       ts.forEachChild(node, (child) => { if (!found) found = containsAbruptCompletion(child); });
       return found;
     };
-    const hasAbruptCompletionBeforeTerminal = (statement: ts.Statement): boolean => {
-      if (!ts.isBlock(statement)) return false;
-      let terminalIndex = statement.statements.length - 1;
-      while (terminalIndex >= 0 && ts.isEmptyStatement(statement.statements[terminalIndex]!)) terminalIndex -= 1;
-      for (let index = 0; index < terminalIndex; index++) {
-        if (containsAbruptCompletion(statement.statements[index]!)) return true;
-      }
-      return false;
-    };
     type AliasClearTarget = { kind: "symbol"; symbol: ts.Symbol } | { kind: "slot"; root: ts.Symbol; key: string };
     const matchesClearTarget = (left: ts.Expression, target: AliasClearTarget): boolean => {
       if (target.kind === "symbol") return ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === target.symbol;
@@ -895,6 +886,45 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           && terminallyClearsOrReturns(terminal.elseStatement, target);
       }
       return terminallyClears(terminal, target);
+    };
+    type LoopClearFlow = { normal: Set<boolean>; safe: boolean };
+    const loopClearFlow = (statement: ts.Statement, input: Set<boolean>, target: AliasClearTarget): LoopClearFlow => {
+      if (ts.isBlock(statement)) {
+        let normal = new Set(input), safe = true;
+        for (const child of statement.statements) {
+          if (normal.size === 0) break;
+          const next = loopClearFlow(child, normal, target);
+          normal = next.normal;
+          safe = safe && next.safe;
+        }
+        return { normal, safe };
+      }
+      if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression)
+        && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && matchesClearTarget(statement.expression.left, target)) {
+        return { normal: new Set([isDefinitelyNullish(statement.expression.right)]), safe: true };
+      }
+      if (ts.isIfStatement(statement)) {
+        const thenFlow = loopClearFlow(statement.thenStatement, new Set(input), target);
+        const elseFlow = statement.elseStatement
+          ? loopClearFlow(statement.elseStatement, new Set(input), target)
+          : { normal: new Set(input), safe: true };
+        return { normal: new Set([...thenFlow.normal, ...elseFlow.normal]), safe: thenFlow.safe && elseFlow.safe };
+      }
+      if (ts.isReturnStatement(statement)) return { normal: new Set(), safe: true };
+      if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) {
+        let safe = true;
+        for (const cleared of input) if (!cleared) safe = false;
+        return { normal: new Set(), safe };
+      }
+      if (ts.isThrowStatement(statement) || containsAbruptCompletion(statement)) return { normal: new Set(input), safe: false };
+      return { normal: new Set(input), safe: true };
+    };
+    const loopBodyMustClear = (statement: ts.Statement, target: AliasClearTarget): boolean => {
+      const flow = loopClearFlow(statement, new Set([false]), target);
+      if (!flow.safe) return false;
+      for (const cleared of flow.normal) if (!cleared) return false;
+      return true;
     };
     const clauseTerminallyClears = (clause: ts.CaseOrDefaultClause, target: AliasClearTarget): boolean => {
       let index = clause.statements.length - 1;
@@ -1009,8 +1039,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const before = aliasesBefore.get(symbol);
           if (fact === before) continue;
           const target: AliasClearTarget = { kind: "symbol", symbol };
-          if (hasAbruptCompletionBeforeTerminal(node.statement)
-            || !terminallyClearsOrReturns(node.statement, target)) continue;
+          if (!loopBodyMustClear(node.statement, target)) continue;
           if (maySkip && before) escapedAliases.set(symbol, before);
           else escapedAliases.delete(symbol);
         }
@@ -1018,8 +1047,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           const before = slotsBefore.get(root)?.get(key);
           if (fact === before) continue;
           const target: AliasClearTarget = { kind: "slot", root, key };
-          if (hasAbruptCompletionBeforeTerminal(node.statement)
-            || !terminallyClearsOrReturns(node.statement, target)) continue;
+          if (!loopBodyMustClear(node.statement, target)) continue;
           if (maySkip && before) slots.set(key, before);
           else slots.delete(key);
         }
