@@ -140,6 +140,9 @@ forwarding, and arbitrary trap code can invoke user code or return any value.
 The exact forwarding forms `if (property === "then") return callback; return
 fallback` and `return property === "then" ? callback : fallback` select the
 concrete callback because Promise assimilation requests that literal property.
+An equivalent single exhaustive `if`/`else`, including block-wrapped returns,
+uses the same static property-condition evaluator. If its condition remains
+dynamic, neither branch is guessed.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.

@@ -600,6 +600,25 @@ describe("Promise state and reaction chains", () => {
       provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
     });
 
+    const ifElse = analyzePromiseChains("proxy-if-else-forwarded-then.ts", `
+      function run() {
+        const hostile = new Proxy({ then() {} }, {
+          get(_target, property) {
+            if (property === "then") {
+              return (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+            } else {
+              return undefined
+            }
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(ifElse.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
     const wrongSelector = analyzePromiseChains("proxy-wrong-selector.ts", `
       function run() {
         const hostile = new Proxy({ then() {} }, {
@@ -837,6 +856,22 @@ describe("Promise state and reaction chains", () => {
       }
     `);
     expect(effectful.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+
+    const beforeDeclaration = analyzePromiseChains("proxy-before-local-selected-then.ts", `
+      function select<T>(rejectThen: T): T {
+        return selected
+        const selected = rejectThen
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, { get() { return select(rejectThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(beforeDeclaration.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
       provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
     });
   });

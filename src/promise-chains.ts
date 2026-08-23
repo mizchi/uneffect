@@ -255,6 +255,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       });
       let returned = trapFunction?.body && !ts.isBlock(trapFunction.body) ? trapFunction.body
         : trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
+      if (!returned && trapBody?.statements.length === 1 && ts.isIfStatement(trapBody.statements[0]!)) {
+        const branch = trapBody.statements[0]!, condition = thenLookupBoolean(branch.expression);
+        const selected = condition === true ? branch.thenStatement
+          : condition === false ? branch.elseStatement : undefined;
+        if (selected) returned = returnedExpression(selected);
+      }
       if (returned && ts.isConditionalExpression(returned) && thenLookupBoolean(returned.condition) === true) returned = returned.whenTrue;
       if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
         const branch = trapBody.statements[0]!, condition = branch.expression;
