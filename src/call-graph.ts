@@ -209,7 +209,10 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
     const iteratorParameterIndices = new Map<ts.Symbol, number>();
+    type IteratorBindingState = { generators: ts.FunctionLikeDeclaration[]; unknown: boolean; pure: boolean };
     const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>(), unknownGeneratorBindings = new Set<ts.Symbol>(), pureIteratorBindings = new Set<ts.Symbol>();
+    const iteratorSlots = new Map<ts.Symbol, Map<string, IteratorBindingState>>();
+    const objectAliases = new Map<ts.Symbol, ts.Symbol>();
     declaration.parameters.forEach((parameter, index) => { if (ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)) parameters.set(parameter.name.text, index); });
     declaration.parameters.forEach((parameter, index) => {
       if (!ts.isIdentifier(parameter.name)) return;
@@ -217,19 +220,50 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       if (symbol) iteratorParameterIndices.set(symbol, index);
     });
     const timings = new Map<number, InvocationTiming>();
-    type IteratorBindingState = { generators: ts.FunctionLikeDeclaration[]; unknown: boolean; pure: boolean };
     const emptyIteratorState = (): IteratorBindingState => ({ generators: [], unknown: false, pure: false });
+    const mergeIteratorStates = (left: IteratorBindingState, right: IteratorBindingState): IteratorBindingState => ({
+      generators: [...new Set([...left.generators, ...right.generators])],
+      unknown: left.unknown || right.unknown,
+      pure: left.pure || right.pure,
+    });
+    const objectRoot = (symbol: ts.Symbol): ts.Symbol => {
+      const seen = new Set<ts.Symbol>();
+      let current = symbol;
+      while (objectAliases.has(current) && !seen.has(current)) {
+        seen.add(current);
+        current = objectAliases.get(current)!;
+      }
+      return current;
+    };
+    const propertyKey = (expression: ts.Expression): string | undefined => {
+      if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
+      if (!ts.isElementAccessExpression(expression) || !expression.argumentExpression) return undefined;
+      const argument = expression.argumentExpression;
+      return ts.isStringLiteral(argument) || ts.isNumericLiteral(argument) ? argument.text : undefined;
+    };
+    const propertySlot = (expression: ts.Expression): { root: ts.Symbol; key: string } | undefined => {
+      const key = propertyKey(expression);
+      const receiver = ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)
+        ? expression.expression : undefined;
+      if (key === undefined || !receiver || !ts.isIdentifier(receiver)) return undefined;
+      const symbol = resolvedSymbol(checker, receiver);
+      if (!symbol) return undefined;
+      const root = objectRoot(symbol);
+      return iteratorSlots.has(root) ? { root, key } : undefined;
+    };
     const iteratorStateOf = (raw: ts.Expression): IteratorBindingState => {
       const expression = ts.isParenthesizedExpression(raw) || ts.isAsExpression(raw)
         || ts.isTypeAssertionExpression(raw) || ts.isNonNullExpression(raw) ? raw.expression : raw;
       if (ts.isConditionalExpression(expression)) {
         const left = iteratorStateOf(expression.whenTrue), right = iteratorStateOf(expression.whenFalse);
-        return { generators: [...new Set([...left.generators, ...right.generators])], unknown: left.unknown || right.unknown, pure: left.pure || right.pure };
+        return mergeIteratorStates(left, right);
       }
       if (ts.isIdentifier(expression)) {
         const symbol = resolvedSymbol(checker, expression)!;
         return { generators: generatorBindings.get(symbol) ?? [], unknown: unknownGeneratorBindings.has(symbol), pure: pureIteratorBindings.has(symbol) };
       }
+      const slot = propertySlot(expression);
+      if (slot) return iteratorSlots.get(slot.root)?.get(slot.key) ?? emptyIteratorState();
       if (ts.isCallExpression(expression)) {
         const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
         const generators = returnedGeneratorDeclarations(symbolNodes.get(resolvedSymbol(checker, lookup)!));
@@ -254,6 +288,20 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       if (state.unknown) unknownGeneratorBindings.add(binding);
       if (state.pure) pureIteratorBindings.add(binding);
     };
+    const updateIteratorSlot = (root: ts.Symbol, key: string, state: IteratorBindingState, join: boolean): void => {
+      const slots = iteratorSlots.get(root) ?? new Map<string, IteratorBindingState>();
+      const next = join ? mergeIteratorStates(slots.get(key) ?? emptyIteratorState(), state) : state;
+      slots.set(key, next);
+      iteratorSlots.set(root, slots);
+    };
+    const invalidateObjectSlots = (expression: ts.Expression): void => {
+      if (!ts.isIdentifier(expression)) return;
+      const symbol = resolvedSymbol(checker, expression);
+      if (!symbol) return;
+      const root = objectRoot(symbol), slots = iteratorSlots.get(root);
+      if (!slots) return;
+      for (const [key, state] of slots) slots.set(key, mergeIteratorStates(state, { generators: [], unknown: true, pure: false }));
+    };
     const conditionallyExecuted = (node: ts.Node): boolean => {
       for (let current = node.parent; current && current !== declaration.body; current = current.parent) {
         if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
@@ -271,7 +319,23 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       }
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const binding = resolvedSymbol(checker, node.name);
-        if (binding && node.initializer) updateIteratorBinding(binding, iteratorStateOf(node.initializer), false);
+        if (binding && node.initializer && ts.isObjectLiteralExpression(node.initializer)) {
+          const slots = new Map<string, IteratorBindingState>();
+          iteratorSlots.set(binding, slots);
+          for (const property of node.initializer.properties) {
+            if (ts.isPropertyAssignment(property)) {
+              const key = property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name) || ts.isNumericLiteral(property.name))
+                ? property.name.text : undefined;
+              if (key !== undefined) slots.set(key, iteratorStateOf(property.initializer));
+            } else if (ts.isShorthandPropertyAssignment(property)) {
+              slots.set(property.name.text, iteratorStateOf(property.name));
+            }
+          }
+        } else if (binding && node.initializer && ts.isIdentifier(node.initializer)) {
+          const source = resolvedSymbol(checker, node.initializer);
+          if (source && iteratorSlots.has(objectRoot(source))) objectAliases.set(binding, objectRoot(source));
+          updateIteratorBinding(binding, iteratorStateOf(node.initializer), false);
+        } else if (binding && node.initializer) updateIteratorBinding(binding, iteratorStateOf(node.initializer), false);
         else if (binding && checker.getPropertyOfType(checker.getTypeAtLocation(node.name), "next")) {
           updateIteratorBinding(binding, { generators: [], unknown: true, pure: false }, false);
         }
@@ -281,13 +345,26 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const binding = resolvedSymbol(checker, node.left);
         if (binding) updateIteratorBinding(binding, iteratorStateOf(node.right), node.operatorToken.kind !== ts.SyntaxKind.EqualsToken || conditionallyExecuted(node));
       }
+      if (ts.isBinaryExpression(node) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+        && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.AmpersandAmpersandEqualsToken, ts.SyntaxKind.BarBarEqualsToken, ts.SyntaxKind.QuestionQuestionEqualsToken].includes(node.operatorToken.kind)) {
+        const slot = propertySlot(node.left);
+        if (slot) updateIteratorSlot(slot.root, slot.key, iteratorStateOf(node.right), node.operatorToken.kind !== ts.SyntaxKind.EqualsToken || conditionallyExecuted(node));
+        else invalidateObjectSlots(node.left.expression);
+      }
       const addStoredGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): boolean => {
-        if (!ts.isIdentifier(expression)) return false;
-        const binding = resolvedSymbol(checker, expression)!;
-        const targets = generatorBindings.get(binding);
+        const binding = ts.isIdentifier(expression) ? resolvedSymbol(checker, expression) : undefined;
+        const slot = propertySlot(expression);
+        if (!binding && !slot) return false;
+        const state = slot ? iteratorSlots.get(slot.root)?.get(slot.key) : binding ? {
+          generators: generatorBindings.get(binding) ?? [],
+          unknown: unknownGeneratorBindings.has(binding),
+          pure: pureIteratorBindings.has(binding),
+        } : undefined;
+        if (!state) return false;
+        const targets = state.generators;
         for (const target of targets ?? []) edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
-        if (unknownGeneratorBindings.has(binding)) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true });
-        return Boolean(targets || unknownGeneratorBindings.has(binding) || pureIteratorBindings.has(binding));
+        if (state.unknown) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true });
+        return Boolean(targets.length || state.unknown || state.pure);
       };
       const addUnknownGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): void => {
         const parameterIndex = ts.isIdentifier(expression)
@@ -330,6 +407,10 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
         );
       if (ts.isCallExpression(node)) {
+        for (const argument of node.arguments) invalidateObjectSlots(argument);
+        if (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)) {
+          invalidateObjectSlots(node.expression.expression);
+        }
         const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
         const symbol = resolvedSymbol(checker, lookup), targetDeclaration = symbol ? symbolNodes.get(symbol) : undefined;
         const signatureDeclaration = checker.getResolvedSignature(node)?.declaration;

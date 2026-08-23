@@ -382,6 +382,10 @@ describe("Uneffect dogfood", () => {
           let conditionalSteps: Iterator<string> = ["fallback"].values()
           if (!preferCache) conditionalSteps = buildFlushSteps(preferCache)
           try { Array.from(conditionalSteps) } catch { console.warn("skipping conditional steps") }
+          const stepHolder: { iterator: Iterator<string> } = { iterator: ["fallback"].values() }
+          const stepHolderAlias = stepHolder
+          stepHolder.iterator = buildFlushSteps(preferCache)
+          try { Array.from(stepHolderAlias.iterator) } catch { console.warn("skipping stored steps") }
           try { consumeFlushSteps(buildFlushSteps(preferCache)) }
           catch { console.warn("skipping generic flush consumer") }
           void Promise.all(buildFlushSteps(preferCache))

@@ -265,6 +265,49 @@ describe("multi-file call graph and effect polymorphism", () => {
           const iterator = useGenerator ? generate() : [1, 2, 3].values()
           iterator.next()
         }
+        export function consumeObjectSlot() {
+          const holder = { iterator: generate() }
+          holder.iterator.next()
+        }
+        export function consumeObjectAlias() {
+          const holder = { iterator: generate() }
+          const alias = holder
+          alias.iterator.next()
+        }
+        export function consumeReassignedObjectSlot() {
+          const holder = { iterator: [1, 2, 3].values() }
+          holder.iterator = generate()
+          holder.iterator.next()
+        }
+        export function consumePureObjectSlot() {
+          const holder = { iterator: generate() }
+          holder.iterator = [1, 2, 3].values()
+          holder.iterator.next()
+        }
+        export function consumeConditionalObjectSlot(flag: boolean) {
+          const holder = { iterator: [1, 2, 3].values() }
+          if (flag) holder.iterator = generate()
+          holder.iterator.next()
+        }
+        export function consumeBracketObjectSlot() {
+          const holder = { iterator: generate() }
+          holder["iterator"].next()
+        }
+        export function consumeDynamicObjectSlot(key: "iterator") {
+          const holder = { iterator: generate() }
+          holder[key].next()
+        }
+        export function consumeDynamicObjectWrite(key: "iterator") {
+          const holder = { iterator: generate() }
+          holder[key] = choosePartial(false)
+          holder.iterator.next()
+        }
+        declare function escapeObject(value: object): void
+        export function consumeEscapedObjectSlot() {
+          const holder = { iterator: generate() }
+          escapeObject(holder)
+          holder.iterator.next()
+        }
         export function outerPartialFactory(log: boolean) { consumePartialFactory(log) }
         export function consumeArrayFactory() { for (const value of values()) void value }
         /* uneffect: effect Console */
@@ -394,6 +437,22 @@ describe("multi-file call graph and effect polymorphism", () => {
       }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeConditionalExpression"))
         .not.toMatchObject({ evidence: "unknown" });
+      for (const functionName of ["consumeObjectSlot", "consumeObjectAlias", "consumeReassignedObjectSlot", "consumeConditionalObjectSlot", "consumeBracketObjectSlot"]) {
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+          functionName, effect: "Console", kind: "missing",
+        }));
+        expect(result.summaries.find((summary) => summary.functionName === functionName))
+          .not.toMatchObject({ evidence: "unknown" });
+      }
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumePureObjectSlot", effect: "Console", kind: "missing",
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumePureObjectSlot"))
+        .not.toMatchObject({ evidence: "unknown" });
+      for (const functionName of ["consumeDynamicObjectSlot", "consumeDynamicObjectWrite", "consumeEscapedObjectSlot"]) {
+        expect(result.summaries.find((summary) => summary.functionName === functionName))
+          .toMatchObject({ evidence: "unknown" });
+      }
       expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
         functionName: "shadowedArrayFromDoesNotConsume", effect: "Console", kind: "missing",
       }));

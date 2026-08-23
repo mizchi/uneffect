@@ -87,8 +87,10 @@ consumption sites, including sequential early returns, exhaustive `if` branches,
 and conditional expressions. Every normal return path must resolve; candidates
 are unioned while the factory's own immediate body effects remain on the normal
 call edge. Immutable local aliases such as `const forwarded = iterator` preserve
-the iterator identity. Mutable aliases, property/collection escape, and opaque
-consumer APIs are not proof that their transitive effects were checked.
+the iterator identity. One-level local object slots with identifier, string, or
+numeric literal keys also preserve it through local root aliases. Dynamic keys,
+nested or escaped objects, collection storage, and opaque consumer APIs are not
+proof that their transitive effects were checked.
 When a direct consumption call has an iterator-like `next` type but its factory
 cannot be completely resolved, the Program summary becomes `evidence:
 "unknown"`; this status propagates through callers. Non-iterator collection
@@ -111,7 +113,10 @@ kills the previous iterator state and replaces it with the classified RHS;
 assignments under branches, loops, switch, or try/catch join generator targets,
 standard pure alternatives, and opaque uncertainty. This is a source-order
 may-analysis rather than a general CFG fixed point; complex labeled control flow
-and iterator identities stored in objects or collections remain unsupported.
+remains unsupported. The same kill/join rule applies to the supported local
+object slots. This is deliberately not an object-shape or alias analysis:
+computed dynamic properties, nested objects, parameter objects, and objects that
+escape the function remain unknown boundaries.
 
 ## Domain effects and semantic footprints
 
