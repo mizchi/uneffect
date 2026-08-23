@@ -185,6 +185,7 @@ export type {
   FsBuiltinOperation,
   FetchBuiltinOperation,
   TimerBuiltinOperation,
+  DeferredCallbackBuiltinOperation,
   TimerClearBuiltinOperation,
   PromiseCombinator,
   PromiseCombinatorBuiltinOperation,

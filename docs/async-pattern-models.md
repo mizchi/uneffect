@@ -116,10 +116,16 @@ This host-specific normalization does not apply to Web timers or
 This is intentionally not a complete libuv model. The ESM mode covers only
 the initial jobs queued during top-level module evaluation; dynamic imports
 and loader hooks remain outside the model. Poll callbacks outside the reviewed
-one-shot fs set, poll ordering/readiness details, close callbacks,
+one-shot fs set, poll ordering/readiness details, close event listeners other
+than the TypeChecker-resolved `node:net` `Server.close(callback)` contract,
 pending callbacks, idle/prepare internals, recursive starvation, dynamically
 created/imported Promise reactions, and version/platform-dependent timer/check
 selection remain explicit gaps.
+
+The close-phase projection and capability checker currently have different
+boundaries: nested jobs in `Server.close(callback)` are composed into the
+temporal model, but capability effects used only inside that deferred callback
+are not yet propagated into the enclosing function's effect summary.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and

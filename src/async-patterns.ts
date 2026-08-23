@@ -13,7 +13,7 @@ export interface TimerPattern {
   delay?: number;
   recursive: boolean;
   repeats: boolean;
-  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "poll" | "check";
+  queue: "timer" | "microtask" | "animation-frame" | "scheduler-task" | "next-tick" | "poll" | "check" | "close";
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
@@ -928,6 +928,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
+      } else if (operation?.kind === "deferred-callback") {
+        for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
+          if (callback !== currentOwner) scheduledCallbacks.add(callback);
+        }
       }
       if (!operation) {
         const type = checker.getTypeAtLocation(node);
@@ -1251,6 +1255,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             recursive: false,
             repeats: false,
             queue: operation.callbackQueue,
+            externallyReady: true,
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+          collectNestedJobs(callbackNode, timerIndex);
+        } else if (operation?.kind === "deferred-callback") {
+          const callbackNode = node.arguments[node.arguments.length - operation.callbackArgumentFromEnd];
+          const timerIndex = timers.length;
+          timers.push({
+            owner: ownerName,
+            callback: callbackNode?.getText(source) ?? "<unknown>",
+            delay: 0,
+            recursive: false,
+            repeats: false,
+            queue: operation.queue,
             externallyReady: true,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
@@ -1665,7 +1683,7 @@ export function generateNodeEventLoopQuint(
     || (timer.handleFamily !== "timeout" && (!Number.isFinite(timer.delay) || timer.delay < 0))) {
     throw new Error(`${timer.owner}: Node event-loop model requires a supported static delay`);
   }
-  const supported = model.timers.flatMap((timer, index) => ["next-tick", "microtask", "timer", "poll", "check"].includes(timer.queue) ? [index] : []);
+  const supported = model.timers.flatMap((timer, index) => ["next-tick", "microtask", "timer", "poll", "check", "close"].includes(timer.queue) ? [index] : []);
   const nodeDelay = (timer: TimerPattern): number => timer.handleFamily === "timeout"
     ? !Number.isFinite(timer.delay!) || timer.delay! < 1 || timer.delay! > 2_147_483_647 ? 1 : Math.trunc(timer.delay!)
     : timer.delay!;
@@ -1674,6 +1692,7 @@ export function generateNodeEventLoopQuint(
   const timers = supported.filter((index) => model.timers[index]!.queue === "timer");
   const polls = supported.filter((index) => model.timers[index]!.queue === "poll");
   const checks = supported.filter((index) => model.timers[index]!.queue === "check");
+  const closes = supported.filter((index) => model.timers[index]!.queue === "close");
   const multiInstanceTimers = new Set(supported.filter((index) => {
     const timer = model.timers[index]!;
     return timer.queue === "timer" && timer.enqueuedBy !== undefined
@@ -1743,6 +1762,9 @@ export function generateNodeEventLoopQuint(
     });
   };
   polls.forEach((index) => action(`complete_poll_${index}`, [
+    `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
+  ], new Map([[`callback_${index}_pending`, "true"]])));
+  closes.forEach((index) => action(`complete_close_${index}`, [
     `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
   ], new Map([[`callback_${index}_pending`, "true"]])));
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
@@ -1835,7 +1857,7 @@ export function generateNodeEventLoopQuint(
         : `callback_${index}_due_times.tail()`);
     }
     enqueueNodeChildren(index, updates);
-    action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : `run_timer_${index}`, [
+    action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`, [
       ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
       ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
       ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
@@ -1844,6 +1866,7 @@ export function generateNodeEventLoopQuint(
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
   polls.forEach((index) => macro(index, [], 2));
   checks.forEach((index, order) => macro(index, checks.slice(0, order), 3));
+  closes.forEach((index, order) => macro(index, closes.slice(0, order), 4));
   action("advance_timers_to_poll", [
     ...phaseGuard(1), ...timers.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
   ], new Map([["node_phase", "2"], ["wrong_phase", phaseViolation(1)]]));
@@ -1853,7 +1876,9 @@ export function generateNodeEventLoopQuint(
   action("advance_check_to_close", [
     ...phaseGuard(3), ...checks.map((index) => `not(callback_${index}_pending) or callback_${index}_due > clock`),
   ], new Map([["node_phase", "4"], ["wrong_phase", phaseViolation(3)]]));
-  action("advance_close_to_next_iteration", phaseGuard(4), new Map([
+  action("advance_close_to_next_iteration", [
+    ...phaseGuard(4), ...closes.map((index) => `not(callback_${index}_pending)`),
+  ], new Map([
     ["clock", "clock + 1"], ["node_phase", "0"], ["resume_phase", "1"], ["wrong_phase", phaseViolation(4)],
   ]));
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }", "", "  val nodeEventLoopSafe = not(wrong_checkpoint_order) and not(wrong_phase)", "}", "");

@@ -53,6 +53,7 @@ function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter
   const operation = adapter.resolveCall(call)?.operation;
   if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task" || operation?.kind === "scheduler-yield") return "deferred";
   if (operation?.kind === "fs" && operation.callbackQueue === "poll") return "deferred";
+  if (operation?.kind === "deferred-callback") return "deferred";
   const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
   const symbol = resolvedSymbol(checker, lookup);
   if (symbol?.name === "catchAll" && symbol.declarations?.some((declaration) => declaration.getSourceFile().fileName.includes("/node_modules/effect/"))) return "deferred";

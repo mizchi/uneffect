@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains, generatePromiseChainsQuint } from "../src/promise-chains.js";
-import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, analyzeAsyncPatternsInProgram, generateAsyncPatternsQuint, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "../src/async-patterns.js";
 import { auditBuiltinDeclarationDrift } from "../src/frontend-adapter.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
@@ -1091,5 +1091,19 @@ describe("Uneffect dogfood", () => {
       expect.objectContaining({ functionName: "scheduleDashboardWork", kind: "missing", effect: "Timer" }),
       expect.objectContaining({ functionName: "scheduleDashboardWork", kind: "unused", effect: "Console" }),
     ]));
+  });
+
+  it("checks a Node server shutdown boundary through the close phase", () => {
+    const fileName = "examples/dogfood/node-server-shutdown.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "close", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_server_shutdown", model);
+    expect(quint).toContain("action complete_close_0");
+    expect(quint).toMatch(/action run_close_0[\s\S]*node_phase == 4[\s\S]*callback_1_pending' = true/);
   });
 });

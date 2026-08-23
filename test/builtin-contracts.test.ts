@@ -49,4 +49,11 @@ describe("builtin semantic overlays", () => {
     expect(lookup("node:fs/promises", "readFile")).not.toHaveProperty("callbackQueue");
     expect(lookup("node:fs", "watch")).not.toHaveProperty("callbackQueue");
   });
+
+  it("registers node:net Server.close as an externally completed close-phase callback", () => {
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+      symbol: { module: "node:net", export: "Server#close" },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" },
+    }));
+  });
 });

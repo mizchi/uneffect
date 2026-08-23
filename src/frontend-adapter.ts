@@ -52,7 +52,12 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       if (!moduleSymbol) continue;
       const exports = new Map(this.#checker.getExportsOfModule(moduleSymbol).map((symbol) => [symbol.name, symbol]));
       for (const contract of contracts) {
-        const symbol = exports.get(contract.symbol.export);
+        const [exportName, memberName] = contract.symbol.export.split("#");
+        const exported = exportName ? exports.get(exportName) : undefined;
+        const exportedTarget = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? this.#checker.getAliasedSymbol(exported) : exported;
+        const symbol = memberName && exportedTarget
+          ? this.#checker.getPropertyOfType(this.#checker.getDeclaredTypeOfSymbol(exportedTarget), memberName)
+          : exported;
         if (symbol) this.#contracts.set(symbol, contract);
       }
     }

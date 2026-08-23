@@ -24,6 +24,7 @@ export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
+export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; queue: "poll" | "close" }
 export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number; family: "timeout" | "immediate" | "animation-frame" }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
@@ -42,7 +43,7 @@ export interface DomBuiltinOperation {
   queryArgument?: number;
 }
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
@@ -131,6 +132,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     }),
     ...fsBuiltinContracts("node:fs"),
     ...fsBuiltinContracts("node:fs/promises"),
+    trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" } }),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" } }),

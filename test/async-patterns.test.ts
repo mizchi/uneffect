@@ -2278,6 +2278,25 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("models TypeChecker-resolved net.Server.close callbacks in the close phase", () => {
+    const model = analyzeAsyncPatterns("node-net-close.ts", `
+      import { createServer } from "node:net"
+      function shutdown() {
+        createServer().close(() => queueMicrotask(() => undefined))
+      }
+      class Server { close(callback: () => void) { callback() } }
+      new Server().close(() => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "close", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_net_close", model);
+    expect(quint).toContain("action complete_close_0");
+    expect(quint).toMatch(/action run_close_0[\s\S]*node_phase == 4[\s\S]*callback_1_pending' = true/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("registers a nested one-shot Node timeout only when its parent runs", () => {
     const model = analyzeAsyncPatterns("node-nested-timeout.ts", `
       function schedule() {

@@ -45,6 +45,22 @@ describe("TypeChecker symbol adapter", () => {
     expect(analyzeEffectsInProgram(program, source)).toEqual([]);
   });
 
+  it("resolves imported Node class members without matching a user-defined method name", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-node-member-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      import { createServer } from "node:net";
+      createServer().close(() => undefined);
+      class Server { close(callback: () => void) { callback() } }
+      new Server().close(() => undefined);
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback")).toEqual([
+      expect.objectContaining({ symbol: { module: "node:net", export: "Server#close" } }),
+    ]);
+  });
+
   it("resolves global fetch and console while ignoring a shadowed fetch parameter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-globals-"));
     const fileName = join(directory, "input.ts");
