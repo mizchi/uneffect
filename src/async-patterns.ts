@@ -293,13 +293,26 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
-  const resolveCallbacks = (callback: ts.Expression | undefined, seen = new Set<ts.Symbol>()): ts.FunctionLikeDeclaration[] => {
+  const resolveCallbacks = (
+    callback: ts.Expression | undefined,
+    seen = new Set<ts.Symbol>(),
+    substitutions = new Map<ts.Symbol, ts.Expression>(),
+  ): ts.FunctionLikeDeclaration[] => {
     if (!callback) return [];
+    if (ts.isIdentifier(callback)) {
+      const symbol = resolvedSymbol(callback), replacement = symbol && substitutions.get(symbol);
+      if (symbol && replacement) {
+        const nextSubstitutions = new Map(substitutions);
+        nextSubstitutions.delete(symbol);
+        return resolveCallbacks(replacement, seen, nextSubstitutions);
+      }
+    }
     if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback) || ts.isNonNullExpression(callback)) {
-      return resolveCallbacks(callback.expression, seen);
+      return resolveCallbacks(callback.expression, seen, substitutions);
     }
     if (ts.isConditionalExpression(callback)) {
-      const whenTrue = resolveCallbacks(callback.whenTrue, new Set(seen)), whenFalse = resolveCallbacks(callback.whenFalse, new Set(seen));
+      const whenTrue = resolveCallbacks(callback.whenTrue, new Set(seen), new Map(substitutions));
+      const whenFalse = resolveCallbacks(callback.whenFalse, new Set(seen), new Map(substitutions));
       return whenTrue.length > 0 && whenFalse.length > 0 ? [...new Set([...whenTrue, ...whenFalse])] : [];
     }
     if (ts.isCallExpression(callback)) {
@@ -333,22 +346,35 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         }
         return { expressions, definite: false };
       };
-      const flows = factory.declarations?.flatMap((declaration): ReturnFlow[] => {
+      const flows = factory.declarations?.flatMap((declaration): { flow: ReturnFlow; functionLike: ts.FunctionLikeDeclaration }[] => {
         const functionLike = ts.isFunctionLike(declaration) && "body" in declaration && declaration.body ? declaration
           : ts.isVariableDeclaration(declaration) && declaration.initializer
             && (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer))
             ? declaration.initializer : undefined;
         if (!functionLike?.body) return [];
         const body = functionLike.body as ts.ConciseBody;
-        return [ts.isBlock(body) ? blockFlow(body) : { expressions: [body], definite: true }].filter((flow): flow is ReturnFlow => flow !== undefined);
+        const flow = ts.isBlock(body) ? blockFlow(body) : { expressions: [body], definite: true };
+        return flow ? [{ flow, functionLike }] : [];
       }) ?? [];
-      if (flows.length === 0 || flows.some((flow) => !flow.definite || flow.expressions.length === 0)) return [];
+      if (flows.length === 0 || flows.some(({ flow }) => !flow.definite || flow.expressions.length === 0)) return [];
       const nextSeen = new Set([...seen, factory]);
-      const callbacks = flows.flatMap((flow) => flow.expressions).map((expression) => resolveCallbacks(expression, new Set(nextSeen)));
+      const callbacks = flows.flatMap(({ flow, functionLike }) => {
+        const callSubstitutions = new Map(substitutions);
+        for (const [index, parameter] of functionLike.parameters.entries()) {
+          if (!ts.isIdentifier(parameter.name) || !callback.arguments[index]) continue;
+          const symbol = resolvedSymbol(parameter.name);
+          if (symbol) callSubstitutions.set(symbol, callback.arguments[index]);
+        }
+        return flow.expressions.map((expression) => resolveCallbacks(expression, new Set(nextSeen), new Map(callSubstitutions)));
+      });
       return callbacks.every((candidates) => candidates.length > 0) ? [...new Set(callbacks.flat())] : [];
     }
     if (ts.isElementAccessExpression(callback) && callback.argumentExpression) {
       const literalKeys = (expression: ts.Expression): string[] | undefined => {
+        if (ts.isIdentifier(expression)) {
+          const symbol = resolvedSymbol(expression), replacement = symbol && substitutions.get(symbol);
+          if (replacement) return literalKeys(replacement);
+        }
         const initializer = immutableInitializer(expression);
         if (ts.isParenthesizedExpression(initializer) || ts.isAsExpression(initializer)
           || ts.isTypeAssertionExpression(initializer) || ts.isNonNullExpression(initializer)) return literalKeys(initializer.expression);
@@ -375,7 +401,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           return undefined;
         });
         if (members.every((member): member is ts.Expression => member !== undefined)) {
-          const callbacks = members.map((member) => resolveCallbacks(member, new Set(seen)));
+          const callbacks = members.map((member) => resolveCallbacks(member, new Set(seen), new Map(substitutions)));
           if (callbacks.every((candidates) => candidates.length > 0)) return [...new Set(callbacks.flat())];
         }
       }

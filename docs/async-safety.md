@@ -152,11 +152,12 @@ literal computed methods such as `worker["run"]` by TypeChecker symbol identity.
 Microtasks scheduled in those method bodies are enqueued only after their
 parent task runs. Polymorphic receivers and dynamically selected property keys
 remain unresolved callback boundaries.
-Direct source callback factories are also followed when exactly one explicit
-return resolves to a function expression, arrow, or known callback symbol.
+Direct source callback factories are also followed when every path definitely
+returns a function expression, arrow, or known callback symbol. Their parameter
+symbols are specialized from call arguments for finite callback forwarding.
 The same works through an imported source declaration included in the analyzed
-TypeScript Program. Factories with multiple possible returns and declaration-
-only or otherwise opaque imported factories remain dynamic.
+TypeScript Program. Fallthrough, unresolved return candidates, cycles, and
+declaration-only or otherwise opaque imported factories remain dynamic.
 
 A direct external `AbortSignal` on `scheduler.postTask` is represented by an
 explicit initially-live abstract state and a nondeterministic abort transition.

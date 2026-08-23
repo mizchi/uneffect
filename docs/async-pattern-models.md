@@ -111,6 +111,9 @@ object tables whose every selected property has a source callback body. Mutable
 tables, getters, missing keys, and other dynamic selections remain unresolved.
 Source callback factories use a definite-return block/`if` subset and retain
 every resolved return candidate. Concise conditional arrows are included;
+parameter symbols are specialized from concrete call arguments, so identity
+factories and finite literal-key selection from immutable callback tables can
+remain exact. A type assertion around a dynamic value does not make it finite.
 fallthrough, cycles, unsupported control flow, or any unresolved returned value
 make the factory callback dynamic.
 Nested minimum-delay clamping,

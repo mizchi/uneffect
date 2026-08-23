@@ -1136,6 +1136,30 @@ describe("builtin async temporal patterns", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("specializes callback-factory parameters from finite call arguments", () => {
+    const model = analyzeAsyncPatterns("parameterized-callback-factory.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      const handlers = { success: afterSuccess, failure: afterFailure } as const
+      function select(key: "success" | "failure") { return handlers[key] }
+      function identity(callback: () => void) { return callback }
+      function start(flag: boolean, dynamicKey: string) {
+        setTimeout(select(flag ? "success" : "failure"), 0)
+        setTimeout(identity(afterSuccess), 0)
+        setTimeout(select(dynamicKey as "success" | "failure"), 0)
+      }
+    `);
+    const selected = model.timers.findIndex((timer) => timer.callback === 'select(flag ? "success" : "failure")');
+    expect(model.timers.filter((timer) => timer.enqueuedBy === selected).map((timer) => timer.queue).sort())
+      .toEqual(["microtask", "next-tick"]);
+    const identity = model.timers.findIndex((timer) => timer.callback === "identity(afterSuccess)");
+    expect(model.timers.filter((timer) => timer.enqueuedBy === identity).map((timer) => timer.queue))
+      .toEqual(["microtask"]);
+    const dynamic = model.timers.findIndex((timer) => timer.callback === 'select(dynamicKey as "success" | "failure")');
+    expect(dynamic).toBeGreaterThanOrEqual(0);
+    expect(model.timers.some((timer) => timer.enqueuedBy === dynamic)).toBe(false);
+  });
+
   it("resolves every branch of a finite conditional timer callback", () => {
     const model = analyzeAsyncPatterns("conditional-callback.ts", `
       function afterSuccess() { queueMicrotask(() => undefined) }

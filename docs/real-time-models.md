@@ -132,8 +132,10 @@ all-members-resolved rule. Mutable tables, getters, missing keys, and general
 dynamic property selection remain unknown. Callback factories support a
 definite-return subset of sequential blocks and `if`/`else`, including early
 returns and concise conditional arrow functions. Every returned expression must
-resolve to a source callback; fallthrough and unsupported control flow keep the
-factory result dynamic.
+resolve to a source callback. Parameter references are substituted by symbol
+identity from the call arguments, enabling finite conditional keys and direct
+callback identity forwarding without treating a dynamic typed value as finite;
+fallthrough and unsupported control flow keep the factory result dynamic.
 An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.
 
