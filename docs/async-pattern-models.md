@@ -127,12 +127,13 @@ The DNS overlay also contributes a `Net` capability. A literal `lookup`
 hostname is narrowed to `Net<"host">`; dynamic hostnames and the two-argument
 address/port scope of `lookupService` remain conservatively broad `Net`.
 
-A direct conditional array passed to `AbortSignal.any` retains complete source
+A direct conditional array passed to `AbortSignal.any`, or a single-use `const`
+alias declared in the immediately preceding statement, retains complete source
 paths instead of flattening them into an always-present union. The Web Quint
 profile chooses one path before a signal-bound scheduler task can run, applies
 pre-aborted state only for that path, and enables abort transitions only for
-sources present on the chosen path. Aliased or mutated conditional arrays are
-still outside this proof subset.
+sources present on the chosen path. Non-adjacent, escaped, or mutated
+conditional arrays are still outside this proof subset.
 
 Nested jobs in `Server.close(callback)` are composed into the temporal model,
 and capability effects from inline or statically named deferred callbacks are

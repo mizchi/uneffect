@@ -1016,6 +1016,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (members.every((member) => Boolean(member.flags & ts.TypeFlags.Object))) return "object";
       return "unknown";
     };
+    const immediatelyConsumedConstInitializer = (value: ts.Expression, use: ts.Node): ts.Expression | undefined => {
+      if (!ts.isIdentifier(value)) return undefined;
+      const declaration = resolvedSymbol(value)?.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+        || declaration.parent.declarations.length !== 1 || !ts.isVariableStatement(declaration.parent.parent)) return undefined;
+      const declarationStatement = declaration.parent.parent;
+      let useStatement: ts.Node = use;
+      while (useStatement.parent && !ts.isBlock(useStatement.parent) && !ts.isSourceFile(useStatement.parent)) useStatement = useStatement.parent;
+      if (declarationStatement.parent !== useStatement.parent || (!ts.isBlock(useStatement.parent) && !ts.isSourceFile(useStatement.parent))) return undefined;
+      const statements = useStatement.parent.statements;
+      return statements.indexOf(useStatement as ts.Statement) === statements.indexOf(declarationStatement) + 1
+        ? declaration.initializer : undefined;
+    };
     const abortTarget = (expression: ts.Expression, seen = new Set<ts.Symbol>(), bindings = new Map<ts.Symbol, ts.Expression>()): AbortTarget | undefined => {
       if (ts.isIdentifier(expression)) {
         const symbol = resolvedSymbol(expression);
@@ -1032,7 +1046,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const existing = bindings.size === 0 ? inlineAbortCompositionTargets.get(expression) : undefined;
         if (existing !== undefined) return existing;
         const argument = expression.arguments[operation.signalsArgument];
-        let normalizedArgument = argument;
+        let normalizedArgument = argument && (immediatelyConsumedConstInitializer(argument, expression) ?? argument);
         while (normalizedArgument && ts.isParenthesizedExpression(normalizedArgument)) normalizedArgument = normalizedArgument.expression;
         const conditionalPaths = normalizedArgument && ts.isConditionalExpression(normalizedArgument)
           ? [expandStaticArray(normalizedArgument.whenTrue), expandStaticArray(normalizedArgument.whenFalse)] : undefined;

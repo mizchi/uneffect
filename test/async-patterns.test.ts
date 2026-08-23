@@ -382,6 +382,25 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("resolves an immediately consumed const alias for conditional abort paths but rejects intervening mutation", () => {
+    const stable = analyzeAsyncPatterns("aliased-conditional-abort.ts", `
+      function request(flag: boolean, external: AbortSignal) {
+        const sources = flag ? [external] : [AbortSignal.timeout(25)]
+        return AbortSignal.any(sources)
+      }
+    `);
+    expect(stable.abortCompositions).toMatchObject([{ sourcePaths: [[0], [1]] }]);
+
+    const mutated = analyzeAsyncPatterns("mutated-conditional-abort.ts", `
+      function request(flag: boolean, external: AbortSignal) {
+        const sources = flag ? [external] : [AbortSignal.timeout(25)]
+        sources.push(external)
+        return AbortSignal.any(sources)
+      }
+    `);
+    expect(mutated.abortCompositions).toEqual([]);
+  });
+
   it("propagates abort from one local AbortSignal.any composition into another", () => {
     const model = analyzeAsyncPatterns("nested-abort-any.ts", `
       function request(controller: AbortController) {
