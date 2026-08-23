@@ -24,6 +24,7 @@ export interface CallGraphEdge {
   overloadIndex?: number;
   span: { start: number; end: number };
   arguments: string[];
+  dischargesThrow?: boolean;
 }
 export interface ProgramCallGraph { nodes: CallGraphNode[]; edges: CallGraphEdge[] }
 export interface InstantiatedCallbackEffects { effects: Effect[]; evidence: EvidenceStatus; suspends: boolean }
@@ -83,15 +84,21 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
     const caller = stableId(declaration), parameters = new Map<string, number>();
     declaration.parameters.forEach((parameter, index) => { if (ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)) parameters.set(parameter.name.text, index); });
     const timings = new Map<number, InvocationTiming>();
-    const visit = (node: ts.Node): void => {
+    const visit = (node: ts.Node, catchesThrow: boolean): void => {
       if (node !== declaration && ts.isFunctionLike(node)) return;
+      if (ts.isTryStatement(node)) {
+        visit(node.tryBlock, catchesThrow || node.catchClause !== undefined);
+        if (node.catchClause) visit(node.catchClause.block, catchesThrow);
+        if (node.finallyBlock) visit(node.finallyBlock, catchesThrow);
+        return;
+      }
       if (ts.isCallExpression(node)) {
         const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
         const symbol = resolvedSymbol(checker, lookup), targetDeclaration = symbol ? symbolNodes.get(symbol) : undefined;
         const signatureDeclaration = checker.getResolvedSignature(node)?.declaration;
         const overloadIndex = symbol && signatureDeclaration ? symbol.declarations?.filter((item) => (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body).indexOf(signatureDeclaration) : -1;
         const parameterIndex = ts.isIdentifier(node.expression) ? parameters.get(node.expression.text) : undefined;
-        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()) });
+        edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow });
         if (parameterIndex !== undefined) timings.set(parameterIndex, "inline");
         node.arguments.forEach((argument, index) => {
           const parameterIndex = ts.isIdentifier(argument) ? parameters.get(argument.text) : undefined;
@@ -111,13 +118,13 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
             const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node, checker, adapter);
-            edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
+            edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [], dischargesThrow: catchesThrow && timing === "inline" });
           }
         });
       }
-      ts.forEachChild(node, visit);
+      ts.forEachChild(node, (child) => visit(child, catchesThrow));
     };
-    visit(declaration.body!);
+    visit(declaration.body!, false);
     byId.get(caller)!.effectParameters = [...parameters].map(([name, index]) => ({ index, name, timing: timings.get(index) ?? "unknown" }));
   }
   return { nodes, edges };

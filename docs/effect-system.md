@@ -60,6 +60,10 @@ Mutate<typeof left> does not permit Mutate<typeof right>
 Parameter regions are substituted at call sites. **Implemented across TypeChecker-resolved program edges, including aliases, methods, arrows, overloads, and callbacks.** The current escape filter proves freshly declared locals non-observable; deeper heap escape analysis remains conservative.
 
 `Throw<E>` is covariant over known `Error` subtypes. `Throw<Error>` admits a concrete error such as `Throw<RangeError>`, but does not admit `Throw<unknown>`, which represents JavaScript throwing a value not proven assignable to the global `Error` interface. The frontend performs that subtype check with the TypeChecker, including constrained type parameters. A synchronous `catch` discharges all `Throw<E>` effects originating in its `try` block. Throws from the `catch` or `finally` block still propagate.
+The program call graph carries this discharge fact on synchronous direct and
+inline-callback edges, so imported callees behave like local calls. Deferred or
+unknown-timing callbacks do not inherit the surrounding lexical `catch` because
+they may execute after that handler has returned.
 
 ## Domain effects and semantic footprints
 

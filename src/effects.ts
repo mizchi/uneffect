@@ -408,6 +408,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (edge.kind === "callback-argument" && edge.timing === "unknown") unknownTiming.add(edge.caller);
       const calleeParams = parameters.get(edge.callee) ?? [];
       for (const raw of inferred.get(edge.callee)!) {
+        if (edge.dischargesThrow && raw.kind === "throw") continue;
         const effect = raw.kind === "mutate" ? (() => {
           for (let index = 0; index < calleeParams.length; index++) {
             const parameter = calleeParams[index]!;

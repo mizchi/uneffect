@@ -350,6 +350,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
+  - [x] Preserve synchronous `Throw<T>` discharge on caught program call-graph edges, including inline callbacks, without discharging deferred callbacks.
 - [x] Add effect polymorphism and callback invocation timing.
 - [x] Publish versioned CLI, library, and Rust crate interfaces.
 - [x] Add CI tiers for unit tests, Z3 obligations, Quint simulation, and exhaustive model checking where available.

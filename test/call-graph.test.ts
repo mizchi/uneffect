@@ -62,6 +62,44 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.summaries.find((item) => item.functionName === "main")?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind)).toContain("Console");
   });
 
+  it("discharges program-wide throws only across caught synchronous edges", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-program-throw-discharge-"));
+    try {
+      const library = join(directory, "library.ts"), main = join(directory, "main.ts");
+      writeFileSync(library, `
+        /* uneffect: effect Throw<RangeError> */
+        export function dangerous() { throw new RangeError("bad") }
+        export function invoke(callback: () => void) { callback() }
+      `);
+      writeFileSync(main, `
+        import { dangerous, invoke } from "./library.js"
+        export function caughtDirect() { try { dangerous() } catch {} }
+        export function uncaughtDirect() { dangerous() }
+        export function caughtInline() { try { invoke(() => { throw new TypeError("inline") }) } catch {} }
+        export function deferredIsNotCaught() {
+          try { setTimeout(() => { throw new URIError("later") }, 0) } catch {}
+        }
+      `);
+      const program = ts.createProgram([library, main], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], types: ["node"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "caughtDirect", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "uncaughtDirect", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "caughtInline", effect: "Throw<TypeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "deferredIsNotCaught", effect: "Throw<URIError>", kind: "missing",
+      }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("classifies Array.from mapping as synchronous inline invocation", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-array-from-"));
     const source = join(directory, "array.ts");
