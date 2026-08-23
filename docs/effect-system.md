@@ -73,7 +73,8 @@ than throwing from the function call. Uneffect therefore stops `Throw<E>` at
 that owner boundary and leaves rejection observation to async-safety analysis.
 Generator bodies are delayed in the same spirit but retain synchronous step
 effects: constructing an iterator does not propagate its body summary, while a
-resolved direct `.next()`, `for..of`/`for await`, or `yield*` consumption does.
+resolved direct `.next()`, `for..of`/`for await`, `yield*`, spread, or
+`Array.from` consumption does.
 The Program path follows imported generators and a directly stored local
 iterator binding by symbol identity. Acyclic factories whose sole terminal
 returns are resolved generator/factory calls are specialized at direct

@@ -375,6 +375,8 @@ describe("Uneffect dogfood", () => {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps(true)
+          try { Array.from(buildFlushSteps(preferCache)) }
+          catch { console.warn("skipping materialized flush steps") }
           try { for (const _step of buildFlushSteps(preferCache)) {} }
           catch { console.warn("skipping flush steps") }
           readFile("settings.json", "utf8", () => {

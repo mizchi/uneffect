@@ -179,6 +179,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       };
       if (ts.isForOfStatement(node)) addStoredGeneratorConsumption(node.expression);
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) addStoredGeneratorConsumption(node.expression);
+      if (ts.isSpreadElement(node)) addStoredGeneratorConsumption(node.expression);
       if (ts.isCallExpression(node)) {
         const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
         const symbol = resolvedSymbol(checker, lookup), targetDeclaration = symbol ? symbolNodes.get(symbol) : undefined;
@@ -190,6 +191,8 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
             && ts.isCallExpression(node.parent.parent) && node.parent.parent.expression === node.parent)
           || (ts.isForOfStatement(node.parent) && node.parent.expression === node)
           || (ts.isYieldExpression(node.parent) && node.parent.asteriskToken !== undefined && node.parent.expression === node)
+          || (ts.isSpreadElement(node.parent) && node.parent.expression === node)
+          || (ts.isCallExpression(node.parent) && node.parent.expression.getText() === "Array.from" && node.parent.arguments[0] === node)
         );
         const generatorConsumption = Boolean(targetDeclaration?.asteriskToken) && consumptionSyntax;
         const returnedGenerators = consumptionSyntax ? returnedGeneratorDeclarations(targetDeclaration) : undefined;
@@ -198,6 +201,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow, executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") addStoredGeneratorConsumption(node.expression.expression);
+        if (node.expression.getText() === "Array.from" && node.arguments[0]) addStoredGeneratorConsumption(node.arguments[0]);
         if (parameterIndex !== undefined) timings.set(parameterIndex, "inline");
         node.arguments.forEach((argument, index) => {
           const parameterIndex = ts.isIdentifier(argument) ? parameters.get(argument.text) : undefined;

@@ -173,6 +173,12 @@ describe("multi-file call graph and effect polymorphism", () => {
           forwardedAgain.next()
         }
         export function consumeLoop() { for (const value of generate()) void value }
+        export function consumeArrayFrom() { Array.from(generate()) }
+        export function consumeSpread() { void [...generate()] }
+        export function consumeStoredArrayFrom() {
+          const iterator = generate()
+          Array.from(iterator)
+        }
         export function consumeFactory() { for (const value of buildIterator()) void value }
         export function consumeBranchingFactory(log: boolean) {
           for (const value of chooseIterator(log)) void value
@@ -218,6 +224,14 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeAlias", effect: "Throw<RangeError>", kind: "missing",
       }));
+      for (const functionName of ["consumeArrayFrom", "consumeSpread", "consumeStoredArrayFrom"]) {
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+          functionName, effect: "Console", kind: "missing",
+        }));
+        expect(result.diagnostics).toContainEqual(expect.objectContaining({
+          functionName, effect: "Throw<RangeError>", kind: "missing",
+        }));
+      }
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeLoop", effect: "Console", kind: "missing",
       }));
