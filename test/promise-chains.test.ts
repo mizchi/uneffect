@@ -653,6 +653,37 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("specializes a literal callback selector inside a Proxy get trap", () => {
+    const exact = analyzePromiseChains("proxy-selected-forwarded-then.ts", `
+      function select<T>(enabled: boolean, yes: T, no: T): T { return enabled ? yes : no }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(true, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const dynamic = analyzePromiseChains("proxy-dynamic-selected-forwarded-then.ts", `
+      declare const enabled: boolean
+      function select<T>(enabled: boolean, yes: T, no: T): T { return enabled ? yes : no }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(enabled, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(dynamic.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

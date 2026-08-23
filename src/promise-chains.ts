@@ -273,6 +273,28 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         visit(expression.getSourceFile());
         return written;
       };
+      const staticBoolean = (
+        candidate: ts.Expression,
+        substitutions: ReadonlyMap<ts.Symbol, ts.Expression>,
+        booleanSeen = new Set<ts.Symbol>(),
+      ): boolean | undefined => {
+        if (candidate.kind === ts.SyntaxKind.TrueKeyword) return true;
+        if (candidate.kind === ts.SyntaxKind.FalseKeyword) return false;
+        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate)
+          || ts.isTypeAssertionExpression(candidate) || ts.isNonNullExpression(candidate)) {
+          return staticBoolean(candidate.expression, substitutions, booleanSeen);
+        }
+        if (ts.isPrefixUnaryExpression(candidate) && candidate.operator === ts.SyntaxKind.ExclamationToken) {
+          const operand = staticBoolean(candidate.operand, substitutions, booleanSeen);
+          return operand === undefined ? undefined : !operand;
+        }
+        if (!ts.isIdentifier(candidate)) return undefined;
+        const symbol = targetSymbol(checker, candidate);
+        if (!symbol || booleanSeen.has(symbol)) return undefined;
+        const replacement = substitutions.get(symbol) ?? immutableInitializer(candidate);
+        return replacement && replacement !== candidate
+          ? staticBoolean(replacement, substitutions, new Set([...booleanSeen, symbol])) : undefined;
+      };
       const immutableCallback = (
         candidate: ts.Expression,
         callbackSeen = new Set<ts.Symbol>(),
@@ -284,6 +306,13 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
             if (callbackSeen.has(symbol)) return undefined;
             return immutableCallback(substituted, new Set([...callbackSeen, symbol]), substitutions);
           }
+        }
+        if (ts.isConditionalExpression(candidate)) {
+          const selected = staticBoolean(candidate.condition, substitutions);
+          return selected === undefined ? undefined : immutableCallback(
+            selected ? candidate.whenTrue : candidate.whenFalse,
+            callbackSeen, substitutions,
+          );
         }
         const initializer = immutableInitializer(candidate, callbackSeen);
         if (initializer && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))) return initializer;

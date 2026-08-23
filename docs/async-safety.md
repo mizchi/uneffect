@@ -146,6 +146,9 @@ identifier parameter. Resolution uses parameter symbols rather than names.
 Reassigned callees, defaults, rest/destructured parameters, non-definite return
 flows, selectors for other properties, and compound selector conditions remain
 dynamic.
+Identity-wrapper returns may also use a conditional expression selected by a
+substituted or immutable boolean literal (including unary `!`). A dynamic
+callback selector is not merged as exact behavior and remains conservative.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

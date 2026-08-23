@@ -421,6 +421,10 @@ two-level function/immutable-arrow identity chain measured 122.29 ms mean over
 20 cold samples (2.07% RME). This includes the conservative source-level
 reassignment scan; the result is observational and does not establish
 large-file scaling.
+After adding a literal conditional callback selector around the same forwarded
+trap value, the fixture measured 125.21 ms mean over 20 samples (1.55% RME).
+The roughly 3 ms difference is within cold-run variability and is not treated
+as a regression signal.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

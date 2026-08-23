@@ -25,7 +25,9 @@ export function adaptRejectedProxy(): Promise<number> {
   };
   function forward<T>(value: T): T { return value; }
   const forwardAgain = <T>(value: T): T => forward(value);
-  const getTrap = () => forwardAgain(rejectThen);
+  const resolveThen = (resolve: (value: number) => void) => resolve(200);
+  function selectCallback<T>(enabled: boolean, yes: T, no: T): T { return enabled ? yes : no; }
+  const getTrap = () => selectCallback(true, forwardAgain(rejectThen), resolveThen);
   const handler = { get: getTrap };
   const upstream = new Proxy({ then() {} }, handler);
   return new Promise<number>((resolve) => resolve(upstream)).catch(() => 503);
