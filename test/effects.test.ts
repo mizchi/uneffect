@@ -17,6 +17,24 @@ describe("effect checker", () => {
     expect(diagnostics).toContainEqual(expect.objectContaining({ functionName: "invalid", kind: "missing", effect: "Console" }));
   });
 
+  it("discharges a synchronous disposer throw caught around using", () => {
+    const source = `
+      class Resource {
+        /* uneffect: effect Throw<RangeError> */
+        [Symbol.dispose]() { throw new RangeError("dispose") }
+      }
+      function safe() { try { using resource = new Resource() } catch {} }
+      function unsafe() { using resource = new Resource() }
+    `;
+    const diagnostics = analyzeEffects("using-throw.ts", source);
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safe", kind: "missing", effect: "Throw<RangeError>",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "unsafe", kind: "missing", effect: "Throw<RangeError>",
+    }));
+  });
+
   it("checks an in-place recursive quicksort as one reference-scoped mutation", () => {
     const source = `
       /* uneffect: effect Mutate<typeof values> */

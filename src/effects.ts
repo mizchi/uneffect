@@ -255,7 +255,9 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           if (!resource.initializer) continue;
           const asynchronous = (flags & ts.NodeFlags.AwaitUsing) === ts.NodeFlags.AwaitUsing;
           const { asyncSymbol: asyncDispose, syncSymbol: syncDispose } = resolveDisposalProtocol(checker, resource.initializer);
-          for (const disposal of (asynchronous ? asyncDispose ?? syncDispose : syncDispose)?.declarations ?? []) for (const effect of declaration(disposal.getSourceFile(), disposal)) addEffect(info.direct, effect);
+          for (const disposal of (asynchronous ? asyncDispose ?? syncDispose : syncDispose)?.declarations ?? []) for (const effect of declaration(disposal.getSourceFile(), disposal)) {
+            if (!dischargesThrow || effect.kind !== "throw") addEffect(info.direct, effect);
+          }
         }
       }
       if (adapter.mayInvokeUserCode(node)) addEffect(info.direct, capability("InvokeUserCode"));
@@ -387,7 +389,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
             if (!ts.isMethodDeclaration(target) || !target.body) continue;
             const callee = `${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`;
             if (!nodes.has(callee)) continue;
-            implicitDisposalEdges.push({ caller: graphNode.id, callee, kind: "direct", timing: asynchronous ? "deferred" : "inline", span: { start: declaration.getStart(source), end: declaration.getEnd() }, arguments: [] });
+            implicitDisposalEdges.push({ caller: graphNode.id, callee, kind: "direct", timing: asynchronous ? "deferred" : "inline", span: { start: declaration.getStart(source), end: declaration.getEnd() }, arguments: [], dischargesThrow: catches });
           }
         }
       }

@@ -100,6 +100,36 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("discharges imported implicit disposer throws inside a caught using scope", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-program-disposer-discharge-"));
+    try {
+      const library = join(directory, "library.ts"), main = join(directory, "main.ts");
+      writeFileSync(library, `
+        export class Resource {
+          /* uneffect: effect Throw<RangeError> */
+          [Symbol.dispose]() { throw new RangeError("dispose") }
+        }
+      `);
+      writeFileSync(main, `
+        import { Resource } from "./library.js"
+        export function caught() { try { using resource = new Resource() } catch {} }
+        export function uncaught() { using resource = new Resource() }
+      `);
+      const program = ts.createProgram([library, main], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+        lib: ["lib.es2024.d.ts", "lib.esnext.disposable.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "caught", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "uncaught", effect: "Throw<RangeError>", kind: "missing",
+      }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("classifies Array.from mapping as synchronous inline invocation", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-array-from-"));
     const source = join(directory, "array.ts");

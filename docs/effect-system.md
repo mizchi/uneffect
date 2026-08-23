@@ -64,6 +64,9 @@ The program call graph carries this discharge fact on synchronous direct and
 inline-callback edges, so imported callees behave like local calls. Deferred or
 unknown-timing callbacks do not inherit the surrounding lexical `catch` because
 they may execute after that handler has returned.
+Implicit disposal calls introduced by `using` and `await using` carry the same
+lexical catch fact. A disposer `Throw<E>` therefore propagates from an uncaught
+scope and is discharged when completion of that scope is enclosed by a catch.
 
 ## Domain effects and semantic footprints
 
