@@ -149,6 +149,10 @@ dynamic.
 Identity-wrapper returns may also use a conditional expression selected by a
 substituted or immutable boolean literal (including unary `!`). A dynamic
 callback selector is not merged as exact behavior and remains conservative.
+Proxy property guards may combine the known `property === "then"` lookup with
+immutable boolean aliases, unary `!`, and boolean-only `&&`/`||`; evaluation is
+left-to-right and short-circuiting. Coercive equality, general truthiness, or a
+reached dynamic operand leaves the trap dynamic.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

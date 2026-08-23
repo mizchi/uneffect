@@ -684,6 +684,44 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("specializes a compound Proxy then-property guard", () => {
+    const exact = analyzePromiseChains("proxy-compound-then-guard.ts", `
+      function run() {
+        const enabled = true as const
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          get(_target, property) {
+            if (property === "then" && enabled) return rejectThen
+            return undefined
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const dynamic = analyzePromiseChains("proxy-dynamic-compound-then-guard.ts", `
+      declare const enabled: boolean
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          get(_target, property) {
+            if (property === "then" && enabled) return rejectThen
+            return undefined
+          }
+        })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(dynamic.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

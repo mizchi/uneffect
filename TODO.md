@@ -510,6 +510,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve conservative fulfill/reject/pending outcomes when an exact nested target is unavailable.
     - [x] Resolve cycle-safe direct and immutable-const identity wrappers around a Proxy `then` callback by parameter symbol; reassigned, destructured, rest, defaulted, and non-definite wrappers remain dynamic.
     - [x] Specialize a Proxy callback wrapper's conditional-expression return from substituted/immutable boolean literals and negation; dynamic selectors remain conservative.
+    - [x] Evaluate a Proxy `then` property guard through strict equality, immutable boolean aliases, negation, and left-to-right boolean `&&`/`||`; dynamic residual guards remain conservative.
     - [x] Link a local thenable resolving to an earlier analyzed local thenable symbol and recursively emit the nested settlement actions.
     - [x] Link external and forward local nested symbols, replacing forward placeholders in place when the initializer is analyzed.
     - [x] Register inline nested thenable literals as anonymous nodes and recursively link their exact settlement behavior.

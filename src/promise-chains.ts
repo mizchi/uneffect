@@ -245,18 +245,47 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       };
       const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
-      const selectsThen = (condition: ts.Expression): boolean => {
-        if (!ts.isBinaryExpression(condition) || condition.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
-        const matches = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
-          && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
-        return matches(condition.left, condition.right) || matches(condition.right, condition.left);
+      const thenLookupBoolean = (condition: ts.Expression, conditionSeen = new Set<ts.Symbol>()): boolean | undefined => {
+        if (condition.kind === ts.SyntaxKind.TrueKeyword) return true;
+        if (condition.kind === ts.SyntaxKind.FalseKeyword) return false;
+        if (ts.isParenthesizedExpression(condition) || ts.isAsExpression(condition)
+          || ts.isTypeAssertionExpression(condition) || ts.isNonNullExpression(condition)) {
+          return thenLookupBoolean(condition.expression, conditionSeen);
+        }
+        if (ts.isPrefixUnaryExpression(condition) && condition.operator === ts.SyntaxKind.ExclamationToken) {
+          const operand = thenLookupBoolean(condition.operand, conditionSeen);
+          return operand === undefined ? undefined : !operand;
+        }
+        if (ts.isBinaryExpression(condition)
+          && (condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+            || condition.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+          const matches = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
+            && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
+          if (!matches(condition.left, condition.right) && !matches(condition.right, condition.left)) return undefined;
+          return condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
+        }
+        if (ts.isBinaryExpression(condition)
+          && (condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            || condition.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+          const left = thenLookupBoolean(condition.left, new Set(conditionSeen));
+          if (left === undefined) return undefined;
+          if (condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left) return false;
+          if (condition.operatorToken.kind === ts.SyntaxKind.BarBarToken && left) return true;
+          return thenLookupBoolean(condition.right, new Set(conditionSeen));
+        }
+        if (!ts.isIdentifier(condition)) return undefined;
+        const symbol = targetSymbol(checker, condition);
+        if (!symbol || conditionSeen.has(symbol)) return undefined;
+        const replacement = immutableInitializer(condition);
+        return replacement && replacement !== condition
+          ? thenLookupBoolean(replacement, new Set([...conditionSeen, symbol])) : undefined;
       };
       let returned = trapFunction?.body && !ts.isBlock(trapFunction.body) ? trapFunction.body
         : trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
-      if (returned && ts.isConditionalExpression(returned) && selectsThen(returned.condition)) returned = returned.whenTrue;
+      if (returned && ts.isConditionalExpression(returned) && thenLookupBoolean(returned.condition) === true) returned = returned.whenTrue;
       if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!) && ts.isReturnStatement(trapBody.statements[1]!)) {
         const branch = trapBody.statements[0]!, condition = branch.expression;
-        if (selectsThen(condition)) returned = returnedExpression(branch.thenStatement);
+        if (thenLookupBoolean(condition) === true) returned = returnedExpression(branch.thenStatement);
       }
       const isAssignmentOperator = (kind: ts.SyntaxKind): boolean => kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
       const isReassigned = (symbol: ts.Symbol): boolean => {
