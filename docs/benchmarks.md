@@ -441,6 +441,9 @@ Expressing the dogfood Proxy handler with a literal-computed `["get"]` name
 measured 121.16 ms mean over 20 samples (1.36% RME). The small decrease is
 within ordinary cold-run variance; the relevant result is that computed-name
 resolution preserves the exact rejection proof without runtime instrumentation.
+Routing the same handler name through an immutable `const` key measured
+121.74 ms mean over 20 samples (1.56% RME). This is effectively unchanged from
+the literal-computed measurement while exercising symbol-based key resolution.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

@@ -582,6 +582,20 @@ describe("Promise state and reaction chains", () => {
       provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
     });
 
+    const immutableKey = analyzePromiseChains("proxy-immutable-computed-get.ts", `
+      const trapName = "get" as const
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, {
+          [trapName]: (_target: unknown, property: PropertyKey) => property === "then" ? rejectThen : undefined
+        } as ProxyHandler<{ then(): void }>)
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(immutableKey.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
     const dynamic = analyzePromiseChains("proxy-dynamic-computed-get.ts", `
       declare const trapName: string
       function run() {

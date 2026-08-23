@@ -233,8 +233,9 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (!name) return undefined;
         if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
         if (!ts.isComputedPropertyName(name)) return undefined;
-        return ts.isStringLiteral(name.expression) || ts.isNoSubstitutionTemplateLiteral(name.expression)
-          ? name.expression.text : undefined;
+        const key = immutableInitializer(name.expression);
+        return key && (ts.isStringLiteral(key) || ts.isNoSubstitutionTemplateLiteral(key) || ts.isNumericLiteral(key))
+          ? key.text : undefined;
       };
       const getTrap = handler && ts.isObjectLiteralExpression(handler)
         ? handler.properties.find((item) => staticPropertyName(item.name) === "get")

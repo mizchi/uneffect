@@ -151,6 +151,9 @@ Proxy handler lookup recognizes ordinary `get`, quoted `"get"`, and
 literal-computed `["get"]`/``[`get`]`` names. A computed identifier or other
 dynamic property expression is not treated as the handler merely because its
 runtime value might be `"get"`.
+Computed names may also follow a cycle-safe immutable `const` alias to a string,
+numeric, or no-substitution-template literal. Mutable aliases and declarations
+without an initializer remain unresolved.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.
