@@ -433,6 +433,10 @@ samples (1.46% RME), still within the same cold-analysis range.
 Using the equivalent early-return `if` selector through the restricted block
 walker measured 120.83 ms mean over 20 samples (1.88% RME). The lower point is
 within run-to-run variance and is not claimed as an optimization gain.
+Replacing that branch with a proof-pure local `const` conditional selector
+measured 123.45 ms mean over 20 samples (1.88% RME). This remains within the
+same cold-analysis range; effectful local initializers are intentionally not
+eligible for this proof.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

@@ -296,6 +296,11 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
             if (callbackSeen.has(symbol)) return undefined;
             return immutableCallback(substituted, new Set([...callbackSeen, symbol]), substitutions);
           }
+          const localInitializer = symbol && immutableInitializer(candidate, callbackSeen);
+          if (symbol && localInitializer && !ts.isCallExpression(localInitializer)) {
+            if (callbackSeen.has(symbol)) return undefined;
+            return immutableCallback(localInitializer, new Set([...callbackSeen, symbol]), substitutions);
+          }
         }
         if (ts.isConditionalExpression(candidate)) {
           const selected = staticPrimitive(candidate.condition, substitutions);
@@ -323,6 +328,30 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           nextSubstitutions.set(parameterSymbol, initializer.arguments[index]!);
         }
         type SelectedReturn = { kind: "return"; expression: ts.Expression } | { kind: "continue" };
+        const isPureSelectorExpression = (selector: ts.Expression): boolean => {
+          if (ts.isIdentifier(selector) || ts.isArrowFunction(selector) || ts.isFunctionExpression(selector)
+            || ts.isStringLiteral(selector) || ts.isNoSubstitutionTemplateLiteral(selector)
+            || ts.isNumericLiteral(selector) || selector.kind === ts.SyntaxKind.TrueKeyword
+            || selector.kind === ts.SyntaxKind.FalseKeyword) return true;
+          if (ts.isParenthesizedExpression(selector) || ts.isAsExpression(selector)
+            || ts.isTypeAssertionExpression(selector) || ts.isNonNullExpression(selector)) {
+            return isPureSelectorExpression(selector.expression);
+          }
+          if (ts.isConditionalExpression(selector)) return isPureSelectorExpression(selector.condition)
+            && isPureSelectorExpression(selector.whenTrue) && isPureSelectorExpression(selector.whenFalse);
+          if (ts.isPrefixUnaryExpression(selector) && selector.operator === ts.SyntaxKind.ExclamationToken) {
+            return isPureSelectorExpression(selector.operand);
+          }
+          if (ts.isBinaryExpression(selector)) {
+            const operator = selector.operatorToken.kind;
+            return (operator === ts.SyntaxKind.AmpersandAmpersandToken
+              || operator === ts.SyntaxKind.BarBarToken
+              || operator === ts.SyntaxKind.EqualsEqualsEqualsToken
+              || operator === ts.SyntaxKind.ExclamationEqualsEqualsToken)
+              && isPureSelectorExpression(selector.left) && isPureSelectorExpression(selector.right);
+          }
+          return false;
+        };
         const statementsReturn = (statements: readonly ts.Statement[]): SelectedReturn | undefined => {
           for (const statement of statements) {
             const selected = statementReturn(statement);
@@ -356,6 +385,12 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           if (ts.isReturnStatement(statement)) return statement.expression
             ? { kind: "return", expression: statement.expression } : undefined;
           if (ts.isEmptyStatement(statement)) return { kind: "continue" };
+          if (ts.isVariableStatement(statement)) {
+            if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+            return statement.declarationList.declarations.every((declaration) => ts.isIdentifier(declaration.name)
+              && declaration.initializer !== undefined && isPureSelectorExpression(declaration.initializer))
+              ? { kind: "continue" } : undefined;
+          }
           if (ts.isBlock(statement)) return statementsReturn(statement.statements);
           if (ts.isSwitchStatement(statement)) return switchReturn(statement);
           if (ts.isIfStatement(statement)) {

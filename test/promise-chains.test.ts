@@ -805,6 +805,42 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("resolves a pure immutable local callback selector", () => {
+    const exact = analyzePromiseChains("proxy-local-selected-then.ts", `
+      function select<T>(enabled: boolean, rejectThen: T, resolveThen: T): T {
+        const selected = enabled ? rejectThen : resolveThen
+        return selected
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(true, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const effectful = analyzePromiseChains("proxy-effectful-local-selected-then.ts", `
+      declare function choose<T>(value: T): T
+      function select<T>(rejectThen: T): T {
+        const selected = choose(rejectThen)
+        return selected
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} }, { get() { return select(rejectThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(effectful.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

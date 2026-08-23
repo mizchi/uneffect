@@ -514,6 +514,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Select a static string/number/boolean `switch` entry in a callback wrapper with source-order labels, default, and empty-clause fallthrough; dynamic selectors and abrupt control remain conservative.
     - [x] Share one cycle-safe finite primitive evaluator across resource Proxy factories and Promise Proxy traps.
     - [x] Walk a restricted callback-wrapper block with static `if`/`else`, early return, nested blocks, and static `switch`; distinguish safe fallthrough from unsupported flow.
+    - [x] Resolve declaration-ordered immutable local callback selectors when every initializer is proof-pure; effectful, mutable, and destructured declarations remain conservative.
     - [x] Link a local thenable resolving to an earlier analyzed local thenable symbol and recursively emit the nested settlement actions.
     - [x] Link external and forward local nested symbols, replacing forward placeholders in place when the initializer is analyzed.
     - [x] Register inline nested thenable literals as anonymous nodes and recursively link their exact settlement behavior.

@@ -27,8 +27,8 @@ export function adaptRejectedProxy(): Promise<number> {
   const forwardAgain = <T>(value: T): T => forward(value);
   const resolveThen = (resolve: (value: number) => void) => resolve(200);
   function selectCallback<T>(rejectEnabled: boolean, reject: T, resolve: T): T {
-    if (rejectEnabled) return reject;
-    return resolve;
+    const selected = rejectEnabled ? reject : resolve;
+    return selected;
   }
   const rejectEnabled = true as const;
   const getTrap: ProxyHandler<PromiseLike<number>>["get"] = (_target, property) => property === "then" && rejectEnabled

@@ -164,6 +164,12 @@ The callback-wrapper return analysis also follows nested blocks and statically
 selected `if`/`else`, including the common `if (enabled) return yes; return no`
 shape. A dynamic condition, return without a value, or unsupported statement
 invalidates the exact proof rather than being treated as ordinary fallthrough.
+The same walker accepts declaration-ordered local `const` selectors whose
+initializers contain only identifiers, literals, function values, conditional
+expressions, negation, strict equality, and boolean short-circuit operators.
+Calls, construction, property access, `await`, mutable bindings, and
+destructuring are not assumed pure; encountering one keeps the Proxy behavior
+dynamic.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`
