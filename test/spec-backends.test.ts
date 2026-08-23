@@ -1059,6 +1059,54 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("synthesizes explicitly bounded larger affine coefficients", async () => {
+    const temporal = parseSpec("bounded-affine-strengthening.ts", `/* uneffect:
+      state used: int
+      state capacity: int
+      state armed: bool
+      init used = 1
+      init capacity = 3
+      init armed = false
+      action allocateBalanced: used' = used + 1, capacity' = capacity + 3
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && 3 * used > capacity
+    */`).temporal;
+    const defaults = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(defaults).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:3 * used === capacity>",
+    }));
+    const expanded = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxCoefficient: 3,
+    });
+    expect(expanded).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      name: "impossible",
+      relatedName: "<synth:3 * used === capacity>",
+    }));
+  });
+
+  it("exposes the affine coefficient bound through the CLI", () => {
+    const expanded = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+      "--synthesize-relational-strengthening", "--relational-max-coefficient=3"], {
+      encoding: "utf8", timeout: 30_000,
+    });
+    expect(expanded.stdout).toContain("<synth:3 * accepted === byteBudget>");
+    const invalid = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+      "--synthesize-relational-strengthening", "--relational-max-coefficient=9"], {
+      encoding: "utf8", timeout: 30_000,
+    });
+    expect(invalid.status).not.toBe(0);
+    expect(invalid.stderr).toContain("relational-max-coefficient must be between 1 and 8");
+  });
+
   it("synthesizes three-variable conservation equalities", async () => {
     const temporal = parseSpec("conservation-strengthening.ts", `/* uneffect:
       state accepted: int

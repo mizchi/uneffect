@@ -275,6 +275,7 @@ describe("typed-array static verification", () => {
     await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxCoefficient: 3,
     });
   }, { time: 500, iterations: 1 });
 

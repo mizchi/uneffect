@@ -113,6 +113,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Opt in separately to pairwise integer equality/order templates so quadratic relational candidate growth is explicit.
     - [x] Derive coefficient-1 affine offset templates from pairs of constant integer initializers.
     - [x] Derive reduced small-coefficient `(2,1)` and `(1,2)` affine equality/order templates from constant initializers.
+    - [x] Generalize reduced pairwise affine coefficients behind an explicit maximum coefficient (default two, hard limit eight).
     - [x] Derive coefficient-1 three-variable conservation equalities from constant initializers.
     - [x] Generalize coefficient-1 conservation equalities to an explicitly bounded arity (maximum six) and cap generated conservation candidates.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.

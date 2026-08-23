@@ -24,13 +24,17 @@ const numericOption = (prefix: string): number | undefined => {
   return value;
 };
 const relationalStrengtheningMaxArity = numericOption("--relational-max-arity=");
+const relationalStrengtheningMaxCoefficient = numericOption("--relational-max-coefficient=");
 const relationalStrengtheningCandidateLimit = numericOption("--relational-candidate-limit=");
 if (relationalStrengtheningMaxArity !== undefined && (relationalStrengtheningMaxArity < 3 || relationalStrengtheningMaxArity > 6)) {
   throw new Error("relational-max-arity must be between 3 and 6");
 }
+if (relationalStrengtheningMaxCoefficient !== undefined && (relationalStrengtheningMaxCoefficient < 1 || relationalStrengtheningMaxCoefficient > 8)) {
+  throw new Error("relational-max-coefficient must be between 1 and 8");
+}
 const synthesizeCollectionStrengtheningProperties = arguments_.includes("--synthesize-collection-strengthening");
 if (!command || !fileName || !["ir", "lint", "z3", "quint", "compose", "async-quint", "web-loop-quint", "node-loop-quint", "promise-quint"].includes(command)) {
-  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--relational-max-arity=3..6] [--relational-candidate-limit=256] [--synthesize-collection-strengthening]");
+  console.error("usage: uneffect-spec <ir|lint|z3|quint|compose|async-quint|web-loop-quint|node-loop-quint|promise-quint> <file.ts> [function] [--strengthening=name,...] [--discover-strengthening] [--synthesize-strengthening] [--synthesize-relational-strengthening] [--relational-max-arity=3..6] [--relational-max-coefficient=1..8] [--relational-candidate-limit=256] [--synthesize-collection-strengthening]");
   process.exit(2);
 }
 
@@ -40,7 +44,7 @@ const spec = parseSpec(fileName, source);
 if (command === "ir") {
   console.log(JSON.stringify(spec, null, 2));
 } else if (command === "lint") {
-  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties, discoverStrengtheningProperties, synthesizeStrengtheningProperties, synthesizeRelationalStrengtheningProperties, relationalStrengtheningMaxArity, relationalStrengtheningCandidateLimit, synthesizeCollectionStrengtheningProperties });
+  const result = await lintSpecWithZ3(fileName, source, { strengtheningProperties, discoverStrengtheningProperties, synthesizeStrengtheningProperties, synthesizeRelationalStrengtheningProperties, relationalStrengtheningMaxArity, relationalStrengtheningMaxCoefficient, relationalStrengtheningCandidateLimit, synthesizeCollectionStrengtheningProperties });
   console.log(JSON.stringify(result.diagnostics, null, 2));
   if (result.diagnostics.length > 0) process.exitCode = 1;
 } else if (command === "z3") {

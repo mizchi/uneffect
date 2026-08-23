@@ -177,9 +177,13 @@ separate `synthesizeRelationalStrengtheningProperties` option and
 count grows quadratically with integer state count. When both states have
 constant integer initializers, it also generates equality/order templates at
 their initial affine boundary. The pool includes coefficient-1 offsets such as
-`left === right + 2` and the reduced small-coefficient pairs `(2,1)` and
-`(1,2)`, allowing relations such as `2 * used <= capacity`. Arbitrary
-coefficients, conjunction discovery, and general polyhedra remain unsupported.
+`left === right + 2` and reduced coefficient pairs up to an explicit bound,
+allowing relations such as `3 * used <= capacity`. The default maximum
+coefficient is two. Set `relationalStrengtheningMaxCoefficient` or CLI
+`--relational-max-coefficient=N` to raise it, up to the hard safety limit of
+eight. Common factors are removed so equivalent scaled relations are not
+generated twice. Unbounded coefficients, conjunction discovery, and general
+polyhedra remain unsupported.
 The same opt-in includes bounded conservation equalities such as
 `accepted + dropped === attempted`, with an offset derived from constant
 initializers. The default maximum arity is three, preserving the original
@@ -188,9 +192,9 @@ quadratic-sized use case. Set `relationalStrengtheningMaxArity` or CLI
 limit of six variables. Conservation generation stops after 256 candidates by
 default; configure `relationalStrengtheningCandidateLimit` or
 `--relational-candidate-limit=N` when a reviewed model needs a different bound.
-These bounds apply to conservation candidates, while the existing pairwise
-pool remains quadratic. Coefficients other than one and general polyhedra are
-not inferred by this template.
+These bounds apply to conservation candidates, while the pairwise pool remains
+quadratic in state count and quadratic in the configured coefficient bound.
+General polyhedra are not inferred by this template.
 Same-shaped Set, Map, and record pairs have a separate equality template pool
 behind `synthesizeCollectionStrengtheningProperties` and
 `--synthesize-collection-strengthening`. The same opt-in recursively discovers

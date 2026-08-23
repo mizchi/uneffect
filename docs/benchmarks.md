@@ -18,7 +18,11 @@ independent Solver for every obligation reduced the same-machine mean to
 188.69 ms over three samples (5.43% relative margin of error), about an 18x
 improvement. This measures `2 * accepted <= byteBudget` template generation,
 induction checks, and reachability diagnostics together; it is not a general
-polyhedral benchmark.
+polyhedral benchmark. After raising the explicit coefficient bound from two to
+three and changing the dogfood invariant to
+`3 * accepted === byteBudget`, the same local Node 24 benchmark measured
+284.95 ms mean over two samples (4.72% RME). The extra candidate pairs explain
+the increase; this remains an observational benchmark rather than a CI budget.
 
 The three-counter telemetry accounting model measured 345.42 ms mean over two
 samples (3.84% RME) after adding bounded coefficient-1 conservation templates.

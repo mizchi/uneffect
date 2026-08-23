@@ -113,6 +113,7 @@ function synthesizedStrengtheningProperties(spec: TemporalSpec): TemporalSpec["p
 
 interface RelationalStrengtheningSynthesisOptions {
   maxArity?: number;
+  maxCoefficient?: number;
   candidateLimit?: number;
 }
 
@@ -123,6 +124,7 @@ export interface TemporalReachabilityLintOptions {
   synthesizeStrengtheningProperties?: boolean;
   synthesizeRelationalStrengtheningProperties?: boolean;
   relationalStrengtheningMaxArity?: number;
+  relationalStrengtheningMaxCoefficient?: number;
   relationalStrengtheningCandidateLimit?: number;
   synthesizeCollectionStrengtheningProperties?: boolean;
 }
@@ -147,7 +149,16 @@ function synthesizedRelationalStrengtheningProperties(
     const leftInitial = initialInteger(left.name), rightInitial = initialInteger(right.name);
     if (leftInitial === undefined || rightInitial === undefined) return direct;
     const term = (coefficient: bigint, name: string) => coefficient === 1n ? name : `${coefficient} * ${name}`;
-    const affine = ([[1n, 1n], [2n, 1n], [1n, 2n]] as const).flatMap(([leftCoefficient, rightCoefficient]) => {
+    const requestedMaxCoefficient = options.maxCoefficient ?? 2;
+    const maxCoefficient = Number.isFinite(requestedMaxCoefficient)
+      ? Math.max(1, Math.min(8, Math.trunc(requestedMaxCoefficient)))
+      : 2;
+    const gcd = (left: number, right: number): number => right === 0 ? left : gcd(right, left % right);
+    const coefficientPairs = Array.from({ length: maxCoefficient }, (_, left) => left + 1).flatMap((left) =>
+      Array.from({ length: maxCoefficient }, (_, right) => right + 1)
+        .filter((right) => gcd(left, right) === 1)
+        .map((right) => [BigInt(left), BigInt(right)] as const));
+    const affine = coefficientPairs.flatMap(([leftCoefficient, rightCoefficient]) => {
       const difference = leftCoefficient * leftInitial - rightCoefficient * rightInitial;
       if (leftCoefficient === 1n && rightCoefficient === 1n && difference === 0n) return [];
       const rightTerm = term(rightCoefficient, right.name);
@@ -825,6 +836,7 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     ...(options.synthesizeStrengtheningProperties ? synthesizedStrengtheningProperties(spec) : []),
     ...(options.synthesizeRelationalStrengtheningProperties ? synthesizedRelationalStrengtheningProperties(spec, {
       maxArity: options.relationalStrengtheningMaxArity,
+      maxCoefficient: options.relationalStrengtheningMaxCoefficient,
       candidateLimit: options.relationalStrengtheningCandidateLimit,
     }) : []),
     ...(options.synthesizeCollectionStrengtheningProperties ? synthesizedCollectionStrengtheningProperties(spec) : []),
@@ -1319,6 +1331,7 @@ export async function lintSpecWithZ3(fileName: string, text: string, options: Sp
     synthesizeStrengtheningProperties: options.synthesizeStrengtheningProperties,
     synthesizeRelationalStrengtheningProperties: options.synthesizeRelationalStrengtheningProperties,
     relationalStrengtheningMaxArity: options.relationalStrengtheningMaxArity,
+    relationalStrengtheningMaxCoefficient: options.relationalStrengtheningMaxCoefficient,
     relationalStrengtheningCandidateLimit: options.relationalStrengtheningCandidateLimit,
     synthesizeCollectionStrengtheningProperties: options.synthesizeCollectionStrengtheningProperties,
   });

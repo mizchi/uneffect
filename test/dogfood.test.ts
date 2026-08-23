@@ -372,22 +372,24 @@ describe("Uneffect dogfood", () => {
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxCoefficient: 3,
     });
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
       name: "observeOverCapacity",
-      relatedName: "<synth:2 * accepted === byteBudget>",
+      relatedName: "<synth:3 * accepted === byteBudget>",
     }));
 
-    const brokenSource = source.replaceAll("byteBudget + 2", "byteBudget + 1").replaceAll("byteBudget += 2", "byteBudget += 1");
+    const brokenSource = source.replaceAll("byteBudget + 3", "byteBudget + 1").replaceAll("byteBudget += 3", "byteBudget += 1");
     const broken = parseSpec(fileName, brokenSource).temporal;
     const brokenDiagnostics = await lintTemporalReachabilityWithZ3(broken, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxCoefficient: 3,
     });
     expect(brokenDiagnostics).not.toContainEqual(expect.objectContaining({
       code: "strengthened-unreachable-action",
-      relatedName: "<synth:2 * accepted === byteBudget>",
+      relatedName: "<synth:3 * accepted === byteBudget>",
     }));
     await expect(findTemporalCounterexampleWithZ3(broken, "withinCapacity", { maxSteps: 1 }))
       .resolves.toMatchObject({ status: "counterexample", depth: 1 });
