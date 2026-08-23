@@ -268,11 +268,6 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       if (trapBody?.statements.length === 1 && ts.isThrowStatement(trapBody.statements[0]!)) {
         return { thenAccess: "throws", invokesUserCode: true, capabilityEffects: ["InvokeUserCode"], provenance: "proxy", possibleSettlements: ["rejected"], firstCallWins: true, mayRemainPending: false };
       }
-      const returnedExpression = (statement: ts.Statement): ts.Expression | undefined => {
-        if (ts.isReturnStatement(statement)) return statement.expression;
-        return ts.isBlock(statement) && statement.statements.length === 1 && ts.isReturnStatement(statement.statements[0]!)
-          ? statement.statements[0]!.expression : undefined;
-      };
       const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
       const thenLookupBoolean = (condition: ts.Expression): boolean | undefined => evaluateStaticBoolean(condition, {
@@ -282,21 +277,57 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           return symbol === propertySymbol ? { key: symbol, value: "then" } : { key: symbol, expression: immutableInitializer(identifier) };
         },
       });
-      let returned = trapFunction?.body && !ts.isBlock(trapFunction.body) ? trapFunction.body
-        : trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
-      if (!returned && trapBody?.statements.length === 1 && ts.isIfStatement(trapBody.statements[0]!)) {
-        const branch = trapBody.statements[0]!, condition = thenLookupBoolean(branch.expression);
-        const selected = condition === true ? branch.thenStatement
-          : condition === false ? branch.elseStatement : undefined;
-        if (selected) returned = returnedExpression(selected);
-      }
-      if (returned && ts.isConditionalExpression(returned) && thenLookupBoolean(returned.condition) === true) returned = returned.whenTrue;
-      if (!returned && trapBody?.statements.length === 2 && ts.isIfStatement(trapBody.statements[0]!)
-        && !trapBody.statements[0]!.elseStatement && ts.isReturnStatement(trapBody.statements[1]!)) {
-        const branch = trapBody.statements[0]!, condition = branch.expression;
-        const selected = thenLookupBoolean(condition);
-        if (selected === true) returned = returnedExpression(branch.thenStatement);
-        else if (selected === false) returned = trapBody.statements[1]!.expression;
+      const isPureTrapExpression = (candidate: ts.Expression): boolean => {
+        if (ts.isIdentifier(candidate) || ts.isStringLiteral(candidate) || ts.isNoSubstitutionTemplateLiteral(candidate)
+          || ts.isNumericLiteral(candidate) || candidate.kind === ts.SyntaxKind.TrueKeyword
+          || candidate.kind === ts.SyntaxKind.FalseKeyword || ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate)) return true;
+        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate)
+          || ts.isTypeAssertionExpression(candidate) || ts.isNonNullExpression(candidate)) return isPureTrapExpression(candidate.expression);
+        if (ts.isConditionalExpression(candidate)) return isPureTrapExpression(candidate.condition)
+          && isPureTrapExpression(candidate.whenTrue) && isPureTrapExpression(candidate.whenFalse);
+        if (ts.isPrefixUnaryExpression(candidate) && candidate.operator === ts.SyntaxKind.ExclamationToken) {
+          return isPureTrapExpression(candidate.operand);
+        }
+        if (!ts.isBinaryExpression(candidate)) return false;
+        const operator = candidate.operatorToken.kind;
+        return (operator === ts.SyntaxKind.AmpersandAmpersandToken || operator === ts.SyntaxKind.BarBarToken
+          || operator === ts.SyntaxKind.EqualsEqualsEqualsToken || operator === ts.SyntaxKind.ExclamationEqualsEqualsToken)
+          && isPureTrapExpression(candidate.left) && isPureTrapExpression(candidate.right);
+      };
+      type TrapReturn = { kind: "return"; expression: ts.Expression } | { kind: "continue" };
+      const trapStatementsReturn = (statements: readonly ts.Statement[]): TrapReturn | undefined => {
+        for (const statement of statements) {
+          const selected = trapStatementReturn(statement);
+          if (!selected) return undefined;
+          if (selected.kind === "return") return selected;
+        }
+        return { kind: "continue" };
+      };
+      const trapStatementReturn = (statement: ts.Statement): TrapReturn | undefined => {
+        if (ts.isReturnStatement(statement)) return statement.expression
+          ? { kind: "return", expression: statement.expression } : undefined;
+        if (ts.isEmptyStatement(statement)) return { kind: "continue" };
+        if (ts.isBlock(statement)) return trapStatementsReturn(statement.statements);
+        if (ts.isVariableStatement(statement)) {
+          if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+          return statement.declarationList.declarations.every((declaration) => ts.isIdentifier(declaration.name)
+            && declaration.initializer !== undefined && isPureTrapExpression(declaration.initializer))
+            ? { kind: "continue" } : undefined;
+        }
+        if (!ts.isIfStatement(statement)) return undefined;
+        const condition = thenLookupBoolean(statement.expression);
+        if (typeof condition !== "boolean") return undefined;
+        return condition ? trapStatementReturn(statement.thenStatement)
+          : statement.elseStatement ? trapStatementReturn(statement.elseStatement) : { kind: "continue" };
+      };
+      const selectedTrapReturn = trapFunction?.body && !ts.isBlock(trapFunction.body)
+        ? { kind: "return" as const, expression: trapFunction.body }
+        : trapBody ? trapStatementsReturn(trapBody.statements) : undefined;
+      let returned = selectedTrapReturn?.kind === "return" ? selectedTrapReturn.expression : undefined;
+      while (returned && ts.isConditionalExpression(returned)) {
+        const condition = thenLookupBoolean(returned.condition);
+        if (typeof condition !== "boolean") break;
+        returned = condition ? returned.whenTrue : returned.whenFalse;
       }
       const isAssignmentOperator = (kind: ts.SyntaxKind): boolean => kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
       const isReassigned = (symbol: ts.Symbol): boolean => {

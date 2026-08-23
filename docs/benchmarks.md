@@ -447,6 +447,9 @@ the literal-computed measurement while exercising symbol-based key resolution.
 Composing that keyed handler through an immutable object spread measured
 122.75 ms mean over 20 samples (1.59% RME). Reverse-order override analysis did
 not move the fixture outside its established cold-analysis range.
+Replacing the trap's expression body with a pure local selector and nested
+static branches measured 124.21 ms mean over 20 samples (1.92% RME). The
+restricted return walker remains within the same observed cold-analysis band.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

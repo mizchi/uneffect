@@ -742,6 +742,48 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("walks nested static Proxy trap control flow without skipping effects", () => {
+    const exact = analyzePromiseChains("proxy-nested-static-trap.ts", `
+      function run() {
+        const enabled = true as const
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            const isThen = property === "then"
+            if (isThen) {
+              if (enabled) return rejectThen
+              return resolveThen
+            }
+            return undefined
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const effectful = analyzePromiseChains("proxy-effectful-static-trap.ts", `
+      declare function audit(): void
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const hostile = new Proxy({ then() {} } as unknown as PromiseLike<number>, {
+          get(_target, property) {
+            const observed = audit()
+            if (property === "then") return rejectThen
+            return observed
+          }
+        })
+        return new Promise<number>((resolve) => resolve(hostile)).catch(() => 0)
+      }
+    `);
+    expect(effectful.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("resolves an immutable identity wrapper around a Proxy then callback", () => {
     const exact = analyzePromiseChains("proxy-identity-forwarded-then.ts", `
       function forward<T>(value: T): T { return value }

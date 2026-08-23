@@ -159,6 +159,12 @@ properties in reverse evaluation order, so a later exact `get` overrides an
 earlier spread. An opaque spread or dynamic computed property encountered
 before finding the winning property may itself override `get`, so the result
 remains dynamic. Cyclic object graphs are also rejected conservatively.
+Proxy trap bodies use a restricted source-ordered return walker. It follows
+nested blocks, statically decidable `if`/`else`, early returns, and local
+`const` declarations whose initializers are limited to the finite pure
+selector language. Calls, property reads, construction, `await`, mutation, and
+unsupported control flow stop the exact proof, since skipping them could hide
+a thrown error or another observable effect.
 The selected callback may pass through cycle-safe direct function declarations
 or immutable `const` identity wrappers whose single definite return forwards an
 identifier parameter. Resolution uses parameter symbols rather than names.
