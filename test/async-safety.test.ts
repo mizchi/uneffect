@@ -1592,6 +1592,30 @@ describe("async error and explicit resource safety", () => {
         }
         alias?.send()
       }
+      async function returningSwitchCase(mode: "done" | "cancelled") {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done": return
+          case "cancelled": alias = undefined; break
+        }
+        alias?.send()
+      }
+      async function branchingReturnOrClear(mode: "done" | "cancelled", stop: boolean) {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+        }
+        switch (mode) {
+          case "done": if (stop) return; else alias = undefined; break
+          case "cancelled": alias = undefined; break
+        }
+        alias?.send()
+      }
       async function nonEmptyFallthroughRemainsConservative(mode: "done" | "cancelled") {
         let alias: Resource | undefined
         {
@@ -1671,6 +1695,12 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "incompleteSwitchWithoutDefault", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "returningSwitchCase", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "branchingReturnOrClear", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "nonEmptyFallthroughRemainsConservative", kind: "disposed-resource-use",

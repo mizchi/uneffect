@@ -517,6 +517,10 @@ switches over open types remain conservative. A default-free switch is accepted
 when the TypeChecker proves its discriminant is a finite string, number, or
 boolean literal union and the case literals cover the entire union. Enum and
 computed case domains are not treated as exhaustiveness evidence. The same
+join accepts a clause that terminates in `return`, because it cannot reach an
+alias use after the switch. A terminal exhaustive `if`/`else` may mix returns
+and mandatory clears. `throw`, `break`, `continue`, and earlier conditional
+abrupt completion remain conservative in this alias-flow subset. The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the

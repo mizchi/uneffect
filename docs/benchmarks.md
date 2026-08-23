@@ -521,6 +521,11 @@ string literal union, the fixture measured 146.97 ms mean over five cold
 samples (3.10% relative margin of error). The roughly 21 ms difference includes
 TypeChecker union/case inspection and cold-run noise; this sample count is too
 small to claim a stable regression.
+Adding a fourth exhaustive state whose switch path returns instead of clearing
+measured 131.63 ms mean over five cold samples (7.33% relative margin of
+error). The variance overlaps both preceding observations; the useful result
+is that reachability-aware return handling did not create a clear cold-path
+regression in this small fixture.
 
 ## Collection refinement receiver identity
 

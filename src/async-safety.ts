@@ -853,18 +853,34 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return undefined;
     };
-    const terminallyClears = (statement: ts.Statement, matchesTarget: (left: ts.Expression) => boolean): boolean => {
+    type AliasClearTarget = { kind: "symbol"; symbol: ts.Symbol } | { kind: "slot"; root: ts.Symbol; key: string };
+    const matchesClearTarget = (left: ts.Expression, target: AliasClearTarget): boolean => {
+      if (target.kind === "symbol") return ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === target.symbol;
+      const slot = staticSlot(left);
+      return Boolean(slot && slot.root === target.root && (target.key === slot.key || target.key.startsWith(`${slot.key}/`)));
+    };
+    const terminallyClears = (statement: ts.Statement, target: AliasClearTarget): boolean => {
       const terminal = terminalStatement(statement);
       if (!terminal) return false;
       if (ts.isExpressionStatement(terminal) && ts.isBinaryExpression(terminal.expression)
         && terminal.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
-        && matchesTarget(terminal.expression.left)
+        && matchesClearTarget(terminal.expression.left, target)
         && isDefinitelyNullish(terminal.expression.right)) return true;
       return ts.isIfStatement(terminal) && Boolean(terminal.elseStatement)
-        && terminallyClears(terminal.thenStatement, matchesTarget)
-        && terminallyClears(terminal.elseStatement!, matchesTarget);
+        && terminallyClears(terminal.thenStatement, target)
+        && terminallyClears(terminal.elseStatement!, target);
     };
-    const clauseTerminallyClears = (clause: ts.CaseOrDefaultClause, matchesTarget: (left: ts.Expression) => boolean): boolean => {
+    const terminallyClearsOrReturns = (statement: ts.Statement, target: AliasClearTarget): boolean => {
+      const terminal = terminalStatement(statement);
+      if (!terminal) return false;
+      if (ts.isReturnStatement(terminal)) return true;
+      if (ts.isIfStatement(terminal) && terminal.elseStatement) {
+        return terminallyClearsOrReturns(terminal.thenStatement, target)
+          && terminallyClearsOrReturns(terminal.elseStatement, target);
+      }
+      return terminallyClears(terminal, target);
+    };
+    const clauseTerminallyClears = (clause: ts.CaseOrDefaultClause, target: AliasClearTarget): boolean => {
       let index = clause.statements.length - 1;
       while (index >= 0 && (ts.isEmptyStatement(clause.statements[index]!) || ts.isBreakStatement(clause.statements[index]!))) index -= 1;
       const containsAbruptCompletion = (node: ts.Node): boolean => {
@@ -876,16 +892,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       return index >= 0
         && !clause.statements.slice(0, index).some(containsAbruptCompletion)
-        && terminallyClears(clause.statements[index]!, matchesTarget);
+        && terminallyClearsOrReturns(clause.statements[index]!, target);
     };
     const switchEntryTerminallyClears = (
       clauses: ts.NodeArray<ts.CaseOrDefaultClause>,
       entryIndex: number,
-      matchesTarget: (left: ts.Expression) => boolean,
+      target: AliasClearTarget,
     ): boolean => {
       for (let index = entryIndex; index < clauses.length; index++) {
         const clause = clauses[index]!;
-        if (clauseTerminallyClears(clause, matchesTarget)) return true;
+        if (clauseTerminallyClears(clause, target)) return true;
         // A label-only group has no behavior of its own and necessarily enters
         // the following clause. Non-empty fallthrough remains conservative.
         if (clause.statements.some((statement) => !ts.isEmptyStatement(statement))) return false;
@@ -952,18 +968,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (node.elseStatement) collectDisposedAliasFlow(node.elseStatement);
         if (node.elseStatement) {
           for (const symbol of [...escapedAliases.keys()]) {
-            const matchesSymbol = (left: ts.Expression): boolean =>
-              ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;
-            if (terminallyClears(node.thenStatement, matchesSymbol)
-              && terminallyClears(node.elseStatement, matchesSymbol)) escapedAliases.delete(symbol);
+            const target: AliasClearTarget = { kind: "symbol", symbol };
+            if (terminallyClears(node.thenStatement, target)
+              && terminallyClears(node.elseStatement, target)) escapedAliases.delete(symbol);
           }
           for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
-            const matchesSlot = (left: ts.Expression): boolean => {
-              const slot = staticSlot(left);
-              return Boolean(slot && slot.root === root && (key === slot.key || key.startsWith(`${slot.key}/`)));
-            };
-            if (terminallyClears(node.thenStatement, matchesSlot)
-              && terminallyClears(node.elseStatement, matchesSlot)) slots.delete(key);
+            const target: AliasClearTarget = { kind: "slot", root, key };
+            if (terminallyClears(node.thenStatement, target)
+              && terminallyClears(node.elseStatement, target)) slots.delete(key);
           }
         }
         return;
@@ -974,16 +986,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const clauses = node.caseBlock.clauses;
         if (switchIsExhaustive(node)) {
           for (const symbol of [...escapedAliases.keys()]) {
-            const matchesSymbol = (left: ts.Expression): boolean =>
-              ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;
-            if (clauses.every((_, index) => switchEntryTerminallyClears(clauses, index, matchesSymbol))) escapedAliases.delete(symbol);
+            const target: AliasClearTarget = { kind: "symbol", symbol };
+            let everyEntrySafe = true;
+            for (let index = 0; index < clauses.length; index++) {
+              if (!switchEntryTerminallyClears(clauses, index, target)) { everyEntrySafe = false; break; }
+            }
+            if (everyEntrySafe) escapedAliases.delete(symbol);
           }
           for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
-            const matchesSlot = (left: ts.Expression): boolean => {
-              const slot = staticSlot(left);
-              return Boolean(slot && slot.root === root && (key === slot.key || key.startsWith(`${slot.key}/`)));
-            };
-            if (clauses.every((_, index) => switchEntryTerminallyClears(clauses, index, matchesSlot))) slots.delete(key);
+            const target: AliasClearTarget = { kind: "slot", root, key };
+            let everyEntrySafe = true;
+            for (let index = 0; index < clauses.length; index++) {
+              if (!switchEntryTerminallyClears(clauses, index, target)) { everyEntrySafe = false; break; }
+            }
+            if (everyEntrySafe) slots.delete(key);
           }
         }
         return;

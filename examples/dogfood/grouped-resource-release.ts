@@ -5,7 +5,7 @@ interface DeliverySession {
 
 declare function openDeliverySession(): DeliverySession;
 
-export async function finalizeDelivery(status: "sent" | "cancelled" | "expired"): Promise<void> {
+export async function finalizeDelivery(status: "sent" | "cancelled" | "expired" | "already-closed"): Promise<void> {
   let pending: DeliverySession | undefined;
   {
     await using session = openDeliverySession();
@@ -15,6 +15,7 @@ export async function finalizeDelivery(status: "sent" | "cancelled" | "expired")
     case "sent":
     case "cancelled": pending = undefined; break;
     case "expired": pending = undefined; break;
+    case "already-closed": return;
   }
   pending?.flush();
 }
