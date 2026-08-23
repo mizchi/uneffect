@@ -1097,6 +1097,37 @@ describe("builtin async temporal patterns", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("resolves every branch of a finite conditional timer callback", () => {
+    const model = analyzeAsyncPatterns("conditional-callback.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      function start(flag: boolean) {
+        setTimeout(flag ? afterSuccess : afterFailure, 0)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { callback: "flag ? afterSuccess : afterFailure", queue: "timer" },
+      { queue: "microtask", enqueuedBy: 0 },
+      { queue: "next-tick", enqueuedBy: 0 },
+    ]);
+
+    const duplicate = analyzeAsyncPatterns("duplicate-conditional-callback.ts", `
+      function callback() { queueMicrotask(() => undefined) }
+      function start(flag: boolean) { setTimeout(flag ? callback : callback, 0) }
+    `);
+    expect(duplicate.timers.filter((timer) => timer.enqueuedBy === 0)).toHaveLength(1);
+
+    const partial = analyzeAsyncPatterns("partial-conditional-callback.ts", `
+      declare const external: () => void
+      function local() { queueMicrotask(() => undefined) }
+      function start(flag: boolean) { setTimeout(flag ? local : external, 0) }
+    `);
+    expect(partial.timers).toContainEqual(expect.objectContaining({
+      callback: "flag ? local : external", queue: "timer",
+    }));
+    expect(partial.timers.some((timer) => timer.enqueuedBy === 0)).toBe(false);
+  });
+
   it("models the Node callback checkpoint with nextTick before V8 microtasks", () => {
     const model = analyzeAsyncPatterns("node-loop.ts", `
       import { nextTick } from "node:process"

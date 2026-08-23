@@ -519,6 +519,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [ ] Resolve methods, callbacks returned from calls, and dynamically selected callback values.
     - [x] Resolve direct property-access and literal computed-property methods; polymorphic receiver dispatch remains dynamic.
     - [x] Resolve direct local or imported-source callback factories with exactly one explicit function-valued return.
+    - [x] Resolve every branch of a finite conditional scheduled callback when all branches have TypeChecker-resolved bodies; partial or external selections remain dynamic.
 - [x] Bring Promise/resource IR to Rust/Corsa parity.
   - [x] Serialize Promise observation, rejection ownership, resource scopes, async disposal, and exact `SuppressedError` payloads.
   - [x] Add cross-frontend parity fixtures and reject schema drift.

@@ -121,8 +121,12 @@ sets `fifo_broken`, and Quint finds the ordering violation. Extracting new
 callbacks creates dormant jobs that receive tickets only when their parent
 callback runs. Named function declarations and arrow/function values, including
 aliased imports, are resolved by TypeChecker symbol identity and scanned the
-same way; they are not also misclassified as initially queued jobs. Methods,
-callbacks returned by calls, and dynamically selected values remain unknown.
+same way; they are not also misclassified as initially queued jobs. Direct and
+literal-computed methods and single-return source callback factories are also
+resolved. A conditional scheduled callback is a finite callback set only when
+both branches resolve; duplicate branches are collapsed, while a partially
+external selection remains dynamic rather than attributing one known branch to
+the parent job. General dynamic property selection remains unknown.
 An animation-frame callback returns to a microtask checkpoint before the
 remaining frame callbacks and paint continue.
 

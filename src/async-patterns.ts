@@ -307,6 +307,18 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
+  const resolveCallbacks = (callback: ts.Expression | undefined): ts.FunctionLikeDeclaration[] => {
+    if (!callback) return [];
+    if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback)) {
+      return resolveCallbacks(callback.expression);
+    }
+    if (ts.isConditionalExpression(callback)) {
+      const whenTrue = resolveCallbacks(callback.whenTrue), whenFalse = resolveCallbacks(callback.whenFalse);
+      return whenTrue.length > 0 && whenFalse.length > 0 ? [...new Set([...whenTrue, ...whenFalse])] : [];
+    }
+    const resolved = resolveCallback(callback);
+    return resolved ? [resolved] : [];
+  };
   const scheduledCallbacks = new Set<ts.FunctionLikeDeclaration>();
   const invokedSignalFactories = new Set<ts.FunctionLikeDeclaration>();
   const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
@@ -316,11 +328,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     if (ts.isCallExpression(node)) {
       const operation = adapter.resolveCall(node)?.operation;
       if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task") {
-        const callback = resolveCallback(node.arguments[operation.callbackArgument]);
-        if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
+        for (const callback of resolveCallbacks(node.arguments[operation.callbackArgument])) {
+          if (callback !== currentOwner) scheduledCallbacks.add(callback);
+        }
       } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
-        const callback = resolveCallback(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd]);
-        if (callback && callback !== currentOwner) scheduledCallbacks.add(callback);
+        for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
+          if (callback !== currentOwner) scheduledCallbacks.add(callback);
+        }
       }
       if (!operation) {
         const type = checker.getTypeAtLocation(node);
@@ -493,46 +507,47 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
     };
     const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
-      const callback = resolveCallback(callbackExpression);
-      if (!callback || !callback.body || visited.has(callback)) return;
-      visited.add(callback);
-      const scan = (node: ts.Node): void => {
-        if (node !== callback && ts.isFunctionLike(node)) return;
-        if (ts.isCallExpression(node)) {
-          const operation = adapter.resolveCall(node)?.operation;
-          if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "timer" || operation.queue === "check")) {
-            if (operation.queue === "timer" && (timers[parent]!.repeats || node.getStart(node.getSourceFile()) === timers[parent]!.span.start)) return;
-            const child = timers.length;
-            const callbackNode = node.arguments[operation.callbackArgument];
-            const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
-            const childSource = node.getSourceFile();
-            timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
-            collectNestedJobs(callbackNode, child, visited);
-            return;
-          } else if (operation?.kind === "scheduler-yield") {
-            const childSource = node.getSourceFile();
-            timers.push({
-              owner: ownerName,
-              callback: "<continuation>",
-              delay: 0,
-              recursive: false,
-              repeats: false,
-              queue: "scheduler-task",
-              enqueuedBy: parent,
-              kind: "scheduler-yield",
-              priority: timers[parent]?.priority ?? "user-visible",
-            abortTimer: timers[parent]?.abortTimer,
-            abortComposition: timers[parent]?.abortComposition,
-            externalAbortSignal: timers[parent]?.externalAbortSignal,
-              span: { start: node.getStart(childSource), end: node.getEnd() },
-            });
-            return;
+      for (const callback of resolveCallbacks(callbackExpression)) {
+        if (!callback.body || visited.has(callback)) continue;
+        visited.add(callback);
+        const scan = (node: ts.Node): void => {
+          if (node !== callback && ts.isFunctionLike(node)) return;
+          if (ts.isCallExpression(node)) {
+            const operation = adapter.resolveCall(node)?.operation;
+            if (operation?.kind === "timer" && (operation.queue === "microtask" || operation.queue === "next-tick" || operation.queue === "timer" || operation.queue === "check")) {
+              if (operation.queue === "timer" && (timers[parent]!.repeats || node.getStart(node.getSourceFile()) === timers[parent]!.span.start)) return;
+              const child = timers.length;
+              const callbackNode = node.arguments[operation.callbackArgument];
+              const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
+              const childSource = node.getSourceFile();
+              timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
+              collectNestedJobs(callbackNode, child, visited);
+              return;
+            } else if (operation?.kind === "scheduler-yield") {
+              const childSource = node.getSourceFile();
+              timers.push({
+                owner: ownerName,
+                callback: "<continuation>",
+                delay: 0,
+                recursive: false,
+                repeats: false,
+                queue: "scheduler-task",
+                enqueuedBy: parent,
+                kind: "scheduler-yield",
+                priority: timers[parent]?.priority ?? "user-visible",
+                abortTimer: timers[parent]?.abortTimer,
+                abortComposition: timers[parent]?.abortComposition,
+                externalAbortSignal: timers[parent]?.externalAbortSignal,
+                span: { start: node.getStart(childSource), end: node.getEnd() },
+              });
+              return;
+            }
           }
-        }
-        ts.forEachChild(node, scan);
-      };
-      scan(callback.body);
-      visited.delete(callback);
+          ts.forEachChild(node, scan);
+        };
+        scan(callback.body);
+        visited.delete(callback);
+      }
     };
     const visit = (node: ts.Node): void => {
       if (node !== owner.body && ts.isFunctionLike(node)) return;

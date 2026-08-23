@@ -103,7 +103,10 @@ The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It
 now resolves direct/literal-computed methods and single-return source callback
-factories, but not dynamic property selection. Nested minimum-delay clamping,
+factories. It also resolves both branches of a finite conditional callback when
+every branch has a source body, deduplicating identical branches. A conditional
+with any unresolved or external branch remains dynamic. Dynamic property
+selection is not resolved. Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source
 control flow before initial scheduling is only classified for definite
