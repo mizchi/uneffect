@@ -13,3 +13,12 @@ export const dashboardSnapshotValues = {
     yield Promise.resolve("network-snapshot");
   },
 };
+
+export function dashboardFailures(): Iterable<Promise<never>> {
+  return {
+    *[Symbol.iterator](): Generator<Promise<never>> {
+      yield Promise.reject("cache-miss");
+      yield Promise.reject(new TypeError("network-down"));
+    },
+  };
+}

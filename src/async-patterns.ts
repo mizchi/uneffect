@@ -898,7 +898,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), staticIterable,
             iteratorKind: set ? "set" : boundedElements ? "array" : local ? "local" : "dynamic", iteratorEffects: boundedElements ? [] : ["InvokeUserCode"],
             iteratorFailure: local?.failure, aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,
-            aggregateErrorReasons: operation.combinator === "any" && (array ?? set) ? (array ?? set)!.map(rejectionReason) : undefined,
+            aggregateErrorReasons: operation.combinator === "any" && (array ?? set ?? branchNodes)
+              ? (array ?? set ?? branchNodes)!.map(rejectionReason) : undefined,
             awaited, catchesRejection, span: { start: node.getStart(source), end: node.getEnd() } });
         }
       }

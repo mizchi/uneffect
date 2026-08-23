@@ -218,7 +218,8 @@ the input-index order used by `AggregateError.errors`, independently of branch
 rejection order, and emits count/rank constants to Quint. Literal
 `Promise.reject(value)` reasons and direct `Promise.reject(new ErrorType(message))`
 reasons are retained as typed IR values and stable string constants in the
-artifact. Other rejection reasons remain explicitly unknown.
+artifact. The same retention applies after a finite imported generator or
+custom-iterable expansion. Other rejection reasons remain explicitly unknown.
 
 Each literal element is classified as a plain value, a thenable, or unknown.
 Plain values (including holes) can only fulfill. Thenables enter an explicit

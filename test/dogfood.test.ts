@@ -715,11 +715,22 @@ describe("Uneffect dogfood", () => {
         iteratorKind: "local",
         iteratorEffects: ["InvokeUserCode"],
       }),
+      expect.objectContaining({
+        owner: "loadImportedDashboardFallback",
+        combinator: "any",
+        aggregateErrorOrder: [0, 1],
+        aggregateErrorReasons: [
+          { kind: "literal", value: "cache-miss" },
+          { kind: "error", errorType: "TypeError", message: "network-down" },
+        ],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
     expect(quint).not.toContain("action reject_0_0");
     expect(quint).toContain("action assimilate_0_1");
     expect(quint).toContain("action assimilate_1_1");
+    expect(quint).toContain('val join_2_aggregate_error_reason_0 = "literal:string:cache-miss"');
+    expect(quint).toContain('val join_2_aggregate_error_reason_1 = "error:TypeError:network-down"');
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {
