@@ -602,12 +602,13 @@ describe("typed-array static verification", () => {
       declare function open(): Resource
       class Gate { get ready(): boolean { return true } }
       declare const gate: Gate
+      const gateKey = "ready" as const
       async function retry(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined
         while (enabled) {
           await using resource = open()
-          try { gate.ready; success = resource }
+          try { gate[gateKey]; success = resource }
           catch { failure = resource }
           await Promise.resolve("tick").then((value) => value)
         }

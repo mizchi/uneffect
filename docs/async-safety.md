@@ -570,10 +570,12 @@ restricted top-level `try` sequence marks assignments after a preceding call,
 construction, `await`, or explicit throw as the successful continuation and
 correlates them with the catch path through the opposite completion polarity.
 Assignments before the first such risky statement remain unconditional. Nested
-restricted tries compose their completion identities. Direct property access
-and literal computed access are also risky when the TypeChecker resolves the
-property symbol to a concrete getter declaration. Interface-only properties,
-dynamic keys, proxy traps, coercions, finally-dependent joins, and cross-loop
+restricted tries compose their completion identities. Direct property access,
+literal computed access, exact const key aliases, and finite string/number
+literal-union keys are also risky when the TypeChecker resolves at least one
+candidate property symbol to a concrete getter declaration. Interface-only
+properties, open key domains, proxy traps, coercions, finally-dependent joins,
+and cross-loop
 alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved.
 

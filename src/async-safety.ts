@@ -575,8 +575,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               const direct = checker.getSymbolAtLocation(current);
               if (direct) return direct;
               const key = current.argumentExpression;
-              if (!key || (!ts.isStringLiteral(key) && !ts.isNumericLiteral(key))) return undefined;
-              return checker.getPropertyOfType(checker.getTypeAtLocation(current.expression), key.text);
+              if (!key) return undefined;
+              const keyType = checker.getTypeAtLocation(key);
+              const members = keyType.isUnion() ? keyType.types : [keyType];
+              const names = members.flatMap((member) => {
+                if (member.isStringLiteral() || member.isNumberLiteral()) return [String(member.value)];
+                return [];
+              });
+              if (names.length !== members.length || names.length === 0) return undefined;
+              const receiver = checker.getTypeAtLocation(current.expression);
+              return names.map((name) => checker.getPropertyOfType(receiver, name)).find((candidate) => candidate?.declarations?.some(ts.isGetAccessorDeclaration));
             })();
           if (symbol?.declarations?.some(ts.isGetAccessorDeclaration)) {
             risky = true;

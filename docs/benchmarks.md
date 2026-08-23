@@ -144,6 +144,9 @@ Promise handler CFG produced no measurable cold-path penalty.
 A TypeChecker-resolved getter-risk variant measured 126.67 ms mean over 20
 samples (2.66% RME). Symbol-based accessor inspection therefore remains within
 the established cold Program-construction distribution.
+After routing the same getter through an exact const computed key, the benchmark
+measured 125.14 ms mean over 20 samples (1.72% RME), showing no regression from
+finite key-domain resolution.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end

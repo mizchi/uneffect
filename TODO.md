@@ -466,6 +466,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Preserve acquisition-relative control paths on conditional generations and correlate mutually exclusive `if`/`else` captures through one Quint branch identity.
       - [x] Reuse ordered switch entry/fallthrough paths for alias generations and correlate a restricted post-risk `try` continuation with its `catch` through one completion identity.
       - [x] Compose nested restricted try completion identities and recognize TypeChecker-resolved direct/literal-computed getters as preceding throw risks.
+      - [x] Resolve computed getter candidates from exact const aliases and finite string/number literal-union key domains while retaining open keys as unknown.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

@@ -1669,12 +1669,15 @@ describe("async error and explicit resource safety", () => {
       declare function open(): Resource
       declare const fail: boolean
       class Source {
+        readonly plain = 1
         get value(): number {
           if (fail) throw new Error("getter")
           return 1
         }
       }
       declare const source: Source
+      const getterKey = "value" as const
+      declare const record: Record<string, number>
       async function broken(enabled: boolean) {
         let success: Resource | undefined
         let failure: Resource | undefined
@@ -1703,6 +1706,42 @@ describe("async error and explicit resource safety", () => {
         }
         success?.send()
       }
+      async function constKeyGetter(enabled: boolean) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            source[getterKey]
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function openRecordKey(enabled: boolean, key: string) {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            record[key]
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
+      async function finiteKeyGetter(enabled: boolean, key: "value" | "plain") {
+        let success: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          try {
+            source[key]
+            success = resource
+          } catch {}
+          await Promise.resolve("tick").then((value) => value)
+        }
+        success?.send()
+      }
     `);
     const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
     expect(aliases.map((alias) => alias.generation.relation)).toEqual(["conditional", "conditional"]);
@@ -1714,6 +1753,9 @@ describe("async error and explicit resource safety", () => {
     const quint = generateUnifiedAsyncQuint("getter_try_resource_generations", result, "broken");
     expect(run(quint, 28).status).not.toBe(0);
     expect(result.resourceAliases.find((alias) => alias.owner === "computedGetter")?.generation.relation).toBe("conditional");
+    expect(result.resourceAliases.find((alias) => alias.owner === "constKeyGetter")?.generation.relation).toBe("conditional");
+    expect(result.resourceAliases.find((alias) => alias.owner === "openRecordKey")?.generation.relation).toBe("latest");
+    expect(result.resourceAliases.find((alias) => alias.owner === "finiteKeyGetter")?.generation.relation).toBe("conditional");
   });
 
   it("composes nested try completion identities for alias generations", () => {
