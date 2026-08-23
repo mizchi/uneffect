@@ -722,6 +722,47 @@ describe("Promise state and reaction chains", () => {
     });
   });
 
+  it("specializes a finite switch callback selector inside a Proxy trap", () => {
+    const exact = analyzePromiseChains("proxy-switch-selected-then.ts", `
+      function select<T>(mode: "reject" | "resolve", rejectThen: T, resolveThen: T): T {
+        switch (mode) {
+          case "reject": return rejectThen
+          default: return resolveThen
+        }
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select("reject", rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(exact.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "callable", possibleSettlements: ["rejected"], mayRemainPending: false,
+    });
+
+    const dynamic = analyzePromiseChains("proxy-dynamic-switch-selected-then.ts", `
+      declare const mode: "reject" | "resolve"
+      function select<T>(mode: "reject" | "resolve", rejectThen: T, resolveThen: T): T {
+        switch (mode) {
+          case "reject": return rejectThen
+          default: return resolveThen
+        }
+      }
+      function run() {
+        const rejectThen = (_resolve: unknown, reject: (reason: Error) => void) => reject(new Error("proxy"))
+        const resolveThen = (resolve: (value: number) => void) => resolve(1)
+        const hostile = new Proxy({ then() {} }, { get() { return select(mode, rejectThen, resolveThen) } })
+        const result = new Promise<number>((resolve) => resolve(hostile))
+        return result.catch(() => 0)
+      }
+    `);
+    expect(dynamic.thenables.find((thenable) => thenable.binding === "hostile")).toMatchObject({
+      provenance: "proxy", thenAccess: "dynamic", possibleSettlements: ["fulfilled", "rejected"], mayRemainPending: true,
+    });
+  });
+
   it("links a Promise returned by an inline reaction handler to its analyzed source", () => {
     const model = analyzePromiseChains("linked-handler.ts", `
       function linked() {

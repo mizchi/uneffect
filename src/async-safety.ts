@@ -3,6 +3,7 @@ import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js"
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicExpression } from "./invariant-ir.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
+import { evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export type PromiseObservationKind = "await" | "return" | "catch" | "then-rejection" | "ignored" | "floating";
 export interface AsyncControlCondition {
@@ -570,47 +571,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     type ProxyFactoryDeclaration = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
     const isProxyFactoryDeclaration = (declaration: ts.Node): declaration is ProxyFactoryDeclaration =>
       ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
-    type StaticPrimitive = { value: string | number | boolean };
     const staticPrimitive = (
       expression: ts.Expression,
       substitutions: ReadonlyMap<ts.Symbol, ts.Expression>,
-      seen = new Set<ts.Symbol>(),
-    ): StaticPrimitive | undefined => {
-      if (expression.kind === ts.SyntaxKind.TrueKeyword) return { value: true };
-      if (expression.kind === ts.SyntaxKind.FalseKeyword) return { value: false };
-      if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) return { value: expression.text };
-      if (ts.isNumericLiteral(expression)) return { value: Number(expression.text) };
-      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
-        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticPrimitive(expression.expression, substitutions, seen);
-      if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
-        const operand = staticPrimitive(expression.operand, substitutions, seen);
-        return typeof operand?.value === "boolean" ? { value: !operand.value } : undefined;
-      }
-      if (ts.isBinaryExpression(expression)
-        && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-          || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
-        const left = staticPrimitive(expression.left, substitutions, new Set(seen));
-        if (typeof left?.value !== "boolean") return undefined;
-        if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left.value) return { value: false };
-        if (expression.operatorToken.kind === ts.SyntaxKind.BarBarToken && left.value) return { value: true };
-        const right = staticPrimitive(expression.right, substitutions, new Set(seen));
-        return typeof right?.value === "boolean" ? right : undefined;
-      }
-      if (ts.isBinaryExpression(expression)
-        && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
-          || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
-        const left = staticPrimitive(expression.left, substitutions, new Set(seen));
-        const right = staticPrimitive(expression.right, substitutions, new Set(seen));
-        if (!left || !right) return undefined;
-        const equal = left.value === right.value;
-        return { value: expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ? equal : !equal };
-      }
-      if (!ts.isIdentifier(expression)) return undefined;
-      const symbol = targetSymbol(expression);
-      if (!symbol || seen.has(symbol)) return undefined;
-      const replacement = substitutions.get(symbol) ?? immutableInitializer(expression);
-      return replacement && replacement !== expression
-        ? staticPrimitive(replacement, substitutions, new Set([...seen, symbol])) : undefined;
+    ): { value: string | number | boolean } | undefined => {
+      const value = evaluateStaticPrimitive(expression, { resolveIdentifier(identifier) {
+        const symbol = targetSymbol(identifier);
+        if (!symbol) return undefined;
+        return { key: symbol, expression: substitutions.get(symbol) ?? immutableInitializer(identifier) };
+      } });
+      return value === undefined ? undefined : { value };
     };
     type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
     const returnedExpressions = (declaration: ProxyFactoryDeclaration, substitutions: ReadonlyMap<ts.Symbol, ts.Expression>): ts.Expression[] | undefined => {

@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { evaluateStaticBoolean, evaluateStaticPrimitive } from "./static-evaluation.js";
 
 export type PromiseReactionKind = "then" | "catch" | "finally";
 export type PromiseExecutorSettlement = "fulfilled" | "rejected" | "assimilating";
@@ -245,41 +246,13 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       };
       const propertyParameter = trapFunction?.parameters[1]?.name;
       const propertySymbol = propertyParameter && ts.isIdentifier(propertyParameter) ? targetSymbol(checker, propertyParameter) : undefined;
-      const thenLookupBoolean = (condition: ts.Expression, conditionSeen = new Set<ts.Symbol>()): boolean | undefined => {
-        if (condition.kind === ts.SyntaxKind.TrueKeyword) return true;
-        if (condition.kind === ts.SyntaxKind.FalseKeyword) return false;
-        if (ts.isParenthesizedExpression(condition) || ts.isAsExpression(condition)
-          || ts.isTypeAssertionExpression(condition) || ts.isNonNullExpression(condition)) {
-          return thenLookupBoolean(condition.expression, conditionSeen);
-        }
-        if (ts.isPrefixUnaryExpression(condition) && condition.operator === ts.SyntaxKind.ExclamationToken) {
-          const operand = thenLookupBoolean(condition.operand, conditionSeen);
-          return operand === undefined ? undefined : !operand;
-        }
-        if (ts.isBinaryExpression(condition)
-          && (condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
-            || condition.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
-          const matches = (identifier: ts.Expression, literal: ts.Expression) => ts.isIdentifier(identifier)
-            && targetSymbol(checker, identifier) === propertySymbol && ts.isStringLiteral(literal) && literal.text === "then";
-          if (!matches(condition.left, condition.right) && !matches(condition.right, condition.left)) return undefined;
-          return condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken;
-        }
-        if (ts.isBinaryExpression(condition)
-          && (condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
-            || condition.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
-          const left = thenLookupBoolean(condition.left, new Set(conditionSeen));
-          if (left === undefined) return undefined;
-          if (condition.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken && !left) return false;
-          if (condition.operatorToken.kind === ts.SyntaxKind.BarBarToken && left) return true;
-          return thenLookupBoolean(condition.right, new Set(conditionSeen));
-        }
-        if (!ts.isIdentifier(condition)) return undefined;
-        const symbol = targetSymbol(checker, condition);
-        if (!symbol || conditionSeen.has(symbol)) return undefined;
-        const replacement = immutableInitializer(condition);
-        return replacement && replacement !== condition
-          ? thenLookupBoolean(replacement, new Set([...conditionSeen, symbol])) : undefined;
-      };
+      const thenLookupBoolean = (condition: ts.Expression): boolean | undefined => evaluateStaticBoolean(condition, {
+        resolveIdentifier(identifier) {
+          const symbol = targetSymbol(checker, identifier);
+          if (!symbol) return undefined;
+          return symbol === propertySymbol ? { key: symbol, value: "then" } : { key: symbol, expression: immutableInitializer(identifier) };
+        },
+      });
       let returned = trapFunction?.body && !ts.isBlock(trapFunction.body) ? trapFunction.body
         : trapBody?.statements.length === 1 ? returnedExpression(trapBody.statements[0]!) : undefined;
       if (returned && ts.isConditionalExpression(returned) && thenLookupBoolean(returned.condition) === true) returned = returned.whenTrue;
@@ -302,28 +275,16 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         visit(expression.getSourceFile());
         return written;
       };
-      const staticBoolean = (
+      const staticPrimitive = (
         candidate: ts.Expression,
         substitutions: ReadonlyMap<ts.Symbol, ts.Expression>,
-        booleanSeen = new Set<ts.Symbol>(),
-      ): boolean | undefined => {
-        if (candidate.kind === ts.SyntaxKind.TrueKeyword) return true;
-        if (candidate.kind === ts.SyntaxKind.FalseKeyword) return false;
-        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate)
-          || ts.isTypeAssertionExpression(candidate) || ts.isNonNullExpression(candidate)) {
-          return staticBoolean(candidate.expression, substitutions, booleanSeen);
-        }
-        if (ts.isPrefixUnaryExpression(candidate) && candidate.operator === ts.SyntaxKind.ExclamationToken) {
-          const operand = staticBoolean(candidate.operand, substitutions, booleanSeen);
-          return operand === undefined ? undefined : !operand;
-        }
-        if (!ts.isIdentifier(candidate)) return undefined;
-        const symbol = targetSymbol(checker, candidate);
-        if (!symbol || booleanSeen.has(symbol)) return undefined;
-        const replacement = substitutions.get(symbol) ?? immutableInitializer(candidate);
-        return replacement && replacement !== candidate
-          ? staticBoolean(replacement, substitutions, new Set([...booleanSeen, symbol])) : undefined;
-      };
+      ): string | number | boolean | undefined => evaluateStaticPrimitive(candidate, {
+        resolveIdentifier(identifier) {
+          const symbol = targetSymbol(checker, identifier);
+          if (!symbol) return undefined;
+          return { key: symbol, expression: substitutions.get(symbol) ?? immutableInitializer(identifier) };
+        },
+      });
       const immutableCallback = (
         candidate: ts.Expression,
         callbackSeen = new Set<ts.Symbol>(),
@@ -337,8 +298,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           }
         }
         if (ts.isConditionalExpression(candidate)) {
-          const selected = staticBoolean(candidate.condition, substitutions);
-          return selected === undefined ? undefined : immutableCallback(
+          const selected = staticPrimitive(candidate.condition, substitutions);
+          return typeof selected !== "boolean" ? undefined : immutableCallback(
             selected ? candidate.whenTrue : candidate.whenFalse,
             callbackSeen, substitutions,
           );
@@ -354,10 +315,6 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           ? immutableCallee
           : signatureDeclaration && ts.isFunctionDeclaration(signatureDeclaration) ? signatureDeclaration : undefined;
         if (!factory?.body || factory.parameters.length !== initializer.arguments.length) return undefined;
-        const returned = !ts.isBlock(factory.body) ? factory.body
-          : factory.body.statements.length === 1 && ts.isReturnStatement(factory.body.statements[0]!)
-            ? factory.body.statements[0]!.expression : undefined;
-        if (!returned) return undefined;
         const nextSubstitutions = new Map(substitutions);
         for (const [index, parameter] of factory.parameters.entries()) {
           if (!ts.isIdentifier(parameter.name) || parameter.dotDotDotToken) return undefined;
@@ -365,6 +322,32 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
           if (!parameterSymbol) return undefined;
           nextSubstitutions.set(parameterSymbol, initializer.arguments[index]!);
         }
+        const switchReturn = (statement: ts.SwitchStatement): ts.Expression | undefined => {
+          const discriminant = staticPrimitive(statement.expression, nextSubstitutions);
+          if (discriminant === undefined) return undefined;
+          let entry: number | undefined, defaultEntry: number | undefined;
+          for (const [index, clause] of statement.caseBlock.clauses.entries()) {
+            if (ts.isDefaultClause(clause)) { defaultEntry = index; continue; }
+            const label = staticPrimitive(clause.expression, nextSubstitutions);
+            if (label === undefined) return undefined;
+            if (label === discriminant) { entry = index; break; }
+          }
+          entry ??= defaultEntry;
+          if (entry === undefined) return undefined;
+          for (const clause of statement.caseBlock.clauses.slice(entry)) {
+            for (const clauseStatement of clause.statements) {
+              if (ts.isReturnStatement(clauseStatement)) return clauseStatement.expression;
+              if (!ts.isEmptyStatement(clauseStatement)) return undefined;
+            }
+          }
+          return undefined;
+        };
+        const returned = !ts.isBlock(factory.body) ? factory.body
+          : factory.body.statements.length === 1 && ts.isReturnStatement(factory.body.statements[0]!)
+            ? factory.body.statements[0]!.expression
+            : factory.body.statements.length === 1 && ts.isSwitchStatement(factory.body.statements[0]!)
+              ? switchReturn(factory.body.statements[0]!) : undefined;
+        if (!returned) return undefined;
         return immutableCallback(returned, new Set([...callbackSeen, calleeSymbol]), nextSubstitutions);
       };
       const selectedCallback = returned && immutableCallback(returned);

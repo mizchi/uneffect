@@ -427,6 +427,9 @@ The roughly 3 ms difference is within cold-run variability and is not treated
 as a regression signal.
 Adding the immutable compound `then`-property guard measured 122.57 ms mean
 over 20 samples (2.03% RME), returning to the earlier observed range.
+Replacing the inner callback selector with a static string `switch` and sharing
+the primitive evaluator with resource analysis measured 123.52 ms mean over 20
+samples (1.46% RME), still within the same cold-analysis range.
 
 Classifying the mixed Promise combinator dogfood fixture measured 234.45 ms
 mean over five cold samples (23.46% relative margin of error). The fixture has

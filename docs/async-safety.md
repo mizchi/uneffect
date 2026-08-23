@@ -153,6 +153,13 @@ Proxy property guards may combine the known `property === "then"` lookup with
 immutable boolean aliases, unary `!`, and boolean-only `&&`/`||`; evaluation is
 left-to-right and short-circuiting. Coercive equality, general truthiness, or a
 reached dynamic operand leaves the trap dynamic.
+Callback wrappers may select a return through a static primitive `switch`.
+Case labels are evaluated in source order, default is used only after no match,
+and empty clauses fall through. Dynamic labels/discriminants, `break`, nested
+statements, and other abrupt control remain conservative. Resource Proxy
+factories and Promise Proxy traps use the same finite primitive evaluator, so
+their literal, strict-equality, negation, and boolean short-circuit semantics do
+not drift independently.
 
 `Promise.any` aggregate-reason artifacts preserve direct literal and
 `new ErrorType(message)` inputs in iterable order. Immutable local `const`

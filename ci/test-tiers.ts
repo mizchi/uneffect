@@ -16,6 +16,7 @@ export const ciTestTiers = {
     "test/project-optimizer.test.ts",
     "test/quicksort.test.ts",
     "test/refinement-bindings.test.ts",
+    "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",
   ],
   z3: [
