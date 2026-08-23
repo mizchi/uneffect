@@ -1312,9 +1312,9 @@ describe("builtin async temporal patterns", () => {
         yield Promise.reject(useNetwork ? networkReason : "cache-miss")
         yield Promise.reject(new Error(useNetwork ? \`\${networkReason}!\` : "cached"))
       }
-      async function network() { return Promise.any(failures(!false, "network-down")) }
-      async function cache() { return Promise.any(failures(false, "unused")) }
-      async function dynamic(flag: boolean, reason: string) { return Promise.any(failures(!flag, reason)) }
+      async function network() { return Promise.any(failures(!false && true, "network-down")) }
+      async function cache() { return Promise.any(failures(false || false, "unused")) }
+      async function dynamic(flag: boolean, reason: string) { return Promise.any(failures(!flag && true, reason)) }
     `);
     expect(model.combinators[0]).toMatchObject({
       owner: "network",

@@ -196,6 +196,9 @@ replace the correlated generator-path model used for statement-level `if`.
 Direct boolean negation participates in the same substitution: `!true` and
 `!false` fold, including after object/tuple projection, while `!dynamic` remains
 symbolic and cannot select a conditional branch.
+Boolean `&&` and `||` likewise follow JavaScript short-circuiting when the
+substituted left operand is the literal `true` or `false`. Dynamic left-hand
+truthiness remains symbolic, and an unreachable right operand is not inspected.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing

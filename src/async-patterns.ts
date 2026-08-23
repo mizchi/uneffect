@@ -427,6 +427,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         return args?.every((argument, index) => argument === expression.arguments?.[index]) !== false ? expression
           : ts.factory.createNewExpression(expression.expression, expression.typeArguments, args);
       }
+      if (ts.isBinaryExpression(expression)
+        && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+          || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+        const left = substitute(expression.left, bindings, new Set(seen));
+        const leftBoolean = left.kind === ts.SyntaxKind.TrueKeyword ? true
+          : left.kind === ts.SyntaxKind.FalseKeyword ? false : undefined;
+        if (leftBoolean !== undefined) {
+          if (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+            return leftBoolean ? substitute(expression.right, bindings, new Set(seen)) : left;
+          }
+          return leftBoolean ? left : substitute(expression.right, bindings, new Set(seen));
+        }
+        const right = substitute(expression.right, bindings, new Set(seen));
+        return left === expression.left && right === expression.right ? expression
+          : ts.factory.createBinaryExpression(left, expression.operatorToken, right);
+      }
       if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.PlusToken) {
         const left = substitute(expression.left, bindings, new Set(seen));
         const right = substitute(expression.right, bindings, new Set(seen));
