@@ -150,8 +150,10 @@ describe("multi-file call graph and effect polymorphism", () => {
       writeFileSync(main, `
         import { generate } from "./library.js"
         export function constructOnly() { generate() }
+        export function buildIterator() { return generate() }
         export function consumeNext() { const iterator = generate(); iterator.next() }
         export function consumeLoop() { for (const value of generate()) void value }
+        export function consumeFactory() { for (const value of buildIterator()) void value }
         /* uneffect: effect Console */
         export function caughtConsumption() { try { generate().next() } catch {} }
       `);
@@ -175,6 +177,12 @@ describe("multi-file call graph and effect polymorphism", () => {
       }));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeLoop", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeFactory", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeFactory", effect: "Throw<RangeError>", kind: "missing",
       }));
       expect(result.diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }

@@ -249,8 +249,10 @@ describe("effect checker", () => {
       /* uneffect: effect Console | Throw<RangeError> */
       function* generate() { console.log("step"); throw new RangeError("step") }
       function constructOnly() { generate() }
+      function buildIterator() { return generate() }
       function consumeNext() { generate().next() }
       function consumeLoop() { for (const value of generate()) void value }
+      function consumeFactory() { for (const value of buildIterator()) void value }
       /* uneffect: effect Console */
       function caughtConsumption() { try { generate().next() } catch {} }
       /* uneffect: effect Console | Throw<URIError> */
@@ -267,6 +269,12 @@ describe("effect checker", () => {
     }));
     expect(diagnostics).toContainEqual(expect.objectContaining({
       functionName: "consumeLoop", effect: "Console", kind: "missing",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeFactory", effect: "Console", kind: "missing",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "consumeFactory", effect: "Throw<RangeError>", kind: "missing",
     }));
     expect(diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
     expect(diagnostics).toContainEqual(expect.objectContaining({

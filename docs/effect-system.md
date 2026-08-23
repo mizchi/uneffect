@@ -75,8 +75,12 @@ Generator bodies are delayed in the same spirit but retain synchronous step
 effects: constructing an iterator does not propagate its body summary, while a
 resolved direct `.next()`, `for..of`/`for await`, or `yield*` consumption does.
 The Program path follows imported generators and a directly stored local
-iterator binding by symbol identity. General iterator escape, alias chains, and
-opaque consumer APIs remain unknown rather than proof of consumption.
+iterator binding by symbol identity. Acyclic factories whose sole terminal
+return is another resolved generator/factory call are specialized at direct
+consumption sites; their own immediate body effects remain on the normal call
+edge. General iterator escape, branch-dependent returns, alias chains, and
+opaque consumer APIs are not yet modeled as consumption and must not be used as
+proof that their transitive effects were checked.
 
 ## Domain effects and semantic footprints
 

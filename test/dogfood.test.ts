@@ -369,7 +369,7 @@ describe("Uneffect dogfood", () => {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps()
-          for (const _step of flushSteps()) {}
+          for (const _step of buildFlushSteps()) {}
           readFile("settings.json", "utf8", () => {
             nextTick(() => console.log("tick"))
             queueMicrotask(() => console.log("microtask"))

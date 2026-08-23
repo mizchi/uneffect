@@ -248,6 +248,19 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     const generatorTarget = (call: ts.CallExpression): string | undefined =>
       ts.isIdentifier(call.expression) && functions.get(call.expression.text)?.node.asteriskToken
         ? call.expression.text : undefined;
+    const returnedGeneratorTarget = (name: string, seen = new Set<string>()): string | undefined => {
+      if (seen.has(name)) return undefined;
+      const target = functions.get(name);
+      if (!target || isAsyncFunction(target.node)) return undefined;
+      if (target.node.asteriskToken) return name;
+      const statements = target.node.body?.statements ?? [];
+      const returns: ts.ReturnStatement[] = [];
+      for (const statement of statements) if (ts.isReturnStatement(statement)) returns.push(statement);
+      const returned: ts.ReturnStatement | undefined = returns[0];
+      if (returns.length !== 1 || statements.at(-1) !== returned || !returned?.expression
+        || !ts.isCallExpression(returned.expression) || !ts.isIdentifier(returned.expression.expression)) return undefined;
+      return returnedGeneratorTarget(returned.expression.expression.text, new Set(seen).add(name));
+    };
     const addGeneratorConsumption = (target: string, dischargesThrow: boolean): void => {
       info.calls.push({ target, arguments: [], dischargesThrow });
     };
@@ -262,7 +275,8 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       }
       if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
-        const target = generatorTarget(node.initializer);
+        const target = generatorTarget(node.initializer)
+          ?? (ts.isIdentifier(node.initializer.expression) ? returnedGeneratorTarget(node.initializer.expression.text) : undefined);
         if (target) generatorBindings.set(node.name.text, target);
       }
       if (ts.isForOfStatement(node) && ts.isIdentifier(node.expression)) {
@@ -290,20 +304,22 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       if (ts.isCallExpression(node)) {
         for (const effect of primitiveEffects(node, adapter)) if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
         const directGenerator = generatorTarget(node);
-        if (directGenerator) {
-          const parent = node.parent;
-          const consumed = (ts.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "next"
+        const parent = node.parent;
+        const consumed = (ts.isPropertyAccessExpression(parent) && parent.expression === node && parent.name.text === "next"
               && ts.isCallExpression(parent.parent) && parent.parent.expression === parent)
             || (ts.isForOfStatement(parent) && parent.expression === node)
             || (ts.isYieldExpression(parent) && parent.asteriskToken !== undefined && parent.expression === node);
+        if (directGenerator) {
           if (consumed) addGeneratorConsumption(directGenerator, dischargesThrow);
         } else if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next"
           && ts.isIdentifier(node.expression.expression)) {
           const target = generatorBindings.get(node.expression.expression.text);
           if (target) addGeneratorConsumption(target, dischargesThrow);
-        } else if (ts.isIdentifier(node.expression) && functions.has(node.expression.text)) info.calls.push({
-          target: node.expression.text, arguments: node.arguments.map((arg) => arg.getText()), dischargesThrow,
-        });
+        } else if (ts.isIdentifier(node.expression) && functions.has(node.expression.text)) {
+          info.calls.push({ target: node.expression.text, arguments: node.arguments.map((arg) => arg.getText()), dischargesThrow });
+          const returnedGenerator = consumed ? returnedGeneratorTarget(node.expression.text) : undefined;
+          if (returnedGenerator) addGeneratorConsumption(returnedGenerator, dischargesThrow);
+        }
       }
       ts.forEachChild(node, (child) => visit(child, dischargesThrow));
     };
