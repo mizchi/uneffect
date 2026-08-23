@@ -541,8 +541,16 @@ entry state, while `do...while` applies its mandatory first iteration. A
 The restricted path summary accepts `break` and `continue` only after the
 target is cleared, treats `return` as unable to reach the post-loop use, and
 rejects `throw` conservatively. Reassigning the target after a clear resets the
-proof. Nested loops, switches, try/finally, general loop invariants, and
-inter-iteration alias generations remain unsupported by this join.
+proof. Nested loops, switches, try/finally, and general loop invariants remain
+unsupported by this join. Escapes that are still
+reported retain a symbolic acquisition-generation snapshot. Unified Quint
+lowering increments that generation on every modeled acquisition, captures it
+for each alias, and compares it with the generation recorded by lexical
+disposal. Repeated acquisitions share one repeat/exit decision per acquisition,
+even when several aliases capture the same resource generation; their capture
+and post-scope use evidence remains independent. Nested interacting acquisition
+loops and alias relations that retain older generations separately are still
+outside this finite lowering.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

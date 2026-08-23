@@ -1465,6 +1465,38 @@ describe("async error and explicit resource safety", () => {
     expect(run(aliasQuint).status).not.toBe(0);
   });
 
+  it("shares one loop decision across aliases of the same repeated resource generation", () => {
+    const result = analyzeAsyncSafety("repeated-resource-multiple-aliases.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken(enabled: boolean) {
+        let first: Resource | undefined
+        let second: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          first = resource
+          second = resource
+          await Promise.resolve("tick").then((value) => value)
+        }
+        first?.send()
+        second?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases).toHaveLength(2);
+    expect(aliases.every((alias) => alias.generation.repeated)).toBe(true);
+    expect(new Set(aliases.map((alias) => alias.generation.acquisitionIndex))).toEqual(new Set([0]));
+
+    const quint = generateUnifiedAsyncQuint("repeated_resource_multiple_aliases", result, "broken");
+    expect([...quint.matchAll(/action alias_loop_\d+_repeat/g)]).toHaveLength(1);
+    expect([...quint.matchAll(/action alias_loop_\d+_exit/g)]).toHaveLength(1);
+    expect(quint).toContain("action capture_alias_0");
+    expect(quint).toContain("action capture_alias_1");
+    expect(quint).toContain("action use_disposed_alias_0");
+    expect(quint).toContain("action use_disposed_alias_1");
+    expect(run(quint).status).not.toBe(0);
+  });
+
   it("propagates disposed resource identity through local alias chains", () => {
     const result = analyzeAsyncSafety("transitive-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

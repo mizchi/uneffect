@@ -1580,6 +1580,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
     return handlerResourceIndexes.has(resourceIndex) ? [index] : [];
   }));
+  const repeatedLoopAliasIndexes = [...aliases.reduce((byAcquisition, alias, index) => {
+    if (alias.generation.repeated && !byAcquisition.has(alias.generation.acquisitionIndex)) {
+      byAcquisition.set(alias.generation.acquisitionIndex, index);
+    }
+    return byAcquisition;
+  }, new Map<number, number>()).values()];
   const eventsInStatement = (statement: AsyncControlStatement): NormalEvent[] => [
     ...resourcesInStatement(statement).map((index): NormalEvent => ({ kind: "acquire", index, position: resources[index]!.span.start })),
     ...awaitsInStatement(statement).map((index): NormalEvent => ({ kind: "await", index, position: awaited[index]!.span.start })),
@@ -1597,8 +1603,8 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       { kind: "alias-capture", index, position: alias.assignmentSpan.end },
       { kind: "alias-use", index, position: alias.useSpan.start },
     ]),
-    ...aliases.flatMap((alias, index): NormalEvent[] => {
-      if (!alias.generation.repeated) return [];
+    ...repeatedLoopAliasIndexes.flatMap((index): NormalEvent[] => {
+      const alias = aliases[index]!;
       const resource = resources.find((item) => item.acquisitionIndex === alias.generation.acquisitionIndex);
       const disposal = resource && disposals.find((item) => item.binding === resource.binding && item.scopeId === resource.scopeId);
       return disposal ? [{ kind: "alias-loop-decision", index, position: disposal.disposalPoint }] : [];

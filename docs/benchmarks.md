@@ -122,6 +122,10 @@ execution.
 After adding arbitrary finite repeat/exit and zero-iteration capture skipping,
 the same benchmark measured 142.43 ms mean over 20 samples (4.69% RME). The
 roughly 6 ms increase is within the wider cold-run distribution.
+After normalizing two aliases of one repeated acquisition to a shared loop
+decision, a dedicated end-to-end analysis and unified-Quint-lowering benchmark
+measured 126.58 ms mean over 20 samples (2.27% RME). This benchmark retains two
+independent generation captures and uses, but emits only one repeat/exit pair.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end
