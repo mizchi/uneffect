@@ -471,6 +471,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Follow cycle-safe zero-argument single-return Proxy factories through TypeChecker-resolved local/imported functions, re-exports, and immutable wrapper chains; argument-dependent factories remain unknown.
       - [x] Accept zero-argument Proxy factories whose restricted `if`/`else` CFG has only Proxy-valued normal return paths; reject fallthrough, mixed returns, and unsupported control flow.
       - [x] Substitute supplied call arguments for identifier parameters through nested and imported/re-exported Proxy factory chains; reject missing, rest, and destructured parameter bindings.
+      - [x] Specialize restricted factory `if` branches from substituted boolean literals, immutable aliases, negation, and boolean default parameters while retaining dynamic mixed branches as unknown.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

@@ -589,9 +589,18 @@ alias-generation correlations still require broader effect/CFG evidence and
 are not claimed as proved. For ordinary function and arrow calls, supplied
 arguments are substituted by parameter symbol through nested factory chains,
 including imports and re-exports. This handles identity/forwarding helpers
-without trusting parameter names. Missing arguments, rest or destructured
-parameters, default-dependent flows, and mutation of parameter-derived values
-remain unknown.
+without trusting parameter names. Missing arguments without a supported
+default, rest or destructured parameters, non-boolean default-dependent flows,
+and mutation of parameter-derived values remain unknown.
+
+Within this restricted factory CFG, a substituted boolean literal can select an
+`if` branch before return provenance is joined. Immutable boolean aliases,
+parentheses/assertions, unary `!`, and omitted parameters with boolean literal
+defaults are folded. This permits a literal-enabled selector to return its
+Proxy argument even when the unreachable branch returns an ordinary object.
+Dynamic booleans still require both branches, and equality tests, compound
+predicates, explicit `undefined` defaulting, or mutable condition sources are
+not specialized.
 
 The same
 source-ordered flow covers nested property and literal array slots on a local

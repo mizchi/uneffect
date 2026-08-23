@@ -571,15 +571,34 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const isProxyFactoryDeclaration = (declaration: ts.Node): declaration is ProxyFactoryDeclaration =>
       ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration);
     type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
-    const returnedExpressions = (declaration: ProxyFactoryDeclaration): ts.Expression[] | undefined => {
+    const returnedExpressions = (declaration: ProxyFactoryDeclaration, substitutions: ReadonlyMap<ts.Symbol, ts.Expression>): ts.Expression[] | undefined => {
       if (!declaration.body) return undefined;
       if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)) return [declaration.body];
       if (!ts.isBlock(declaration.body)) return undefined;
+      const staticBoolean = (expression: ts.Expression, seen = new Set<ts.Symbol>()): boolean | undefined => {
+        if (expression.kind === ts.SyntaxKind.TrueKeyword) return true;
+        if (expression.kind === ts.SyntaxKind.FalseKeyword) return false;
+        if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return staticBoolean(expression.expression, seen);
+        if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
+          const operand = staticBoolean(expression.operand, seen);
+          return operand === undefined ? undefined : !operand;
+        }
+        if (!ts.isIdentifier(expression)) return undefined;
+        const symbol = targetSymbol(expression);
+        if (!symbol || seen.has(symbol)) return undefined;
+        const replacement = substitutions.get(symbol) ?? immutableInitializer(expression);
+        return replacement && replacement !== expression ? staticBoolean(replacement, new Set([...seen, symbol])) : undefined;
+      };
       const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
         if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
         if (ts.isThrowStatement(statement)) return { expressions: [], definite: true };
         if (ts.isBlock(statement)) return blockFlow(statement);
         if (ts.isIfStatement(statement)) {
+          const selected = staticBoolean(statement.expression);
+          if (selected === true) return statementFlow(statement.thenStatement);
+          if (selected === false) return statement.elseStatement
+            ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
           const whenTrue = statementFlow(statement.thenStatement);
           const whenFalse = statement.elseStatement ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
           return whenTrue && whenFalse ? {
@@ -628,15 +647,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (!ts.isCallExpression(initializer)) return false;
       const declaration = checker.getResolvedSignature(initializer)?.declaration;
       if (!declaration || !isProxyFactoryDeclaration(declaration) || seen.has(declaration)) return false;
-      const returned = returnedExpressions(declaration);
       const nextSeen = new Set([...seen, declaration]);
       const nextSubstitutions = new Map(substitutions);
       for (const [index, parameter] of declaration.parameters.entries()) {
-        if (!ts.isIdentifier(parameter.name) || parameter.dotDotDotToken || !initializer.arguments[index]) return false;
+        const argument = initializer.arguments[index] ?? parameter.initializer;
+        if (!ts.isIdentifier(parameter.name) || parameter.dotDotDotToken || !argument) return false;
         const symbol = targetSymbol(parameter.name);
         if (!symbol) return false;
-        nextSubstitutions.set(symbol, initializer.arguments[index]!);
+        nextSubstitutions.set(symbol, argument);
       }
+      const returned = returnedExpressions(declaration, nextSubstitutions);
       return returned !== undefined && returned.every((candidate) =>
         isBuiltinProxyReceiver(candidate, new Set(nextSeen), nextSubstitutions, new Set(substituted)));
     };
