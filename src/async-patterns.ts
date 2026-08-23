@@ -203,7 +203,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       seen.delete(symbol);
       return expanded;
     }
-    if (ts.isAsExpression(expression) && expression.type.getText(source) === "const") {
+    if (ts.isAsExpression(expression) && expression.type.getText(expression.getSourceFile()) === "const") {
       return expandStaticArray(expression.expression, seen, evidence);
     }
     if (!ts.isArrayLiteralExpression(expression)) return undefined;

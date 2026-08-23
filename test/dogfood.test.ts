@@ -700,6 +700,13 @@ describe("Uneffect dogfood", () => {
     const model = analyzeAsyncPatternsInProgram(program, program.getSourceFile(entry)!);
     expect(model.combinators).toEqual([
       expect.objectContaining({
+        owner: "loadDashboardReplicas",
+        branches: ['"replica-a"', '"replica-b"', "network"],
+        branchKinds: ["value", "value", "thenable"],
+        staticIterable: true,
+        iteratorKind: "local",
+      }),
+      expect.objectContaining({
         owner: "loadImportedDashboard",
         branches: ['"dashboard-header"', '"cached-profile"', "network"],
         branchKinds: ["value", "value", "thenable"],
@@ -765,17 +772,18 @@ describe("Uneffect dogfood", () => {
       }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
-    expect(quint).not.toContain("action reject_0_0");
     expect(quint).toContain("action assimilate_0_2");
-    expect(quint).toContain("action assimilate_1_1");
-    expect(quint).toContain('val join_2_aggregate_error_reason_0 = "literal:string:cache-miss"');
-    expect(quint).toContain('val join_2_aggregate_error_reason_1 = "error:TypeError:network-down"');
-    expect(quint).toContain("action choose_iterable_3_path_0");
-    expect(quint).toContain("action choose_iterable_3_path_1");
-    expect(quint).toMatch(/action fail_iterator_3[\s\S]*join_3_iterable_choice == 0/);
+    expect(quint).not.toContain("action reject_1_0");
+    expect(quint).toContain("action assimilate_1_2");
+    expect(quint).toContain("action assimilate_2_1");
+    expect(quint).toContain('val join_3_aggregate_error_reason_0 = "literal:string:cache-miss"');
+    expect(quint).toContain('val join_3_aggregate_error_reason_1 = "error:TypeError:network-down"');
     expect(quint).toContain("action choose_iterable_4_path_0");
-    expect(quint).toContain("action choose_iterable_4_path_2");
-    expect(quint).toMatch(/action fail_iterator_4[\s\S]*join_4_iterable_choice == 0 or join_4_iterable_choice == 1/);
+    expect(quint).toContain("action choose_iterable_4_path_1");
+    expect(quint).toMatch(/action fail_iterator_4[\s\S]*join_4_iterable_choice == 0/);
+    expect(quint).toContain("action choose_iterable_5_path_0");
+    expect(quint).toContain("action choose_iterable_5_path_2");
+    expect(quint).toMatch(/action fail_iterator_5[\s\S]*join_5_iterable_choice == 0 or join_5_iterable_choice == 1/);
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {

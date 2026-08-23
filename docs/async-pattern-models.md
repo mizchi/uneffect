@@ -195,6 +195,10 @@ tuple and builtin-Set subset. A directly yielded loop binding is specialized by
 TypeChecker symbol identity, and boolean literal elements can fold restricted
 guards in the loop body. `for await`, dynamic operands, destructuring bindings,
 and general expression substitution remain unsupported generator control flow.
+The dashboard dogfood applies this across a real two-file TypeScript Program:
+an imported replica generator loops over a readonly tuple, forwards a network
+thenable through a local alias, and lowers to two value slots plus one exact
+thenable slot at the Promise-combinator call site.
 Reassignment-free generator-local `const` bindings with identifier or primitive
 literal initializers are substituted by symbol identity. This covers boolean
 guard aliases and directly yielded value/thenable aliases without evaluating

@@ -37,3 +37,13 @@ export function* conditionalDashboardValues(
   }
   yield "dashboard-tail";
 }
+
+export function* dashboardReplicaValues(
+  network: PromiseLike<string>,
+): Generator<string | PromiseLike<string>> {
+  const forwarded = network;
+  for (const cached of ["replica-a", "replica-b"] as const) {
+    yield cached;
+  }
+  yield forwarded;
+}
