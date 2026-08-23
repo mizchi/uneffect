@@ -47,3 +47,20 @@ export function* dashboardReplicaValues(
   }
   yield forwarded;
 }
+
+export function* dashboardRegionValues(
+  preferNetwork: boolean,
+  network: PromiseLike<string>,
+): Generator<string | PromiseLike<string>> {
+  if (preferNetwork) yield network;
+  else yield "regional-cache";
+}
+
+export function* delegatedDashboardValues(
+  preferNetwork: boolean,
+  network: PromiseLike<string>,
+): Generator<string | PromiseLike<string>> {
+  yield "delegated-head";
+  yield* dashboardRegionValues(preferNetwork, network);
+  yield "delegated-tail";
+}

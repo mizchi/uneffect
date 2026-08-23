@@ -185,20 +185,23 @@ expression may itself invoke user code or throw. Literal guards are folded, so
 an unreachable branch does not enter the path product. A bare `yield;` is an
 exact fulfilled `undefined` value slot, not an unknown thenable.
 `yield*` is flattened when its operand is a recursively finite array/readonly
-tuple or a directly constructed finite builtin `Set`; order, duplicate removal,
-and thenable classification reuse the same iterable rules. Generator/custom
-iterator delegation remains outside this slice because recursion, iterator
-failure, and delegated return semantics require an interprocedural termination
-model.
+tuple, a directly constructed finite builtin `Set`, or a resolved local/imported
+generator call that itself stays in this finite fragment. Generator delegation
+substitutes call-site arguments, composes correlated paths, and turns a delegated
+acquisition/step failure into a step failure of the parent generator. A symbol
+call stack rejects direct and indirect recursive delegation instead of assuming
+termination. Delegated return values are intentionally ignored, matching the
+iteration values observed by Promise combinators. General custom iterator
+delegation remains outside this slice.
 Synchronous `for...of` is unrolled over the same direct finite array/readonly
 tuple and builtin-Set subset. A directly yielded loop binding is specialized by
 TypeChecker symbol identity, and boolean literal elements can fold restricted
 guards in the loop body. `for await`, dynamic operands, destructuring bindings,
 and general expression substitution remain unsupported generator control flow.
 The dashboard dogfood applies this across a real two-file TypeScript Program:
-an imported replica generator loops over a readonly tuple, forwards a network
-thenable through a local alias, and lowers to two value slots plus one exact
-thenable slot at the Promise-combinator call site.
+an imported replica generator loops over a readonly tuple and another imported
+generator delegates to a finite child generator. Call-site network thenables
+remain exact thenable slots across both inter-file boundaries.
 Reassignment-free generator-local `const` bindings with identifier or primitive
 literal initializers are substituted by symbol identity. This covers boolean
 guard aliases and directly yielded value/thenable aliases without evaluating

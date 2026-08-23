@@ -770,6 +770,21 @@ describe("Uneffect dogfood", () => {
           }),
         ],
       }),
+      expect.objectContaining({
+        owner: "loadDelegatedDashboard",
+        staticIterable: true,
+        iteratorKind: "local",
+        iterablePaths: [
+          expect.objectContaining({
+            branches: ['"delegated-head"', "network", '"delegated-tail"'],
+            branchKinds: ["value", "thenable", "value"],
+          }),
+          expect.objectContaining({
+            branches: ['"delegated-head"', '"regional-cache"', '"delegated-tail"'],
+            branchKinds: ["value", "value", "value"],
+          }),
+        ],
+      }),
     ]);
     const quint = generateAsyncPatternsQuint("imported_batch", model);
     expect(quint).toContain("action assimilate_0_2");
@@ -784,6 +799,8 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action choose_iterable_5_path_0");
     expect(quint).toContain("action choose_iterable_5_path_2");
     expect(quint).toMatch(/action fail_iterator_5[\s\S]*join_5_iterable_choice == 0 or join_5_iterable_choice == 1/);
+    expect(quint).toContain("action choose_iterable_6_path_0");
+    expect(quint).toContain("action choose_iterable_6_path_1");
   });
 
   it("rejects allSettled when the telemetry batch iterator itself fails", () => {

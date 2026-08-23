@@ -4,6 +4,7 @@ import {
   dashboardReplicaValues,
   dashboardSnapshotValues,
   dashboardValues,
+  delegatedDashboardValues,
 } from "./dashboard-values.js";
 
 export async function loadDashboardReplicas(network: PromiseLike<string>): Promise<string[]> {
@@ -44,4 +45,11 @@ export async function compareConditionalDashboards(
     "comparison-separator",
     ...conditionalDashboardValues(preferSecondaryNetwork, secondaryNetwork),
   ]);
+}
+
+export async function loadDelegatedDashboard(
+  preferNetwork: boolean,
+  network: PromiseLike<string>,
+): Promise<string[]> {
+  return Promise.all(delegatedDashboardValues(preferNetwork, network));
 }

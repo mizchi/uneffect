@@ -1168,6 +1168,66 @@ describe("builtin async temporal patterns", () => {
     });
   });
 
+  it("composes finite generator delegation with call-site substitutions", () => {
+    const model = analyzeAsyncPatterns("finite-generator-delegation.ts", `
+      function* child(flag: boolean, remote: PromiseLike<string>) {
+        if (flag) yield remote
+        else yield "cached"
+      }
+      function* parent(flag: boolean, remote: PromiseLike<string>) {
+        yield "head"
+        yield* child(flag, remote)
+        yield "tail"
+      }
+      async function load(enabled: boolean, network: PromiseLike<string>) {
+        return Promise.all(parent(enabled, network))
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      iterablePaths: [
+        { branches: ['"head"', "network", '"tail"'], branchKinds: ["value", "thenable", "value"] },
+        { branches: ['"head"', '"cached"', '"tail"'], branchKinds: ["value", "value", "value"] },
+      ],
+    });
+  });
+
+  it("rejects recursive generator delegation without recursing indefinitely", () => {
+    const model = analyzeAsyncPatterns("recursive-generator-delegation.ts", `
+      function* recursive(): Generator<number> {
+        yield 1
+        yield* recursive()
+      }
+      async function load() { return Promise.all(recursive()) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: false,
+      unsupportedReason: "unsupported-generator-control-flow",
+    });
+  });
+
+  it("propagates delegated step failure and correlates parent and child guards", () => {
+    const model = analyzeAsyncPatterns("guarded-generator-delegation.ts", `
+      function* child(flag: boolean) {
+        if (flag) throw new Error("stop")
+        yield "child"
+      }
+      function* parent(flag: boolean) {
+        if (flag) yield "enabled"
+        yield* child(flag)
+        yield "tail"
+      }
+      async function load(flag: boolean) { return Promise.all(parent(flag)) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      iterablePaths: [
+        { branches: ['"enabled"'], branchKinds: ["value"], iteratorFailure: "step" },
+        { branches: ['"child"', '"tail"'], branchKinds: ["value", "value"] },
+      ],
+    });
+  });
+
   it("unrolls a generator for-of over a directly finite builtin iterable", () => {
     const model = analyzeAsyncPatterns("finite-generator-loop.ts", `
       function* values() {

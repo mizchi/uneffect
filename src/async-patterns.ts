@@ -314,7 +314,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   }
   type FiniteIterableExpansion = {
     branches: ts.Expression[];
-    paths?: Array<{ branches: ts.Expression[]; failure?: "acquire" | "step" }>;
+    paths?: Array<{ branches: ts.Expression[]; failure?: "acquire" | "step"; conditions?: Map<ts.Symbol | string, boolean> }>;
     alternatives?: readonly [ts.Expression[], ts.Expression[]];
     failure?: "acquire" | "step";
     failurePresence?: "when-true" | "when-false";
@@ -323,6 +323,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const linearGeneratorBody = (
     body: ts.Block,
     substitutions = new Map<ts.Symbol, ts.Expression>(),
+    generatorStack = new Set<ts.Symbol>(),
   ): FiniteIterableExpansion | undefined => {
     const substitute = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>, seen = new Set<ts.Symbol>()): ts.Expression => {
       if (!ts.isIdentifier(expression)) return expression;
@@ -377,11 +378,40 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
             && statement.expression.asteriskToken && statement.expression.expression) {
             const evidence: StaticArrayExpansionEvidence = { invokesUserCode: false };
-            const delegated = expandStaticArray(statement.expression.expression, new Set(), evidence)
+            const operand = statement.expression.expression;
+            const delegatedEntries = expandStaticArray(operand, new Set(), evidence)
               ?? expandStaticSet(statement.expression.expression);
-            if (!delegated || evidence.paths || evidence.failure || evidence.invokesUserCode) return undefined;
-            next.push({ ...path, branches: [...path.branches, ...delegated.map((branch) =>
-              ts.isOmittedExpression(branch) ? branch : substitute(branch, path.bindings))] as ts.Expression[] });
+            if (delegatedEntries && !evidence.paths && !evidence.failure && !evidence.invokesUserCode) {
+              next.push({ ...path, branches: [...path.branches, ...delegatedEntries.map((branch) =>
+                ts.isOmittedExpression(branch) ? branch : substitute(branch, path.bindings))] as ts.Expression[] });
+            } else {
+              const delegatedOperand = ts.isCallExpression(operand)
+                ? ts.factory.updateCallExpression(operand, operand.expression, operand.typeArguments,
+                  operand.arguments.map((argument) => substitute(argument, path.bindings)))
+                : substitute(operand, path.bindings);
+              const delegated = localIterable(delegatedOperand, new Set(), generatorStack);
+              if (!delegated || delegated.unsupportedReason) return undefined;
+              const delegatedPaths = delegated.paths ?? [{
+                branches: delegated.branches,
+                ...(delegated.failure ? { failure: delegated.failure } : {}),
+              }];
+              for (const delegatedPath of delegatedPaths) {
+                const conditions = new Map(path.conditions);
+                let compatible = true;
+                for (const [key, value] of delegatedPath.conditions ?? []) {
+                  const existing = conditions.get(key);
+                  if (existing !== undefined && existing !== value) { compatible = false; break; }
+                  conditions.set(key, value);
+                }
+                if (!compatible) continue;
+                next.push({
+                  ...path,
+                  branches: [...path.branches, ...delegatedPath.branches],
+                  ...(delegatedPath.failure ? { failure: "step" as const, completes: false } : {}),
+                  ...(conditions.size ? { conditions } : {}),
+                });
+              }
+            }
           } else if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
             && !statement.expression.asteriskToken) {
             next.push({ ...path, branches: [...path.branches, statement.expression.expression
@@ -471,11 +501,12 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   function localIterable(
     expression: ts.Expression | undefined,
     seen = new Set<ts.Symbol>(),
+    generatorStack = new Set<ts.Symbol>(),
   ): FiniteIterableExpansion | undefined {
     if (!expression) return undefined;
     if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
       || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
-      return localIterable(expression.expression, seen);
+      return localIterable(expression.expression, seen, generatorStack);
     }
     let declaration: ts.Declaration | undefined;
     let expressionSymbol: ts.Symbol | undefined;
@@ -491,7 +522,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
       const nextSeen = new Set(seen);
       nextSeen.add(expressionSymbol);
-      return localIterable(declaration.initializer, nextSeen);
+      return localIterable(declaration.initializer, nextSeen, generatorStack);
     }
     if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isObjectLiteralExpression(declaration.initializer)) {
       const iterator = declaration.initializer.properties.find((property) => {
@@ -544,17 +575,24 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const symbol = resolvedSymbol(parameter.name);
           if (symbol) substitutions.set(symbol, expression.arguments[index]);
         });
-        return linearGeneratorBody(iterator.body, substitutions);
+        return linearGeneratorBody(iterator.body, substitutions, generatorStack);
       }
     }
     if (declaration && ts.isFunctionDeclaration(declaration) && declaration.asteriskToken && declaration.body) {
+      const generatorSymbol = declaration.name && resolvedSymbol(declaration.name);
+      if (generatorSymbol && generatorStack.has(generatorSymbol)) return {
+        branches: [],
+        unsupportedReason: "unsupported-generator-control-flow",
+      };
+      const nextGeneratorStack = new Set(generatorStack);
+      if (generatorSymbol) nextGeneratorStack.add(generatorSymbol);
       const substitutions = new Map<ts.Symbol, ts.Expression>();
       if (ts.isCallExpression(expression)) declaration.parameters.forEach((parameter, index) => {
         if (!ts.isIdentifier(parameter.name) || !expression.arguments[index]) return;
         const symbol = resolvedSymbol(parameter.name);
         if (symbol) substitutions.set(symbol, expression.arguments[index]);
       });
-      return linearGeneratorBody(declaration.body, substitutions);
+      return linearGeneratorBody(declaration.body, substitutions, nextGeneratorStack);
     }
     return undefined;
   }
