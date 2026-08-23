@@ -48,7 +48,7 @@ export interface PromiseCombinatorPattern {
   iteratorEffects: [] | ["InvokeUserCode"];
   iteratorFailure?: "acquire" | "step";
   iteratorFailurePresence?: "when-true" | "when-false";
-  unsupportedReason?: "dynamic-cardinality" | "finite-path-limit";
+  unsupportedReason?: UnsupportedIterableReason;
   aggregateErrorOrder?: number[];
   aggregateErrorReasons?: Array<PromiseRejectionReason | null>;
   aggregateErrorReasonPaths?: Array<Array<PromiseRejectionReason | null>>;
@@ -59,6 +59,7 @@ export interface PromiseCombinatorPattern {
 export type PromiseRejectionReason =
   | { kind: "literal"; value: string | number | boolean }
   | { kind: "error"; errorType: string; message?: string };
+export type UnsupportedIterableReason = "dynamic-cardinality" | "finite-path-limit" | "unsupported-generator-control-flow";
 
 export interface TimerCancellation {
   owner: string;
@@ -174,7 +175,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     alternatives?: readonly [(ts.Expression | ts.OmittedExpression)[], (ts.Expression | ts.OmittedExpression)[]];
     failure?: "acquire" | "step";
     failurePresence?: "when-true" | "when-false";
-    unsupportedReason?: "finite-path-limit";
+    unsupportedReason?: Exclude<UnsupportedIterableReason, "dynamic-cardinality">;
   };
   type FiniteIterablePath = {
     branches: (ts.Expression | ts.OmittedExpression)[];
@@ -317,7 +318,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     alternatives?: readonly [ts.Expression[], ts.Expression[]];
     failure?: "acquire" | "step";
     failurePresence?: "when-true" | "when-false";
-    unsupportedReason?: "finite-path-limit";
+    unsupportedReason?: Exclude<UnsupportedIterableReason, "dynamic-cardinality">;
   };
   const linearGeneratorBody = (
     body: ts.Block,
@@ -361,6 +362,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         for (const path of paths) {
           if (!path.completes) { next.push(path); continue; }
           if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
+            && statement.expression.asteriskToken && statement.expression.expression) {
+            const evidence: StaticArrayExpansionEvidence = { invokesUserCode: false };
+            const delegated = expandStaticArray(statement.expression.expression, new Set(), evidence)
+              ?? expandStaticSet(statement.expression.expression);
+            if (!delegated || evidence.paths || evidence.failure || evidence.invokesUserCode) return undefined;
+            next.push({ ...path, branches: [...path.branches, ...delegated.map((branch) =>
+              ts.isOmittedExpression(branch) ? branch : substitute(branch))] as ts.Expression[] });
+          } else if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
             && !statement.expression.asteriskToken) {
             next.push({ ...path, branches: [...path.branches, statement.expression.expression
               ? substitute(statement.expression.expression) : statement.expression] });
@@ -386,7 +395,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       return paths;
     };
     const flowed = flow(body.statements);
-    if (!flowed?.length) return pathLimitExceeded ? { branches: [], unsupportedReason: "finite-path-limit" } : undefined;
+    if (!flowed?.length) return {
+      branches: [],
+      unsupportedReason: pathLimitExceeded ? "finite-path-limit" : "unsupported-generator-control-flow",
+    };
     const finitePaths = flowed.map(({ branches, failure, conditions }) => ({ branches, ...(failure ? { failure } : {}), ...(conditions?.size ? { conditions } : {}) }));
     if (finitePaths.length === 1) return {
       branches: finitePaths[0]!.branches,

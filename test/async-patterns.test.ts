@@ -1132,7 +1132,7 @@ describe("builtin async temporal patterns", () => {
     expect(model.combinators[0]).not.toHaveProperty("iterablePaths");
     expect(model.combinators[1]).toMatchObject({
       staticIterable: false,
-      unsupportedReason: "dynamic-cardinality",
+      unsupportedReason: "unsupported-generator-control-flow",
     });
   });
 
@@ -1149,6 +1149,23 @@ describe("builtin async temporal patterns", () => {
     const quint = generateAsyncPatternsQuint("bare_yield", model);
     expect(quint).toContain("action fulfill_0_0");
     expect(quint).not.toContain("action reject_0_0");
+  });
+
+  it("flattens yield delegation to a directly finite builtin iterable", () => {
+    const model = analyzeAsyncPatterns("finite-yield-star.ts", `
+      function* values() {
+        yield "head"
+        yield* [1, Promise.resolve(2)]
+        yield* new Set(["cached", "cached", "fresh"])
+        yield "tail"
+      }
+      async function load() { return Promise.all(values()) }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      branches: ['"head"', "1", "Promise.resolve(2)", '"cached"', '"fresh"', '"tail"'],
+      branchKinds: ["value", "value", "thenable", "value", "value", "value"],
+    });
   });
 
   it("models local iterator acquisition and generator step failures", () => {

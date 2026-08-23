@@ -507,8 +507,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Correlate repeated TypeChecker-resolved boolean conditions and negated generator arguments across finite paths, removing contradictory choice products before Quint lowering.
     - [x] Fold literal generator guards and reject call/property/general-expression guards from the finite fragment instead of ignoring condition-evaluation effects or throws.
     - [x] Treat a bare generator `yield;` as an exact fulfilled `undefined` Promise-combinator slot.
+    - [x] Flatten `yield*` over recursively finite arrays/readonly tuples and direct finite builtin Sets; retain generator/custom delegation as an explicit unsupported boundary.
     - [x] Bound finite iterable choice products at 32 paths and fall back to an explicit unsupported dynamic boundary instead of truncating proof state.
     - [x] Distinguish `finite-path-limit` from general `dynamic-cardinality` in async IR and rejected Quint generation.
+    - [x] Report recognized but unsupported generator guards/loops/delegation as `unsupported-generator-control-flow` rather than generic dynamic cardinality.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.

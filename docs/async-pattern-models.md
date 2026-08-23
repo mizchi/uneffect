@@ -184,6 +184,12 @@ boolean literal remain dynamic because evaluating a call, property, or general
 expression may itself invoke user code or throw. Literal guards are folded, so
 an unreachable branch does not enter the path product. A bare `yield;` is an
 exact fulfilled `undefined` value slot, not an unknown thenable.
+`yield*` is flattened when its operand is a recursively finite array/readonly
+tuple or a directly constructed finite builtin `Set`; order, duplicate removal,
+and thenable classification reuse the same iterable rules. Generator/custom
+iterator delegation remains outside this slice because recursion, iterator
+failure, and delegated return semantics require an interprocedural termination
+model.
 Finite correlated generator spreads compose by Cartesian product with other
 spreads and deterministic array prefix/suffix. The analyzer refuses the model
 as dynamic when that product exceeds 32 paths; it never truncates the product
@@ -191,7 +197,10 @@ and reports the remainder as proved. Loops and conditions whose bodies leave
 the restricted direct-yield/throw/return fragment remain dynamic.
 The neutral IR distinguishes this boundary as `finite-path-limit` from the
 ordinary `dynamic-cardinality` boundary, and Quint generation reports the
-specific reason when it refuses an unbounded model.
+specific reason when it refuses an unbounded model. A recognized generator
+whose loop, guard, or delegation is outside the accepted finite fragment uses
+`unsupported-generator-control-flow`, separating an implementation boundary
+from genuinely unknown iterable cardinality.
 `Promise.any` retains path-dependent aggregate cardinality and emits concrete
 rejection-reason constants under the same path index; one path is never
 presented as representative of another.
