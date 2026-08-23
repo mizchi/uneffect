@@ -969,13 +969,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (node.elseStatement) {
           for (const symbol of [...escapedAliases.keys()]) {
             const target: AliasClearTarget = { kind: "symbol", symbol };
-            if (terminallyClears(node.thenStatement, target)
-              && terminallyClears(node.elseStatement, target)) escapedAliases.delete(symbol);
+            if (terminallyClearsOrReturns(node.thenStatement, target)
+              && terminallyClearsOrReturns(node.elseStatement, target)) escapedAliases.delete(symbol);
           }
           for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
             const target: AliasClearTarget = { kind: "slot", root, key };
-            if (terminallyClears(node.thenStatement, target)
-              && terminallyClears(node.elseStatement, target)) slots.delete(key);
+            if (terminallyClearsOrReturns(node.thenStatement, target)
+              && terminallyClearsOrReturns(node.elseStatement, target)) slots.delete(key);
           }
         }
         return;

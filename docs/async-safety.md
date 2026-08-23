@@ -519,7 +519,9 @@ boolean literal union and the case literals cover the entire union. Enum and
 computed case domains are not treated as exhaustiveness evidence. The same
 join accepts a clause that terminates in `return`, because it cannot reach an
 alias use after the switch. A terminal exhaustive `if`/`else` may mix returns
-and mandatory clears. `throw`, `break`, `continue`, and earlier conditional
+and mandatory clears, either as a switch clause or as a standalone statement;
+this applies equally to direct aliases and static aggregate slots. `throw`,
+`break`, `continue`, and earlier conditional
 abrupt completion remain conservative in this alias-flow subset. The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate

@@ -19,3 +19,14 @@ export async function finalizeDelivery(status: "sent" | "cancelled" | "expired" 
   }
   pending?.flush();
 }
+
+export async function finalizeConditional(alreadyClosed: boolean): Promise<void> {
+  let pending: DeliverySession | undefined;
+  {
+    await using session = openDeliverySession();
+    pending = session;
+  }
+  if (alreadyClosed) return;
+  else pending = undefined;
+  pending?.flush();
+}

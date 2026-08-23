@@ -1528,6 +1528,17 @@ describe("async error and explicit resource safety", () => {
         else alias = undefined
         alias?.send()
       }
+      async function returnedOrCleared(clear: boolean) {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+          await Promise.resolve()
+        }
+        if (clear) alias = undefined
+        else return
+        alias?.send()
+      }
       async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
         let alias: Resource | undefined
         {
@@ -1682,6 +1693,9 @@ describe("async error and explicit resource safety", () => {
       functionName: "clearedInBothBranches", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "returnedOrCleared", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -1726,6 +1740,16 @@ describe("async error and explicit resource safety", () => {
           await using resource = open()
           holder.current = resource
         }
+        holder.current?.send()
+      }
+      async function aggregateReturnedOrCleared(clear: boolean) {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        if (clear) holder.current = undefined
+        else return
         holder.current?.send()
       }
       async function clearedInEverySwitchCase(mode: "done" | "cancelled") {
@@ -1837,6 +1861,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInBothBranches", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "aggregateReturnedOrCleared", kind: "disposed-resource-use",
     }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       functionName: "clearedInEverySwitchCase", kind: "disposed-resource-use",

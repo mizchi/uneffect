@@ -526,6 +526,11 @@ measured 131.63 ms mean over five cold samples (7.33% relative margin of
 error). The variance overlaps both preceding observations; the useful result
 is that reachability-aware return handling did not create a clear cold-path
 regression in this small fixture.
+After adding a second realistic early-return/clear function and its negative
+control, the same benchmark measured 137.89 ms mean over five cold samples
+(17.34% relative margin of error). The sample variance is too high to attribute
+the difference to the two-statement join; it establishes only that the expanded
+dogfood remains in the same approximate cold-analysis range.
 
 ## Collection refinement receiver identity
 
