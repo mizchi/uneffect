@@ -1246,17 +1246,19 @@ describe("builtin async temporal patterns", () => {
 
   it("projects finite generator arguments through immutable object properties", () => {
     const model = analyzeAsyncPatterns("generator-property-substitution.ts", `
-      type Failure = { reason: string; nested: { message: string }; codes: { quota: string } }
+      type Failure = { reason: string; nested: { message: string }; codes: { quota: string }; reasons: readonly [string, string] }
       function* failures(details: Failure) {
         yield Promise.reject(details.reason)
         yield Promise.reject(new Error(details.nested.message))
         yield Promise.reject(details.codes["quota"])
+        yield Promise.reject(details.reasons[1])
       }
       async function fixed() {
         return Promise.any(failures({
           reason: "quota-exceeded",
           nested: { message: "storage full" },
           codes: { quota: "Q1" },
+          reasons: ["cache", "network"],
         } as const))
       }
       async function dynamic(info: Failure) { return Promise.any(failures(info)) }
@@ -1267,18 +1269,41 @@ describe("builtin async temporal patterns", () => {
         'Promise.reject("quota-exceeded")',
         'Promise.reject(new Error("storage full"))',
         'Promise.reject("Q1")',
+        'Promise.reject("network")',
       ],
       aggregateErrorReasons: [
         { kind: "literal", value: "quota-exceeded" },
         { kind: "error", errorType: "Error", message: "storage full" },
         { kind: "literal", value: "Q1" },
+        { kind: "literal", value: "network" },
       ],
     });
     expect(model.combinators[1]).toMatchObject({
       staticIterable: true,
-      branches: ["Promise.reject(info.reason)", "Promise.reject(new Error(info.nested.message))", 'Promise.reject(info.codes["quota"])'],
-      aggregateErrorReasons: [null, { kind: "error", errorType: "Error" }, null],
+      branches: [
+        "Promise.reject(info.reason)",
+        "Promise.reject(new Error(info.nested.message))",
+        'Promise.reject(info.codes["quota"])',
+        "Promise.reject(info.reasons[1])",
+      ],
+      aggregateErrorReasons: [null, { kind: "error", errorType: "Error" }, null, null],
     });
+  });
+
+  it("does not project spread, sparse, or dynamic generator array indices", () => {
+    const model = analyzeAsyncPatterns("generator-unsafe-index.ts", `
+      function* at(values: readonly unknown[], index: number) {
+        yield Promise.reject(values[index])
+      }
+      async function spread() { return Promise.any(at(["a", ...["b"]], 0)) }
+      async function sparse() { return Promise.any(at([, "b"], 0)) }
+      async function dynamic(index: number) { return Promise.any(at(["a"], index)) }
+    `);
+    expect(model.combinators).toEqual([
+      expect.objectContaining({ owner: "spread", staticIterable: true, aggregateErrorReasons: [null] }),
+      expect.objectContaining({ owner: "sparse", staticIterable: true, aggregateErrorReasons: [null] }),
+      expect.objectContaining({ owner: "dynamic", staticIterable: true, aggregateErrorReasons: [null] }),
+    ]);
   });
 
   it("rejects recursive generator delegation without recursing indefinitely", () => {

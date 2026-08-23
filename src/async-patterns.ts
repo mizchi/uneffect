@@ -357,11 +357,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
       return expression;
     };
-    const projectObjectProperty = (expression: ts.Expression, key: string): ts.Expression | undefined => {
-      const object = unwrapProjectionBase(expression);
-      if (key === "__proto__" || !ts.isObjectLiteralExpression(object)
-        || object.properties.some((property) => !ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property.name))) return undefined;
-      const properties = [...object.properties].reverse() as ts.PropertyAssignment[];
+    const projectStaticMember = (expression: ts.Expression, key: string): ts.Expression | undefined => {
+      const base = unwrapProjectionBase(expression);
+      if (ts.isArrayLiteralExpression(base)) {
+        if (!/^(0|[1-9]\d*)$/.test(key) || base.elements.some((element) => ts.isSpreadElement(element) || ts.isOmittedExpression(element))) return undefined;
+        const index = Number(key);
+        return Number.isSafeInteger(index) ? base.elements[index] as ts.Expression | undefined : undefined;
+      }
+      if (key === "__proto__" || !ts.isObjectLiteralExpression(base)
+        || base.properties.some((property) => !ts.isPropertyAssignment(property) || ts.isComputedPropertyName(property.name))) return undefined;
+      const properties = [...base.properties].reverse() as ts.PropertyAssignment[];
       return properties.find((property) => {
         const name = property.name;
         return (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) && name.text === key;
@@ -379,7 +384,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
       if (ts.isPropertyAccessExpression(expression)) {
         const base = substitute(expression.expression, bindings, new Set(seen));
-        const projected = projectObjectProperty(base, expression.name.text);
+        const projected = projectStaticMember(base, expression.name.text);
         if (projected) return substitute(projected, bindings, new Set(seen));
         return base === expression.expression ? expression : ts.factory.createPropertyAccessExpression(base, expression.name);
       }
@@ -387,7 +392,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const base = substitute(expression.expression, bindings, new Set(seen));
         const argument = substitute(expression.argumentExpression, bindings, new Set(seen));
         const key = ts.isStringLiteral(argument) || ts.isNumericLiteral(argument) ? argument.text : undefined;
-        const projected = key === undefined ? undefined : projectObjectProperty(base, key);
+        const projected = key === undefined ? undefined : projectStaticMember(base, key);
         if (projected) return substitute(projected, bindings, new Set(seen));
         return base === expression.expression && argument === expression.argumentExpression ? expression
           : ts.factory.createElementAccessExpression(base, argument);

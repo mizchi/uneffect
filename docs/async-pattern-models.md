@@ -184,6 +184,10 @@ assignments. Spreads, getters, methods, computed/dynamic keys, `__proto__`, othe
 operators, and general expression substitution remain outside this finite
 fragment and do not receive value specialization; their finite slot still
 exists, but its rejection reason remains unknown.
+Literal indices also project from direct array/readonly-tuple literals when the
+index is a canonical non-negative integer and the array contains no spread or
+hole. Dynamic, out-of-range, sparse, and spread-dependent indexing remains
+unknown rather than borrowing a neighboring element.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing

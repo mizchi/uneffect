@@ -499,6 +499,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve call-site substitutions inside finite generator call/constructor arguments and literal `+`, including concrete Promise rejection and Error message evidence without inventing dynamic reasons.
     - [x] Substitute finite generator parameters through template-literal spans and fold only fully concrete rejection reasons.
     - [x] Project nested static property/literal-index reads from direct immutable object arguments without evaluating getters, spreads, or dynamic keys.
+    - [x] Project canonical literal indices from direct array/readonly-tuple arguments while rejecting spread-, hole-, range-, and dynamic-index ambiguity.
     - [x] Resolve imported immutable object literals whose standard iterator is a finite linear generator method, preserving yield order and thenable classification.
     - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten finite imported generator/custom-iterable spreads inside array literals while retaining `InvokeUserCode`, step failure, order, cardinality, and concrete `Promise.any` reasons.

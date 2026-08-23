@@ -24,7 +24,7 @@ export async function loadImportedDashboardSnapshot(): Promise<string[]> {
 export async function loadImportedDashboardFallback(): Promise<never> {
   return Promise.any([...dashboardFailures({
     cache: { reason: "cache-miss" },
-    network: { service: "network" },
+    network: { services: ["network"] },
   } as const)]);
 }
 
