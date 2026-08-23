@@ -158,8 +158,10 @@ cardinality. Nested array-literal spreads are recursively flattened while
 preserving holes and element order. A spread of the finite imported
 generator/custom-iterable subset is flattened as well, but retains
 `InvokeUserCode` and any iterator acquisition or step failure rather than
-becoming a pure array operation. Two other local,
-statically inspectable forms are accepted: an object whose standard
+becoming a pure array operation. Reassignment-free local `const` aliases of
+these iterables are followed cycle-safely; `let` bindings remain dynamic even
+when their initializer happens to be finite. Two other local, statically
+inspectable forms are accepted: an object whose standard
 `[Symbol.iterator]()` method directly throws during acquisition, and a linear
 generator containing only direct `yield`, `throw`, and `return` statements.
 That restricted generator may be imported from another TypeScript source file.

@@ -499,6 +499,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Resolve imported immutable object literals whose standard iterator is a finite linear generator method, preserving yield order and thenable classification.
     - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten finite imported generator/custom-iterable spreads inside array literals while retaining `InvokeUserCode`, step failure, order, cardinality, and concrete `Promise.any` reasons.
+    - [x] Preserve finite iterable evidence through cycle-safe, reassignment-free local `const` aliases before direct or spread consumption; mutable aliases remain dynamic.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.

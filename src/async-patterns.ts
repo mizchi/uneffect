@@ -250,14 +250,31 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return { branches, failure };
   };
-  function localIterable(expression: ts.Expression | undefined): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined {
+  function localIterable(
+    expression: ts.Expression | undefined,
+    seen = new Set<ts.Symbol>(),
+  ): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined {
     if (!expression) return undefined;
+    if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+      || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
+      return localIterable(expression.expression, seen);
+    }
     let declaration: ts.Declaration | undefined;
+    let expressionSymbol: ts.Symbol | undefined;
     if (ts.isIdentifier(expression)) {
       const symbol = resolvedSymbol(expression);
+      expressionSymbol = symbol;
+      if (symbol && seen.has(symbol)) return undefined;
       declaration = symbol?.valueDeclaration ?? symbol?.declarations?.find(ts.isVariableDeclaration);
     }
     else if (ts.isCallExpression(expression) && ts.isIdentifier(expression.expression)) declaration = resolvedSymbol(expression.expression)?.valueDeclaration;
+    if (expressionSymbol && declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+      && !ts.isObjectLiteralExpression(declaration.initializer) && ts.isVariableDeclarationList(declaration.parent)
+      && (declaration.parent.flags & ts.NodeFlags.Const) !== 0) {
+      const nextSeen = new Set(seen);
+      nextSeen.add(expressionSymbol);
+      return localIterable(declaration.initializer, nextSeen);
+    }
     if (declaration && ts.isVariableDeclaration(declaration) && declaration.initializer && ts.isObjectLiteralExpression(declaration.initializer)) {
       const iterator = declaration.initializer.properties.find((property) => {
         if (!property.name || !ts.isComputedPropertyName(property.name) || !ts.isPropertyAccessExpression(property.name.expression)) return false;

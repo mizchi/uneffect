@@ -1077,6 +1077,47 @@ describe("builtin async temporal patterns", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("follows immutable local aliases of imported finite iterables", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-iterable-alias-"));
+    try {
+      const values = join(directory, "values.ts"), main = join(directory, "main.ts");
+      writeFileSync(values, `
+        export function* dashboardValues(remote: PromiseLike<string>) {
+          yield "cached-profile"
+          yield remote
+        }
+      `);
+      writeFileSync(main, `
+        import { dashboardValues as values } from "./values.js"
+        export async function load(network: PromiseLike<string>) {
+          const batch = values(network)
+          const forwarded = batch
+          return Promise.all([...forwarded])
+        }
+        export async function loadMutable(network: PromiseLike<string>) {
+          let batch: Iterable<string | PromiseLike<string>> = values(network)
+          batch = []
+          return Promise.all([...batch])
+        }
+      `);
+      const program = ts.createProgram([main, values], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      expect(analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!).combinators[0]).toMatchObject({
+        branches: ['"cached-profile"', "network"],
+        branchKinds: ["value", "thenable"],
+        staticIterable: true,
+        iteratorEffects: ["InvokeUserCode"],
+      });
+      expect(analyzeAsyncPatternsInProgram(program, program.getSourceFile(main)!).combinators[1]).toMatchObject({
+        owner: "loadMutable",
+        staticIterable: false,
+        iteratorKind: "dynamic",
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("bounds direct builtin Set iterables without collapsing distinct object identities", () => {
     const model = analyzeAsyncPatterns("set-iterable.ts", `
       declare const remote: PromiseLike<number>
