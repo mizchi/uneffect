@@ -79,9 +79,13 @@ queue rule.
 
 A static `setTimeout`/`setInterval` call found in a resolved non-repeating
 parent callback is likewise absent initially and registered with a normalized
-due time when the parent runs. Re-registering one static child call-site from
-a repeating parent could require multiple simultaneous timer instances; that
-case remains outside the single-slot projection instead of being collapsed.
+due time when the parent runs. A one-shot `setTimeout` call-site under a
+repeating parent has an unbounded integer instance count: every parent firing
+registers another instance and every child firing consumes one. Pending
+instances share the oldest known due time, a conservative ordering abstraction
+which can schedule the remaining instances no later than their exact
+per-instance due-time queue. Repeated creation of recurring intervals remains
+outside this projection rather than being collapsed into one interval.
 
 For Node `Timeout`/`Interval` handles, the projection normalizes a static delay
 below `1`, above `2147483647`, or equal to the standard global `NaN` to `1`,

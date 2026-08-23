@@ -10,7 +10,7 @@ import { analyzeUneffectProject, defineUneffectValidator } from "../src/custom-v
 import { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, replayModelCounterexample } from "../src/model-replay.js";
 import { generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementStateProjection } from "../src/refinement-bindings.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
-import { analyzeAsyncPatterns } from "../src/async-patterns.js";
+import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 
@@ -494,6 +494,15 @@ describe("typed-array static verification", () => {
       }
     ` } });
   }, { time: 500, iterations: 1 });
+
+  bench("model repeated-parent Node timeout instances", () => {
+    const model = analyzeAsyncPatterns("repeated-parent-timeout.ts", `
+      function schedule() {
+        setInterval(() => setTimeout(() => undefined, 5), 1)
+      }
+    `);
+    generateNodeEventLoopQuint("repeated_parent_timeout", model);
+  }, { time: 500, iterations: 20 });
 
   bench("verify a Web callback temporal product with Quint", async () => {
     const entry = "examples/dogfood/telemetry-once.ts";

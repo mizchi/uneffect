@@ -2226,4 +2226,29 @@ describe("builtin async temporal patterns", () => {
     expect(quint).toMatch(/action run_check_0[\s\S]*callback_1_pending' = true[\s\S]*callback_1_due' = clock \+ 1/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
+
+  it("preserves multiple pending timeout instances registered by a repeating parent", () => {
+    const model = analyzeAsyncPatterns("node-repeated-parent-timeout.ts", `
+      function schedule() {
+        setInterval(() => setTimeout(() => undefined, 5), 1)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "timer", repeats: true },
+      { queue: "timer", repeats: false, enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_repeated_parent_timeout", model);
+    expect(quint).toContain("var callback_1_instances: int");
+    expect(quint).toMatch(/action run_timer_0[\s\S]*callback_1_instances' = callback_1_instances \+ 1/);
+    expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_instances' = callback_1_instances - 1/);
+    expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_pending' = callback_1_instances > 1/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+
+    const recurringChild = analyzeAsyncPatterns("node-repeated-parent-interval.ts", `
+      function schedule() {
+        setInterval(() => setInterval(() => undefined, 5), 1)
+      }
+    `);
+    expect(recurringChild.timers).toHaveLength(1);
+  }, 20_000);
 });

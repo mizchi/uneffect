@@ -628,8 +628,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for reviewed one-shot `node:fs` completion APIs; watchers, streams, remaining callbacks, and readiness/order details remain open.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
-    - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks; repeated-parent multi-instance call sites remain open.
+    - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks.
     - [ ] Model repeated-parent timer instances, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
+      - [x] Preserve the multiplicity of pending one-shot timeout instances registered by a repeating parent with an unbounded integer count.
+      - [ ] Model repeated creation of recurring intervals, exact per-instance due-time queues, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
