@@ -505,9 +505,11 @@ relations between snapshots from different iterations. Unified Quint now emits
 `alias_generation_N`, capture, and use events for every reported escape. A use
 whose captured generation equals the resource's disposed generation marks the
 model broken, and lexical disposal is placed before a known post-scope use.
-This catches the modeled one-iteration witness for repeated acquisition sites;
-general normal-loop repetition and relations among multiple captured snapshots
-remain unsupported.
+Repeated alias acquisitions add nondeterministic repeat/exit states after
+disposal; repeat returns to acquisition, increments the resource generation,
+and overwrites the alias snapshot. A skipped acquisition also skips capture, so
+zero iterations do not deadlock. Multiple interacting aliases, nested normal
+loops, and relations among separately retained snapshots remain unsupported.
 
 The TypeChecker frontend separately recognizes source-ordered assignments from
 a `using`/`await using` binding through local symbol alias chains. If an alias is read

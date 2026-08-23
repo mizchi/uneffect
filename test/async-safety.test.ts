@@ -1458,6 +1458,9 @@ describe("async error and explicit resource safety", () => {
     const aliasQuint = generateUnifiedAsyncQuint("escaping_resource_alias", result, "broken");
     expect(aliasQuint).toContain("var alias_generation_0: int");
     expect(aliasQuint).toContain("action capture_alias_0");
+    expect(aliasQuint).toContain("action skip_capture_alias_0");
+    expect(aliasQuint).toContain("action alias_loop_0_repeat");
+    expect(aliasQuint).toContain("action alias_loop_0_exit");
     expect(aliasQuint).toContain("action use_disposed_alias_0");
     expect(run(aliasQuint).status).not.toBe(0);
   });

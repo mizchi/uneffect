@@ -1561,7 +1561,8 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     | { kind: "await"; index: number; position: number }
     | { kind: "dispose"; index: number; position: number }
     | { kind: "alias-capture"; index: number; position: number }
-    | { kind: "alias-use"; index: number; position: number };
+    | { kind: "alias-use"; index: number; position: number }
+    | { kind: "alias-loop-decision"; index: number; position: number };
   const awaitsInStatement = (statement: AsyncControlStatement): number[] => awaited
     .map((observation, index) => ({ observation, index }))
     .filter(({ observation }) => observation.span.start >= statement.span.start && observation.span.end <= statement.span.end)
@@ -1588,7 +1589,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
         : [];
     }),
-  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[right.kind]));
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-loop-decision": 4, "alias-use": 5 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-loop-decision": 4, "alias-use": 5 }[right.kind]));
   const normalEvents: NormalEvent[] = [
     ...resources.flatMap((resource, index): NormalEvent[] => handlerResourceIndexes.has(index) ? [] : [{ kind: "acquire", index, position: resource.span.start }]),
     ...awaited.flatMap((observation, index): NormalEvent[] => handlerAwaitIndexes.has(index) ? [] : [{ kind: "await", index, position: observation.span.start }]),
@@ -1596,12 +1597,18 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       { kind: "alias-capture", index, position: alias.assignmentSpan.end },
       { kind: "alias-use", index, position: alias.useSpan.start },
     ]),
+    ...aliases.flatMap((alias, index): NormalEvent[] => {
+      if (!alias.generation.repeated) return [];
+      const resource = resources.find((item) => item.acquisitionIndex === alias.generation.acquisitionIndex);
+      const disposal = resource && disposals.find((item) => item.binding === resource.binding && item.scopeId === resource.scopeId);
+      return disposal ? [{ kind: "alias-loop-decision", index, position: disposal.disposalPoint }] : [];
+    }),
     ...disposals.flatMap((disposal, index): NormalEvent[] =>
       !handlerDisposalIndexes.has(index) && (awaited.some((observation) => observation.span.start > disposal.disposalPoint)
         || aliases.some((alias) => alias.useSpan.start > disposal.disposalPoint))
         ? [{ kind: "dispose", index, position: disposal.disposalPoint }]
         : []),
-  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-use": 4 }[right.kind]));
+  ].sort((left, right) => left.position - right.position || ({ acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-loop-decision": 4, "alias-use": 5 }[left.kind] - { acquire: 0, "alias-capture": 1, await: 2, dispose: 3, "alias-loop-decision": 4, "alias-use": 5 }[right.kind]));
   let nextPc = 0;
   const normalLayout = normalEvents.map((event) => {
     const pc = nextPc;
@@ -1717,6 +1724,15 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const next = exitsRegion && eventRegionLayout?.finallyLayout.length
       ? eventRegionLayout.finallyPc
       : nextEvent?.pc ?? cleanupPc;
+    if (event.kind === "alias-loop-decision") {
+      const alias = aliases[event.index]!;
+      const resourceIndex = resources.findIndex((resource) => resource.acquisitionIndex === alias.generation.acquisitionIndex);
+      const acquirePc = normalLayout.find(({ event: candidate }) => candidate.kind === "acquire" && candidate.index === resourceIndex)?.pc;
+      if (resourceIndex < 0 || acquirePc === undefined) throw new Error(`${owner} repeated alias ${alias.alias} has no acquisition event`);
+      emit(`alias_loop_${event.index}_repeat`, [`pc == ${pc}`], new Map([["pc", String(acquirePc)]]));
+      emit(`alias_loop_${event.index}_exit`, [`pc == ${pc}`], new Map([["pc", String(next)]]));
+      return;
+    }
     if (event.kind === "alias-capture") {
       const alias = aliases[event.index]!;
       const resourceIndex = resources.findIndex((resource) => resource.acquisitionIndex === alias.generation.acquisitionIndex);
@@ -1725,6 +1741,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         ["pc", String(next)],
         [`alias_generation_${event.index}`, `generation_${resourceIndex}`],
       ]));
+      emit(`skip_capture_alias_${event.index}`, [`pc == ${pc}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
       return;
     }
     if (event.kind === "alias-use") {

@@ -459,6 +459,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Compute a finite per-target loop exit summary so clear-before-`break`/`continue` paths join safely, while uncleared exits and clear-then-reassign paths remain escaping.
       - [x] Preserve acquisition index, repeated-site classification, and a stable symbolic generation snapshot on every reported resource-alias escape.
       - [x] Lower reported alias capture, lexical disposal, and post-scope use into unified Quint; compare the captured generation with `disposed_generation_N` and violate `resourceSafe` on a disposed-generation match.
+      - [x] Add repeat/exit decisions for repeated alias acquisitions, recapturing the incremented generation on every arbitrary finite iteration and preserving a zero-iteration skip path.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

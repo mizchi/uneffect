@@ -119,6 +119,9 @@ End-to-end analysis plus unified Quint lowering for the repeated retry alias
 measured 136.85 ms mean over 20 samples (2.93% RME). This includes TypeScript
 Program construction, alias event placement, and model emission, but not Quint
 execution.
+After adding arbitrary finite repeat/exit and zero-iteration capture skipping,
+the same benchmark measured 142.43 ms mean over 20 samples (4.69% RME). The
+roughly 6 ms increase is within the wider cold-run distribution.
 
 After changing the same dogfood to address the nested slot through a local
 computed `const` key, a system-pressure run measured 267.83 ms end to end
