@@ -440,6 +440,11 @@ lint reports `unsatisfiable-recurrence-target` when no typed state can satisfy
 the predicate and `statewise-vacuous-recurrence` when every typed state already
 satisfies it. As with the other lasso searches, absence of a bounded witness is
 evidence rather than an unbounded proof.
+If the recurrence target is satisfiable over the declared types but cannot be
+reached from `init`, reachability lint emits separately named bounded,
+inductive, finite-state-complete, or proven-strengthening diagnostics. This
+distinguishes an impossible progress target from a reachable target whose
+recurrence still depends on scheduling.
 
 `temporal_stabilizes name: predicate` expresses convergence: after some finite
 prefix the predicate must remain true. It lowers to
@@ -450,6 +455,9 @@ fairness constraints hold on the loop. Impossible and statewise-valid targets
 are diagnosed separately as `unsatisfiable-stabilization-target` and
 `statewise-vacuous-stabilization`. The shutdown-drain dogfood model removes
 completion fairness as a negative control and exposes the starvation loop.
+Stabilization targets use the same four-level reachability classification as
+recurrence targets. In particular, a bounded-unreachable result alone is not
+reported as an unbounded impossibility.
 
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 

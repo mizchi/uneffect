@@ -298,6 +298,7 @@ describe("Uneffect dogfood", () => {
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-response-cycle", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-unreachable-response-trigger", name: "requestCompletes" }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "reachable-recurrence-cycle", name: "returnsIdle" }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ code: "bounded-unreachable-recurrence-target", name: "returnsIdle" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "unsatisfiable-response-trigger", name: "requestCompletes" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-response", name: "requestCompletes" }));
     expect(semanticDiagnostics).not.toContainEqual(expect.objectContaining({ code: "statewise-vacuous-recurrence", name: "returnsIdle" }));
@@ -315,6 +316,9 @@ describe("Uneffect dogfood", () => {
     }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({
       code: "reachable-stabilization-cycle", name: "remainsDrained",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-stabilization-target", name: "remainsDrained",
     }));
 
     const unfair = parseSpec(fileName, source.replace(" * action_fair complete: weak\n", "")).temporal;

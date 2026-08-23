@@ -1488,6 +1488,68 @@ describe("spec IR and generated verifier programs", () => {
     );
   });
 
+  it("distinguishes globally satisfiable recurrence and stabilization targets from reachable targets", async () => {
+    const temporal = parseSpec("unreachable-progress-targets.ts", `/* uneffect:
+      state phase: int
+      init phase = 0
+      action idle: phase' = 0
+      temporal_repeatedly returnsToOne: phase === 1
+      temporal_stabilizes settlesAtTwo: phase === 2
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 2 });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-recurrence-target", name: "returnsToOne", depth: 2,
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-recurrence-target", name: "returnsToOne", depth: 1,
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "bounded-unreachable-stabilization-target", name: "settlesAtTwo", depth: 2,
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "inductively-unreachable-stabilization-target", name: "settlesAtTwo", depth: 1,
+    }));
+
+    const finite = parseSpec("finite-unreachable-progress-targets.ts", `/* uneffect:
+      state active: bool
+      init active = false
+      action idle: active' = false
+      temporal_repeatedly activeAgain: active
+      temporal_stabilizes remainsActive: active
+    */`).temporal;
+    const finiteDiagnostics = await lintTemporalReachabilityWithZ3(finite, { maxSteps: 1 });
+    expect(finiteDiagnostics).toContainEqual(expect.objectContaining({
+      code: "finite-state-unreachable-recurrence-target", name: "activeAgain", depth: 1,
+    }));
+    expect(finiteDiagnostics).toContainEqual(expect.objectContaining({
+      code: "finite-state-unreachable-stabilization-target", name: "remainsActive", depth: 1,
+    }));
+  });
+
+  it("uses proven strengthening to exclude recurrence and stabilization targets", async () => {
+    const temporal = parseSpec("strengthened-progress-targets.ts", `/* uneffect:
+      state gate: int
+      state value: int
+      init gate = 0
+      init value = 0
+      action hiddenDecrease: value' = value - 1
+      action_when hiddenDecrease: gate < 0
+      temporal gateNonnegative: gate >= 0
+      temporal_repeatedly negativeAgain: value < 0
+      temporal_stabilizes staysNegative: value < 0
+    */`).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      strengtheningProperties: ["gateNonnegative"],
+    });
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-recurrence-target", name: "negativeAgain", relatedName: "gateNonnegative",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-stabilization-target", name: "staysNegative", relatedName: "gateNonnegative",
+    }));
+  });
+
   it("uses a proven strengthening invariant to exclude a response trigger", async () => {
     const temporal = parseSpec("strengthened-response-trigger.ts", `/* uneffect:
       state gate: int

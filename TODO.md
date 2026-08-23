@@ -203,8 +203,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reuse proven explicit, discovered, and synthesized strengthening invariants to exclude otherwise non-inductive response triggers.
     - [x] Add typed recurrence `temporal_repeatedly name: predicate`, lower it to `always(eventually(predicate))`, and find fairness-respecting Z3 lasso violations.
     - [x] Reject recurrence targets that are impossible or true in every typed state.
+    - [x] Distinguish bounded, inductively proven, finite-state-complete, and strengthened recurrence targets that cannot occur from `init`.
     - [x] Add typed stabilization `temporal_stabilizes name: predicate`, lower it to `eventually(always(predicate))`, and find fairness-respecting Z3 lasso violations.
     - [x] Dogfood stabilization as a shutdown-drain property with a missing-fairness negative control.
+    - [x] Distinguish bounded, inductively proven, finite-state-complete, and strengthened stabilization targets that cannot occur from `init`.
     - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support arbitrary nested/general temporal formulas beyond the eventuality, response, recurrence, and stabilization fragments.
 - [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
