@@ -2239,8 +2239,12 @@ describe("builtin async temporal patterns", () => {
     ]);
     const quint = generateNodeEventLoopQuint("node_repeated_parent_timeout", model);
     expect(quint).toContain("var callback_1_instances: int");
+    expect(quint).toContain("var callback_1_due_times: List[int]");
     expect(quint).toMatch(/action run_timer_0[\s\S]*callback_1_instances' = callback_1_instances \+ 1/);
+    expect(quint).toMatch(/action run_timer_0[\s\S]*callback_1_due_times' = callback_1_due_times.append\(clock \+ 5\)/);
     expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_instances' = callback_1_instances - 1/);
+    expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_due_times' = callback_1_due_times.tail\(\)/);
+    expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_due' = if \(callback_1_instances > 1\) callback_1_due_times.tail\(\).head\(\) else callback_1_due/);
     expect(quint).toMatch(/action run_timer_1[\s\S]*callback_1_pending' = callback_1_instances > 1/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
 

@@ -631,7 +631,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks.
     - [ ] Model repeated-parent timer instances, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
       - [x] Preserve the multiplicity of pending one-shot timeout instances registered by a repeating parent with an unbounded integer count.
-      - [ ] Model repeated creation of recurring intervals, exact per-instance due-time queues, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
+      - [x] Preserve exact FIFO due times for repeated-parent one-shot timeout instances with a Quint `List[int]` queue.
+      - [ ] Model repeated creation of recurring intervals, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

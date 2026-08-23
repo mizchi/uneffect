@@ -1649,7 +1649,7 @@ export function generateNodeEventLoopQuint(
   const lines = [`module ${safe(moduleName)} {`, "  var clock: int", "  var node_phase: int", "  var resume_phase: int", "  var wrong_checkpoint_order: bool", "  var wrong_phase: bool"];
   supported.forEach((index) => {
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
-    if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`);
+    if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`, `  var callback_${index}_due_times: List[int]`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
   lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
@@ -1657,7 +1657,7 @@ export function generateNodeEventLoopQuint(
     const timer = model.timers[index]!;
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
     lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined && !timer.externallyReady},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
-    if (multiInstanceTimers.has(index)) lines.push(`    callback_${index}_instances' = 0,`);
+    if (multiInstanceTimers.has(index)) lines.push(`    callback_${index}_instances' = 0,`, `    callback_${index}_due_times' = [],`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -1666,7 +1666,7 @@ export function generateNodeEventLoopQuint(
   const reactionVariables = promiseModel?.chains.flatMap((chain, chainIndex) => chain.links.flatMap((_, stage) => [`promise_reaction_${chainIndex}_${stage}_pending`, `promise_reaction_${chainIndex}_${stage}_done`])) ?? [];
   const variables = ["clock", "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", ...supported.flatMap((index) => [
     `callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`,
-    ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`] : []),
+    ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`, `callback_${index}_due_times`] : []),
   ]), ...reactionVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
@@ -1686,6 +1686,7 @@ export function generateNodeEventLoopQuint(
       updates.set(`callback_${child}_pending`, "true");
       if (multiInstanceTimers.has(child)) {
         updates.set(`callback_${child}_instances`, `callback_${child}_instances + 1`);
+        updates.set(`callback_${child}_due_times`, `callback_${child}_due_times.append(clock + ${nodeDelay(model.timers[child]!)})`);
         updates.set(`callback_${child}_due`, `if (callback_${child}_pending) callback_${child}_due else clock + ${nodeDelay(model.timers[child]!)}`);
       } else {
         updates.set(`callback_${child}_due`, `clock + ${nodeDelay(model.timers[child]!)}`);
@@ -1759,13 +1760,18 @@ export function generateNodeEventLoopQuint(
     const updates = new Map<string, string>([
       [`callback_${index}_pending`, multiInstanceTimers.has(index) ? `callback_${index}_instances > 1` : String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],
-      [`callback_${index}_due`, timer.repeats ? `clock + ${nodeDelay(timer)}` : `callback_${index}_due`],
+      [`callback_${index}_due`, multiInstanceTimers.has(index)
+        ? `if (callback_${index}_instances > 1) callback_${index}_due_times.tail().head() else callback_${index}_due`
+        : timer.repeats ? `clock + ${nodeDelay(timer)}` : `callback_${index}_due`],
       ["node_phase", "0"],
       ["resume_phase", String(phase)],
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],
       ["wrong_phase", phaseViolation(phase)],
     ]);
-    if (multiInstanceTimers.has(index)) updates.set(`callback_${index}_instances`, `callback_${index}_instances - 1`);
+    if (multiInstanceTimers.has(index)) {
+      updates.set(`callback_${index}_instances`, `callback_${index}_instances - 1`);
+      updates.set(`callback_${index}_due_times`, `callback_${index}_due_times.tail()`);
+    }
     enqueueNodeChildren(index, updates);
     action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : `run_timer_${index}`, [
       ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
