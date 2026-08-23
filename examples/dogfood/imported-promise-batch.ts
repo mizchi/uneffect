@@ -1,4 +1,9 @@
-import { dashboardFailures, dashboardSnapshotValues, dashboardValues } from "./dashboard-values.js";
+import {
+  conditionalDashboardValues,
+  dashboardFailures,
+  dashboardSnapshotValues,
+  dashboardValues,
+} from "./dashboard-values.js";
 
 export async function loadImportedDashboard(network: PromiseLike<string>): Promise<string[]> {
   const batch = dashboardValues(network);
@@ -12,4 +17,11 @@ export async function loadImportedDashboardSnapshot(): Promise<string[]> {
 
 export async function loadImportedDashboardFallback(): Promise<never> {
   return Promise.any([...dashboardFailures()]);
+}
+
+export async function loadConditionalDashboard(
+  preferNetwork: boolean,
+  network: PromiseLike<string>,
+): Promise<string[]> {
+  return Promise.all(conditionalDashboardValues(preferNetwork, network));
 }

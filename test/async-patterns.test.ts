@@ -888,6 +888,49 @@ describe("builtin async temporal patterns", () => {
     expect(run(combined, "asyncSafe").status).toBe(0);
   });
 
+  it("keeps finite generator if/else paths under one correlated iterable choice", () => {
+    const model = analyzeAsyncPatterns("conditional-generator.ts", `
+      function* values(flag: boolean, remote: PromiseLike<string>) {
+        yield "head"
+        if (flag) {
+          yield Promise.resolve("fresh")
+        } else {
+          yield "cached"
+          yield remote
+        }
+        yield "tail"
+      }
+      async function load(flag: boolean, remote: PromiseLike<string>) {
+        return Promise.all(values(flag, remote))
+      }
+      async function loadSpread(flag: boolean, remote: PromiseLike<string>) {
+        return Promise.all(["prefix", ...values(flag, remote)])
+      }
+    `);
+    expect(model.combinators[0]).toMatchObject({
+      staticIterable: true,
+      iteratorKind: "local",
+      branchAlternatives: [
+        ['"head"', '"head"'],
+        ['Promise.resolve("fresh")', '"cached"'],
+        ['"tail"', "remote"],
+        ["<absent>", '"tail"'],
+      ],
+      branchPresence: ["always", "always", "always", "when-false"],
+      branchKinds: ["value", "unknown", "unknown", "value"],
+    });
+    const quint = generateAsyncPatternsQuint("conditional_generator", { ...model, combinators: [model.combinators[0]!] });
+    expect(quint.match(/var join_0_iterable_choice/g)).toHaveLength(1);
+    expect(quint).toContain("action choose_iterable_0_true");
+    expect(quint).toContain("action choose_iterable_0_false");
+    expect(quint).toMatch(/action fulfill_0_3[\s\S]*join_0_iterable_choice == 0/);
+    expect(model.combinators[1]).toMatchObject({
+      owner: "loadSpread",
+      staticIterable: false,
+      iteratorKind: "dynamic",
+    });
+  });
+
   it("models local iterator acquisition and generator step failures", () => {
     const model = analyzeAsyncPatterns("iterator-failures.ts", `
       const broken = {

@@ -500,6 +500,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten finite imported generator/custom-iterable spreads inside array literals while retaining `InvokeUserCode`, step failure, order, cardinality, and concrete `Promise.any` reasons.
     - [x] Preserve finite iterable evidence through cycle-safe, reassignment-free local `const` aliases before direct or spread consumption; mutable aliases remain dynamic.
+    - [x] Model one complete top-level generator `if`/`else` as two finite paths under one correlated Quint choice, including unequal path lengths and call-site parameter substitution.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
 - [ ] Extend timer/event-loop ownership.
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.

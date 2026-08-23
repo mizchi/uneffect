@@ -188,7 +188,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         let nested = expandStaticArray(element.expression, seen, evidence) ?? expandStaticSet(element.expression);
         if (!nested) {
           const local = localIterable(element.expression);
-          if (local) {
+          if (local && !local.alternatives) {
             nested = local.branches;
             if (evidence) {
               evidence.invokesUserCode = true;
@@ -233,27 +233,54 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       return true;
     });
   }
+  type FiniteIterableExpansion = {
+    branches: ts.Expression[];
+    alternatives?: readonly [ts.Expression[], ts.Expression[]];
+    failure?: "acquire" | "step";
+  };
   const linearGeneratorBody = (
     body: ts.Block,
     substitutions = new Map<ts.Symbol, ts.Expression>(),
-  ): { branches: ts.Expression[]; failure?: "step" } | undefined => {
-    const branches: ts.Expression[] = [];
-    let failure: "step" | undefined;
-    for (const statement of body.statements) {
-      if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
-        && statement.expression.expression && !statement.expression.asteriskToken) {
-        const yielded = statement.expression.expression;
-        const substitution = ts.isIdentifier(yielded) ? substitutions.get(resolvedSymbol(yielded)!) : undefined;
-        branches.push(substitution ?? yielded);
-      } else if (ts.isThrowStatement(statement)) failure = "step";
-      else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
+  ): FiniteIterableExpansion | undefined => {
+    const substitute = (expression: ts.Expression): ts.Expression => ts.isIdentifier(expression)
+      ? substitutions.get(resolvedSymbol(expression)!) ?? expression : expression;
+    const direct = (statements: readonly ts.Statement[]): { branches: ts.Expression[]; failure?: "step" } | undefined => {
+      const branches: ts.Expression[] = [];
+      let failure: "step" | undefined;
+      for (const statement of statements) {
+        if (ts.isExpressionStatement(statement) && ts.isYieldExpression(statement.expression)
+          && statement.expression.expression && !statement.expression.asteriskToken) {
+          branches.push(substitute(statement.expression.expression));
+        } else if (ts.isThrowStatement(statement)) failure = "step";
+        else if (!ts.isReturnStatement(statement) && !ts.isEmptyStatement(statement)) return undefined;
+      }
+      return { branches, failure };
+    };
+    const conditionalIndices = body.statements.flatMap((statement, index) => ts.isIfStatement(statement) ? [index] : []);
+    if (conditionalIndices.length === 1) {
+      const index = conditionalIndices[0]!, statement = body.statements[index] as ts.IfStatement;
+      if (!statement.elseStatement) return undefined;
+      const statementsOf = (node: ts.Statement): readonly ts.Statement[] => ts.isBlock(node) ? node.statements : [node];
+      const prefix = direct(body.statements.slice(0, index));
+      const whenTrue = direct(statementsOf(statement.thenStatement));
+      const whenFalse = direct(statementsOf(statement.elseStatement));
+      const suffix = direct(body.statements.slice(index + 1));
+      if (!prefix || !whenTrue || !whenFalse || !suffix) return undefined;
+      const truePath = [...prefix.branches, ...whenTrue.branches, ...suffix.branches];
+      const falsePath = [...prefix.branches, ...whenFalse.branches, ...suffix.branches];
+      return {
+        branches: truePath,
+        alternatives: [truePath, falsePath],
+        failure: prefix.failure ?? whenTrue.failure ?? whenFalse.failure ?? suffix.failure,
+      };
     }
-    return { branches, failure };
+    if (conditionalIndices.length > 0) return undefined;
+    return direct(body.statements);
   };
   function localIterable(
     expression: ts.Expression | undefined,
     seen = new Set<ts.Symbol>(),
-  ): { branches: ts.Expression[]; failure?: "acquire" | "step" } | undefined {
+  ): FiniteIterableExpansion | undefined {
     if (!expression) return undefined;
     if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
       || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) {
@@ -909,14 +936,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           const local = boundedElements ? undefined : localIterable(iterable);
           const staticIterable = Boolean(boundedElements || local);
           const branchNodes = local?.branches;
-          const branchAlternatives = boundedConditionalArrays ? Array.from({ length: Math.max(boundedConditionalArrays[0].length, boundedConditionalArrays[1].length) }, (_, index) =>
-            [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText(source))) : undefined;
-          const branchPresence = boundedConditionalArrays ? branchAlternatives!.map((_, index) =>
-            boundedConditionalArrays[0][index] === undefined ? "when-false" : boundedConditionalArrays[1][index] === undefined ? "when-true" : "always" as const) : undefined;
+          const iterableAlternatives = boundedConditionalArrays ?? local?.alternatives;
+          const branchAlternatives = iterableAlternatives ? Array.from({ length: Math.max(iterableAlternatives[0].length, iterableAlternatives[1].length) }, (_, index) =>
+            [iterableAlternatives[0][index], iterableAlternatives[1][index]].map((candidate) => candidate === undefined ? "<absent>" : ts.isOmittedExpression(candidate) ? "<hole>" : candidate.getText())) : undefined;
+          const branchPresence = iterableAlternatives ? branchAlternatives!.map((_, index) =>
+            iterableAlternatives[0][index] === undefined ? "when-false" : iterableAlternatives[1][index] === undefined ? "when-true" : "always" as const) : undefined;
           const branches = branchAlternatives ? branchAlternatives.map((alternatives) => alternatives.join(" | "))
             : boundedElements ? boundedElements.map((item) => ts.isOmittedExpression(item) ? "<hole>" : item.getText()) : branchNodes?.map((item) => item.getText()) ?? [];
-          const branchKinds = boundedConditionalArrays ? branchAlternatives!.map((_, index) => {
-            const kinds = [boundedConditionalArrays[0][index], boundedConditionalArrays[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
+          const branchKinds = iterableAlternatives ? branchAlternatives!.map((_, index) => {
+            const kinds = [iterableAlternatives[0][index], iterableAlternatives[1][index]].flatMap((item) => item === undefined ? [] : [branchKind(item)]);
             return kinds.every((kind) => kind === kinds[0]) ? kinds[0]! : "unknown";
           }) : (boundedElements ? boundedElements.map(branchKind) : branchNodes?.map(branchKind) ?? []);
           let current: ts.Node = node;
@@ -929,7 +957,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             current = current.parent;
           }
           combinators.push({ owner: ownerName, combinator: operation.combinator, branches, branchKinds, ...(branchAlternatives ? { branchAlternatives, branchPresence } : {}), staticIterable,
-            iteratorKind: set ? "set" : boundedElements ? "array" : local ? "local" : "dynamic",
+            iteratorKind: set ? "set" : array || boundedConditionalArrays ? "array" : local ? "local" : "dynamic",
             iteratorEffects: boundedElements ? arrayEvidence.invokesUserCode ? ["InvokeUserCode"] : [] : ["InvokeUserCode"],
             iteratorFailure: arrayEvidence.failure ?? local?.failure,
             aggregateErrorOrder: operation.combinator === "any" ? branches.map((_, index) => index) : undefined,

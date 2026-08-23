@@ -22,3 +22,17 @@ export function dashboardFailures(): Iterable<Promise<never>> {
     },
   };
 }
+
+export function* conditionalDashboardValues(
+  preferNetwork: boolean,
+  network: PromiseLike<string>,
+): Generator<string | PromiseLike<string>> {
+  yield "dashboard-head";
+  if (preferNetwork) {
+    yield network;
+  } else {
+    yield "cached-primary";
+    yield "cached-secondary";
+  }
+  yield "dashboard-tail";
+}

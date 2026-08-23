@@ -171,6 +171,10 @@ an imported factory whose body contains only that return. The analyzer resolves
 aliases by TypeChecker symbol identity and substitutes a directly yielded
 factory or generator parameter with its call-site argument. Yield expressions
 that require general expression substitution remain outside this finite fragment.
+A generator with one complete top-level `if`/`else`, surrounded only by the
+same linear statements, becomes two finite paths under one correlated iterable
+choice. Unequal path lengths use presence guards. Nested/multiple conditionals,
+branching spread composition, loops, and partial `if` statements remain dynamic.
 Acquisition or step failure rejects every Promise combinator, including
 `allSettled`, before any yielded Promise reaction can settle the aggregate.
 Sparse literal holes are retained as `undefined` value slots, matching array
