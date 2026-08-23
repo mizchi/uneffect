@@ -1516,6 +1516,17 @@ describe("async error and explicit resource safety", () => {
         if (clear) alias = undefined
         alias?.send()
       }
+      async function clearedInBothBranches(clear: boolean) {
+        let alias: Resource | undefined
+        {
+          await using resource = open()
+          alias = resource
+          await Promise.resolve()
+        }
+        if (clear) alias = undefined
+        else alias = undefined
+        alias?.send()
+      }
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "broken", resource: "resource", alias: "second",
@@ -1534,6 +1545,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "conditionallyKilled", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedInBothBranches", kind: "disposed-resource-use",
     }));
   });
 
@@ -1585,6 +1599,16 @@ describe("async error and explicit resource safety", () => {
         holder["current"] = undefined
         holder.current?.send()
       }
+      async function clearedInBothBranches(clear: boolean) {
+        const holder: { current?: Resource } = {}
+        {
+          await using resource = open()
+          holder.current = resource
+        }
+        if (clear) holder.current = undefined
+        else holder["current"] = undefined
+        holder.current?.send()
+      }
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "propertyEscape", resource: "resource", alias: "holder.current",
@@ -1606,6 +1630,9 @@ describe("async error and explicit resource safety", () => {
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "conditionallyCleared", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "clearedInBothBranches", kind: "disposed-resource-use",
     }));
   });
 

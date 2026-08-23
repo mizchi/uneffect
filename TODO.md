@@ -414,6 +414,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reject lexical resources passed to explicit `retains_resource` boundaries and infer transitive wrapper retention through reassignment-free local parameter aliases by symbol identity.
     - [x] Apply resource-retention contracts to annotated constructors and propagate them through factory wrappers.
     - [x] Add conservative `retains_resource_when`: discharge only a guard proven false through the shared boolean logic IR, for calls, constructors, and direct wrappers with literal/type/precondition facts and reassignment-free boolean aliases.
+    - [x] Join exhaustive `if`/`else` terminal nullish clears for direct and static aggregate resource aliases while retaining one-branch clears conservatively.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

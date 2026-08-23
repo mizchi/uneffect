@@ -69,3 +69,15 @@ export async function safeDisabledAttempt(): Promise<void> {
   await using attempt = openAttempt();
   maybeRegisterRetryAttempt(attempt, false);
 }
+
+export async function safeClearedAttempt(cancelled: boolean): Promise<void> {
+  const state: { active?: Attempt } = {};
+  {
+    await using attempt = openAttempt();
+    state.active = attempt;
+    await Promise.resolve("flush");
+  }
+  if (cancelled) state.active = undefined;
+  else state["active"] = undefined;
+  state.active?.flush();
+}

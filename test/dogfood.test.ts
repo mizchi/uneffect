@@ -231,6 +231,9 @@ describe("Uneffect dogfood", () => {
       owner: "brokenConditionalAttempt", resource: "attempt", via: "retaining-call",
     }));
     expect(broken.resourceEscapes).not.toContainEqual(expect.objectContaining({ owner: "safeDisabledAttempt" }));
+    expect(broken.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "safeClearedAttempt", kind: "disposed-resource-use",
+    }));
   });
 
   it("derives executable aligned shard boundaries from a realistic contract", () => {

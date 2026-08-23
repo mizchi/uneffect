@@ -839,6 +839,31 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return undefined;
     };
+    const isDefinitelyNullish = (expression: ts.Expression): boolean => {
+      const type = checker.getTypeAtLocation(expression);
+      const members = type.isUnion() ? type.types : [type];
+      return members.length > 0 && members.every((member) =>
+        (member.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0);
+    };
+    const terminalStatement = (statement: ts.Statement): ts.Statement | undefined => {
+      if (!ts.isBlock(statement)) return statement;
+      for (let index = statement.statements.length - 1; index >= 0; index -= 1) {
+        const candidate = statement.statements[index];
+        if (!ts.isEmptyStatement(candidate)) return candidate;
+      }
+      return undefined;
+    };
+    const terminallyClears = (statement: ts.Statement, matchesTarget: (left: ts.Expression) => boolean): boolean => {
+      const terminal = terminalStatement(statement);
+      if (!terminal) return false;
+      if (ts.isExpressionStatement(terminal) && ts.isBinaryExpression(terminal.expression)
+        && terminal.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+        && matchesTarget(terminal.expression.left)
+        && isDefinitelyNullish(terminal.expression.right)) return true;
+      return ts.isIfStatement(terminal) && Boolean(terminal.elseStatement)
+        && terminallyClears(terminal.thenStatement, matchesTarget)
+        && terminallyClears(terminal.elseStatement!, matchesTarget);
+    };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
@@ -859,6 +884,28 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           resourceEscapes.push({ owner, resource: returned.fact.resource.binding, via: returned.via, span: { start: node.getStart(source), end: node.getEnd() } });
           diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${returned.fact.resource.binding} escapes through ${returned.via === "returned-closure" ? "a returned closure" : "return"} but is disposed before the caller can use it` });
         }
+      }
+      if (ts.isIfStatement(node)) {
+        collectDisposedAliasFlow(node.expression);
+        collectDisposedAliasFlow(node.thenStatement);
+        if (node.elseStatement) collectDisposedAliasFlow(node.elseStatement);
+        if (node.elseStatement) {
+          for (const symbol of [...escapedAliases.keys()]) {
+            const matchesSymbol = (left: ts.Expression): boolean =>
+              ts.isIdentifier(left) && checker.getSymbolAtLocation(left) === symbol;
+            if (terminallyClears(node.thenStatement, matchesSymbol)
+              && terminallyClears(node.elseStatement, matchesSymbol)) escapedAliases.delete(symbol);
+          }
+          for (const [root, slots] of escapedAggregateAliases) for (const key of [...slots.keys()]) {
+            const matchesSlot = (left: ts.Expression): boolean => {
+              const slot = staticSlot(left);
+              return Boolean(slot && slot.root === root && (key === slot.key || key.startsWith(`${slot.key}/`)));
+            };
+            if (terminallyClears(node.thenStatement, matchesSlot)
+              && terminallyClears(node.elseStatement, matchesSlot)) slots.delete(key);
+          }
+        }
+        return;
       }
       if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
         const fact = aliasFact(node.right);

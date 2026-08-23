@@ -503,13 +503,19 @@ a `using`/`await using` binding through local symbol alias chains. If an alias i
 after the resource's lexical scope ends, it emits `disposed-resource-use` and
 retains the resource/alias assignment and use spans in `resourceAliases`.
 An unconditional direct reassignment before the later read kills this alias
-fact; a conditional reassignment is conservatively not a must-kill. The same
+fact. A single conditional reassignment is conservatively not a must-kill, but
+an exhaustive `if`/`else` whose terminal statement on both sides assigns a
+value proven to be only `null | undefined` is joined as a definite clear. This
+restricted join also accepts nested exhaustive terminal branches; it does not
+claim arbitrary control-flow equivalence. The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate
 that slot back into a local alias. Reassignment-free local aliases of the
 aggregate root share the same canonical slot identity; an unconditional root
 alias reassignment detaches it, and overwriting a parent slot invalidates all
-known descendant facts. Computed string and finite-number keys are resolved
+known descendant facts. Exhaustive terminal nullish clears join for these
+static slots too, including a parent slot that clears known descendants.
+Computed string and finite-number keys are resolved
 through reassignment-free `const` alias chains, including `as const`,
 parenthesized, `satisfies`, and non-null wrappers. The Program frontend follows
 named import aliases, barrel re-exports, and namespace imports to an exported
