@@ -372,6 +372,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         return (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) && name.text === key;
       })?.initializer;
     };
+    const staticPrimitive = (expression: ts.Expression): { kind: "boolean" | "number" | "string" | "null"; value: boolean | number | string | null } | undefined => {
+      expression = unwrapProjectionBase(expression);
+      if (expression.kind === ts.SyntaxKind.TrueKeyword) return { kind: "boolean", value: true };
+      if (expression.kind === ts.SyntaxKind.FalseKeyword) return { kind: "boolean", value: false };
+      if (expression.kind === ts.SyntaxKind.NullKeyword) return { kind: "null", value: null };
+      if (ts.isNumericLiteral(expression)) return { kind: "number", value: Number(expression.text) };
+      if (ts.isStringLiteralLike(expression)) return { kind: "string", value: expression.text };
+      return undefined;
+    };
     const substitute = (expression: ts.Expression, bindings?: Map<ts.Symbol, ts.Expression>, seen = new Set<ts.Symbol>()): ts.Expression => {
       if (ts.isIdentifier(expression)) {
         const symbol = resolvedSymbol(expression);
@@ -440,6 +449,20 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           return leftBoolean ? left : substitute(expression.right, bindings, new Set(seen));
         }
         const right = substitute(expression.right, bindings, new Set(seen));
+        return left === expression.left && right === expression.right ? expression
+          : ts.factory.createBinaryExpression(left, expression.operatorToken, right);
+      }
+      if (ts.isBinaryExpression(expression)
+        && (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken
+          || expression.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken)) {
+        const left = substitute(expression.left, bindings, new Set(seen));
+        const right = substitute(expression.right, bindings, new Set(seen));
+        const leftValue = staticPrimitive(left), rightValue = staticPrimitive(right);
+        if (leftValue && rightValue) {
+          const equal = leftValue.kind === rightValue.kind && leftValue.value === rightValue.value;
+          return equal === (expression.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken)
+            ? ts.factory.createTrue() : ts.factory.createFalse();
+        }
         return left === expression.left && right === expression.right ? expression
           : ts.factory.createBinaryExpression(left, expression.operatorToken, right);
       }

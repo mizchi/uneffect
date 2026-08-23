@@ -503,6 +503,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Fold conditional expressions in finite generator yield arguments only when call-site substitution proves a literal boolean guard.
     - [x] Fold direct boolean negation in finite generator expression substitution without deciding dynamic truthiness.
     - [x] Fold literal-left `&&` and `||` in finite generator expression substitution while preserving short-circuit reachability and dynamic truthiness.
+    - [x] Fold strict equality and inequality between substituted primitive literals without applying coercive equality.
     - [x] Resolve imported immutable object literals whose standard iterator is a finite linear generator method, preserving yield order and thenable classification.
     - [x] Specialize imported single-return factories that construct the same finite iterable object, substituting directly yielded parameters with call-site arguments.
     - [x] Flatten finite imported generator/custom-iterable spreads inside array literals while retaining `InvokeUserCode`, step failure, order, cardinality, and concrete `Promise.any` reasons.

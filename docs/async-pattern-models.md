@@ -199,6 +199,9 @@ symbolic and cannot select a conditional branch.
 Boolean `&&` and `||` likewise follow JavaScript short-circuiting when the
 substituted left operand is the literal `true` or `false`. Dynamic left-hand
 truthiness remains symbolic, and an unreachable right operand is not inspected.
+Strict equality and inequality fold when both substituted operands are boolean,
+number, string, or `null` literals. Coercive equality and dynamic operands stay
+symbolic.
 A generator with direct `if`/`else` statements becomes a finite set of complete,
 correlated execution paths. Unequal path lengths use choice-indexed presence
 guards, and nested or consecutive conditionals are composed rather than mixing
