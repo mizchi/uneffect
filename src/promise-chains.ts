@@ -217,7 +217,17 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
       };
     }
     if (proxy && checker.getPropertyOfType(checker.getTypeAtLocation(expression), "then")) {
-      const handler = expression.arguments?.[1];
+      const immutableInitializer = (candidate: ts.Expression, aliasSeen = new Set<ts.Symbol>()): ts.Expression | undefined => {
+        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate) || ts.isTypeAssertionExpression(candidate)) {
+          return immutableInitializer(candidate.expression, aliasSeen);
+        }
+        if (!ts.isIdentifier(candidate)) return candidate;
+        const symbol = targetSymbol(checker, candidate), declaration = symbol?.valueDeclaration;
+        if (!symbol || aliasSeen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+          || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+        return immutableInitializer(declaration.initializer, new Set([...aliasSeen, symbol]));
+      };
+      const handler = expression.arguments?.[1] && immutableInitializer(expression.arguments[1]!);
       const getTrap = handler && ts.isObjectLiteralExpression(handler)
         ? handler.properties.find((item) => item.name?.getText(handler.getSourceFile()) === "get")
         : undefined;
@@ -245,15 +255,8 @@ export function analyzePromiseChainsInProgram(program: ts.Program, source: ts.So
         if (selectsThen(condition)) returned = returnedExpression(branch.thenStatement);
       }
       const immutableCallback = (candidate: ts.Expression, callbackSeen = new Set<ts.Symbol>()): ts.ArrowFunction | ts.FunctionExpression | undefined => {
-        if (ts.isParenthesizedExpression(candidate) || ts.isAsExpression(candidate) || ts.isTypeAssertionExpression(candidate)) {
-          return immutableCallback(candidate.expression, callbackSeen);
-        }
-        if (ts.isArrowFunction(candidate) || ts.isFunctionExpression(candidate)) return candidate;
-        if (!ts.isIdentifier(candidate)) return undefined;
-        const symbol = targetSymbol(checker, candidate), declaration = symbol?.valueDeclaration;
-        if (!symbol || callbackSeen.has(symbol) || !declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
-          || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
-        return immutableCallback(declaration.initializer, new Set([...callbackSeen, symbol]));
+        const initializer = immutableInitializer(candidate, callbackSeen);
+        return initializer && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) ? initializer : undefined;
       };
       const selectedCallback = returned && immutableCallback(returned);
       if (selectedCallback) {
