@@ -37,6 +37,7 @@ export function generateQuint(moduleName: string, spec: TemporalSpec): string {
   for (const property of spec.properties) lines.push("", `  val ${safeName(property.name)} = ${generateQuintExpression(property.expressionAst)}`);
   for (const property of spec.liveness) lines.push("", `  temporal ${safeName(property.name)} = eventually(${generateQuintExpression(property.expressionAst)})`);
   for (const property of spec.recurrences) lines.push("", `  temporal ${safeName(property.name)} = always(eventually(${generateQuintExpression(property.expressionAst)}))`);
+  for (const property of spec.stabilizations) lines.push("", `  temporal ${safeName(property.name)} = eventually(always(${generateQuintExpression(property.expressionAst)}))`);
   for (const property of spec.responses) lines.push("", `  temporal ${safeName(property.name)} = ${generateQuintExpression(property.triggerAst)} leadsTo ${generateQuintExpression(property.responseAst)}`);
   const fairActions = spec.actions.filter((action) => action.fairness);
   if (fairActions.length) {

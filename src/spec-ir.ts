@@ -58,6 +58,9 @@ export interface TemporalLiveness extends TemporalProperty {}
 /** A recurrence obligation: the predicate must hold infinitely often. */
 export interface TemporalRecurrence extends TemporalProperty {}
 
+/** A stabilization obligation: eventually the predicate must remain true. */
+export interface TemporalStabilization extends TemporalProperty {}
+
 export interface TemporalResponse {
   name: string;
   trigger: string;
@@ -75,6 +78,7 @@ export interface TemporalSpec {
   properties: TemporalProperty[];
   liveness: TemporalLiveness[];
   recurrences: TemporalRecurrence[];
+  stabilizations: TemporalStabilization[];
   responses: TemporalResponse[];
 }
 
@@ -265,6 +269,10 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     const property = namedExpression(value, "temporal_repeatedly");
     return { ...property, expressionAst: parseTemporalExpression(property.expression) };
   });
+  const stabilizations = extractAnnotations(text, "temporal_stabilizes").map((value): TemporalStabilization => {
+    const property = namedExpression(value, "temporal_stabilizes");
+    return { ...property, expressionAst: parseTemporalExpression(property.expression) };
+  });
   const responses = extractAnnotations(text, "temporal_response").map(responseExpression);
 
   const symbols = new Map<string, TemporalValueType>(options.temporalSymbols);
@@ -301,6 +309,10 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     assertGuardedTemporalMapGets(property.expressionAst);
     if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") throw new Error(`temporal recurrence property \`${property.name}\` must be boolean`);
   }
+  for (const property of stabilizations) {
+    assertGuardedTemporalMapGets(property.expressionAst);
+    if (typeCheckTemporalExpression(property.expressionAst, symbols) !== "bool") throw new Error(`temporal stabilization property \`${property.name}\` must be boolean`);
+  }
   for (const property of responses) {
     assertGuardedTemporalMapGets(property.triggerAst);
     assertGuardedTemporalMapGets(property.responseAst);
@@ -308,5 +320,5 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     if (typeCheckTemporalExpression(property.responseAst, symbols) !== "bool") throw new Error(`temporal response target \`${property.name}\` must be boolean`);
   }
 
-  return { fileName, capabilities, invariants, temporal: { stutteringPolicy: "explicit-unchanged", clocks, states, init, actions, properties, liveness, recurrences, responses } };
+  return { fileName, capabilities, invariants, temporal: { stutteringPolicy: "explicit-unchanged", clocks, states, init, actions, properties, liveness, recurrences, stabilizations, responses } };
 }

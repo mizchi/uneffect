@@ -441,6 +441,16 @@ the predicate and `statewise-vacuous-recurrence` when every typed state already
 satisfies it. As with the other lasso searches, absence of a bounded witness is
 evidence rather than an unbounded proof.
 
+`temporal_stabilizes name: predicate` expresses convergence: after some finite
+prefix the predicate must remain true. It lowers to
+`eventually(always(predicate))`. Its Z3 counterexample is a complete reachable
+lasso with at least one loop state where the predicate is false; that state
+recurs forever. `reachable-stabilization-cycle` is emitted only after declared
+fairness constraints hold on the loop. Impossible and statewise-valid targets
+are diagnosed separately as `unsatisfiable-stabilization-target` and
+`statewise-vacuous-stabilization`. The shutdown-drain dogfood model removes
+completion fairness as a negative control and exposes the starvation loop.
+
 The CLI intentionally emits verifier source instead of hiding it. Generated models are reviewable artifacts and can be checked independently of Uneffect.
 
 ## Epistemic status
@@ -456,5 +466,5 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
 | Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |
-| Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality, response, recurrence, and weak/strong action fairness |
+| Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality, response, recurrence, stabilization, and weak/strong action fairness |
 | Transfer ownership state model | Implemented in TypeScript/Rust with positive and broken Quint controls |

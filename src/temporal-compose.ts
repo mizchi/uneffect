@@ -39,6 +39,7 @@ export interface TemporalComposition {
   properties: TemporalProperty[];
   liveness: TemporalProperty[];
   recurrences: TemporalProperty[];
+  stabilizations: TemporalProperty[];
   responses: TemporalResponse[];
   stutteringPolicy: "explicit-unchanged";
   summaries: Map<string, TemporalFunctionSummary>;
@@ -142,7 +143,7 @@ export function parseTemporalComposition(fileName: string, text: string, root: s
   const complete = ordered.length;
   const target = (ref: GraphRef): number => ref === "complete" ? complete : ref === "throw" ? -1 : ids.get(ref)!;
   const calls: TemporalCall[] = ordered.map((node, index) => ({ caller: root, callee: node.callee, index, normalTarget: target(node.normal), errorTarget: target(node.error), catchesThrow: target(node.error) >= 0, awaited: node.awaited, span: node.span }));
-  return { fileName, root, entry: target(entryRef), complete, calls, summaries, states: parsed.temporal.states, init: parsed.temporal.init, properties: parsed.temporal.properties, liveness: parsed.temporal.liveness, recurrences: parsed.temporal.recurrences, responses: parsed.temporal.responses, stutteringPolicy: parsed.temporal.stutteringPolicy };
+  return { fileName, root, entry: target(entryRef), complete, calls, summaries, states: parsed.temporal.states, init: parsed.temporal.init, properties: parsed.temporal.properties, liveness: parsed.temporal.liveness, recurrences: parsed.temporal.recurrences, stabilizations: parsed.temporal.stabilizations, responses: parsed.temporal.responses, stutteringPolicy: parsed.temporal.stutteringPolicy };
 }
 
 function safeName(name: string): string { if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) throw new Error(`invalid Quint name: ${name}`); return name; }
@@ -185,6 +186,7 @@ export function generateComposedQuint(moduleName: string, composition: TemporalC
   for (const property of composition.properties) lines.push("", `  val ${safeName(property.name)} = ${generateQuintExpression(property.expressionAst)}`);
   for (const property of composition.liveness) lines.push("", `  temporal ${safeName(property.name)} = eventually(${generateQuintExpression(property.expressionAst)})`);
   for (const property of composition.recurrences) lines.push("", `  temporal ${safeName(property.name)} = always(eventually(${generateQuintExpression(property.expressionAst)}))`);
+  for (const property of composition.stabilizations) lines.push("", `  temporal ${safeName(property.name)} = eventually(always(${generateQuintExpression(property.expressionAst)}))`);
   for (const property of composition.responses) lines.push("", `  temporal ${safeName(property.name)} = ${generateQuintExpression(property.triggerAst)} leadsTo ${generateQuintExpression(property.responseAst)}`);
   const fairCalls = composition.calls.filter((call) => composition.summaries.get(call.callee)!.fairness);
   if (fairCalls.length) {

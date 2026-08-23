@@ -723,6 +723,31 @@ describe("spec IR and generated verifier programs", () => {
     */`)).toThrow(/recurrence property .* must be boolean/);
   });
 
+  it("parses a typed stabilization property and lowers it to eventually-always", () => {
+    const temporal = parseSpec("stabilization.ts", `/* uneffect:
+      state drained: bool
+      init drained = false
+      action finish: drained' = true
+      temporal_stabilizes remainsDrained: drained
+    */`).temporal;
+    expect(temporal.stabilizations).toEqual([expect.objectContaining({
+      name: "remainsDrained",
+      expression: "drained",
+    })]);
+    const quint = generateQuint("stabilization", temporal);
+    expect(quint).toContain("temporal remainsDrained = eventually(always(drained))");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-stabilization-"));
+    const path = join(directory, "stabilization.qnt");
+    writeFileSync(path, quint);
+    const typecheck = spawnSync("pnpm", ["exec", "quint", "typecheck", path], { encoding: "utf8", timeout: 30_000 });
+    rmSync(directory, { recursive: true, force: true });
+    expect(typecheck.status, typecheck.stdout + typecheck.stderr).toBe(0);
+    expect(() => parseSpec("typed-stabilization.ts", `/* uneffect:
+      state remaining: int
+      temporal_stabilizes drains: remaining
+    */`)).toThrow(/stabilization property .* must be boolean/);
+  });
+
   it("protects structured clocks from arbitrary writes", () => {
     expect(() => parseSpec("clock.ts", `/*
       * uneffect:
@@ -821,6 +846,25 @@ describe("spec IR and generated verifier programs", () => {
     }));
     expect(diagnostics).toContainEqual(expect.objectContaining({
       code: "statewise-vacuous-recurrence", name: "automatic", backend: "z3",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "meaningful" }));
+  });
+
+  it("rejects impossible and statewise-vacuous stabilization targets", async () => {
+    const temporal = parseSpec("stabilization-vacuity.ts", `/* uneffect:
+      state epoch: int
+      init epoch = 0
+      action advance: epoch' = epoch + 1
+      temporal_stabilizes impossible: epoch < 0 && epoch >= 0
+      temporal_stabilizes automatic: epoch > 0 || epoch <= 0
+      temporal_stabilizes meaningful: epoch === 0
+    */`).temporal;
+    const diagnostics = await lintTemporalSpecWithZ3(temporal);
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "unsatisfiable-stabilization-target", name: "impossible", backend: "z3",
+    }));
+    expect(diagnostics).toContainEqual(expect.objectContaining({
+      code: "statewise-vacuous-stabilization", name: "automatic", backend: "z3",
     }));
     expect(diagnostics).not.toContainEqual(expect.objectContaining({ name: "meaningful" }));
   });
@@ -1387,6 +1431,29 @@ describe("spec IR and generated verifier programs", () => {
     );
     await expect(lintTemporalReachabilityWithZ3(model(true), { maxSteps: 3 })).resolves.not.toContainEqual(
       expect.objectContaining({ code: "reachable-recurrence-cycle", name: "returnsIdle" }),
+    );
+  });
+
+  it("finds a stabilization lasso and discharges it only with matching weak fairness", async () => {
+    const model = (fair: boolean) => parseSpec("stabilization-lasso.ts", `/* uneffect:
+      state settled: bool
+      state stable: bool
+      init settled = false
+      init stable = false
+      action churn: stable' = !stable
+      action_when churn: !settled
+      action settle: settled' = true, stable' = true
+      action_when settle: !settled
+      action idle: settled' = settled, stable' = stable
+      action_when idle: settled
+      ${fair ? "action_fair settle: weak" : ""}
+      temporal_stabilizes converges: stable
+    */`).temporal;
+    await expect(lintTemporalReachabilityWithZ3(model(false), { maxSteps: 3 })).resolves.toContainEqual(
+      expect.objectContaining({ code: "reachable-stabilization-cycle", name: "converges", depth: 2, loopStart: 0 }),
+    );
+    await expect(lintTemporalReachabilityWithZ3(model(true), { maxSteps: 3 })).resolves.not.toContainEqual(
+      expect.objectContaining({ code: "reachable-stabilization-cycle", name: "converges" }),
     );
   });
 

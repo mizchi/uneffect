@@ -40,7 +40,7 @@ directive = effect_decl
           | refinement_decl
           | abstraction_decl ;
 
-Function-summary temporal contracts add `temporal_requires`, `temporal_ensures`, `temporal_modifies`, `temporal_throws`, `temporal_rejects`, `temporal_suspends true`, and `temporal_cancellable true`. Once suspension introduced a concrete progress question, the grammar also gained `temporal_eventually name: predicate`, `temporal_response name: trigger => response`, `temporal_repeatedly name: predicate`, and per-summary `temporal_fair weak|strong`. These lower to Quint `eventually`, `leadsTo`, `always(eventually(...))`, and weak/strong action fairness; they are still TypeScript-style source expressions rather than embedded Quint.
+Function-summary temporal contracts add `temporal_requires`, `temporal_ensures`, `temporal_modifies`, `temporal_throws`, `temporal_rejects`, `temporal_suspends true`, and `temporal_cancellable true`. Once suspension introduced a concrete progress question, the grammar also gained `temporal_eventually name: predicate`, `temporal_response name: trigger => response`, `temporal_repeatedly name: predicate`, `temporal_stabilizes name: predicate`, and per-summary `temporal_fair weak|strong`. These lower to Quint `eventually`, `leadsTo`, `always(eventually(...))`, `eventually(always(...))`, and weak/strong action fairness; they are still TypeScript-style source expressions rather than embedded Quint.
 
 Standalone transition systems additionally support `action_when name:
 predicate`, `clock name: positiveInteger`, and `action_fair name: weak|strong`.

@@ -155,6 +155,7 @@ export type {
   TemporalProperty,
   TemporalLiveness,
   TemporalRecurrence,
+  TemporalStabilization,
   TemporalResponse,
   TemporalSpec,
   TemporalState,

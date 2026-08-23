@@ -305,6 +305,24 @@ describe("Uneffect dogfood", () => {
     expect(generateQuint("realtime_dogfood", temporal)).toContain("temporal returnsIdle = always(eventually(not(pending)))");
   });
 
+  it("requires shutdown work to become and remain drained", async () => {
+    const fileName = "examples/dogfood/shutdown-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, { maxSteps: 4 });
+    expect(temporal.stabilizations).toContainEqual(expect.objectContaining({
+      name: "remainsDrained", expression: "!shuttingDown || pending === 0",
+    }));
+    expect(diagnostics).not.toContainEqual(expect.objectContaining({
+      code: "reachable-stabilization-cycle", name: "remainsDrained",
+    }));
+
+    const unfair = parseSpec(fileName, source.replace(" * action_fair complete: weak\n", "")).temporal;
+    await expect(lintTemporalReachabilityWithZ3(unfair, { maxSteps: 4 })).resolves.toContainEqual(
+      expect.objectContaining({ code: "reachable-stabilization-cycle", name: "remainsDrained" }),
+    );
+  });
+
   it("proves four-way telemetry routing accounting and rejects a missing update", async () => {
     const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
     const source = readFileSync(fileName, "utf8");

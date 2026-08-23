@@ -131,7 +131,7 @@ Automatic invariant discovery, finite-state completeness, bounded fair-lasso
 detection for `eventually`, and selected sign, relational, affine-offset, and
 collection templates are implemented. General polyhedral/quantified synthesis
 and arbitrary nested temporal formulas remain open. Uneffect now supports the
-specific eventuality, response, and recurrence fragments without accepting raw
+specific eventuality, response, recurrence, and stabilization fragments without accepting raw
 backend syntax.
 
 Effect declarations remain equally important. The existing function/program
