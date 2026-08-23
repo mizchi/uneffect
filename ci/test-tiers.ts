@@ -70,6 +70,7 @@ export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readon
 export function shouldRetryIsolatedSolverFailure(output: string): boolean {
   const wasmCrash = output.includes("z3-built.wasm") && (
     output.includes("memory access out of bounds")
+    || output.includes("table index is out of bounds")
     || output.includes("Cannot enlarge memory arrays")
   );
   const z3InternalAssertion = output.includes("ASSERTION VIOLATION")
