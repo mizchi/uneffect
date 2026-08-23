@@ -73,6 +73,7 @@ export interface ResourceAliasEscape {
   generation: {
     acquisitionIndex: number;
     repeated: boolean;
+    relation: "single" | "latest" | "conditional";
     snapshot: string;
   };
   assignmentSpan: { start: number; end: number };
@@ -787,6 +788,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         generation: {
           acquisitionIndex: resource.acquisitionIndex,
           repeated,
+          relation: repeated ? "latest" : "single",
           snapshot: repeated ? `generation_${resource.acquisitionIndex}@${node.getStart(source)}` : `single_${resource.acquisitionIndex}`,
         },
         assignmentSpan: { start: node.getStart(source), end: node.getEnd() },
@@ -1011,6 +1013,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       return false;
     };
+    const generationAtAssignment = (fact: ResourceAliasFact, node: ts.Node): ResourceAliasEscape["generation"] => {
+      const resourceConditions = new Set(fact.resource.controlPaths.flat().map((condition) => `${condition.id}:${condition.expected}`));
+      const hasRelativeControl = controlPaths(node).some((path) => path.some((condition) => !resourceConditions.has(`${condition.id}:${condition.expected}`)));
+      return { ...fact.generation, relation: hasRelativeControl ? "conditional" : fact.generation.relation };
+    };
     const collectDisposedAliasFlow = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node) || ts.isNewExpression(node)) for (const index of resourceRetentionParameters(checker, node, resourceRetentionCache)) {
@@ -1112,7 +1119,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const fact = aliasFact(node.right);
         if (ts.isIdentifier(node.left)) {
           const symbol = checker.getSymbolAtLocation(node.left);
-          if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+          if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.left.text, generation: generationAtAssignment(fact, node), assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
           else if (symbol && !isConditionalResourceExecution(node)) escapedAliases.delete(symbol);
           const rightSymbol = ts.isIdentifier(node.right) ? checker.getSymbolAtLocation(node.right) : undefined;
           if (symbol && rightSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(rightSymbol));
@@ -1122,7 +1129,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (slot && fact) {
             const slots = escapedAggregateAliases.get(slot.root) ?? new Map<string, ResourceAliasFact>();
             for (const key of slots.keys()) if (key === slot.key || key.startsWith(`${slot.key}/`)) slots.delete(key);
-            slots.set(slot.key, { resource: fact.resource, alias: slot.alias, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+            slots.set(slot.key, { resource: fact.resource, alias: slot.alias, generation: generationAtAssignment(fact, node), assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
             escapedAggregateAliases.set(slot.root, slots);
           } else if (slot && !isConditionalResourceExecution(node)) {
             const slots = escapedAggregateAliases.get(slot.root);
@@ -1134,7 +1141,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       }
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
         const symbol = checker.getSymbolAtLocation(node.name), fact = aliasFact(node.initializer);
-        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, generation: fact.generation, assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
+        if (symbol && fact) escapedAliases.set(symbol, { resource: fact.resource, alias: node.name.text, generation: generationAtAssignment(fact, node), assignmentSpan: { start: node.getStart(source), end: node.getEnd() } });
         const initializerSymbol = node.initializer && ts.isIdentifier(node.initializer) ? checker.getSymbolAtLocation(node.initializer) : undefined;
         if (symbol && initializerSymbol && !fact) aggregateRootAliases.set(symbol, resolveAggregateRoot(initializerSymbol));
         if (node.initializer && !ts.isIdentifier(node.initializer)) collectDisposedAliasFlow(node.initializer);
@@ -1749,6 +1756,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         ["pc", String(next)],
         [`alias_generation_${event.index}`, `generation_${resourceIndex}`],
       ]));
+      if (alias.generation.relation === "conditional") emit(`skip_conditional_capture_alias_${event.index}`, [`pc == ${pc}`, `acquired_${resourceIndex}`], new Map([["pc", String(next)]]));
       emit(`skip_capture_alias_${event.index}`, [`pc == ${pc}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
       return;
     }

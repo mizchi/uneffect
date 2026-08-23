@@ -462,6 +462,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Add repeat/exit decisions for repeated alias acquisitions, recapturing the incremented generation on every arbitrary finite iteration and preserving a zero-iteration skip path.
       - [x] Share one repeat/exit decision across every alias snapshot of the same repeated acquisition, while retaining independent capture/use evidence for each alias.
       - [x] Verify source-ordered nested repeated acquisitions retain distinct generation state and repeat targets through async disposal and post-loop alias use in Quint; normalize generated alias identities by assignment order rather than use/report order.
+      - [x] Classify alias generation relations as `single`, `latest`, or `conditional`; conditional assignments add an explicit capture-skip transition instead of inventing a mandatory snapshot.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.

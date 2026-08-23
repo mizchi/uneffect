@@ -557,6 +557,15 @@ state names. General CFG joins between interacting loops and alias
 relations that retain older generations separately are still outside this
 finite lowering.
 
+Alias-generation evidence classifies each capture as `single`, `latest`, or
+`conditional`. `latest` means an unconditional assignment relative to its
+repeated acquisition. A branch introduced below the acquisition produces
+`conditional`; unified Quint then offers both capture and skip transitions for
+that alias. This prevents an optional assignment from becoming a mandatory
+snapshot. Multiple conditional aliases are currently conservative independent
+choices: correlation between mutually exclusive assignments requires the
+general CFG join and is not claimed as proved.
+
 The same
 source-ordered flow covers nested property and literal array slots on a local
 identifier root, such as `state.retry.current` or `slots[0]`, and can propagate

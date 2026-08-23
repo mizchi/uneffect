@@ -555,6 +555,26 @@ describe("typed-array static verification", () => {
     generateUnifiedAsyncQuint("nested_retry_alias_generations", result, "retry");
   }, { time: 500, iterations: 20 });
 
+  bench("lower conditional retry alias generations to unified Quint", () => {
+    const result = analyzeAsyncSafety("conditional-retry-aliases.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function retry(enabled: boolean, keepFirst: boolean) {
+        let first: Resource | undefined
+        let latest: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          if (keepFirst) first = resource
+          else latest = resource
+          await Promise.resolve("tick").then((value) => value)
+        }
+        first?.send()
+        latest?.send()
+      }
+    `);
+    generateUnifiedAsyncQuint("conditional_retry_alias_generations", result, "retry");
+  }, { time: 500, iterations: 20 });
+
   bench("construct the retry resource TypeScript Program", () => {
     createAsyncSafetyBenchmarkProgram();
   }, { time: 500, iterations: 20 });

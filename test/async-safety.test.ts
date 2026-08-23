@@ -1445,6 +1445,7 @@ describe("async error and explicit resource safety", () => {
     `);
     expect(result.resourceAliases).toContainEqual(expect.objectContaining({
       owner: "broken", resource: "resource", alias: "escaped",
+      generation: expect.objectContaining({ relation: "latest" }),
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "broken", kind: "disposed-resource-use", severity: "error",
@@ -1459,6 +1460,7 @@ describe("async error and explicit resource safety", () => {
     expect(aliasQuint).toContain("var alias_generation_0: int");
     expect(aliasQuint).toContain("action capture_alias_0");
     expect(aliasQuint).toContain("action skip_capture_alias_0");
+    expect(aliasQuint).not.toContain("action skip_conditional_capture_alias_0");
     expect(aliasQuint).toContain("action alias_loop_0_repeat");
     expect(aliasQuint).toContain("action alias_loop_0_exit");
     expect(aliasQuint).toContain("action use_disposed_alias_0");
@@ -1532,6 +1534,34 @@ describe("async error and explicit resource safety", () => {
     expect(innerRepeatPc).toBe(innerAcquirePc);
     expect(outerRepeatPc).not.toBe(innerRepeatPc);
     expect(run(quint, 32).status).not.toBe(0);
+  });
+
+  it("does not invent mandatory snapshots for conditional repeated-resource aliases", () => {
+    const result = analyzeAsyncSafety("conditional-resource-generations.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function broken(enabled: boolean, keepFirst: boolean) {
+        let first: Resource | undefined
+        let latest: Resource | undefined
+        while (enabled) {
+          await using resource = open()
+          if (keepFirst) first = resource
+          else latest = resource
+          await Promise.resolve("tick").then((value) => value)
+        }
+        first?.send()
+        latest?.send()
+      }
+    `);
+    const aliases = result.resourceAliases.filter((alias) => alias.owner === "broken");
+    expect(aliases).toHaveLength(2);
+    expect(aliases.every((alias) => alias.generation.relation === "conditional")).toBe(true);
+
+    const quint = generateUnifiedAsyncQuint("conditional_resource_generations", result, "broken");
+    expect(quint).toContain("action skip_conditional_capture_alias_0");
+    expect(quint).toContain("action skip_conditional_capture_alias_1");
+    expect([...quint.matchAll(/action alias_loop_\d+_repeat/g)]).toHaveLength(1);
+    expect(run(quint, 24).status).not.toBe(0);
   });
 
   it("propagates disposed resource identity through local alias chains", () => {
