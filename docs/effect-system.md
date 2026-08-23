@@ -76,9 +76,11 @@ effects: constructing an iterator does not propagate its body summary, while a
 resolved direct `.next()`, `for..of`/`for await`, or `yield*` consumption does.
 The Program path follows imported generators and a directly stored local
 iterator binding by symbol identity. Acyclic factories whose sole terminal
-return is another resolved generator/factory call are specialized at direct
-consumption sites; their own immediate body effects remain on the normal call
-edge. General iterator escape, branch-dependent returns, alias chains, and
+returns are resolved generator/factory calls are specialized at direct
+consumption sites, including sequential early returns, exhaustive `if` branches,
+and conditional expressions. Every normal return path must resolve; candidates
+are unioned while the factory's own immediate body effects remain on the normal
+call edge. General iterator escape, partial/dynamic factories, alias chains, and
 opaque consumer APIs are not yet modeled as consumption and must not be used as
 proof that their transitive effects were checked.
 

@@ -80,28 +80,63 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
     return { id: stableId(declaration), name: nameNode?.getText() ?? "<anonymous>", kind: kindOf(declaration), fileName: declaration.getSourceFile().fileName, span: { start: declaration.getStart(), end: declaration.getEnd() }, overloads, effectParameters: [] };
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
-  const returnedGeneratorDeclaration = (
+  type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
+  const returnedGeneratorDeclarations = (
     declaration: ts.FunctionLikeDeclaration | undefined,
     seen = new Set<ts.FunctionLikeDeclaration>(),
-  ): ts.FunctionLikeDeclaration | undefined => {
+  ): ts.FunctionLikeDeclaration[] | undefined => {
     if (!declaration || seen.has(declaration)
       || (ts.getCombinedModifierFlags(declaration) & ts.ModifierFlags.Async) !== 0) return undefined;
-    if (declaration.asteriskToken) return declaration;
-    if (!declaration.body || !ts.isBlock(declaration.body)) return undefined;
-    const returns: ts.ReturnStatement[] = [];
-    for (const statement of declaration.body.statements) if (ts.isReturnStatement(statement)) returns.push(statement);
-    const returned: ts.ReturnStatement | undefined = returns[0];
-    if (returns.length !== 1 || declaration.body.statements.at(-1) !== returned || !returned?.expression
-      || !ts.isCallExpression(returned.expression)) return undefined;
-    const lookup = ts.isPropertyAccessExpression(returned.expression.expression)
-      ? returned.expression.expression.name : returned.expression.expression;
-    const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
-    return returnedGeneratorDeclaration(target, new Set(seen).add(declaration));
+    if (declaration.asteriskToken) return [declaration];
+    if (!declaration.body) return undefined;
+    const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
+      if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
+      if (ts.isThrowStatement(statement)) return { expressions: [], definite: true };
+      if (ts.isBlock(statement)) return blockFlow(statement);
+      if (ts.isIfStatement(statement)) {
+        const left = statementFlow(statement.thenStatement);
+        const right = statement.elseStatement ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
+        return left && right ? { expressions: [...left.expressions, ...right.expressions], definite: left.definite && right.definite } : undefined;
+      }
+      return ts.isExpressionStatement(statement) || ts.isVariableStatement(statement) || ts.isEmptyStatement(statement)
+        ? { expressions: [], definite: false } : undefined;
+    };
+    const blockFlow = (block: ts.Block): ReturnFlow | undefined => {
+      const expressions: ts.Expression[] = [];
+      for (const statement of block.statements) {
+        const flow = statementFlow(statement);
+        if (!flow) return undefined;
+        expressions.push(...flow.expressions);
+        if (flow.definite) return { expressions, definite: true };
+      }
+      return { expressions, definite: false };
+    };
+    const flow = ts.isBlock(declaration.body) ? blockFlow(declaration.body)
+      : { expressions: [declaration.body], definite: true };
+    if (!flow?.definite || flow.expressions.length === 0) return undefined;
+    const nextSeen = new Set(seen).add(declaration), candidates: ts.FunctionLikeDeclaration[] = [];
+    const resolveExpression = (expression: ts.Expression): ts.FunctionLikeDeclaration[] | undefined => {
+      if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+        || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) return resolveExpression(expression.expression);
+      if (ts.isConditionalExpression(expression)) {
+        const left = resolveExpression(expression.whenTrue), right = resolveExpression(expression.whenFalse);
+        return left && right ? [...left, ...right] : undefined;
+      }
+      if (!ts.isCallExpression(expression)) return undefined;
+      const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
+      return returnedGeneratorDeclarations(symbolNodes.get(resolvedSymbol(checker, lookup)!), nextSeen);
+    };
+    for (const expression of flow.expressions) {
+      const resolved = resolveExpression(expression);
+      if (!resolved) return undefined;
+      candidates.push(...resolved);
+    }
+    return [...new Set(candidates)];
   };
   const edges: CallGraphEdge[] = [];
   for (const declaration of declarations) {
     const caller = stableId(declaration), parameters = new Map<string, number>();
-    const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration>();
+    const generatorBindings = new Map<ts.Symbol, ts.FunctionLikeDeclaration[]>();
     declaration.parameters.forEach((parameter, index) => { if (ts.isIdentifier(parameter.name) && isFunctionParameter(checker, parameter)) parameters.set(parameter.name.text, index); });
     const timings = new Map<number, InvocationTiming>();
     const visit = (node: ts.Node, catchesThrow: boolean): void => {
@@ -116,14 +151,13 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const lookup = ts.isPropertyAccessExpression(node.initializer.expression) ? node.initializer.expression.name : node.initializer.expression;
         const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
         const binding = resolvedSymbol(checker, node.name);
-        const generator = returnedGeneratorDeclaration(target);
-        if (binding && generator) generatorBindings.set(binding, generator);
+        const generators = returnedGeneratorDeclarations(target);
+        if (binding && generators) generatorBindings.set(binding, generators);
       }
       const addStoredGeneratorConsumption = (expression: ts.Expression): void => {
         if (!ts.isIdentifier(expression)) return;
-        const target = generatorBindings.get(resolvedSymbol(checker, expression)!);
-        if (!target) return;
-        edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
+        const targets = generatorBindings.get(resolvedSymbol(checker, expression)!);
+        for (const target of targets ?? []) edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
       };
       if (ts.isForOfStatement(node)) addStoredGeneratorConsumption(node.expression);
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression) addStoredGeneratorConsumption(node.expression);
@@ -141,10 +175,8 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         );
         const generatorConsumption = Boolean(targetDeclaration?.asteriskToken) && consumptionSyntax;
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow, executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true });
-        const returnedGenerator = consumptionSyntax ? returnedGeneratorDeclaration(targetDeclaration) : undefined;
-        if (returnedGenerator && returnedGenerator !== targetDeclaration) {
-          edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
-        }
+        const returnedGenerators = consumptionSyntax ? returnedGeneratorDeclarations(targetDeclaration) : undefined;
+        for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow, executesBody: true });
         if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next") addStoredGeneratorConsumption(node.expression.expression);
         if (parameterIndex !== undefined) timings.set(parameterIndex, "inline");
         node.arguments.forEach((argument, index) => {

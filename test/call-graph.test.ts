@@ -146,14 +146,25 @@ describe("multi-file call graph and effect polymorphism", () => {
       writeFileSync(library, `
         /* uneffect: effect Console | Throw<RangeError> */
         export function* generate() { console.log("step"); throw new RangeError("step") }
+        /* uneffect: effect Console */
+        export function* logOnly() { console.log("log") }
+        /* uneffect: effect Throw<TypeError> */
+        export function* failOnly() { throw new TypeError("fail") }
+        export function chooseIterator(log: boolean) {
+          if (log) return logOnly()
+          return failOnly()
+        }
       `);
       writeFileSync(main, `
-        import { generate } from "./library.js"
+        import { generate, chooseIterator } from "./library.js"
         export function constructOnly() { generate() }
         export function buildIterator() { return generate() }
         export function consumeNext() { const iterator = generate(); iterator.next() }
         export function consumeLoop() { for (const value of generate()) void value }
         export function consumeFactory() { for (const value of buildIterator()) void value }
+        export function consumeBranchingFactory(log: boolean) {
+          for (const value of chooseIterator(log)) void value
+        }
         /* uneffect: effect Console */
         export function caughtConsumption() { try { generate().next() } catch {} }
       `);
@@ -183,6 +194,12 @@ describe("multi-file call graph and effect polymorphism", () => {
       }));
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
         functionName: "consumeFactory", effect: "Throw<RangeError>", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeBranchingFactory", effect: "Console", kind: "missing",
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeBranchingFactory", effect: "Throw<TypeError>", kind: "missing",
       }));
       expect(result.diagnostics.filter((item) => item.functionName === "caughtConsumption")).toEqual([]);
     } finally { rmSync(directory, { recursive: true, force: true }); }

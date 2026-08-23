@@ -244,22 +244,57 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   });
   for (const info of functions.values()) {
     const asyncOwner = isAsyncFunction(info.node);
-    const generatorBindings = new Map<string, string>();
+    const generatorBindings = new Map<string, string[]>();
     const generatorTarget = (call: ts.CallExpression): string | undefined =>
       ts.isIdentifier(call.expression) && functions.get(call.expression.text)?.node.asteriskToken
         ? call.expression.text : undefined;
-    const returnedGeneratorTarget = (name: string, seen = new Set<string>()): string | undefined => {
+    type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
+    const returnedGeneratorTargets = (name: string, seen = new Set<string>()): string[] | undefined => {
       if (seen.has(name)) return undefined;
       const target = functions.get(name);
       if (!target || isAsyncFunction(target.node)) return undefined;
-      if (target.node.asteriskToken) return name;
-      const statements = target.node.body?.statements ?? [];
-      const returns: ts.ReturnStatement[] = [];
-      for (const statement of statements) if (ts.isReturnStatement(statement)) returns.push(statement);
-      const returned: ts.ReturnStatement | undefined = returns[0];
-      if (returns.length !== 1 || statements.at(-1) !== returned || !returned?.expression
-        || !ts.isCallExpression(returned.expression) || !ts.isIdentifier(returned.expression.expression)) return undefined;
-      return returnedGeneratorTarget(returned.expression.expression.text, new Set(seen).add(name));
+      if (target.node.asteriskToken) return [name];
+      const statementFlow = (statement: ts.Statement): ReturnFlow | undefined => {
+        if (ts.isReturnStatement(statement)) return { expressions: statement.expression ? [statement.expression] : [], definite: true };
+        if (ts.isThrowStatement(statement)) return { expressions: [], definite: true };
+        if (ts.isBlock(statement)) return blockFlow(statement);
+        if (ts.isIfStatement(statement)) {
+          const left = statementFlow(statement.thenStatement);
+          const right = statement.elseStatement ? statementFlow(statement.elseStatement) : { expressions: [], definite: false };
+          return left && right ? { expressions: [...left.expressions, ...right.expressions], definite: left.definite && right.definite } : undefined;
+        }
+        return ts.isExpressionStatement(statement) || ts.isVariableStatement(statement) || ts.isEmptyStatement(statement)
+          ? { expressions: [], definite: false } : undefined;
+      };
+      const blockFlow = (block: ts.Block): ReturnFlow | undefined => {
+        const expressions: ts.Expression[] = [];
+        for (const statement of block.statements) {
+          const flow = statementFlow(statement);
+          if (!flow) return undefined;
+          expressions.push(...flow.expressions);
+          if (flow.definite) return { expressions, definite: true };
+        }
+        return { expressions, definite: false };
+      };
+      const flow = target.node.body && blockFlow(target.node.body);
+      if (!flow?.definite || flow.expressions.length === 0) return undefined;
+      const nextSeen = new Set(seen).add(name), candidates: string[] = [];
+      for (const expression of flow.expressions) {
+        const resolveExpression = (value: ts.Expression): string[] | undefined => {
+          if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value)
+            || ts.isTypeAssertionExpression(value) || ts.isNonNullExpression(value)) return resolveExpression(value.expression);
+          if (ts.isConditionalExpression(value)) {
+            const left = resolveExpression(value.whenTrue), right = resolveExpression(value.whenFalse);
+            return left && right ? [...left, ...right] : undefined;
+          }
+          return ts.isCallExpression(value) && ts.isIdentifier(value.expression)
+            ? returnedGeneratorTargets(value.expression.text, nextSeen) : undefined;
+        };
+        const resolved = resolveExpression(expression);
+        if (!resolved) return undefined;
+        candidates.push(...resolved);
+      }
+      return [...new Set(candidates)];
     };
     const addGeneratorConsumption = (target: string, dischargesThrow: boolean): void => {
       info.calls.push({ target, arguments: [], dischargesThrow });
@@ -275,17 +310,16 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       }
       if (ts.isThrowStatement(node) && !dischargesThrow && !asyncOwner) addEffect(info.direct, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer && ts.isCallExpression(node.initializer)) {
-        const target = generatorTarget(node.initializer)
-          ?? (ts.isIdentifier(node.initializer.expression) ? returnedGeneratorTarget(node.initializer.expression.text) : undefined);
-        if (target) generatorBindings.set(node.name.text, target);
+        const direct = generatorTarget(node.initializer);
+        const targets = direct ? [direct]
+          : ts.isIdentifier(node.initializer.expression) ? returnedGeneratorTargets(node.initializer.expression.text) : undefined;
+        if (targets) generatorBindings.set(node.name.text, targets);
       }
       if (ts.isForOfStatement(node) && ts.isIdentifier(node.expression)) {
-        const target = generatorBindings.get(node.expression.text);
-        if (target) addGeneratorConsumption(target, dischargesThrow);
+        for (const target of generatorBindings.get(node.expression.text) ?? []) addGeneratorConsumption(target, dischargesThrow);
       }
       if (ts.isYieldExpression(node) && node.asteriskToken && node.expression && ts.isIdentifier(node.expression)) {
-        const target = generatorBindings.get(node.expression.text);
-        if (target) addGeneratorConsumption(target, dischargesThrow);
+        for (const target of generatorBindings.get(node.expression.text) ?? []) addGeneratorConsumption(target, dischargesThrow);
       }
       if (checker && ts.isVariableStatement(node)) {
         const flags = ts.getCombinedNodeFlags(node.declarationList);
@@ -313,12 +347,11 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           if (consumed) addGeneratorConsumption(directGenerator, dischargesThrow);
         } else if (ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "next"
           && ts.isIdentifier(node.expression.expression)) {
-          const target = generatorBindings.get(node.expression.expression.text);
-          if (target) addGeneratorConsumption(target, dischargesThrow);
+          for (const target of generatorBindings.get(node.expression.expression.text) ?? []) addGeneratorConsumption(target, dischargesThrow);
         } else if (ts.isIdentifier(node.expression) && functions.has(node.expression.text)) {
           info.calls.push({ target: node.expression.text, arguments: node.arguments.map((arg) => arg.getText()), dischargesThrow });
-          const returnedGenerator = consumed ? returnedGeneratorTarget(node.expression.text) : undefined;
-          if (returnedGenerator) addGeneratorConsumption(returnedGenerator, dischargesThrow);
+          const returnedGenerators = consumed ? returnedGeneratorTargets(node.expression.text) : undefined;
+          for (const target of returnedGenerators ?? []) addGeneratorConsumption(target, dischargesThrow);
         }
       }
       ts.forEachChild(node, (child) => visit(child, dischargesThrow));

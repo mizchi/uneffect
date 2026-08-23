@@ -359,7 +359,12 @@ describe("Uneffect dogfood", () => {
         async function loadSettings() { throw new SyntaxError("async settings") }
         /* uneffect: effect Console */
         function* flushSteps() { console.log("prepare flush"); yield "ready" }
-        function buildFlushSteps() { return flushSteps() }
+        /* uneffect: effect Throw<TypeError> */
+        function* failedFlushSteps() { throw new TypeError("flush unavailable") }
+        function buildFlushSteps(preferCache: boolean) {
+          if (preferCache) return flushSteps()
+          return failedFlushSteps()
+        }
         const flushDispatcher = {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
@@ -368,8 +373,9 @@ describe("Uneffect dogfood", () => {
         export function scheduleFlush(preferCache: boolean) {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
-          buildFlushSteps()
-          for (const _step of buildFlushSteps()) {}
+          buildFlushSteps(true)
+          try { for (const _step of buildFlushSteps(preferCache)) {} }
+          catch { console.warn("skipping flush steps") }
           readFile("settings.json", "utf8", () => {
             nextTick(() => console.log("tick"))
             queueMicrotask(() => console.log("microtask"))
