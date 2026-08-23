@@ -119,6 +119,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Generalize coefficient-1 conservation equalities to an explicitly bounded arity (maximum six) and cap generated conservation candidates.
     - [x] Generalize bounded conservation partitions to reduced positive integer coefficient vectors, sharing the explicit coefficient and candidate limits.
     - [x] Synthesize bounded multi-variable fixed-budget sums, including weighted sums, from constant initializers.
+    - [x] Seed relational candidates from bounded arithmetic disequalities in action guards and validate synthesized candidates lazily until an obligation is discharged.
     - [x] Opt in separately to equality templates for same-shaped Set, Map, and record state pairs.
     - [x] Synthesize directional subset invariants for same-element finite `Set` state pairs and admit only inductively proven directions.
     - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.

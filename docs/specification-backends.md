@@ -207,6 +207,14 @@ quadratic in the configured coefficient bound. Coefficients are positive,
 bounded, and normalized by their greatest common divisor; negative or
 unbounded coefficients and general polyhedra are not inferred by this
 template.
+Arithmetic disequalities in action guards are also used as prioritized candidate
+seeds. For example, `auditArmed && active + queued + remaining !== 100` proposes
+the corresponding equality before enumerating the generic pool. Seeds obey the
+same state-arity and coefficient bounds, and are still admitted only after the
+same initialization and one-step preservation proofs. Synthesized candidates
+are checked lazily until the current unreachability or vacuity obligation is
+discharged; explicitly selected and declared discovery candidates remain eager
+so invalid user-selected strengthening is always diagnosed.
 Same-shaped Set, Map, and record pairs have a separate equality template pool
 behind `synthesizeCollectionStrengtheningProperties` and
 `--synthesize-collection-strengthening`. The same opt-in recursively discovers

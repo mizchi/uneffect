@@ -241,7 +241,46 @@ function synthesizedRelationalStrengtheningProperties(
       }
     }
   }
-  const expressions = [...new Set([...pairwiseExpressions, ...conservationExpressions])];
+  const arithmeticSource = (expression: TemporalExpression, parentPrecedence = 0): string | undefined => {
+    if (expression.kind === "name") return expression.name;
+    if (expression.kind === "integer") return expression.value;
+    if (expression.kind === "unary" && expression.operator === "negate") {
+      const operand = arithmeticSource(expression.operand, 4);
+      return operand === undefined ? undefined : `-${operand}`;
+    }
+    if (expression.kind !== "binary" || !["add", "subtract", "multiply"].includes(expression.operator)) return undefined;
+    const precedence = expression.operator === "multiply" ? 3 : 2;
+    const left = arithmeticSource(expression.left, precedence), right = arithmeticSource(expression.right, precedence + (expression.operator === "subtract" ? 1 : 0));
+    if (left === undefined || right === undefined) return undefined;
+    const operator = expression.operator === "add" ? "+" : expression.operator === "subtract" ? "-" : "*";
+    const source = `${left} ${operator} ${right}`;
+    return precedence < parentPrecedence ? `(${source})` : source;
+  };
+  const seededExpressions = spec.actions.flatMap((action) => {
+    const candidates = (expression: TemporalExpression): TemporalExpression[] => expression.kind === "binary" && expression.operator === "and"
+      ? [...candidates(expression.left), ...candidates(expression.right)]
+      : [expression];
+    return action.guard ? candidates(action.guard.expressionAst).flatMap((expression) => {
+      if (expression.kind !== "binary" || expression.operator !== "neq") return [];
+      const withinCoefficientBound = (value: TemporalExpression): boolean => {
+        if (value.kind === "binary" && value.operator === "multiply") {
+          const literals = [value.left, value.right].filter((operand) => operand.kind === "integer");
+          if (literals.some((literal) => BigInt(literal.kind === "integer" ? literal.value : "0") > BigInt(maxCoefficient))) return false;
+          if ([value.left, value.right].some((operand) => operand.kind === "unary" && operand.operator === "negate" && operand.operand.kind === "integer")) return false;
+        }
+        if (value.kind === "binary") return withinCoefficientBound(value.left) && withinCoefficientBound(value.right);
+        if (value.kind === "unary") return withinCoefficientBound(value.operand);
+        return true;
+      };
+      if (!withinCoefficientBound(expression.left) || !withinCoefficientBound(expression.right)) return [];
+      const left = arithmeticSource(expression.left), right = arithmeticSource(expression.right);
+      if (left === undefined || right === undefined) return [];
+      const references = new Set([...referencedNames(expression.left), ...referencedNames(expression.right)]);
+      if (references.size < 2 || references.size > maxArity || [...references].some((name) => !integers.some((state) => state.name === name))) return [];
+      return [`${left} === ${right}`];
+    }) : [];
+  });
+  const expressions = [...new Set([...seededExpressions, ...pairwiseExpressions, ...conservationExpressions])];
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
     expression,
@@ -875,34 +914,52 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
     ...(options.synthesizeCollectionStrengtheningProperties ? synthesizedCollectionStrengtheningProperties(spec) : []),
   ];
   const synthesizedByName = new Map(synthesized.map((property) => [property.name, property]));
-  const strengtheningNames = new Set([
+  const eagerStrengtheningNames = new Set([
     ...explicitStrengthening,
     ...(options.discoverStrengtheningProperties ? spec.properties.map((property) => property.name) : []),
-    ...synthesized.map((property) => property.name),
   ]);
-  for (const name of strengtheningNames) {
+  const proofCache = new Map<string, boolean>();
+  const proveStrengthening = async (property: TemporalSpec["properties"][number], reportFailure: boolean): Promise<boolean> => {
+    const cached = proofCache.get(property.name);
+    if (cached !== undefined) return cached;
+    const invariantAt = (index: number) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols);
+    const established = await checkAssertions([...init, `(not ${invariantAt(0)})`]);
+    const preserved = await checkAssertions([invariantAt(0), step(0), `(not ${invariantAt(1)})`]);
+    const proven = established === "unsat" && preserved === "unsat";
+    proofCache.set(property.name, proven);
+    if (!proven && reportFailure) diagnostics.push({
+      code: "non-inductive-strengthening-property", name: property.name, backend: "z3",
+      message: `${property.name} cannot be used as a strengthening invariant because Z3 did not prove both initialization and one-step preservation`,
+    });
+    if (proven && !strengthening.some((candidate) => candidate.name === property.name)) strengthening.push(property);
+    return proven;
+  };
+  for (const name of eagerStrengtheningNames) {
     const property = spec.properties.find((candidate) => candidate.name === name) ?? synthesizedByName.get(name);
     if (!property) {
       diagnostics.push({ code: "unknown-strengthening-property", name, backend: "z3", message: `strengthening property ${name} is not declared` });
       continue;
     }
-    const invariantAt = (index: number) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols);
-    const established = await checkAssertions([...init, `(not ${invariantAt(0)})`]);
-    const preserved = await checkAssertions([invariantAt(0), step(0), `(not ${invariantAt(1)})`]);
-    if (established !== "unsat" || preserved !== "unsat") {
-      if (!explicitStrengthening.has(name)) continue;
-      diagnostics.push({
-        code: "non-inductive-strengthening-property", name, backend: "z3",
-        message: `${name} cannot be used as a strengthening invariant because Z3 did not prove both initialization and one-step preservation`,
-      });
-      continue;
-    }
-    strengthening.push(property);
+    await proveStrengthening(property, explicitStrengthening.has(name));
   }
-  const strengtheningCandidates: TemporalSpec["properties"][] = [
-    ...strengthening.map((property) => [property]),
-    ...(strengthening.length > 1 ? [strengthening] : []),
-  ];
+  const findStrengthening = async (
+    obligation: readonly string[],
+  ): Promise<TemporalSpec["properties"] | undefined> => {
+    const establishes = async (properties: TemporalSpec["properties"]): Promise<boolean> => {
+      const invariant = properties.length === 1
+        ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
+        : `(and ${properties.map((property) => temporalToSmt(property.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
+      return await checkAssertions([invariant, ...obligation]) === "unsat";
+    };
+    for (const property of strengthening) if (await establishes([property])) return [property];
+    if (strengthening.length > 1 && await establishes(strengthening)) return [...strengthening];
+    for (const property of synthesized) {
+      if (proofCache.has(property.name)) continue;
+      if (!await proveStrengthening(property, false)) continue;
+      if (await establishes([property])) return [property];
+    }
+    return strengthening.length > 1 && await establishes(strengthening) ? [...strengthening] : undefined;
+  };
   const enabledStatus = await checkAssertions([...init, disjoin(spec.actions.map((action) => guard(action, 0)))]);
   if (enabledStatus === "unsat" && initStatus === "sat") diagnostics.push({
     code: "deadlocked-initial-state", name: "<init>", backend: "z3", depth: 0, message: "no action is enabled in any state satisfying init",
@@ -1050,17 +1107,15 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         code: "inductively-vacuous-property", name: property.name, backend: "z3", depth: 1,
         message: `${property.name} is vacuous without a bound: init establishes it and no transition can change any state it references`,
       });
-      else for (const properties of strengtheningCandidates) {
-        const invariant = properties.length === 1
-          ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
-          : `(and ${properties.map((candidate) => temporalToSmt(candidate.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
-        if (await checkAssertions([invariant, step(0), changesOnAnyTransition]) !== "unsat") continue;
-        const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
-        diagnostics.push({
-          code: "strengthened-vacuous-property", name: property.name, relatedName: propertyNames, backend: "z3", depth: 1,
-          message: `${property.name} is vacuous without a bound under proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
-        });
-        break;
+      else {
+        const properties = await findStrengthening([step(0), changesOnAnyTransition]);
+        if (properties) {
+          const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
+          diagnostics.push({
+            code: "strengthened-vacuous-property", name: property.name, relatedName: propertyNames, backend: "z3", depth: 1,
+            message: `${property.name} is vacuous without a bound under proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
+          });
+        }
       }
     }
   }
@@ -1086,17 +1141,15 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
           code: "inductively-unreachable-action", name: action.name, backend: "z3", depth: 1,
           message: `${action.name} is unreachable: init excludes its guard and one-step induction preserves that exclusion across every transition`,
         });
-        else for (const properties of strengtheningCandidates) {
-          const invariantAt = (index: number) => properties.length === 1
-            ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, index), symbols)
-            : `(and ${properties.map((property) => temporalToSmt(property.expressionAst, (state) => at(state, index), symbols)).join(" ")})`;
-          if (await checkAssertions([invariantAt(0), step(0), guard(action, 1)]) !== "unsat") continue;
+        else {
+          const properties = await findStrengthening([step(0), guard(action, 1)]);
+          if (properties) {
           const propertyNames = properties.map((property) => property.name).join(" & ");
           diagnostics.push({
             code: "strengthened-unreachable-action", name: action.name, relatedName: propertyNames, backend: "z3", depth: 1,
             message: `${action.name} is unreachable using proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
           });
-          break;
+          }
         }
       }
     }
@@ -1153,17 +1206,15 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
         code: target.inductiveCode, name: target.name, backend: "z3", depth: 1,
         message: `${target.name}'s ${target.subject} is unreachable: init excludes it and one-step induction preserves that exclusion across every transition`,
       });
-      else for (const properties of strengtheningCandidates) {
-        const invariant = properties.length === 1
-          ? temporalToSmt(properties[0]!.expressionAst, (state) => at(state, 0), symbols)
-          : `(and ${properties.map((candidate) => temporalToSmt(candidate.expressionAst, (state) => at(state, 0), symbols)).join(" ")})`;
-        if (await checkAssertions([invariant, step(0), targetAt(1)]) !== "unsat") continue;
+      else {
+        const properties = await findStrengthening([step(0), targetAt(1)]);
+        if (properties) {
         const propertyNames = properties.map((candidate) => candidate.name).join(" & ");
         diagnostics.push({
           code: target.strengthenedCode, name: target.name, relatedName: propertyNames, backend: "z3", depth: 1,
           message: `${target.name}'s ${target.subject} is unreachable using proven inductive strengthening ${properties.length === 1 ? "property" : "properties"} ${propertyNames}`,
         });
-        break;
+        }
       }
     }
   }

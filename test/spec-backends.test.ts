@@ -1212,6 +1212,38 @@ describe("spec IR and generated verifier programs", () => {
     }));
   });
 
+  it("keeps guard-seeded affine coefficients within the configured bound", async () => {
+    const temporal = parseSpec("guard-seed-coefficient-bound.ts", `/* uneffect:
+      state used: int
+      state capacity: int
+      state armed: bool
+      init used = 0
+      init capacity = 0
+      init armed = false
+      action consume: used' = used + 1, capacity' = capacity + 3
+      action arm: armed' = true
+      action impossible: armed' = armed
+      action_when impossible: armed && 3 * used !== capacity
+    */`).temporal;
+    const bounded = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+    });
+    expect(bounded).not.toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:3 * used === capacity>",
+    }));
+    const expanded = await lintTemporalReachabilityWithZ3(temporal, {
+      maxSteps: 2,
+      synthesizeRelationalStrengtheningProperties: true,
+      relationalStrengtheningMaxCoefficient: 3,
+    });
+    expect(expanded).toContainEqual(expect.objectContaining({
+      code: "strengthened-unreachable-action",
+      relatedName: "<synth:3 * used === capacity>",
+    }));
+  });
+
   it("synthesizes bounded four-variable conservation equalities when requested", async () => {
     const temporal = parseSpec("four-counter-conservation-strengthening.ts", `/* uneffect:
       state accepted: int

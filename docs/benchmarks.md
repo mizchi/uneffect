@@ -492,6 +492,14 @@ three cold Z3-backed samples (4.72% relative margin of error). This slightly
 larger fixture includes three state-changing actions. As above, this is a
 bounded-template observation, not a general affine-synthesis scaling claim.
 
+After prioritizing bounded disequality-derived seeds and lazily proving
+synthesized candidates, the same fixtures measured 128.66 ms for weighted
+accounting and 132.65 ms for fixed capacity, each over 16 samples. Compared
+with the preceding 721.71 ms and 792.94 ms observations, this is approximately
+5.61x and 5.98x faster respectively. The optimization stops after a proven
+candidate discharges the current obligation; it does not weaken eager checking
+of explicitly selected strengthening properties.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured
