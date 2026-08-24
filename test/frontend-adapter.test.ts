@@ -61,6 +61,22 @@ describe("TypeChecker symbol adapter", () => {
     ]);
   });
 
+  it("resolves node:net Socket.connect without matching a lookalike", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-node-socket-member-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      import type { Socket } from "node:net";
+      declare const socket: Socket;
+      socket.connect({ host: "example.com", port: 443 }, () => undefined);
+      class LocalSocket { connect(_options: object, callback: () => void) { callback() } }
+      new LocalSocket().connect({}, () => undefined);
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback"))
+      .toEqual([expect.objectContaining({ symbol: { module: "node:net", export: "Socket#connect" } })]);
+  });
+
   it("resolves global fetch and console while ignoring a shadowed fetch parameter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-globals-"));
     const fileName = join(directory, "input.ts");

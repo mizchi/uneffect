@@ -137,6 +137,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module: "node:net", export: name },
       operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
     })),
+    trusted({
+      symbol: { module: "node:net", export: "Socket#connect" },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
+    }),
     trusted({ symbol: { module: "node:dns", export: "lookup" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 } }),
     trusted({ symbol: { module: "node:dns", export: "lookupService" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" } }),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),

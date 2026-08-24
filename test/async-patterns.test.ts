@@ -2472,6 +2472,21 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("models TypeChecker-resolved Socket.connect listeners in the poll phase", () => {
+    const model = analyzeAsyncPatterns("node-socket-connect.ts", `
+      import type { Socket } from "node:net"
+      function reconnect(socket: Socket) {
+        socket.connect({ host: "example.com", port: 443 }, () => queueMicrotask(() => undefined))
+      }
+      class LocalSocket { connect(_options: object, callback: () => void) { callback() } }
+      new LocalSocket().connect({}, () => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"

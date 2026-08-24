@@ -1137,6 +1137,25 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks a Node Socket reconnect capability and poll-phase boundary", () => {
+    const fileName = "examples/dogfood/node-socket-reconnect.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_socket_reconnect", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
+
+    const wrongHost = source.replace("api.example.com:443", "other.example:443");
+    expect(analyzeEffects(fileName, wrongHost)).toContainEqual(expect.objectContaining({
+      functionName: "reconnectUpstream", kind: "missing", effect: 'Net<"api.example.com:443">',
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

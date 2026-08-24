@@ -151,6 +151,19 @@ describe("effect checker", () => {
       }));
   });
 
+  it("tracks a TypeChecker-resolved Socket.connect listener without matching a lookalike", () => {
+    const source = `
+      import type { Socket } from "node:net";
+      /* uneffect: effect Net<"api.example.com:443"> */
+      function reconnect(socket: Socket) {
+        return socket.connect({ host: "api.example.com", port: 443 }, () => undefined)
+      }
+      class LocalSocket { connect(_options: object, callback: () => void) { callback() } }
+      function local(socket: LocalSocket) { socket.connect({}, () => undefined) }
+    `;
+    expect(analyzeEffects("node-socket-effects.ts", source)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

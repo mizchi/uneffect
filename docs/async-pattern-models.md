@@ -169,8 +169,9 @@ fallthrough, cycles, unsupported control flow, or any unresolved returned value
 make the factory callback dynamic.
 
 Node callback overlays currently cover one-shot `node:fs` completions,
-`node:dns` lookups, `node:net` `connect`/`createConnection` listeners in the
-poll phase, and `net.Server.close` callbacks in the close phase. They are
+`node:dns` lookups, `node:net` `connect`/`createConnection` and
+`Socket#connect` listeners in the poll phase, and `net.Server.close` callbacks
+in the close phase. They are
 matched by TypeChecker symbol identity; a user method with the same spelling is
 not treated as a Node event-loop boundary. Literal `node:net` options containing
 both `host` and `port`, and the literal `(port, host, listener)` overload, narrow
