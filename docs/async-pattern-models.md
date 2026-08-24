@@ -166,6 +166,12 @@ class-instance, and polymorphic receivers remain dynamic. A type assertion
 around a dynamic value does not make it finite.
 fallthrough, cycles, unsupported control flow, or any unresolved returned value
 make the factory callback dynamic.
+
+Node callback overlays currently cover one-shot `node:fs` completions,
+`node:dns` lookups, `node:net` `connect`/`createConnection` listeners in the
+poll phase, and `net.Server.close` callbacks in the close phase. They are
+matched by TypeChecker symbol identity; a user method with the same spelling is
+not treated as a Node event-loop boundary.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

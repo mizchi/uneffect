@@ -57,6 +57,15 @@ describe("builtin semantic overlays", () => {
     }));
   });
 
+  it("registers node:net connection listeners as externally completed poll callbacks", () => {
+    for (const name of ["connect", "createConnection"]) {
+      expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+        symbol: { module: "node:net", export: name },
+        operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
+      }));
+    }
+  });
+
   it("registers Node DNS callbacks as Net-capable poll work", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:dns", export: "lookup" },

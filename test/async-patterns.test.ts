@@ -2452,6 +2452,24 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
+    const source = `
+      import { createConnection as dial } from "node:net"
+      /* uneffect: effect Net | Timer */
+      function connect() {
+        dial({ host: "example.com", port: 443 }, () => queueMicrotask(() => undefined))
+      }
+      function createConnection(_options: object, callback: () => void) { callback() }
+      createConnection({}, () => undefined)
+    `;
+    expect(analyzeEffects("node-net-connect.ts", source)).toEqual([]);
+    const model = analyzeAsyncPatterns("node-net-connect.ts", source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"

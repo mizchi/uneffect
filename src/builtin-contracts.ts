@@ -133,6 +133,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     ...fsBuiltinContracts("node:fs"),
     ...fsBuiltinContracts("node:fs/promises"),
     trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" } }),
+    ...["connect", "createConnection"].map((name): BuiltinContract => trusted({
+      symbol: { module: "node:net", export: name },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
+    })),
     trusted({ symbol: { module: "node:dns", export: "lookup" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0 } }),
     trusted({ symbol: { module: "node:dns", export: "lookupService" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" } }),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
