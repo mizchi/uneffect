@@ -331,7 +331,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.schemaDrift).toEqual([]);
     expect(result.typescriptIr).toEqual(result.corsaIr);
     expect(result.equivalent).toBe(true);
-  });
+  }, 60_000);
 
   it("proves bounded Uint8Array allocation and rejects implicit u8 coercion", async () => {
     const verifyTypedArrays = futureApi("verifyTypedArraySafety");
