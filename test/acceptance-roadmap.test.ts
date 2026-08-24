@@ -509,6 +509,39 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("nested-throw.ts", source, "delivery", temporal)).toEqual([]);
   });
 
+  it("keeps return and throw paths distinct while catch discharges only throw", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state returned: int
+      state caught: int
+      state settled: int
+      state chooseReturn: bool
+      init returned = 0
+      init caught = 0
+      init settled = 0
+      init chooseReturn = false
+      action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1
+    */
+      interface Runtime { returned: number; caught: number; settled: number; chooseReturn: boolean }
+      /* uneffect: refinement completion@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement completion@1 action finish */
+      export function finish(runtime: Runtime) {
+        try {
+          if (runtime.chooseReturn) { runtime.returned++; return }
+          throw "failed"
+        } catch {
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    const temporal = (parseSpec("heterogeneous-completion.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("heterogeneous-completion.ts", source, "completion", temporal)).toEqual([]);
+  });
+
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

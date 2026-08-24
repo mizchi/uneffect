@@ -43,9 +43,16 @@ local result survives composition with real application control flow.
 3. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
    evaluates certificates and narrows the trusted computing base.
 
-Proof-gated compression or mangling should be reconsidered only after the
-evidence schema and semantic frontend parity are stable. Until then, optimizer
-work should remain limited to reviewable experiments that fail closed.
+## Phase 4 — Consume proofs without widening their claims
+
+1. [Proof-gated optimizer transformations](https://github.com/mizchi/uneffect/issues/13)
+   turns the existing obligation schemas and narrow prototypes into explicit,
+   fail-closed transformations. It depends on stable evidence and frontend
+   parity; unknown or stale facts must leave source unchanged.
+
+General compression, reordering, dead-code elimination, and property mangling
+remain later steps within that issue, not capabilities implied by the current
+effect or invariant reports.
 
 ## Cross-cutting missing capabilities
 

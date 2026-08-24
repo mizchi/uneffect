@@ -28,4 +28,11 @@ describe("TODO hierarchy consistency", () => {
     const stale = findStaleUncheckedParents(readFileSync("TODO.md", "utf8"));
     expect(stale.map((task) => `${task.line}:${task.text}`)).toEqual([]);
   });
+
+  it("tracks deferred optimizer implementation in the issue roadmap", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const roadmap = readFileSync("docs/roadmap.md", "utf8");
+    expect(todo).toContain("proof-gated optimizer transformations: [#13]");
+    expect(roadmap).toContain("issues/13");
+  });
 });

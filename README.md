@@ -65,10 +65,13 @@ tsgo 本体の公開 API はまだ未準備です。tsgolint は高速な type-a
 
 ## PoC の限界
 
-- effect source は `console.*`, `fetch`, DOM, Storage, Random, Timer, `throw` の既知パターンのみ。throw型の継承制約はまだ構文推論
-- 同一ファイルの function declaration のみ。メソッド、関数値、動的 dispatch、外部モジュールは未対応
-- Hoare 検査は整数のみ。分岐、配列、オブジェクト、関数呼び出し、例外、浮動小数点は未対応
-- ループは不変条件から終了後状態を導く partial correctness。停止性は証明しない
-- コメントは型システムから見えないため、CI lint として強制する想定
+Uneffect は広い TypeScript/JavaScript 全体を証明するものではありません。
+現在の実装は、各ドキュメントで明示した構文・型・制御フローの断片に対してのみ
+回帰テストを持つ実現性プロトタイプです。動的 dispatch、Proxy/Reflection、未知の
+alias、一般の例外付きCFG、完全なホストイベントループ、停止性、SharedArrayBufferの
+メモリモデルは保守的な `unknown` または診断になります。Z3/Quintの実行結果は
+再現可能な evidence ですが、独立検証可能な proof certificate ではありません。
 
-次段階は Compiler API を `ProgramAdapter` に隔離し、TypeChecker の symbol identity でモジュール間 call graph を構築することです。その後、同じ検査コアを corsa-bind または tsgolint の native rule frontend に接続できます。
+実装済み範囲と明示的な非保証は[Implementation status](./docs/implementation-status.md)、
+未実装項目と優先順位は[Roadmap and known gaps](./docs/roadmap.md)、詳細な履歴は
+[TODO.md](./TODO.md)を参照してください。今後の作業はGitHub Issuesを正本とします。

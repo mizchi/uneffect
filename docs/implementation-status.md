@@ -61,7 +61,11 @@ same property is proved for arbitrary TypeScript.
 - Refinement checks connect selected adjacent TypeScript implementations to
   their temporal actions and invariant predicates. Supported forms include
   scalar and nested-record updates, selected native Set/Map operations,
-  conditionals, bounded literal loops, and acyclic symbol-resolved helpers.
+  conditionals, bounded literal loops, and acyclic symbol-resolved helpers. The
+  action-control subset keeps return and throw completion predicates distinct,
+  lets catch discharge only the throw paths, and runs a common finally block at
+  a terminal try boundary. General post-try joins, catch-local return/rethrow,
+  labels, and arbitrary exception-aware CFGs remain unsupported.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,
   and outcomes. They deliberately do not claim to be independently checkable
   proof terms.
@@ -119,4 +123,5 @@ same property is proved for arbitrary TypeScript.
 - Unsupported syntax, unresolved calls, solver timeouts, and abstraction gaps
   must remain `unknown` or diagnostics; they must not be silently accepted.
 - Optimizer transformations require verified evidence for the exact supported
-  schema. General proof-driven compression and mangling are not implemented.
+  schema. Only narrow authorization and ownership-assertion-elision prototypes
+  exist; a general proof-driven compressor or mangler is not implemented.

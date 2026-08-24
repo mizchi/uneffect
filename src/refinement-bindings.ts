@@ -728,7 +728,36 @@ function validateRefinementActionBodiesInSource(
   };
 
   type AbruptCompletion = "return" | "throw";
-  type ActionCompletion = "normal" | AbruptCompletion | { kind: "mixed"; abrupt: AbruptCompletion; when: TemporalExpression };
+  type ActionCompletion = "normal" | AbruptCompletion | { kind: "mixed"; returnWhen?: TemporalExpression; throwWhen?: TemporalExpression };
+  const completionPredicate = (completion: ActionCompletion, abrupt: AbruptCompletion): TemporalExpression => completion === abrupt
+    ? { kind: "boolean", value: true }
+    : completion === "normal" || typeof completion === "string" ? { kind: "boolean", value: false }
+      : completion[abrupt === "return" ? "returnWhen" : "throwWhen"] ?? { kind: "boolean", value: false };
+  const isBooleanCompletionPredicate = (expression: TemporalExpression, value: boolean): boolean => expression.kind === "boolean" && expression.value === value;
+  const orCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => isBooleanCompletionPredicate(left, false) ? right
+    : isBooleanCompletionPredicate(right, false) ? left
+      : isBooleanCompletionPredicate(left, true) || isBooleanCompletionPredicate(right, true) ? { kind: "boolean", value: true }
+        : { kind: "binary", operator: "or", left, right };
+  const andCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => isBooleanCompletionPredicate(left, false) || isBooleanCompletionPredicate(right, false)
+    ? { kind: "boolean", value: false }
+    : isBooleanCompletionPredicate(left, true) ? right
+      : isBooleanCompletionPredicate(right, true) ? left : { kind: "binary", operator: "and", left, right };
+  const notCompletionPredicate = (expression: TemporalExpression): TemporalExpression => expression.kind === "boolean"
+    ? { kind: "boolean", value: !expression.value }
+    : { kind: "unary", operator: "not", operand: expression };
+  const makeCompletion = (returnWhen: TemporalExpression, throwWhen: TemporalExpression): ActionCompletion => {
+    const noReturn = isBooleanCompletionPredicate(returnWhen, false), noThrow = isBooleanCompletionPredicate(throwWhen, false);
+    if (noReturn && noThrow) return "normal";
+    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow) return "return";
+    if (isBooleanCompletionPredicate(throwWhen, true) && noReturn) return "throw";
+    return { kind: "mixed", ...(noReturn ? {} : { returnWhen }), ...(noThrow ? {} : { throwWhen }) };
+  };
+  const joinCompletionPredicate = (condition: TemporalExpression, whenTrue: TemporalExpression, whenFalse: TemporalExpression): TemporalExpression => {
+    if (isBooleanCompletionPredicate(whenTrue, true) && isBooleanCompletionPredicate(whenFalse, false)) return condition;
+    if (isBooleanCompletionPredicate(whenTrue, false) && isBooleanCompletionPredicate(whenFalse, true)) return notCompletionPredicate(condition);
+    if (sameRefinementExpression(whenTrue, whenFalse)) return whenTrue;
+    return { kind: "conditional", condition, whenTrue, whenFalse };
+  };
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -858,13 +887,15 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isTryStatement(statement)) {
+        let residualCompletion: ActionCompletion = "normal";
         if (statement.catchClause) {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, false, true,
+            updates, new Map(localValues), activeCalls, true, true,
           );
-          if (!tryCompletion || tryCompletion === "normal" || tryCompletion === "return"
-            || typeof tryCompletion !== "string" && tryCompletion.abrupt !== "throw") return undefined;
+          if (!tryCompletion) return undefined;
+          const throwWhen = completionPredicate(tryCompletion, "throw");
+          if (isBooleanCompletionPredicate(throwWhen, false)) return undefined;
           const beforeCatch = new Map(updates);
           const caughtUpdates = new Map(updates);
           const catchCompletion = collect(
@@ -875,7 +906,11 @@ function validateRefinementActionBodiesInSource(
           if (tryCompletion === "throw") {
             updates.clear();
             for (const [name, value] of caughtUpdates) updates.set(name, value);
-          } else mergeConditionalUpdates(tryCompletion.when, caughtUpdates, beforeCatch, beforeCatch);
+          } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
+          residualCompletion = makeCompletion(
+            completionPredicate(tryCompletion, "return"),
+            { kind: "boolean", value: false },
+          );
         } else {
           const tryStatements = [...statement.tryBlock.statements];
           const returnIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
@@ -931,7 +966,11 @@ function validateRefinementActionBodiesInSource(
             updates, new Map(localValues), activeCalls, false,
           )) return undefined;
         }
-        if (!statement.finallyBlock) continue;
+        if (!statement.finallyBlock) {
+          if (residualCompletion === "normal") continue;
+          if (statementIndex !== body.statements.length - 1) return undefined;
+          return residualCompletion;
+        }
         const finallyStatements = [...statement.finallyBlock.statements];
         const finallyTerminal = finallyStatements.at(-1);
         if (finallyTerminal && directVoidReturn(finallyTerminal)) {
@@ -945,6 +984,10 @@ function validateRefinementActionBodiesInSource(
           statement.finallyBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, false,
         )) return undefined;
+        if (residualCompletion !== "normal") {
+          if (statementIndex !== body.statements.length - 1) return undefined;
+          return residualCompletion;
+        }
         continue;
       }
       if (ts.isIfStatement(statement)) {
@@ -978,18 +1021,15 @@ function validateRefinementActionBodiesInSource(
               continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
             );
             if (!continued) return undefined;
-            mergeConditionalUpdates(completion.when, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
-            if (continued === "return" || continued === "throw") return continued === completion.abrupt ? continued : undefined;
-            if (continued === "normal") return completion;
-            if (continued.abrupt !== completion.abrupt) return undefined;
-            return {
-              kind: "mixed",
-              abrupt: completion.abrupt,
-              when: {
-                kind: "binary", operator: "or", left: completion.when,
-                right: { kind: "binary", operator: "and", left: { kind: "unary", operator: "not", operand: completion.when }, right: continued.when },
-              },
-            };
+            const priorReturn = completionPredicate(completion, "return");
+            const priorThrow = completionPredicate(completion, "throw");
+            const priorAbrupt = orCompletionPredicates(priorReturn, priorThrow);
+            const normalWhen = notCompletionPredicate(priorAbrupt);
+            mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
+            return makeCompletion(
+              orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(continued, "return"))),
+              orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
+            );
           };
           whenTrue = applyContinuation(whenTrue, trueUpdates);
           whenFalse = applyContinuation(whenFalse, falseUpdates);
@@ -997,23 +1037,10 @@ function validateRefinementActionBodiesInSource(
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
         if (hasAbruptBranch) {
-          const trueAbrupt = whenTrue === "normal" ? undefined : typeof whenTrue === "string" ? whenTrue : whenTrue.abrupt;
-          const falseAbrupt = whenFalse === "normal" ? undefined : typeof whenFalse === "string" ? whenFalse : whenFalse.abrupt;
-          if (trueAbrupt && falseAbrupt && trueAbrupt !== falseAbrupt) return undefined;
-          const abrupt = trueAbrupt ?? falseAbrupt!;
-          if (whenTrue === abrupt && whenFalse === abrupt) return abrupt;
-          const abruptWhen = (completion: ActionCompletion): TemporalExpression => completion === "normal"
-            ? { kind: "boolean", value: false }
-            : typeof completion === "string" ? { kind: "boolean", value: true } : completion.when;
-          const trueWhen = abruptWhen(whenTrue);
-          const falseWhen = abruptWhen(whenFalse);
-          return {
-            kind: "mixed",
-            abrupt,
-            when: whenTrue === abrupt && whenFalse === "normal" ? condition
-              : whenTrue === "normal" && whenFalse === abrupt ? { kind: "unary", operator: "not", operand: condition }
-              : { kind: "conditional", condition, whenTrue: trueWhen, whenFalse: falseWhen },
-          };
+          return makeCompletion(
+            joinCompletionPredicate(condition, completionPredicate(whenTrue, "return"), completionPredicate(whenFalse, "return")),
+            joinCompletionPredicate(condition, completionPredicate(whenTrue, "throw"), completionPredicate(whenFalse, "throw")),
+          );
         }
         continue;
       }

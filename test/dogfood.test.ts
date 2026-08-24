@@ -468,6 +468,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingNestedThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "nestedReject" }),
     );
+    const missingHeterogeneousReturn = source.replace("      return;\n    }\n    throw \"telemetry not armed\";", "      // missing heterogeneous return\n    }\n    throw \"telemetry not armed\";");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingHeterogeneousReturn, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "returnOrReject", target: "postProcessed" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

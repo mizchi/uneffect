@@ -386,6 +386,36 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("nested-throw.ts", source, "delivery", parseSpec("nested-throw.ts", source).temporal)).toEqual([]);
   });
 
+  it("keeps return and throw completions distinct across catch and finally", () => {
+    const source = `/* uneffect:
+      state returned: int
+      state caught: int
+      state settled: int
+      state chooseReturn: bool
+      init returned = 0
+      init caught = 0
+      init settled = 0
+      init chooseReturn = false
+      action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1
+    */
+      interface Runtime { returned: number; caught: number; settled: number; chooseReturn: boolean }
+      /* uneffect: refinement completion@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement completion@1 action finish */
+      export function finish(runtime: Runtime) {
+        try {
+          if (runtime.chooseReturn) { runtime.returned++; return }
+          throw "failed"
+        } catch {
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("heterogeneous-completion.ts", source, "completion", parseSpec("heterogeneous-completion.ts", source).temporal)).toEqual([]);
+  });
+
   it("runs finally on an early-return path without running statements after try", () => {
     const source = `/* uneffect:
       state started: int

@@ -18,6 +18,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
   action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
   action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed
+  action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -115,6 +116,21 @@ export function nestedRejectTelemetry(runtime: TelemetryRoutingAccounting): void
     }
   } catch {
     runtime.postProcessed += 1;
+  }
+}
+
+/* uneffect: refinement telemetryRouting@1 action returnOrReject */
+export function returnOrRejectTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    if (runtime.auditArmed) {
+      runtime.postProcessed += 1;
+      return;
+    }
+    throw "telemetry not armed";
+  } catch {
+    runtime.postProcessed += 2;
+  } finally {
+    // Both abrupt paths cross the same cleanup boundary.
   }
 }
 

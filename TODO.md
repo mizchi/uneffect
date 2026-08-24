@@ -17,6 +17,7 @@ Open-work mapping:
 - native Corsa frontend parity: [#8](https://github.com/mizchi/uneffect/issues/8)
 - unified Promise/exception/resource flow: [#9](https://github.com/mizchi/uneffect/issues/9)
 - Node and Web event-loop ownership: [#10](https://github.com/mizchi/uneffect/issues/10)
+- proof-gated optimizer transformations: [#13](https://github.com/mizchi/uneffect/issues/13)
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -164,6 +165,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Let a direct terminal void `return` in `finally` override a normally completed or already joined try/catch path and suppress all post-try statements.
       - [x] Separate symbolic state from an explicit action completion lattice and propagate nested branch returns through enclosing conditional joins.
       - [x] Generalize the same completion lattice to homogeneous `throw` paths, propagate nested throw predicates through conditionals, and execute catch only on the exceptional state before `finally`.
+      - [x] Preserve distinct `returnWhen` and `throwWhen` predicates in heterogeneous joins, discharge only `throwWhen` through catch, and retain return completion across common `finally` at a terminal try boundary.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.
@@ -397,6 +399,11 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Add one-shot `--ownership` and `--verify-ownership` CLI modes with safe runtime fallback for unresolved or unavailable Z3 proofs.
 - [x] Persist ownership artifacts, reuse matching proofs across builds, and report stale evidence separately from first-time unknowns.
 - [x] Add a project-level stable-read authorization cache bound to source hashes, TypeScript revision, builtin contracts, and closed-world mode.
+
+The schemas and narrow authorization prototypes above are implemented. A
+production compressor/mangler that consumes them is intentionally deferred to
+[#13](https://github.com/mizchi/uneffect/issues/13); these checked design items
+must not be read as a claim that arbitrary source rewriting is implemented.
 
 ## P6 — Native integration and productization
 

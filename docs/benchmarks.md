@@ -129,6 +129,13 @@ telemetry rejection handled by catch measured 1.4012 ms mean over 357 samples
 removing the only explicit throw leaves an unproven catch path and is rejected
 as `unsupported-action-body`.
 
+Splitting mixed completion into independent return and throw predicates and
+adding a terminal telemetry return-or-reject action measured 1.5360 ms mean
+over 326 samples (0.54% RME). Catch discharges only the throw predicate while
+the return predicate survives common finally processing. The current raw
+symbolic state retains redundant conditionals from pre-catch joins; path-aware
+simplification is not included in this timing or claimed as implemented.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
