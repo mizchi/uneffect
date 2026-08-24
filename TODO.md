@@ -54,6 +54,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Infer TypeChecker-resolved `process.env.NAME` and literal/finite-union element access as scoped `Env`, degrade dynamic keys/direct aggregate access to broad `Env`, cover writes/deletes without a redundant `Mutate`, and dogfood service configuration loading.
   - [x] Define `Run<ProgramSet>`, including the unscoped escalation case for dynamic-loader environment variables.
   - [x] Define `Sys<ApiSet>` from Deno's system-information descriptor names.
+    - [x] Map TypeChecker-resolved `node:os` host-information calls to the equivalent finite Deno `Sys` descriptors, reject same-named local functions, and dogfood runtime diagnostic metadata.
   - [x] Define `Ffi<PathSet>` and treat it as a sandbox escape boundary.
   - [x] Define `Import<HostSet>` separately from runtime `Net` access.
   - [x] Represent unscoped category access without inventing a wildcard string.

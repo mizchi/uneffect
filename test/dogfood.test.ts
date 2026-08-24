@@ -1224,6 +1224,17 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks Deno-compatible system authority in Node runtime metadata", () => {
+    const fileName = "examples/dogfood/node-runtime-metadata.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+
+    const missingMemoryAuthority = source.replace(" | systemMemoryInfo", "");
+    expect(analyzeEffects(fileName, missingMemoryAuthority)).toContainEqual(expect.objectContaining({
+      functionName: "collectRuntimeMetadata", kind: "missing", effect: "Sys<systemMemoryInfo>",
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

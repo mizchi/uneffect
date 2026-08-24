@@ -221,6 +221,19 @@ describe("effect checker", () => {
       .toContainEqual(expect.objectContaining({ functionName: "exact", kind: "missing", effect: 'Env<"CI">' }));
   });
 
+  it("tracks Deno-compatible Sys authority for TypeChecker-resolved node:os calls", () => {
+    const source = `
+      import { hostname as osHostname, cpus, userInfo as currentUser } from "node:os"
+      /* uneffect: effect Sys<hostname | cpus | username | uid | gid | homedir> */
+      function diagnostics() { return { hostname: osHostname(), cores: cpus().length, user: currentUser() } }
+      function hostname() { return "shadowed" }
+      function local() { return hostname() }
+    `;
+    expect(analyzeEffects("node-os-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-os-effects.ts", source.replace(" | username | uid | gid | homedir", "")))
+      .toContainEqual(expect.objectContaining({ functionName: "diagnostics", kind: "missing", effect: "Sys<username | uid | gid | homedir>" }));
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

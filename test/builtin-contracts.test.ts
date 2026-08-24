@@ -81,6 +81,28 @@ describe("builtin semantic overlays", () => {
     }));
   });
 
+  it("maps Node OS information APIs to Deno-compatible Sys authority", () => {
+    const expected = new Map([
+      ["hostname", "Sys<hostname>"],
+      ["release", "Sys<osRelease>"],
+      ["uptime", "Sys<osUptime>"],
+      ["loadavg", "Sys<loadavg>"],
+      ["networkInterfaces", "Sys<networkInterfaces>"],
+      ["totalmem", "Sys<systemMemoryInfo>"],
+      ["freemem", "Sys<systemMemoryInfo>"],
+      ["cpus", "Sys<cpus>"],
+      ["availableParallelism", "Sys<cpus>"],
+      ["homedir", "Sys<homedir>"],
+      ["userInfo", "Sys<username | uid | gid | homedir>"],
+    ]);
+    for (const [name, effect] of expected) {
+      expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+        symbol: { module: "node:os", export: name },
+        operation: { kind: "effect", effect },
+      }));
+    }
+  });
+
   it("registers node:crypto randomBytes as Random-capable poll work when a callback is supplied", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:crypto", export: "randomBytes" },

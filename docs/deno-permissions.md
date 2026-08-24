@@ -214,6 +214,13 @@ Program arguments are not part of Deno's permission scope. Uneffect may later ad
 
 `Sys` uses Deno's finite descriptor vocabulary, including operations such as `hostname`, `osRelease`, `osUptime`, `loadavg`, `networkInterfaces`, `systemMemoryInfo`, `uid`, `gid`, `username`, `cpus`, and `homedir`. Node compatibility APIs map to the same capability names when they expose equivalent host information.
 
+The builtin overlay currently maps `node:os` `hostname`, `release`, `uptime`,
+`loadavg`, `networkInterfaces`, `totalmem`, `freemem`, `cpus`,
+`availableParallelism`, `homedir`, and `userInfo` to those descriptors by
+TypeChecker declaration identity. For example, `userInfo()` requires the
+finite union `Sys<username | uid | gid | homedir>`. Same-named application
+functions are not classified as system authority.
+
 ## FFI
 
 ```ts
