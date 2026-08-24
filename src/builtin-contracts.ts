@@ -25,7 +25,7 @@ export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "poll" | "close"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
+export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "next-tick" | "poll" | "close"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
 export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number; family: "timeout" | "immediate" | "animation-frame" }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
@@ -150,6 +150,14 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     ...fsBuiltinContracts("node:fs"),
     ...fsBuiltinContracts("node:fs/promises"),
     trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" } }),
+    trusted({
+      symbol: { module: "node:net", export: "Server#listen" },
+      operation: {
+        kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+        callbackMustBeCallable: true, queue: "next-tick", effect: "Net",
+        effectScopeArgument: 0, effectScopeKind: "net-connect",
+      },
+    }),
     ...["connect", "createConnection"].map((name): BuiltinContract => trusted({
       symbol: { module: "node:net", export: name },
       operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },

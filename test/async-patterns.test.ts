@@ -2454,6 +2454,19 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("models TypeChecker-resolved net.Server.listen callbacks in the next-tick queue", () => {
+    const model = analyzeAsyncPatterns("node-net-listen.ts", `
+      import { createServer } from "node:net"
+      function serve() { createServer().listen(8080, "127.0.0.1", () => queueMicrotask(() => undefined)) }
+      class Server { listen(_port: number, callback: () => void) { callback() } }
+      new Server().listen(8080, () => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "next-tick", externallyReady: false },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"

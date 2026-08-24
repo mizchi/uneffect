@@ -26,6 +26,7 @@ function targetSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undef
 export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #checker: ts.TypeChecker;
   readonly #contracts: Map<ts.Symbol, BuiltinContract>;
+  readonly #declarationContracts: Map<ts.Declaration, BuiltinContract>;
   readonly #globalContracts: Map<string, BuiltinContract>;
   readonly #memberContracts: Map<string, BuiltinContract>;
   readonly #errorType?: ts.Type;
@@ -33,6 +34,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   constructor(program: ts.Program, registry: BuiltinContractRegistry = builtinContractRegistry) {
     this.#checker = program.getTypeChecker();
     this.#contracts = new Map();
+    this.#declarationContracts = new Map();
     this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
     this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
     const errorDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Error");
@@ -44,12 +46,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       values.push(contract);
       modules.set(contract.symbol.module, values);
     }
-    for (const source of program.getSourceFiles()) for (const statement of source.statements) {
-      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-      const contracts = modules.get(statement.moduleSpecifier.text);
-      if (!contracts) continue;
-      const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
-      if (!moduleSymbol) continue;
+    const bindModuleContracts = (moduleSymbol: ts.Symbol, contracts: BuiltinContract[]): void => {
       const exports = new Map(this.#checker.getExportsOfModule(moduleSymbol).map((symbol) => [symbol.name, symbol]));
       for (const contract of contracts) {
         const [exportName, memberName] = contract.symbol.export.split("#");
@@ -58,8 +55,24 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         const symbol = memberName && exportedTarget
           ? this.#checker.getPropertyOfType(this.#checker.getDeclaredTypeOfSymbol(exportedTarget), memberName)
           : exported;
-        if (symbol) this.#contracts.set(symbol, contract);
+        if (symbol) {
+          this.#contracts.set(symbol, contract);
+          for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
+        }
       }
+    };
+    for (const source of program.getSourceFiles()) for (const statement of source.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      const contracts = modules.get(statement.moduleSpecifier.text);
+      if (!contracts) continue;
+      const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
+      if (!moduleSymbol) continue;
+      bindModuleContracts(moduleSymbol, contracts);
+    }
+    for (const moduleSymbol of this.#checker.getAmbientModules()) {
+      const moduleName = moduleSymbol.name.replace(/^"|"$/g, "");
+      const contracts = moduleName.startsWith("node:") ? modules.get(moduleName) : undefined;
+      if (contracts) bindModuleContracts(moduleSymbol, contracts);
     }
   }
 
@@ -68,6 +81,12 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const symbol = targetSymbol(this.#checker, lookup);
     if (!symbol) return undefined;
     let contract = this.#contracts.get(symbol);
+    if (!contract) {
+      for (const declaration of symbol.declarations ?? []) {
+        contract = this.#declarationContracts.get(declaration);
+        if (contract) break;
+      }
+    }
     if (!contract) {
       const path = ts.isIdentifier(call.expression) ? call.expression.text
         : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)

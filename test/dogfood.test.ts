@@ -1235,6 +1235,17 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks scoped listen authority for a Node HTTP health server", () => {
+    const fileName = "examples/dogfood/node-health-server.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+
+    const missingListenAuthority = source.replace('Net<"127.0.0.1:8080"> | ', "");
+    expect(analyzeEffects(fileName, missingListenAuthority)).toContainEqual(expect.objectContaining({
+      functionName: "startHealthServer", kind: "missing", effect: 'Net<"127.0.0.1:8080">',
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

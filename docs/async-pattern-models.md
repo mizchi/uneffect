@@ -141,6 +141,13 @@ and capability effects from inline or statically named deferred callbacks are
 propagated into the enclosing function's effect summary. A synchronous
 `Throw<T>` is not propagated across this deferred boundary.
 
+TypeChecker-resolved `node:net`, `node:http`, and `node:https`
+`Server.listen` calls consume `Net`. Literal `(port, host, callback)` calls
+narrow that authority to `Net<"host:port">`; other overloads remain broad.
+The optional listening callback is queued as Node next-tick work, while a
+same-named application method is not classified. Request/connection event
+listeners remain a separate open event-emitter boundary.
+
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It

@@ -61,6 +61,22 @@ describe("TypeChecker symbol adapter", () => {
     ]);
   });
 
+  it("resolves an inherited net.Server member through a node:http receiver", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-http-member-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      import { createServer } from "node:http";
+      const server = createServer();
+      server.listen(8080, "127.0.0.1", () => undefined);
+      class Server { listen(_port: number, callback: () => void) { callback() } }
+      new Server().listen(8080, () => undefined);
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback"))
+      .toEqual([expect.objectContaining({ symbol: { module: "node:net", export: "Server#listen" } })]);
+  });
+
   it("resolves node:net Socket.connect without matching a lookalike", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-node-socket-member-"));
     const fileName = join(directory, "input.ts");

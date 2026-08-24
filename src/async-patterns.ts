@@ -1361,7 +1361,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             recursive: false,
             repeats: false,
             queue: operation.queue,
-            externallyReady: true,
+            externallyReady: operation.queue === "poll" || operation.queue === "close",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           collectNestedJobs(callbackNode, timerIndex);

@@ -57,6 +57,17 @@ describe("builtin semantic overlays", () => {
     }));
   });
 
+  it("registers node:net Server.listen as scoped next-tick work", () => {
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+        symbol: { module: "node:net", export: "Server#listen" },
+        operation: {
+          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+          callbackMustBeCallable: true, queue: "next-tick", effect: "Net",
+          effectScopeArgument: 0, effectScopeKind: "net-connect",
+        },
+      }));
+  });
+
   it("registers node:net connection listeners as externally completed poll callbacks", () => {
     for (const name of ["connect", "createConnection"]) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
