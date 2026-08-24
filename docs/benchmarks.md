@@ -18,29 +18,31 @@ opted-in components. Every component calls one shared annotated custom Hook
 whose passive Effect has a result/parameter identity contract and matching
 acquire/release cleanup, a checked `[label]` dependency, and an inline JSX event
 handler. Each component also builds immutable props, state, and context region
-facts through local `const` aliases. The paired baseline
+facts through local `const` aliases and contains an identity-checked inline
+callback ref with returned cleanup. The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
-region construction to the expanded workload, the analyzer measured 11.87 ms
-mean (2.76% RME, 43 samples), while the parse-only baseline measured 1.81 ms
-(0.75% RME, 276 samples). The combined parse-and-analysis path was therefore
-about 6.55 times the parse-only cost for this synthetic cold call, or roughly
-0.093 ms per annotated component. This implementation reparses the supplied
+region construction and callback-ref lifecycle checking to the expanded
+workload, the analyzer measured 16.81 ms mean (3.17% RME, 30 samples), while
+the parse-only baseline measured 2.30 ms (1.46% RME, 218 samples). The combined
+parse-and-analysis path was therefore about 7.32 times the parse-only cost for
+this synthetic cold call, or roughly 0.131 ms per annotated component. This
+implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-13.33 ms mean (1.51% RME, 38 samples). It performs two source walks to establish
+19.01 ms mean (2.88% RME, 27 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk. Source-level React import facts and
 boundary-level immutable-region facts are cached by AST identity; before those
 caches, the expanded Program workload measured 19.07 ms and then 17.29 ms.
 This synthetic one-file Program has no cross-file imports and therefore shows
 fixed-point overhead rather than its intended multi-file benefit. Earlier
-measurements used a smaller workload without state/context region construction
-and are not directly comparable.
+measurements used smaller workloads without state/context region construction
+or callback-ref lifecycle checking and are not directly comparable.
 
 The scaled-affine strengthening dogfood initially measured 3,412.12 ms for one
 sample because every candidate obligation constructed a fresh Z3 Context.

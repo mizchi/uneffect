@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 declare namespace JSX {
   interface IntrinsicElements {
     button: { onClick?: () => void; children?: unknown };
-    output: { children?: unknown };
+    output: { children?: unknown; ref?: unknown };
   }
 }
 
@@ -16,10 +16,18 @@ interface TelemetrySubscription {
   readonly service: string;
 }
 
+interface TelemetryViewport {
+  readonly node: Element | null;
+}
+
 /* uneffect: react acquire TelemetrySubscription result */
 declare function subscribeToTelemetry(service: string): TelemetrySubscription;
 /* uneffect: react release TelemetrySubscription parameter 0 */
 declare function unsubscribeFromTelemetry(subscription: TelemetrySubscription): void;
+/* uneffect: react acquire TelemetryViewport result */
+declare function attachTelemetryViewport(node: Element | null): TelemetryViewport;
+/* uneffect: react release TelemetryViewport parameter 0 */
+declare function detachTelemetryViewport(viewport: TelemetryViewport): void;
 
 /* uneffect: react hook */
 function useTelemetrySubscription(service: string): void {
@@ -37,7 +45,10 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
     () => showFailures ? props.rows.filter((row) => row.failures > 0) : props.rows,
     [props.rows, showFailures],
   );
-  return <output>
+  return <output ref={(node) => {
+    const viewport = attachTelemetryViewport(node);
+    return () => detachTelemetryViewport(viewport);
+  }}>
     {visibleRows.length}
     <button onClick={() => {
       setShowFailures(!showFailures);

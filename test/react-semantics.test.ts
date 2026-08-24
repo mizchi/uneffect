@@ -74,6 +74,79 @@ describe("React Function Component semantics", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("separates callback refs from render and models their Strict Mode replay", () => {
+    const result = analyzeReactSemantics("callback-ref.tsx", `
+      import { useRef as ref } from "react"
+      declare namespace JSX { interface IntrinsicElements { section: { ref?: unknown; children?: unknown } } }
+      interface Observer { readonly id: string }
+      /* uneffect: effect Console */
+      /* uneffect: react acquire Observer result */
+      declare function observe(node: Element | null): Observer
+      /* uneffect: effect Console */
+      /* uneffect: react release Observer parameter 0 */
+      declare function disconnect(observer: Observer): void
+      /* uneffect: react component */
+      function Panel() {
+        const host = ref<Element | null>(null)
+        const observed = host.current
+        host.current = observed
+        return <section ref={(node) => {
+          const observer = observe(node)
+          return () => disconnect(observer)
+        }}><section ref={host} /></section>
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "render-ref-access", phase: "render", operation: "host.current" }),
+      expect.objectContaining({ kind: "render-ref-access", phase: "render", operation: "host.current" }),
+    ]);
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      { phase: "ref-callback", effects: ["Console", "Acquire<Observer>"] },
+      { phase: "cleanup", effects: ["Console", "Release<Observer>"] },
+    ]));
+    expect(result.components[0]!.replay.production.effects).toContainEqual({
+      phase: "ref-callback", transitions: ["setup"], setupEffects: ["Console", "Acquire<Observer>"],
+      possibleCleanupEffects: ["Console", "Release<Observer>"],
+    });
+    expect(result.components[0]!.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
+      phase: "ref-callback", transitions: ["setup", "cleanup", "setup"],
+    }));
+  });
+
+  it("requires callback-ref acquisitions to return matching cleanup", () => {
+    const result = analyzeReactSemantics("leaking-ref.tsx", `
+      declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
+      /* uneffect: react acquire Observer */
+      declare function observe(node: Element | null): void
+      /* uneffect: react component */
+      function Leaking() {
+        return <div ref={(node) => { observe(node) }} />
+      }
+    `);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      kind: "missing-effect-cleanup", phase: "ref-callback", effect: "Observer",
+    }));
+  });
+
+  it("fails closed for referenced or dynamically selected callback refs", () => {
+    const result = analyzeReactSemantics("unknown-ref.tsx", `
+      import { useRef } from "react"
+      declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
+      declare const attach: (node: Element | null) => void
+      declare const alternate: (node: Element | null) => void
+      /* uneffect: react component */
+      function Panel(props: { alternate: boolean }) {
+        const objectRef = useRef<Element | null>(null)
+        return <div ref={objectRef}><div ref={attach} /><div ref={props.alternate ? alternate : attach} /></div>
+      }
+    `);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "attach" }),
+      expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "props.alternate ? alternate : attach" }),
+    ]);
+  });
+
   it("rejects non-idempotent render operations and mutation of props", () => {
     const result = analyzeReactSemantics("impure.tsx", `
       declare namespace JSX { interface IntrinsicElements { span: unknown } }
@@ -715,7 +788,8 @@ describe("React Function Component semantics", () => {
       phases: expect.arrayContaining([
         expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
         expect.objectContaining({ phase: "passive-effect", effects: ["Acquire<TelemetrySubscription>"] }),
-        expect.objectContaining({ phase: "cleanup", effects: ["Release<TelemetrySubscription>"] }),
+        expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),
+        expect.objectContaining({ phase: "cleanup", effects: expect.arrayContaining(["Release<TelemetrySubscription>", "Release<TelemetryViewport>"]) }),
       ]),
     }));
 
@@ -749,6 +823,14 @@ describe("React Function Component semantics", () => {
     ));
     expect(mutating.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "TelemetryDashboard", kind: "immutable-input-mutation",
+    }));
+
+    const leakingRef = analyzeReactSemantics(fileName, source.replace(
+      "return () => detachTelemetryViewport(viewport);",
+      "return undefined;",
+    ));
+    expect(leakingRef.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "TelemetryDashboard", kind: "missing-effect-cleanup", phase: "ref-callback", effect: "TelemetryViewport",
     }));
   });
 

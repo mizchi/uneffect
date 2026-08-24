@@ -132,9 +132,10 @@ Read [Gradual annotations](./docs/gradual-annotations.md),
 scope lattice.
 
 Opt-in React function components can additionally separate replayable render
-from event, layout/passive Effect, and cleanup phases, locally match acquired
-resource identities, check inline Hook dependencies, and expose a Strict Mode
-replay projection. See
+from event, callback-ref commit, layout/passive Effect, and cleanup phases,
+locally match acquired resource identities, reject selected snapshot/ref render
+violations, check inline Hook dependencies, and expose a Strict Mode replay
+projection. See
 [React function component semantics](./docs/react-semantics.md).
 
 ## CLI

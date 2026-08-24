@@ -144,7 +144,8 @@ same property is proved for arbitrary TypeScript.
   check without changing runtime output.
 - The initial phase projection distinguishes replayable render, inline JSX
   event callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
-  cleanup functions. Aliased named imports from `react` are recognized.
+  cleanup functions. Inline JSX callback refs form a separate commit setup and
+  returned-cleanup phase. Aliased named imports from `react` are recognized.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase
@@ -156,7 +157,9 @@ same property is proved for arbitrary TypeScript.
   calls. It also treats identifier/destructured props, direct `useState` /
   `useReducer` snapshots, direct `useContext` results, and transitive local
   `const` aliases as immutable render regions for assignment, update, and
-  delete writes.
+  delete writes. Direct `useRef` results and local `const` aliases reject
+  `.current` reads/writes in replayable render while remaining usable in event,
+  Effect, and callback-ref phases.
 - Other named React Hooks receive stable-order checks. Reviewed inline
   `useMemo`, lazy `useState`, and `useReducer` initializer callbacks are
   executed in render summaries, while retained `useCallback` bodies are not.
@@ -167,20 +170,23 @@ same property is proved for arbitrary TypeScript.
   immutable identifier aliases.
 - Component and custom-Hook summaries expose production and development Strict
   Mode initial-mount replay projections. These model render multiplicity and
-  per-phase setup/cleanup cycles without claiming total host scheduling order.
+  Effect/callback-ref setup/cleanup cycles without claiming total host
+  scheduling order.
 - Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common
   stable React return positions, and rejects opaque/dynamic/unstable evidence.
 - Dynamic/higher-order Hook calls, symbol-resolved dependency callback aliases,
-  custom stability contracts, general/reassigned state-context aliases, refs,
-  interprocedural region flow,
+  custom stability contracts, general/reassigned state-context aliases,
+  interprocedural region flow, referenced/prop callback refs, imperative
+  handles, lazy ref initialization,
   Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
-  calculation, custom subscription setup/cleanup, and a Fetch event. Removing
-  cleanup, substituting another resource identity, removing a dependency, or
-  mutating props is a load-bearing negative control.
+  calculation, custom subscription setup/cleanup, an identity-checked callback
+  ref, and a Fetch event. Removing Effect/ref cleanup, substituting another
+  resource identity, removing a dependency, or mutating props is a
+  load-bearing negative control.
 - A checked-in multi-file dashboard additionally exercises named barrel,
   namespace, and default custom-Hook composition through TypeScript symbols.
 

@@ -1,11 +1,13 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "event" | "passive-effect" | "layout-effect" | "cleanup";
+export type ReactPhase = "render" | "event" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
   | "immutable-input-mutation"
+  | "render-ref-access"
+  | "unknown-ref-callback"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -25,8 +27,9 @@ export interface ReactPhaseSummary {
 }
 
 export type ReactEffectTransition = "setup" | "cleanup";
+export type ReactCommitPhase = "passive-effect" | "layout-effect" | "ref-callback";
 export interface ReactReplayEffect {
-  phase: HookKind;
+  phase: ReactCommitPhase;
   transitions: ReactEffectTransition[];
   setupEffects: string[];
   /** Conservative union until per-call Effect instances are preserved through custom Hook summaries. */
@@ -103,7 +106,7 @@ interface CustomHookSummary {
 
 function replayModel(phases: ReadonlyMap<ReactPhase, ReadonlySet<string>>): ReactReplayModel {
   const cleanup = [...(phases.get("cleanup") ?? [])];
-  const effects = (["layout-effect", "passive-effect"] as const)
+  const effects = (["layout-effect", "passive-effect", "ref-callback"] as const)
     .filter((phase) => phases.has(phase))
     .map((phase) => ({ phase, setupEffects: [...(phases.get(phase) ?? [])], possibleCleanupEffects: cleanup }));
   return {
@@ -630,6 +633,54 @@ function immutableSnapshotBindings(boundary: ComponentNode, source: ts.SourceFil
   return immutable;
 }
 
+const renderRefBindingCache = new WeakMap<ComponentNode, ReadonlySet<string>>();
+
+function renderRefBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  const cached = renderRefBindingCache.get(boundary);
+  if (cached) return cached;
+  const refs = new Set<string>();
+  const imports = reactImportNames(source);
+  const declarations: ts.VariableDeclaration[] = [];
+  const collect = (node: ts.Node): void => {
+    if (node !== boundary.body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node)) declarations.push(node);
+    ts.forEachChild(node, collect);
+  };
+  collect(boundary.body);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of declarations) {
+      if (!ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0
+        || !ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const initializer = unwrapExpression(declaration.initializer);
+      const directRef = ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)
+        && imports.get(initializer.expression.text) === "useRef";
+      const alias = ts.isIdentifier(initializer) && refs.has(initializer.text);
+      if ((directRef || alias) && !refs.has(declaration.name.text)) {
+        refs.add(declaration.name.text);
+        changed = true;
+      }
+    }
+  }
+  renderRefBindingCache.set(boundary, refs);
+  return refs;
+}
+
+function refCurrentAccess(node: ts.Node, refs: ReadonlySet<string>): ts.Expression | undefined {
+  if (ts.isPropertyAccessExpression(node) && node.name.text === "current") {
+    const root = expressionRoot(node.expression);
+    if (root && refs.has(root)) return node;
+  }
+  if (ts.isElementAccessExpression(node) && node.argumentExpression && ts.isStringLiteral(node.argumentExpression)
+    && node.argumentExpression.text === "current") {
+    const root = expressionRoot(node.expression);
+    if (root && refs.has(root)) return node;
+  }
+  return undefined;
+}
+
 function mutationTarget(node: ts.Node): ts.Expression | undefined {
   if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
     && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) return node.left;
@@ -770,6 +821,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       });
     };
     const immutableSnapshots = immutableSnapshotBindings(hook, source);
+    const refs = renderRefBindings(hook, source);
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -807,6 +859,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
         message: "React Hook inputs, state, and context are immutable render snapshots",
       });
+      const refAccess = refCurrentAccess(node, refs);
+      if (refAccess) reportHook(refAccess, {
+        kind: "render-ref-access", phase: "render", operation: refAccess.getText(source),
+        message: `${refAccess.getText(source)} is read or written during replayable custom Hook render`,
+      });
       if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
         && (node.left.getText(source).startsWith("document.") || node.left.getText(source).startsWith("window."))) reportHook(node, {
@@ -836,8 +893,36 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       diagnostics.push({ fileName, component: name, functionName: name, severity: "error", line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, ...diagnostic });
     };
     const immutableSnapshots = immutableSnapshotBindings(component, source);
+    const refs = renderRefBindings(component, source);
     const visitRender = (node: ts.Node): void => {
       if (node !== component.body && ts.isFunctionLike(node)) return;
+      if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
+        const callback = node.initializer && ts.isJsxExpression(node.initializer)
+          ? node.initializer.expression : undefined;
+        if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+          addPhase("ref-callback", directEffects(callback.body, declared));
+          const cleanup = returnedCleanup(callback);
+          if (cleanup) addPhase("cleanup", directEffects(cleanup.body, declared));
+          const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+          addPhase("ref-callback", lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
+          addPhase("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+          if (lifecycle.missing.length > 0) report(node, {
+            kind: "missing-effect-cleanup", phase: "ref-callback", effect: lifecycle.missing.join(" | "),
+            message: `callback ref acquires ${lifecycle.missing.join(", ")} without a matching returned cleanup release`,
+          });
+          for (const issue of lifecycle.issues) report(issue.node, {
+            kind: issue.kind, phase: "ref-callback", effect: issue.capability, message: issue.detail,
+          });
+        } else if (!(callback && ts.isIdentifier(callback) && refs.has(callback.text))
+          && callback?.kind !== ts.SyntaxKind.NullKeyword) {
+          const operation = callback?.getText(source) ?? node.initializer?.getText(source) ?? "ref";
+          report(callback ?? node, {
+            kind: "unknown-ref-callback", phase: "ref-callback", operation,
+            message: `${operation} is not an inline callback ref or a locally resolved object ref`,
+          });
+        }
+        return;
+      }
       if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("on") && node.initializer && ts.isJsxExpression(node.initializer)) {
         const expression = node.initializer.expression;
         if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) addPhase("event", directEffects(expression.body, declared));
@@ -906,6 +991,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (isImmutableSnapshotMutation(node, immutableSnapshots)) report(node, {
         kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
         message: "React component inputs, state, and context are immutable render snapshots",
+      });
+      const refAccess = refCurrentAccess(node, refs);
+      if (refAccess) report(refAccess, {
+        kind: "render-ref-access", phase: "render", operation: refAccess.getText(source),
+        message: `${refAccess.getText(source)} is read or written during replayable render`,
       });
       if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment

@@ -38,6 +38,8 @@ const hints: Readonly<Record<string, string>> = {
   "react/render-effect": "move the operation into an event handler or an Effect setup, leaving render replay-safe",
   "react/non-idempotent-render": "derive the value from props/state/context, or read it outside render in an event or Effect",
   "react/immutable-input-mutation": "create a new value instead of mutating a props, state, or context render snapshot",
+  "react/render-ref-access": "move the ref read or write into an event, Effect, or callback-ref commit phase",
+  "react/unknown-ref-callback": "inline the callback ref so setup and returned cleanup can be checked, or pass a locally resolved object ref",
   "react/conditional-hook": "call Hooks unconditionally at the component top level and move the condition inside the Hook",
   "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect: react release Capability */ boundary",
   "react/invalid-react-annotation": "use `react component`, `react hook`, `react acquire Capability [result]`, or `react release Capability [parameter N]`",

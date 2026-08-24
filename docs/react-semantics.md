@@ -28,7 +28,7 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into five phases:
+The analyzer currently projects component work into six phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
@@ -36,7 +36,8 @@ The analyzer currently projects component work into five phases:
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
 | `layout-effect` | `useLayoutEffect` setup after commit | Capabilities are recorded separately |
 | `passive-effect` | `useEffect` setup after commit | Capabilities are recorded separately |
-| `cleanup` | Function returned by an Effect setup | May release a setup acquisition |
+| `ref-callback` | Inline JSX callback ref invoked during commit | Setup capabilities are separate from render |
+| `cleanup` | Function returned by an Effect or callback-ref setup | May release a setup acquisition |
 
 Creating JSX is a render calculation, not a `DomWrite`. React's later host DOM
 commit is outside the component function. Direct writes through `document` or
@@ -64,6 +65,10 @@ The tested fragment reports:
   tested region sources are identifier or destructured props, the value
   position of directly imported `useState`/`useReducer`, directly imported
   `useContext` results, and transitive local `const` aliases;
+- reads or writes of `.current` through a direct named-import `useRef` result
+  or transitive local `const` alias during render. Passing the ref object as
+  `ref={host}` is not a `.current` access, and event/Effect/ref callbacks are
+  separate phases;
 - recognized Hooks called below a condition, loop, switch arm, short-circuit
   expression, or nested function.
 - annotated custom Hook arguments are checked as immutable snapshots, and
@@ -117,6 +122,13 @@ fields are not silently ignored.
 
 Inline JSX event callbacks are analyzed as `event`, so their capabilities do
 not produce render diagnostics.
+
+Inline JSX callback refs are analyzed as `ref-callback` commit work. Their
+returned inline function is cleanup, and the same acquire/release capability
+and local resource-identity checks used for Effects apply. Development Strict
+Mode projects callback refs as `setup, cleanup, setup`. Referenced callback
+identifiers and callback refs passed through component props are not resolved
+yet.
 
 ## Acquisition and cleanup contracts
 
@@ -187,10 +199,10 @@ ownership transfer are not accepted as evidence yet.
 
 Every component and custom-Hook summary exposes a zero-runtime `replay` model.
 The production initial-mount scenario has one render invocation and one setup
-transition for each present layout/passive phase. The development Strict Mode
-scenario has two render invocations and models each present Effect phase as
-`setup, cleanup, setup`. Setup effects and a conservative union of possible
-cleanup effects remain visible in the model.
+transition for each present layout/passive/ref-callback phase. The development
+Strict Mode scenario has two render invocations and models each present Effect
+or inline callback-ref phase as `setup, cleanup, setup`. Setup effects and a
+conservative union of possible cleanup effects remain visible in the model.
 
 This is deliberately a lifecycle projection, not a claim about total ordering
 between all layout and passive Effect instances, browser tasks, Suspense, or
@@ -218,8 +230,11 @@ This is a tested initial fragment, not a complete React semantics:
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
   aliases. Reassigned bindings, mutation through calls, properties stored in
-  containers, refs, and interprocedural region flow need a flow-sensitive
+  containers, and interprocedural region flow need a flow-sensitive
   ownership analysis;
+- callback-ref extraction covers inline JSX functions only; referenced refs,
+  ref props, imperative handles, and the predictable lazy-initialization
+  exception for render-time `.current` access are not modeled;
 - dependency completeness is checked for the documented inline lexical
   fragment; referenced callbacks, custom stability contracts, module mutation,
   and TypeScript-symbol-level aliasing remain unsupported;
@@ -227,7 +242,7 @@ This is a tested initial fragment, not a complete React semantics:
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
 - Suspense, transitions, Offscreen trees, server components, hydration,
-  ref callbacks, insertion effects, and React compiler assumptions are not
+  insertion effects, and React compiler assumptions are not
   modeled;
 - no Quint lifecycle model or Z3 invariant projection is generated yet.
 
@@ -237,10 +252,11 @@ summary only claims coverage for the constructs listed above.
 ## Dogfood
 
 `examples/dogfood/react-telemetry-dashboard.tsx` combines `useState`, a pure
-`useMemo` calculation, a custom subscription Hook, matching cleanup, and an
-inline Fetch event. Its regression test removes cleanup, substitutes another
-resource, removes a dependency, and mutates props as independent negative
-controls. The checked-in `react-symbol-*` modules additionally compose a
+`useMemo` calculation, a custom subscription Hook, an identity-checked inline
+callback ref, matching cleanup, and an inline Fetch event. Its regression test
+removes Effect/ref cleanup, substitutes another resource, removes a dependency,
+and mutates props as independent negative controls. The checked-in
+`react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather
 than an ecosystem false-positive measurement.

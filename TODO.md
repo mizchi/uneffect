@@ -44,6 +44,7 @@ documentation are all updated.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.
 - [x] Resolve direct custom-Hook call sites through TypeScript symbols across named aliases, barrels, namespaces, and default imports, and reject local/cross-module indirect recursion cycles.
 - [x] Track destructured props, `useState`/`useReducer` snapshots, `useContext` values, and transitive local `const` aliases as immutable render regions, including assignment, update, and delete writes.
+- [x] Reject direct `useRef` `.current` access during replayable render, and project inline callback refs as commit setup/returned-cleanup phases with resource matching and development Strict Mode replay.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

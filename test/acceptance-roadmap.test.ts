@@ -67,7 +67,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
-      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
       /* uneffect: react release Subscription */
@@ -82,7 +82,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
         useSubscription(topic)
-        return <button onClick={() => fetch(\`/topics/\${topic}\`)} />
+        return <button
+          ref={(node) => { console.log(node); return () => console.log("detach") }}
+          onClick={() => fetch(\`/topics/\${topic}\`)}
+        />
       }
       function Legacy() { console.log("not opted in"); return null }
     `) as { diagnostics: unknown[]; components: Array<{ name: string; phases: Array<{ phase: string; effects: string[] }> }> };
@@ -91,12 +94,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
       expect.objectContaining({ phase: "render", effects: [] }),
       expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
+      expect.objectContaining({ phase: "ref-callback", effects: ["Console"] }),
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));
 
     const broken = analyzeReact("src/feed.tsx", `
-      import { useContext, useEffect, useState } from "react"
+      import { useContext, useEffect, useRef, useState } from "react"
       declare const ThemeContext: object
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -105,9 +109,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         const configAlias = config
         const [snapshot] = useState({ count: 0 })
         const theme = useContext(ThemeContext) as { mode: string }
+        const host = useRef<Element | null>(null)
         configAlias.enabled = false
         snapshot.count++
         theme.mode = "dark"
+        host.current = null
         topic = String(Date.now())
         useEffect(() => { subscribe() }, [])
         return null
@@ -115,7 +121,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     `) as { diagnostics: Array<{ kind: string }> };
     expect(broken.diagnostics.map((diagnostic) => diagnostic.kind).sort()).toEqual([
       "immutable-input-mutation", "immutable-input-mutation", "immutable-input-mutation",
-      "missing-effect-cleanup", "non-idempotent-render",
+      "missing-effect-cleanup", "non-idempotent-render", "render-ref-access",
     ]);
   });
 
