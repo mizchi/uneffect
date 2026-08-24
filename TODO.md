@@ -179,6 +179,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Accept state-backed and otherwise normalizable pure `throw` expressions through the same completion lattice; the initial slice discarded payloads and kept effectful expressions fail-closed.
       - [x] Retain scalar `int`/`bool` throw payloads, including normalized numeric/boolean literals, across direct and conditional `if` completion joins and bind them as immutable catch locals; reject string/null/object payloads, effectful expressions, and unsupported joins when catch reads the value.
       - [x] Retain tracked scalar throw payloads across scalar `switch` case, fallthrough, and default selection, bind the selected value in `catch`, and reject any joined throw path whose payload is unavailable.
+      - [x] Project scalar fields from a direct object-literal throw payload into immutable catch locals; reject string-valued, effectful, duplicate, computed, accessor, and otherwise unnormalized payload fields.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

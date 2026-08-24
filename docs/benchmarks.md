@@ -809,3 +809,10 @@ error). It covers normalized integer literal payloads, an empty case falling
 through to a throwing case, a throwing default path, all-path throw completion
 simplification, and catch-local numeric comparison. String and null payloads
 remain negative controls because the scalar temporal IR cannot represent them.
+
+The dedicated `project a direct record throw payload` benchmark measured
+0.1746 ms mean over 2,864 samples (0.62% relative margin of error). It covers a
+direct object literal with integer and boolean fields, immutable catch binding,
+static field projection, and a catch-local compound predicate. String-valued,
+effectful, and duplicate fields are negative controls; conditional record joins
+are not claimed by this benchmark.

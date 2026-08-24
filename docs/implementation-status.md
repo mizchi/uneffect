@@ -78,7 +78,9 @@ same property is proved for arbitrary TypeScript.
   `switch` completion and can bind immutable catch-local predicates. Normalized
   integer and boolean literals are tracked, including switch fallthrough and
   default paths. Switch joins require every selected throwing path to carry a
-  tracked payload. Effectful or unresolved return calls, string/null/object throw payloads, other
+  tracked payload. A direct normalized object-literal throw may expose its
+  scalar fields through catch-local property reads. Conditional/dynamic object
+  shapes, effectful or unresolved return calls, string/null payloads, other
   abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
   unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.

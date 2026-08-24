@@ -534,6 +534,38 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("boolean-literal-payload.ts", source, "accounting", parseSpec("boolean-literal-payload.ts", source).temporal)).toEqual([]);
   });
 
+  it("projects fields from a direct record throw payload", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state code: int
+      state retryable: bool
+      init failed = 0
+      init code = 0
+      init retryable = false
+      action reject: failed' = retryable && code > 0 ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; code: number; retryable: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          throw { code: runtime.code, retryable: runtime.retryable }
+        } catch (error) {
+          if (error.retryable && error.code > 0) runtime.failed++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("record-payload.ts", source, "accounting", parseSpec("record-payload.ts", source).temporal)).toEqual([]);
+
+    for (const unsupported of ['message: "failed"', "cause: makeCause()", "code: runtime.code, code: 1"]) {
+      const invalidPayload = source.replace("code: runtime.code, retryable: runtime.retryable", unsupported);
+      expect(validateRefinementActionBodies("unsupported-record-payload.ts", invalidPayload, "accounting", parseSpec("unsupported-record-payload.ts", invalidPayload).temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+      );
+    }
+  });
+
   it("propagates a nested conditional throw to the enclosing catch path", () => {
     const source = `/* uneffect:
       state delivered: int

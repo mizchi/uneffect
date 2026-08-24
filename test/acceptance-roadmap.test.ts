@@ -602,6 +602,31 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("boolean-literal-payload.ts", source, "accounting", temporal)).toEqual([]);
   });
 
+  it("uses fields from a direct record throw payload in catch control flow", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state failed: int
+      state code: int
+      state retryable: bool
+      init failed = 0
+      init code = 0
+      init retryable = false
+      action reject: failed' = retryable && code > 0 ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; code: number; retryable: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try { throw { code: runtime.code, retryable: runtime.retryable } }
+        catch (error) { if (error.retryable && error.code > 0) runtime.failed++ }
+      }
+    `;
+    const temporal = (parseSpec("record-payload.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("record-payload.ts", source, "accounting", temporal)).toEqual([]);
+  });
+
   it("routes a nested conditional throw through the enclosing catch path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

@@ -1025,4 +1025,26 @@ describe("typed-array static verification", () => {
     `;
     validateRefinementActionBodies("literal-switch-payload-bench.ts", source, "accounting", parseSpec("literal-switch-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("project a direct record throw payload", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state code: int
+      state retryable: bool
+      init failed = 0
+      init code = 0
+      init retryable = false
+      action reject: failed' = retryable && code > 0 ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; code: number; retryable: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try { throw { code: runtime.code, retryable: runtime.retryable } }
+        catch (error) { if (error.retryable && error.code > 0) runtime.failed++ }
+      }
+    `;
+    validateRefinementActionBodies("record-payload-bench.ts", source, "accounting", parseSpec("record-payload-bench.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

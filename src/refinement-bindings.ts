@@ -827,7 +827,16 @@ function validateRefinementActionBodiesInSource(
       if (expression.kind === "unary") return { ...expression, operand: expandLocalSnapshots(expression.operand) };
       if (expression.kind === "binary") return { ...expression, left: expandLocalSnapshots(expression.left), right: expandLocalSnapshots(expression.right) };
       if (expression.kind === "conditional") return { ...expression, condition: expandLocalSnapshots(expression.condition), whenTrue: expandLocalSnapshots(expression.whenTrue), whenFalse: expandLocalSnapshots(expression.whenFalse) };
-      if (expression.kind === "field") return { ...expression, receiver: expandLocalSnapshots(expression.receiver) };
+      if (expression.kind === "field") {
+        const receiver = expandLocalSnapshots(expression.receiver);
+        const project = (value: TemporalExpression): TemporalExpression | undefined => {
+          if (value.kind !== "record") return undefined;
+          const own = value.fields[expression.name];
+          if (own) return expandLocalSnapshots(own);
+          return value.base ? project(value.base) : undefined;
+        };
+        return project(receiver) ?? { ...expression, receiver };
+      }
       if (expression.kind === "record") return { ...expression, ...(expression.base ? { base: expandLocalSnapshots(expression.base) } : {}), fields: Object.fromEntries(Object.entries(expression.fields).map(([name, value]) => [name, expandLocalSnapshots(value)])) };
       if (expression.kind === "array") return { ...expression, elements: expression.elements.map(expandLocalSnapshots) };
       return expression;
