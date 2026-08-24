@@ -143,8 +143,12 @@ same property is proved for arbitrary TypeScript.
 - Component and custom-Hook summaries expose production and development Strict
   Mode initial-mount replay projections. These model render multiplicity and
   per-phase setup/cleanup cycles without claiming total host scheduling order.
-- Barrel/namespace/default Hook imports, indirect recursion, dependency
-  completeness, stale closures, refs/state/context aliases,
+- Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
+  `useCallback` are checked against lexically captured owner bindings. The
+  checker understands member-path coverage, block/function shadowing, common
+  stable React return positions, and rejects opaque/dynamic/unstable evidence.
+- Barrel/namespace/default Hook imports, indirect recursion, symbol-resolved
+  dependency aliases, custom stability contracts, refs/state/context flow,
   Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

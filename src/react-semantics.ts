@@ -13,7 +13,11 @@ export type ReactDiagnosticKind =
   | "recursive-hook"
   | "resource-identity-mismatch"
   | "duplicate-effect-cleanup"
-  | "conditional-resource-lifecycle";
+  | "conditional-resource-lifecycle"
+  | "missing-hook-dependency"
+  | "unknown-hook-closure"
+  | "unknown-hook-dependencies"
+  | "unstable-hook-dependency";
 
 export interface ReactPhaseSummary {
   phase: ReactPhase;
@@ -57,6 +61,7 @@ export interface ReactSemanticDiagnostic {
   effect?: string;
   operation?: string;
   hook?: string;
+  dependencies?: string[];
   notes?: Array<{ label: string; detail: string }>;
 }
 
@@ -70,6 +75,13 @@ type ComponentNode = (ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowF
 type AnnotatableFunction = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
 type HookKind = "passive-effect" | "layout-effect";
 type BuiltinHookKind = HookKind | "render-hook";
+interface DependencyHook { callback: number; dependencies: number; phase: ReactPhase }
+interface DependencyIssue {
+  kind: "missing-hook-dependency" | "unknown-hook-closure" | "unknown-hook-dependencies" | "unstable-hook-dependency";
+  node: ts.Node;
+  dependencies?: string[];
+  detail: string;
+}
 interface LifecycleContract { capability: string; identity?: "result" | number }
 interface LifecycleIssue {
   kind: "resource-identity-mismatch" | "duplicate-effect-cleanup" | "conditional-resource-lifecycle";
@@ -313,6 +325,184 @@ function importedRenderCallbacks(source: ts.SourceFile): Map<string, number> {
   return callbacks;
 }
 
+function importedDependencyHooks(source: ts.SourceFile): Map<string, DependencyHook> {
+  const hooks = new Map<string, DependencyHook>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "react" || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+    for (const element of statement.importClause.namedBindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      if (imported === "useEffect") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "passive-effect" });
+      else if (imported === "useLayoutEffect") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "layout-effect" });
+      else if (imported === "useMemo" || imported === "useCallback") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "render" });
+    }
+  }
+  return hooks;
+}
+
+function bindingNames(name: ts.BindingName): string[] {
+  if (ts.isIdentifier(name)) return [name.text];
+  return name.elements.flatMap((element) => ts.isOmittedExpression(element) ? [] : bindingNames(element.name));
+}
+
+function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bindings: Set<string>; stable: Set<string> } {
+  const bindings = new Set(boundary.parameters.flatMap((parameter) => bindingNames(parameter.name)));
+  const stable = new Set<string>();
+  const reactImports = new Map<string, string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "react" || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+    for (const element of statement.importClause.namedBindings.elements) {
+      reactImports.set(element.name.text, element.propertyName?.text ?? element.name.text);
+    }
+  }
+  const visit = (node: ts.Node): void => {
+    if (node !== boundary.body && ts.isFunctionLike(node)) {
+      if (ts.isFunctionDeclaration(node) && node.name) bindings.add(node.name.text);
+      return;
+    }
+    if (ts.isVariableDeclaration(node)) {
+      for (const name of bindingNames(node.name)) bindings.add(name);
+      if (node.initializer && ts.isCallExpression(node.initializer) && ts.isIdentifier(node.initializer.expression)) {
+        const imported = reactImports.get(node.initializer.expression.text);
+        if (ts.isArrayBindingPattern(node.name) && (imported === "useState" || imported === "useReducer" || imported === "useTransition")) {
+          const element = node.name.elements[1];
+          if (element && !ts.isOmittedExpression(element)) for (const name of bindingNames(element.name)) stable.add(name);
+        } else if (ts.isIdentifier(node.name) && imported === "useRef") stable.add(node.name.text);
+      }
+    }
+    if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) bindings.add(node.name.text);
+    ts.forEachChild(node, visit);
+  };
+  visit(boundary.body);
+  return { bindings, stable };
+}
+
+function isReferenceIdentifier(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === node && !ts.isComputedPropertyName(parent.name)) return false;
+  if (ts.isBindingElement(parent) && parent.propertyName === node) return false;
+  if (ts.isMethodDeclaration(parent) && parent.name === node) return false;
+  if ((ts.isVariableDeclaration(parent) || ts.isParameter(parent) || ts.isBindingElement(parent)
+    || ts.isFunctionDeclaration(parent) || ts.isFunctionExpression(parent) || ts.isClassDeclaration(parent)) && parent.name === node) return false;
+  if (ts.isTypeReferenceNode(parent) || ts.isTypeQueryNode(parent) || ts.isPropertySignature(parent)) return false;
+  if (ts.isLabeledStatement(parent) || ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) return false;
+  return true;
+}
+
+function directScopeBindings(block: ts.Block): Set<string> {
+  const names = new Set<string>();
+  for (const statement of block.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) for (const name of bindingNames(declaration.name)) names.add(name);
+    } else if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) && statement.name) names.add(statement.name.text);
+  }
+  return names;
+}
+
+function capturedDependencies(
+  callback: ts.ArrowFunction | ts.FunctionExpression,
+  ownerBindings: ReadonlySet<string>,
+  stableBindings: ReadonlySet<string>,
+): Set<string> {
+  const required = new Set<string>();
+  const initial = new Set(callback.parameters.flatMap((parameter) => bindingNames(parameter.name)));
+  const visit = (node: ts.Node, shadowed: ReadonlySet<string>): void => {
+    if (node !== callback && ts.isFunctionLike(node)) {
+      const nested = new Set(shadowed);
+      if (node.name && ts.isIdentifier(node.name)) nested.add(node.name.text);
+      for (const parameter of node.parameters) for (const name of bindingNames(parameter.name)) nested.add(name);
+      if ("body" in node && node.body) visit(node.body, nested);
+      return;
+    }
+    if (ts.isCatchClause(node)) {
+      const caught = new Set(shadowed);
+      if (node.variableDeclaration) for (const name of bindingNames(node.variableDeclaration.name)) caught.add(name);
+      visit(node.block, caught);
+      return;
+    }
+    if (ts.isForStatement(node) && node.initializer && ts.isVariableDeclarationList(node.initializer)) {
+      const loop = new Set(shadowed);
+      for (const declaration of node.initializer.declarations) for (const name of bindingNames(declaration.name)) loop.add(name);
+      visit(node.initializer, loop);
+      if (node.condition) visit(node.condition, loop);
+      if (node.incrementor) visit(node.incrementor, loop);
+      visit(node.statement, loop);
+      return;
+    }
+    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && ts.isVariableDeclarationList(node.initializer)) {
+      const loop = new Set(shadowed);
+      for (const declaration of node.initializer.declarations) for (const name of bindingNames(declaration.name)) loop.add(name);
+      visit(node.initializer, loop);
+      visit(node.expression, loop);
+      visit(node.statement, loop);
+      return;
+    }
+    if (ts.isBlock(node)) {
+      const scoped = new Set(shadowed);
+      for (const name of directScopeBindings(node)) scoped.add(name);
+      for (const statement of node.statements) visit(statement, scoped);
+      return;
+    }
+    if (ts.isIdentifier(node) && isReferenceIdentifier(node) && ownerBindings.has(node.text)
+      && !shadowed.has(node.text) && !stableBindings.has(node.text)) required.add(capturedPath(node));
+    ts.forEachChild(node, (child) => visit(child, shadowed));
+  };
+  visit(callback.body, initial);
+  return required;
+}
+
+function capturedPath(identifier: ts.Identifier): string {
+  let current: ts.Expression = identifier;
+  while ((ts.isPropertyAccessExpression(current.parent) && current.parent.expression === current)
+    || (ts.isElementAccessExpression(current.parent) && current.parent.expression === current
+      && current.parent.argumentExpression && (ts.isStringLiteral(current.parent.argumentExpression) || ts.isNumericLiteral(current.parent.argumentExpression)))) {
+    current = current.parent;
+  }
+  let path = current.getText(identifier.getSourceFile()).replace(/\s+/gu, "");
+  if (ts.isCallExpression(current.parent) && current.parent.expression === current && path.includes(".")) path = path.slice(0, path.lastIndexOf("."));
+  return path;
+}
+
+function dependencyIssues(
+  call: ts.CallExpression,
+  hook: string,
+  config: DependencyHook,
+  boundary: ComponentNode,
+  source: ts.SourceFile,
+): DependencyIssue[] {
+  const dependencyNode = call.arguments[config.dependencies];
+  if (!dependencyNode) return [];
+  const callbackNode = call.arguments[config.callback];
+  const issues: DependencyIssue[] = [];
+  if (!callbackNode || !(ts.isArrowFunction(callbackNode) || ts.isFunctionExpression(callbackNode))) {
+    issues.push({ kind: "unknown-hook-closure", node: callbackNode ?? call, detail: `${hook} uses a callback whose captured values are not locally inspectable` });
+  }
+  if (!ts.isArrayLiteralExpression(dependencyNode) || dependencyNode.elements.some(ts.isSpreadElement)) {
+    issues.push({ kind: "unknown-hook-dependencies", node: dependencyNode, detail: `${hook} dependency list is not a finite inline array` });
+    return issues;
+  }
+  for (const element of dependencyNode.elements) {
+    if (ts.isObjectLiteralExpression(element) || ts.isArrayLiteralExpression(element) || ts.isArrowFunction(element)
+      || ts.isFunctionExpression(element) || ts.isCallExpression(element) || ts.isNewExpression(element)) {
+      issues.push({ kind: "unstable-hook-dependency", node: element, dependencies: [element.getText(source)], detail: `${element.getText(source)} creates a new dependency identity during render` });
+    }
+  }
+  if (!callbackNode || !(ts.isArrowFunction(callbackNode) || ts.isFunctionExpression(callbackNode))) return issues;
+  const { bindings, stable } = ownerBindingFacts(boundary, source);
+  const required = capturedDependencies(callbackNode, bindings, stable);
+  const declared = dependencyNode.elements.map((element) => element.getText(source).replace(/\s+/gu, ""));
+  const missing = [...required].filter((requiredPath) => !declared.some((dependency) => requiredPath === dependency || requiredPath.startsWith(`${dependency}.`) || requiredPath.startsWith(`${dependency}[`))).sort();
+  if (missing.length > 0) issues.push({
+    kind: "missing-hook-dependency", node: dependencyNode, dependencies: missing,
+    detail: `${hook} captures ${missing.join(", ")} without a covering dependency`,
+  });
+  return issues;
+}
+
 function inlineCallback(call: ts.CallExpression, index: number | undefined): ts.ArrowFunction | ts.FunctionExpression | undefined {
   const argument = index === undefined ? undefined : call.arguments[index];
   return argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) ? argument : undefined;
@@ -377,7 +567,8 @@ interface InternalReactAnalysis { result: ReactSemanticsResult; hookSummaries: M
 
 function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map()): InternalReactAnalysis {
   const fileName = source.fileName;
-  const hooks = importedHooks(source), renderCallbacks = importedRenderCallbacks(source), declared = effectDeclarations(source);
+  const hooks = importedHooks(source), renderCallbacks = importedRenderCallbacks(source);
+  const dependencyHooks = importedDependencyHooks(source), declared = effectDeclarations(source);
   const acquisitions = lifecycleDeclarations(source, "acquire"), releases = lifecycleDeclarations(source, "release");
   const components: ReactComponentSummary[] = [], diagnostics: ReactSemanticDiagnostic[] = [];
   const candidates: ComponentNode[] = [], annotatable: AnnotatableFunction[] = [];
@@ -473,6 +664,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isCallExpression(node)) {
         const called = callName(node), builtinHook = called ? hooks.has(called) : false, customHook = called ? customHooks.has(called) || externalHooks.has(called) : false;
         if (builtinHook || customHook) {
+          const dependencyHook = called ? dependencyHooks.get(called) : undefined;
+          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, hook, source)) reportHook(issue.node, {
+            kind: issue.kind, phase: dependencyHook.phase, hook: called, dependencies: issue.dependencies, message: issue.detail,
+          });
           if (called === hookName) reportHook(node, {
             kind: "recursive-hook", phase: "render", hook: called,
             message: `${called} recursively calls itself, so its Hook order and phase summary are not finite`,
@@ -553,6 +748,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           return;
         }
         if (hookPhase) {
+          const dependencyHook = called ? dependencyHooks.get(called) : undefined;
+          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, component, source)) report(issue.node, {
+            kind: issue.kind, phase: dependencyHook.phase, hook: called, dependencies: issue.dependencies, message: issue.detail,
+          });
           if (isConditionalWithin(node, component)) report(node, { kind: "conditional-hook", phase: "render", hook: called, message: `${called} has control-flow-dependent call order` });
           if (hookPhase === "render-hook") {
             addPhase("render");

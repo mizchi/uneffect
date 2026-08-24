@@ -229,6 +229,92 @@ describe("React Function Component semantics", () => {
     expect(result.diagnostics).toHaveLength(3);
   });
 
+  it("rejects stale Effect and memo closures with missing dependencies", () => {
+    const result = analyzeReactSemantics("dependencies.tsx", `
+      import { useEffect as effect, useMemo } from "react"
+      /* uneffect: react component */
+      function Dashboard(props: { service: string; rows: string[] }) {
+        const prefix = props.service + ":"
+        effect(() => console.log(props.service, prefix), [])
+        useMemo(() => props.rows.map((row) => prefix + row), [props.rows])
+        return null
+      }
+      /* uneffect: react component */
+      function Shadowing({ row, rows }: { row: string; rows: string[] }) {
+        useMemo(() => { console.log(row); return rows.map((row) => row) }, [rows])
+        return null
+      }
+      /* uneffect: react component */
+      function LocalFunction(props: { service: string }) {
+        function load() { return props.service }
+        effect(() => console.log(load()), [props.service])
+        return null
+      }
+    `);
+
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        component: "Dashboard", kind: "missing-hook-dependency", hook: "effect",
+        dependencies: ["prefix", "props.service"],
+      }),
+      expect.objectContaining({
+        component: "Dashboard", kind: "missing-hook-dependency", hook: "useMemo",
+        dependencies: ["prefix"],
+      }),
+      expect.objectContaining({
+        component: "Shadowing", kind: "missing-hook-dependency", hook: "useMemo",
+        dependencies: ["row"],
+      }),
+      expect.objectContaining({
+        component: "LocalFunction", kind: "missing-hook-dependency", hook: "effect",
+        dependencies: ["load"],
+      }),
+    ]));
+  });
+
+  it("accepts covering dependencies and ignores stable state setters and Effect locals", () => {
+    const result = analyzeReactSemantics("safe-dependencies.tsx", `
+      import { useEffect, useRef, useState } from "react"
+      /* uneffect: react component */
+      function Dashboard(props: { service: string }) {
+        const [count, setCount] = useState(0)
+        const latest = useRef(props.service)
+        useEffect(() => {
+          const message = props.service + count
+          setCount(message.length)
+          latest.current = message
+          return () => console.log(message)
+        }, [props, count])
+        return null
+      }
+      /* uneffect: react component */
+      function LoopShadow({ index, rows }: { index: number; rows: number[] }) {
+        useEffect(() => { for (const index of rows) console.log(index) }, [rows])
+        return null
+      }
+    `);
+    expect(result.diagnostics).toEqual([]);
+  });
+
+  it("fails closed for opaque and unstable dependency expressions", () => {
+    const result = analyzeReactSemantics("opaque-dependencies.tsx", `
+      import { useEffect, useMemo } from "react"
+      /* uneffect: react component */
+      function Dashboard(props: { service: string }, dependencies: unknown[]) {
+        const callback = () => console.log(props.service)
+        useEffect(callback, [props.service])
+        useEffect(() => console.log(props.service), dependencies)
+        useMemo(() => props.service, [{ service: props.service }])
+        return null
+      }
+    `);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "unknown-hook-closure", hook: "useEffect" }),
+      expect.objectContaining({ kind: "unknown-hook-dependencies", hook: "useEffect" }),
+      expect.objectContaining({ kind: "unstable-hook-dependency", hook: "useMemo" }),
+    ]));
+  });
+
   it("marks effects without cleanup as replay-sensitive when they acquire capabilities", () => {
     const result = analyzeReactSemantics("replay.tsx", `
       import { useEffect } from "react"
@@ -497,6 +583,14 @@ describe("React Function Component semantics", () => {
     ));
     expect(wrongIdentity.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "useTelemetrySubscription", kind: "resource-identity-mismatch", effect: "TelemetrySubscription",
+    }));
+
+    const staleClosure = analyzeReactSemantics(fileName, source.replace(
+      "}, [service]);",
+      "}, []);",
+    ));
+    expect(staleClosure.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "useTelemetrySubscription", kind: "missing-hook-dependency", dependencies: ["service"],
     }));
 
     const mutating = analyzeReactSemantics(fileName, source.replace(

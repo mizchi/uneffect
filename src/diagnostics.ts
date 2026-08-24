@@ -46,6 +46,10 @@ const hints: Readonly<Record<string, string>> = {
   "react/resource-identity-mismatch": "pass the resource returned by this Effect setup, or an immutable local alias of it, to the matching cleanup boundary",
   "react/duplicate-effect-cleanup": "release each acquired resource identity exactly once in the returned cleanup",
   "react/conditional-resource-lifecycle": "make acquisition and cleanup unconditional within the Effect lifecycle, or refactor to a separately modeled optional resource",
+  "react/missing-hook-dependency": "add every reported capture, or a covering object path, to the inline dependency array",
+  "react/unknown-hook-closure": "inline the Hook callback so its captures can be checked, or keep this function outside the checked React boundary",
+  "react/unknown-hook-dependencies": "use a finite inline dependency array; computed arrays are not accepted as stale-closure evidence",
+  "react/unstable-hook-dependency": "bind the value outside the dependency array and stabilize its identity, or depend on the primitive/member values it reads",
 };
 
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }

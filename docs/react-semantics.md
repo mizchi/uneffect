@@ -70,6 +70,38 @@ The tested fragment reports:
 - unresolved `useX` calls and direct custom-Hook recursion fail closed instead
   of producing a pure summary.
 
+## Dependency and stale-closure checks
+
+Inline callbacks and inline dependency arrays for named imports (including
+aliases) of `useEffect`, `useLayoutEffect`, `useMemo`, and `useCallback` are
+checked inside opted-in components and custom Hooks. The initial lexical
+analysis:
+
+- collects component/Hook parameters and render-local bindings captured by the
+  callback, with nested function and block shadowing;
+- preserves member paths such as `props.service`; a dependency on `props`
+  conservatively covers that path;
+- treats the setter/dispatch position returned by `useState`, `useReducer`, and
+  `useTransition`, and a direct `useRef` result, as stable identities;
+- excludes declarations local to the Hook callback, including values retained
+  only by its cleanup;
+- reports the sorted missing capture set as one `missing-hook-dependency`
+  diagnostic;
+- fails closed when a supplied dependency list is computed or spread, or when
+  a supplied inline array accompanies an opaque callback;
+- rejects object, array, function, call, and `new` expressions written directly
+  as dependencies because they create a new identity during render.
+
+Omitting the dependency argument is not stale: React reruns/recomputes after
+every render, so this check emits no missing-dependency diagnostic. An explicit
+empty array is checked normally. `useCallback` bodies remain retained work and
+are not charged as render effects, but their captured values are checked.
+
+This is not a replacement for TypeScript-symbol-based exhaustive-deps yet.
+Imported/module bindings are assumed stable, custom stability conventions are
+not inferred, unnecessary but stable dependencies are not rejected, and
+mutations behind an otherwise stable object identity are outside this proof.
+
 Malformed React payloads are errors. The accepted forms are `react component`,
 `react hook`, `react acquire Capability`, `react release Capability`, and the
 identity-aware lifecycle forms described below. Misspellings and unsupported
@@ -178,7 +210,9 @@ This is a tested initial fragment, not a complete React semantics:
 - props mutation currently covers member writes rooted at an identifier
   parameter; destructured props, state snapshots, context values, refs, aliases,
   and mutations performed by callees need flow-sensitive regions;
-- Effect dependency completeness and stale closure analysis are not checked;
+- dependency completeness is checked for the documented inline lexical
+  fragment; referenced callbacks, custom stability contracts, module mutation,
+  and TypeScript-symbol-level aliasing remain unsupported;
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
