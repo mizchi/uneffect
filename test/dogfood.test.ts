@@ -1213,6 +1213,17 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks scoped Node service configuration environment access", () => {
+    const fileName = "examples/dogfood/node-service-config.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+
+    const missingSecret = source.replace(' | "DD_API_KEY"', "");
+    expect(analyzeEffects(fileName, missingSecret)).toContainEqual(expect.objectContaining({
+      functionName: "loadServiceConfig", kind: "missing", effect: 'Env<"DD_API_KEY">',
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

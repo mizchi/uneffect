@@ -203,6 +203,24 @@ describe("effect checker", () => {
     expect(analyzeEffects("node-child-process-effects.ts", source)).toEqual([]);
   });
 
+  it("tracks Deno-compatible process.env authority by TypeChecker identity", () => {
+    const source = `
+      /* uneffect: effect Env<"HOME" | "CI"> */
+      function exact(key: "HOME" | "CI") {
+        process.env.CI = "1"
+        const home = process.env["HOME"]
+        delete process.env[key]
+        return home
+      }
+      /* uneffect: effect Env */
+      function dynamic(key: string) { return process.env[key] }
+      function shadowed(process: { env: Record<string, string> }) { return process.env.HOME }
+    `;
+    expect(analyzeEffects("node-env-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-env-effects.ts", source.replace('Env<"HOME" | "CI">', 'Env<"HOME">')))
+      .toContainEqual(expect.objectContaining({ functionName: "exact", kind: "missing", effect: 'Env<"CI">' }));
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

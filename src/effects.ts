@@ -276,6 +276,27 @@ function isAsyncFunction(node: ts.FunctionLikeDeclaration): boolean {
 function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker, promiseModel?: PromiseChainModel): EffectAnalysisResult {
   const fileName = source.fileName;
   const functions = new Map<string, FunctionInfo>();
+  const processEnvBase = (node: ts.Expression): boolean => {
+    if (!checker || !ts.isPropertyAccessExpression(node) || node.name.text !== "env") return false;
+    const property = checker.getSymbolAtLocation(node.name);
+    return property?.declarations?.some((item) => ts.isPropertySignature(item)
+      && ts.isInterfaceDeclaration(item.parent) && item.parent.name.text === "Process"
+      && item.getSourceFile().isDeclarationFile) ?? false;
+  };
+  const processEnvAccess = (node: ts.Expression): Effect[] | undefined => {
+    if (!checker || (!ts.isPropertyAccessExpression(node) && !ts.isElementAccessExpression(node))
+      || !processEnvBase(node.expression)) return undefined;
+    if (ts.isPropertyAccessExpression(node)) return [capability(`Env<${JSON.stringify(node.name.text)}>` )];
+    const key = node.argumentExpression;
+    if (!key) return [capability("Env")];
+    if (ts.isStringLiteralLike(key)) return [capability(`Env<${JSON.stringify(key.text)}>` )];
+    const type = checker.getTypeAtLocation(key), members = type.isUnion() ? type.types : [type];
+    const names = members.flatMap((member) => (member.flags & ts.TypeFlags.StringLiteral) !== 0
+      ? [(member as ts.StringLiteralType).value] : []);
+    return names.length === members.length
+      ? [...new Set(names)].map((name) => capability(`Env<${JSON.stringify(name)}>`))
+      : [capability("Env")];
+  };
   source.forEachChild((node) => {
     if (ts.isFunctionDeclaration(node) && node.name && node.body) functions.set(node.name.text, {
       name: node.name.text,
@@ -378,7 +399,15 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
         }
       }
       if (adapter.mayInvokeUserCode(node)) addEffect(info.direct, capability("InvokeUserCode"));
-      if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
+      if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))) {
+        for (const effect of processEnvAccess(node) ?? []) addEffect(info.direct, effect);
+        if (processEnvBase(node)
+          && !((ts.isPropertyAccessExpression(node.parent) || ts.isElementAccessExpression(node.parent)) && node.parent.expression === node)) {
+          addEffect(info.direct, capability("Env"));
+        }
+      }
+      if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+        && processEnvAccess(node.left) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if (ts.isCallExpression(node)) {
         const builtinOperation = adapter.resolveCall(node)?.operation;

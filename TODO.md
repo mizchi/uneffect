@@ -51,6 +51,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Define `Env<NameSet>` with Deno-compatible suffix wildcards and platform-aware case policy.
     - [x] Implement exact and final-`*` matching.
     - [x] Apply target-aware Windows case folding.
+    - [x] Infer TypeChecker-resolved `process.env.NAME` and literal/finite-union element access as scoped `Env`, degrade dynamic keys/direct aggregate access to broad `Env`, cover writes/deletes without a redundant `Mutate`, and dogfood service configuration loading.
   - [x] Define `Run<ProgramSet>`, including the unscoped escalation case for dynamic-loader environment variables.
   - [x] Define `Sys<ApiSet>` from Deno's system-information descriptor names.
   - [x] Define `Ffi<PathSet>` and treat it as a sandbox escape boundary.

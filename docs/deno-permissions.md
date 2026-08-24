@@ -53,6 +53,15 @@ The same generic code performs set union, subset checks, unknown propagation, an
 | `Run` | `ProgramSet` | normalized executable identity |
 | `Sys` | `EnumSet<SysApi>` | finite membership |
 
+For Node targets, the effect checker connects this domain to the declaration
+identity of `process.env`. Property access and literal element access infer an
+exact name, and a finite string-literal union key infers the corresponding
+finite set. A general string key or direct access to the environment object
+requires broad `Env`. Reads, assignments, and `delete` use the same Deno
+authority; environment writes do not additionally require a `Mutate` region.
+A locally shadowed object named `process` is not classified as environment
+authority.
+
 The Rust and TypeScript domains implement host/IP/optional-port scopes, `*.example.com` subdomain containment, final-`*` environment prefixes, target-aware Windows case folding, and validation of the finite `Sys` vocabulary.
 
 `projectDenoPermissions` converts verified positive requirements plus a separate deployment deny policy into deterministic `--allow-*` and `--deny-*` arguments. Unknown sets fail projection. Symbolic path anchors require explicit bindings, except `$TEMP`, which may be derived from an explicit Node/Deno target profile. Projection never reads the analyzer process environment implicitly.
