@@ -65,11 +65,14 @@ TypeScript は peer dependency です（解析対象と同じコンパイラを�
 | コマンド | 用途 |
 | --- | --- |
 | `check <file.ts> [...]` | effect / 契約 / async safety の診断。既定コマンドなので `uneffect <file.ts>` でも走ります |
+| `doctor` | 実行前提（Node、peer の TypeScript、`@types/node`、Z3 の WASM、任意の `z3` / `quint` / `java`）の確認 |
 | `spec <backend> <file.ts> [function]` | 仕様 IR と各バックエンド向けプログラム（`ir` `lint` `z3` `quint` `compose` `async-quint` `web-loop-quint` `node-loop-quint` `promise-quint`） |
 | `instrument <file.ts>` | 契約・所有権のランタイムアサーションを挿入したソース |
 | `evidence <file.ts>` | effect の evidence artifact（JSON） |
 | `resource-model <file.ts>` | resource safety の Quint モデル |
 | `async-model <file.ts> <function>` | Promise / 例外 / リソースを統合した Quint モデル |
+
+前提が多いので、動かす前に `uneffect doctor` で環境を確認できます。各項目が「何に必要か」と「どう直すか」を出し、必須が欠けていれば終了コード 1、任意ツールが無いだけなら警告扱いで 0 です（`--json` で機械可読、`--skip-solver-probe` で遅い Z3 WASM の起動確認を省略）。
 
 生成物は stdout、診断は stderr に出ます。終了コードは 0 =問題なし、1 =検査対象に問題あり、2 =コマンドラインが不正です。オプションは厳密に検査するので、`--stict` のような打ち間違いは黙って無視されず usage エラーになります。詳細は [CLI ドキュメント](./docs/cli.md) を参照してください。
 

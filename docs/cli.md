@@ -20,6 +20,7 @@ newer is required.
 | Command | Purpose |
 | --- | --- |
 | `check <file.ts> [...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. |
+| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact, as JSON. |
@@ -32,6 +33,33 @@ newer is required.
 function). `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
+
+## Checking the prerequisites
+
+The toolchain has real requirements — Node 24, a TypeScript peer, a working Z3
+WASM build, and, for some flows, the `z3` command — and most of them fail late
+and confusingly if they are missing. `uneffect doctor` checks all of them before
+you depend on a run:
+
+```
+$ uneffect doctor
+ok       node             v24.4.0 (engines: >=24)
+ok       typescript       6.0.3 at node_modules/typescript (peer: >=6.0.0-dev.20260820)
+ok       @types/node      24.13.3 at node_modules/@types/node
+ok       z3-solver        4.16.0, probe query answered in 380 ms
+missing  z3 (command)     not found on PATH
+           needed by: `instrument --verify-ownership` and evidence-backed assertion elision
+           fix: install the Z3 command line (apt-get install z3, brew install z3, or a release from github.com/Z3Prover/z3); `check` does not need it
+```
+
+Every check names the commands it blocks and how to satisfy it. Unmet
+requirements exit 1; missing optional tools are warnings and exit 0. `--json`
+emits the same result for CI, and `--skip-solver-probe` skips loading the Z3
+WASM build, which is the slow check.
+
+When any other command fails for a reason that is not about your source, it
+points at `uneffect doctor` rather than printing a bare stack; set
+`UNEFFECT_DEBUG=1` to see the stack anyway.
 
 ## Streams and exit codes
 

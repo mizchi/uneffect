@@ -117,6 +117,9 @@ same property is proved for arbitrary TypeScript.
   corpus commits each input next to its `.diag` output, and
   `fixtures/quality.md` scores every diagnostic against a rubric that CI holds
   at its current level.
+- The published surface is one `uneffect` binary with subcommands, strict option
+  parsing, and uniform exit codes. `uneffect doctor` checks the toolchain a run
+  depends on before it is depended on.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.

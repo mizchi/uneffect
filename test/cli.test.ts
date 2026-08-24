@@ -66,9 +66,39 @@ describe("uneffect command line", () => {
     expect(backend.stderr).toContain("unknown spec backend: wat");
   });
 
+  it("reports an unreadable file as a bad argument, not as a toolchain failure", async () => {
+    const io = capture();
+    expect(await runCli(["check", "no-such-file.ts"], io)).toBe(exitCode.usage);
+    expect(io.stderr).toContain("cannot read no-such-file.ts");
+    expect(io.stderr).not.toContain("uneffect doctor");
+  });
+
   it("emits the specification IR through the spec command", async () => {
     const io = capture();
     expect(await runCli(["spec", "ir", "examples/spec.ts"], io)).toBe(exitCode.success);
     expect(JSON.parse(io.stdout)).toMatchObject({ fileName: "examples/spec.ts" });
+  });
+
+  it("checks the toolchain and names what each unmet requirement blocks", async () => {
+    const io = capture();
+    const status = await runCli(["doctor", "--skip-solver-probe"], io);
+    expect([exitCode.success, exitCode.failed]).toContain(status);
+    for (const name of ["node", "typescript", "@types/node", "z3 (command)", "quint (command)"]) expect(io.stdout).toContain(name);
+    expect(io.stdout).toMatch(/\d+ check\(s\)/u);
+    const json = capture();
+    expect(await runCli(["doctor", "--json", "--skip-solver-probe"], json)).toBe(status);
+    const report = JSON.parse(json.stdout) as { checks: Array<{ name: string; status: string; requiredBy: string; remedy?: string }>; errors: number; warnings: number };
+    expect(report.checks.length).toBeGreaterThanOrEqual(6);
+    expect(report.errors).toBe(report.checks.filter((check) => check.status === "error").length);
+    for (const check of report.checks) {
+      expect(check.requiredBy.length).toBeGreaterThan(0);
+      if (check.status !== "ok") expect(check.remedy?.length ?? 0).toBeGreaterThan(0);
+    }
+  });
+
+  it("refuses file arguments the doctor cannot act on", async () => {
+    const io = capture();
+    expect(await runCli(["doctor", "src/cli.ts"], io)).toBe(exitCode.usage);
+    expect(io.stderr).toContain("doctor takes no file arguments");
   });
 });

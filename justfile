@@ -88,6 +88,9 @@ fixtures:
 fixtures-update:
     pnpm tsx ci/fixtures.ts update
 
+doctor:
+    pnpm tsx src/cli.ts doctor
+
 demo:
     pnpm tsx src/cli.ts check examples/demo.ts
 

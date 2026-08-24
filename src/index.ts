@@ -144,6 +144,8 @@ export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafet
 export { generateObligationSmt, InvariantLoweringError, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationBinding, ObligationVariable } from "./invariant-ir.js";
 export { checkFiles, createCheckHost } from "./check.js";
+export { environmentSummary, formatEnvironmentReport, readPackageManifest, runEnvironmentChecks } from "./environment.js";
+export type { EnvironmentCheck, EnvironmentCheckOptions, EnvironmentStatus, PackageManifest } from "./environment.js";
 export type { CheckOptions, CheckResult } from "./check.js";
 export { diagnosticHint, formatCheckEvidence, formatDiagnostic, formatDiagnostics, reportDiagnostic } from "./diagnostics.js";
 export type { CheckerDiagnostic, DiagnosticFormatOptions, DiagnosticNote, DiagnosticSeverity, ReportedDiagnostic } from "./diagnostics.js";
