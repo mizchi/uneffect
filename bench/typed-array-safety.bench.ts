@@ -477,6 +477,15 @@ describe("typed-array static verification", () => {
     ` }, solverCases: 4 });
   }, { time: 500, iterations: 1 });
 
+  bench("derive nested optional rollout configurations", async () => {
+    await generateUneffectPropertyTestsWithZ3({ files: { "src/rollout.ts": `
+      type U8 = number
+      /* uneffect: requires config.rollout === undefined || (config.rollout.maxReplicas === 9 && (config.rollout.minReplicas === undefined || config.rollout.minReplicas >= 4)) */
+      /* uneffect: ensures result >= 0 */
+      export function rolloutFloor(config: { rollout?: { minReplicas?: U8; maxReplicas: U8 } }): number { return config.rollout?.minReplicas ?? 0 }
+    ` }, solverCases: 8 });
+  }, { time: 500, iterations: 1 });
+
   bench("jointly shrink 64 correlated property tuples", async () => {
     const refinementTuples = Array.from({ length: 64 }, (_, index) => [64 - index, 65 - index]);
     await checkUneffectProperty({

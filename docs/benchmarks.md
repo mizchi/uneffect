@@ -285,6 +285,12 @@ division and signed remainder measured 193.23 ms mean over three samples
 This includes fresh Z3 initialization and therefore primarily records the cold
 solver-backed path; the exact finite union constraint itself is small.
 
+On the same date, enumerating eight rollout-configuration models with an
+optional object and an independently optional nested field measured 186.45 ms
+mean over three samples (41.64% relative margin of error). The small sample is
+noisy and includes fresh Z3 initialization; it is a regression reference for
+the two-level presence encoding, not a stable throughput claim.
+
 Jointly shrinking across 64 already-derived correlated tuples measured
 0.0049 ms mean (2.30% relative margin of error). This measures in-memory tuple
 ordering, full-precondition rechecks, and a synchronous failing property; it

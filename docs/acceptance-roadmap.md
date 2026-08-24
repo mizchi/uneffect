@@ -108,10 +108,11 @@ SMT membership bits, then materialized as a native `Set` in generated tests.
 `BoundedMap<K, V, N>` uses the same finite key universe plus guarded scalar
 value variables. Counterexamples persist as parallel JSON-safe `keys` and
 `values` columns, while generated tests materialize native `Map` instances;
-`get(k)` also asserts key presence. Optional object-valued fields share one
-parent presence bit across every nested scalar leaf, preventing impossible
-partially-present objects. Optional objects containing independently optional
-children are still rejected rather than assigned ambiguous presence semantics.
+`get(k)` also asserts key presence. Required descendants of an optional object
+share its parent presence bit. Independently optional descendants receive their
+own bits plus child-implies-parent constraints. This distinguishes an absent
+parent, a present parent with an absent optional child, and a present child
+without permitting the impossible child-present/parent-absent state.
 The solver minimizes a shared structural-size objective over scalar magnitudes,
 array lengths/elements, record leaves, and collection membership/value state.
 Because nonlinear Z3 optimization can return a non-minimal local result, Uneffect

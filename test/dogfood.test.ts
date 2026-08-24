@@ -343,6 +343,13 @@ describe("Uneffect dogfood", () => {
         [4, false, "local"], [4, true, "edge"], [4, true, "local"],
         [9, true, "edge"], [9, true, "local"],
       ]);
+    const rolloutValues = solved.boundaries.find((boundary) => boundary.functionName === "rolloutFloor")
+      ?.generatorTuples.map(([value]) => value) ?? [];
+    expect(rolloutValues).toContainEqual({});
+    expect(rolloutValues).toContainEqual({ rollout: { maxReplicas: 9 } });
+    expect(rolloutValues.some((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && value.rollout !== null && typeof value.rollout === "object" && !Array.isArray(value.rollout)
+      && Number(value.rollout.minReplicas) >= 4 && value.rollout.maxReplicas === 9)).toBe(true);
   });
 
   it("proves that every telemetry attempt has exactly one outcome", async () => {

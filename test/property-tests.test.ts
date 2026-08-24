@@ -410,6 +410,31 @@ describe("property-test generation", () => {
     expect(result.solverDiagnostics).toEqual([]);
   });
 
+  it("separates parent and child presence for nested optional fields", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "nested-optional.ts": `
+      type U8 = number
+      /* uneffect: requires config.range === undefined || (config.range.max === 0 && (config.range.min === undefined || config.range.min >= 10)) */
+      /* uneffect: ensures result >= 0 */
+      export function minimum(config: { range?: { min?: U8; max: U8 } }): number {
+        return config.range?.min ?? 0
+      }
+    ` }, solverCases: 8 });
+    expect(result.diagnostics).toEqual([]);
+    expect(result.boundaries[0]?.generators).toEqual([{ kind: "record", fields: {
+      range: { kind: "record", fields: { min: "U8", max: "U8" }, optional: ["min"] },
+    }, optional: ["range"] }]);
+    const values = (result.boundaries[0]?.generatorTuples ?? []).map(([value]) => value);
+    expect(values).toContainEqual({});
+    expect(values).toContainEqual({ range: { max: 0 } });
+    expect(values.some((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && value.range !== null && typeof value.range === "object" && !Array.isArray(value.range)
+      && Number(value.range.min) >= 10 && Object.hasOwn(value.range, "max"))).toBe(true);
+    expect(values.every((value) => value !== null && typeof value === "object" && !Array.isArray(value)
+      && (!Object.hasOwn(value, "range") || value.range !== null && typeof value.range === "object"
+        && !Array.isArray(value.range) && Object.hasOwn(value.range, "max")))).toBe(true);
+    expect(result.solverDiagnostics).toEqual([]);
+  });
+
   it("derives bounded Set domains and materializes them as native Sets", async () => {
     const source = `
       type U8 = number

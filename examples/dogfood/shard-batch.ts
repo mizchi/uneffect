@@ -1,4 +1,4 @@
-import type { Int, Nat } from "@mizchi/uneffect";
+import type { Int, Nat, U8 } from "@mizchi/uneffect";
 
 /* uneffect: requires shard >= 0 && shard < 1024 && shard % 16 === 0 */
 /* uneffect: ensures result >= 0 && result < 64 */
@@ -28,4 +28,10 @@ export function signedPartitionRoute(partition: Int): Int {
 /* uneffect: ensures result >= 4 */
 export function supportedReplicaCount(replicas: 1 | 4 | 9, allowLarge: false | true, region: "local" | "edge"): number {
   return replicas;
+}
+
+/* uneffect: requires config.rollout === undefined || (config.rollout.maxReplicas === 9 && (config.rollout.minReplicas === undefined || config.rollout.minReplicas >= 4)) */
+/* uneffect: ensures result >= 0 */
+export function rolloutFloor(config: { rollout?: { minReplicas?: U8; maxReplicas: U8 } }): number {
+  return config.rollout?.minReplicas ?? 0;
 }

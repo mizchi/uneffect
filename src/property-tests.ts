@@ -338,7 +338,6 @@ function typeDomain(type: ts.TypeNode | undefined): PropertyTestDomain | undefin
       const field = typeDomain(member.type);
       if (!field || typeof field === "object" && field.kind === "union") return undefined;
       if (member.questionToken) {
-        if (typeof field === "object" && field.kind === "record" && field.optional?.length) return undefined;
         if (typeof field === "object" && field.kind !== "record") return undefined;
         optional.push(member.name.text);
       }
@@ -701,9 +700,24 @@ function recordLeaves(
 ): Array<{ path: string; domain: PropertyBoundaryKind; presence?: string }> {
   return Object.entries(fields).flatMap(([name, domain]) => {
     const path = prefix ? `${prefix}__${name}` : name;
-    const presence = parentPresence ?? (optional.includes(name) ? path : undefined);
+    const presence = optional.includes(name) ? path : parentPresence;
     if (typeof domain === "string") return [{ path, domain, ...(presence ? { presence } : {}) }];
     return domain.kind === "record" ? recordLeaves(domain.fields, path, domain.optional, presence) : [];
+  });
+}
+
+function recordPresenceRelations(
+  fields: Readonly<Record<string, PropertyTestDomain>>,
+  prefix = "",
+  optional: readonly string[] = [],
+  parentPresence?: string,
+): Array<{ child: string; parent: string }> {
+  return Object.entries(fields).flatMap(([name, domain]) => {
+    const path = prefix ? `${prefix}__${name}` : name;
+    const presence = optional.includes(name) ? path : parentPresence;
+    const relation = optional.includes(name) && parentPresence ? [{ child: path, parent: parentPresence }] : [];
+    return typeof domain === "object" && domain.kind === "record"
+      ? [...relation, ...recordPresenceRelations(domain.fields, path, domain.optional, presence)] : relation;
   });
 }
 
@@ -949,10 +963,14 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
                 .map((constraint) => `(=> ${name}__member__${at} ${constraint})`)),
             ];
           }
-          return domain.kind === "record" ? recordLeaves(domain.fields, "", domain.optional).flatMap(({ path, domain: fieldDomain, presence }) => {
-            const constraints = scalarDomainConstraint(`${name}__${path}`, fieldDomain);
-            return presence ? constraints.map((constraint) => `(=> ${name}__${presence}__present ${constraint})`) : constraints;
-          }) : [];
+          return domain.kind === "record" ? [
+            ...recordPresenceRelations(domain.fields, "", domain.optional)
+              .map(({ child, parent }) => `(=> ${name}__${child}__present ${name}__${parent}__present)`),
+            ...recordLeaves(domain.fields, "", domain.optional).flatMap(({ path, domain: fieldDomain, presence }) => {
+              const constraints = scalarDomainConstraint(`${name}__${path}`, fieldDomain);
+              return presence ? constraints.map((constraint) => `(=> ${name}__${presence}__present ${constraint})`) : constraints;
+            }),
+          ] : [];
         }),
       ];
       const blocks: string[] = [];

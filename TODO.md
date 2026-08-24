@@ -246,6 +246,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Generate finite `BoundedSet<T, N>` values with native-Set materialization, membership/size SMT constraints, and structural/element shrinking.
         - [x] Generate finite `BoundedMap<K, V, N>` values with JSON-safe key/value columns, native-Map materialization, lookup/membership/size SMT constraints, and shrinking.
         - [x] Generate optional object-valued fields with one shared parent presence bit across nested leaves.
+        - [x] Separate nested optional child presence from its optional parent, enforce child-implies-parent in Z3, and dogfood a rollout configuration boundary.
       - [x] Minimize a shared structural-size objective and confirm minimality with repeated strict-bound SAT checks instead of trusting nonlinear `Optimize` results.
     - [ ] Derive constructive generators and shrinkers for unsupported higher-order, recursive, and user-defined contract predicates.
 - [x] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
