@@ -1556,15 +1556,24 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (consumes(node) && next.active) next.pending = false;
         return next;
       };
-      const executeLoopTest = (statement: ts.IterationStatement, state: PathState): PathState => {
-        if (ts.isWhileStatement(statement) || ts.isDoStatement(statement)) return executeNodeEffects(statement.expression, state);
-        if (ts.isForStatement(statement) && statement.condition) return executeNodeEffects(statement.condition, state);
-        return state;
+      const executeLoopTest = (statement: ts.IterationStatement, state: PathState): { state: PathState; outcome?: boolean } => {
+        const expression = ts.isWhileStatement(statement) || ts.isDoStatement(statement)
+          ? statement.expression
+          : ts.isForStatement(statement)
+            ? statement.condition
+            : undefined;
+        if (!expression) return { state, outcome: ts.isForStatement(statement) ? true : undefined };
+        const value = staticPrimitive(expression, new Map())?.value;
+        return {
+          state: executeNodeEffects(expression, state),
+          outcome: value === undefined ? undefined : Boolean(value),
+        };
       };
       const executeLoop = (statement: ts.IterationStatement, state: PathState, atLeastOnce: boolean, loopLabel?: string): PathState[] => {
-        const first = atLeastOnce ? state : executeLoopTest(statement, state);
-        const exits: PathState[] = atLeastOnce ? [] : [{ ...first }];
-        let frontier: PathState[] = [{ ...first }], visited = new Set<string>();
+        const firstTest = atLeastOnce ? undefined : executeLoopTest(statement, state);
+        const first = firstTest?.state ?? state;
+        const exits: PathState[] = firstTest?.outcome === true || atLeastOnce ? [] : [{ ...first }];
+        let frontier: PathState[] = firstTest?.outcome === false ? [] : [{ ...first }], visited = new Set<string>();
         while (frontier.length) {
           const nextFrontier: PathState[] = [];
           for (const entry of frontier) {
@@ -1577,15 +1586,18 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 const advanced = ts.isForStatement(statement) && statement.incrementor
                   ? executeNodeEffects(statement.incrementor, resumed)
                   : resumed;
-                const continued = executeLoopTest(statement, advanced);
-                exits.push(continued); nextFrontier.push(continued); continue;
+                const tested = executeLoopTest(statement, advanced);
+                if (tested.outcome !== true) exits.push(tested.state);
+                if (tested.outcome !== false) nextFrontier.push(tested.state);
+                continue;
               }
               if (next.abrupt || next.terminated) { exits.push(next); continue; }
               const advanced = ts.isForStatement(statement) && statement.incrementor
                 ? executeNodeEffects(statement.incrementor, next)
                 : next;
               const tested = executeLoopTest(statement, advanced);
-              exits.push(tested); nextFrontier.push(tested);
+              if (tested.outcome !== true) exits.push(tested.state);
+              if (tested.outcome !== false) nextFrontier.push(tested.state);
             }
           }
           frontier = uniqueStates(nextFrontier);

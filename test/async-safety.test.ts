@@ -349,6 +349,47 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("uses finite loop-condition feasibility in Promise ownership fixed points", () => {
+    const result = analyzeAsyncSafety("static-loop-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: consumes_rejection 0 */
+      declare function consume(value: Promise<number>): void
+      async function whileTrueBreak() {
+        const pending = task()
+        while (true) { await pending; break }
+      }
+      async function forEverBreak() {
+        const pending = task()
+        for (;;) { await pending; break }
+      }
+      async function immutableTrueBreak() {
+        const always = true
+        const pending = task()
+        while (always) { await pending; break }
+      }
+      async function numericTrueBreak() {
+        const pending = task()
+        while (1) { await pending; break }
+      }
+      async function whileFalseSkipsConsumer() {
+        const pending = task()
+        while (false) consume(pending)
+      }
+      async function doFalseRunsConsumer() {
+        const pending = task()
+        do consume(pending); while (false)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "whileTrueBreak", status: "observed" },
+      { owner: "forEverBreak", status: "observed" },
+      { owner: "immutableTrueBreak", status: "observed" },
+      { owner: "numericTrueBreak", status: "observed" },
+      { owner: "whileFalseSkipsConsumer", status: "floating" },
+      { owner: "doFalseRunsConsumer", status: "transferred" },
+    ]);
+  });
+
   it("tracks rejection ownership from deferred Promise assignments and aliases", () => {
     const result = analyzeAsyncSafety("deferred-promises.ts", `
       declare const enabled: boolean

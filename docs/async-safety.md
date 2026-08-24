@@ -390,14 +390,18 @@ completion and a matching `continue`, but not after `break`. Loop bodies and
 headers are iterated to a finite abstract-state closure. Unlabeled and labeled
 `break`/`continue` propagate through nested blocks and loops, so statements
 skipped by an abrupt edge cannot falsely count as Promise observations.
+Boolean, number, and string literals and cycle-safe immutable `const` aliases
+use JavaScript truthiness to prune impossible loop entry or exit edges. A
+conditionless `for (;;)` is therefore always-entered, while `do...while
+(false)` executes exactly one body iteration in the ownership closure.
 Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
 awaited. Initial assignment to an uninitialized `let` is activation rather than
 reassignment; assigning the same Promise to another local creates an alias and
 does not lose ownership.
 
-This is not yet a general TypeScript control-flow graph. Value-sensitive loop
-feasibility, other expression-level throw edges, and arbitrary graph joins
+This is not yet a general TypeScript control-flow graph. Loop feasibility beyond
+the finite primitive fragment, other expression-level throw edges, and arbitrary graph joins
 outside the structured abstract interpreter still need a node-level CFG
 analysis. The telemetry delivery dogfood
 fixture exercises exhaustive delivery modes and shutdown cleanup; removing the

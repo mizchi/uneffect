@@ -473,13 +473,14 @@ rebuilding one per file.
 
 Promise ownership analysis of the telemetry delivery dogfood fixture now
 includes deferred `let` initialization, exhaustive literal-union `switch`
-paths, an early-return `try`/`finally` cleanup path, and a loop-condition
-ownership handoff that is evaluated before the zero-iteration exit. On
-2026-08-25, a paired five-sample Vitest 4.1.11 run measured 219.92 ms mean
-(4.11% relative margin of error) for the full fixture and 211.94 ms (11.32%)
-for the otherwise identical direct-`const` baseline. The overlapping noisy
-samples provide no evidence of measurable loop-header or assignment-tracking
-overhead. Both public convenience calls construct a fresh TypeScript Program;
+paths, an early-return `try`/`finally` cleanup path, a loop-condition ownership
+handoff evaluated before the zero-iteration exit, and an always-entered
+`while (true)` delivery path. On 2026-08-25, a paired five-sample Vitest 4.1.11
+run measured 247.02 ms mean (4.62% relative margin of error) for the full
+fixture and 255.14 ms (28.16%) for the otherwise identical direct-`const`
+baseline. The overlapping noisy samples provide no evidence of measurable
+finite-feasibility, loop-header, or assignment-tracking overhead. Both public
+convenience calls construct a fresh TypeScript Program;
 their absolute times are cold standalone costs, not incremental compiler-plugin
 latency or a regression budget.
 

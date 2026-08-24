@@ -28,3 +28,11 @@ export async function handOffTelemetryUntilOffline(): Promise<void> {
   const delivery = sendTelemetryBatch();
   while (keepSendingWhileOnline(delivery)) break;
 }
+
+export async function deliverTelemetryAtLeastOnce(): Promise<void> {
+  const delivery = sendTelemetryBatch();
+  while (true) {
+    await delivery;
+    break;
+  }
+}

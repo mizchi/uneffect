@@ -888,6 +888,7 @@ describe("Uneffect dogfood", () => {
       { owner: "deliverTelemetry", status: "observed" },
       { owner: "flushTelemetryBeforeExit", status: "observed" },
       { owner: "handOffTelemetryUntilOffline", status: "transferred" },
+      { owner: "deliverTelemetryAtLeastOnce", status: "observed" },
     ]);
 
     const broken = analyzeAsyncSafety(fileName, source.replace(
@@ -906,6 +907,16 @@ describe("Uneffect dogfood", () => {
     ));
     expect(brokenHeader.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "handOffTelemetryUntilOffline",
+      kind: "floating-promise",
+      message: expect.stringContaining("delivery"),
+    }));
+
+    const brokenAtLeastOnce = analyzeAsyncSafety(fileName, source.replace(
+      "    await delivery;\n    break;",
+      '    console.warn("telemetry not awaited");\n    break;',
+    ));
+    expect(brokenAtLeastOnce.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverTelemetryAtLeastOnce",
       kind: "floating-promise",
       message: expect.stringContaining("delivery"),
     }));
