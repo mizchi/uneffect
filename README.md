@@ -1,68 +1,150 @@
-# uneffect (feasibility prototype)
+# uneffect
 
-既存の TypeScript を Effect ランタイムへ書き換えず、コメントを契約層として副作用と Hoare Triple を静的検査する PoC です。
+Uneffect is a feasibility prototype for adding gradual effect specifications,
+Hoare-style contracts, and temporal models to existing TypeScript without
+rewriting the program around an effect runtime.
+
+Specifications live in ordinary block comments. They do not change TypeScript
+syntax or emitted JavaScript.
 
 ```ts
 /* uneffect: effect Console */
-function log() { console.log("hello") }
+export function log(value: number): void {
+  console.log(value)
+}
 
-/* uneffect: requires x >= 0 */
-/* uneffect: ensures result > x */
-/* uneffect: effect Console */
-function inc(x: number) {
-  log()
-  return x + 1
+/* uneffect: requires n >= 0 */
+/* uneffect: ensures result === n */
+export function count(n: number): number {
+  let value = 0
+  /* uneffect: invariant value >= 0 && value <= n */
+  while (value < n) value = value + 1
+  return value
 }
 ```
 
-`/* uneffect: effect Console | Fetch */` は関数が持つ effect の上限を宣言します。`FsRead`, `FsWrite`, `Console`, `Fetch`, `Dom`, `Mutate<typeof ref>`, `Throw<ErrorType>` と、ローカル関数呼び出しを解析します。推移的に必要な effect の不足は error、宣言したが使われていない effect は warning です。effect が少ない実装は型として許容されるため、unused warning は CLI の終了コードを失敗にしません。`yield` やランタイムラッパーは不要です。
+An effect declaration such as
+`/* uneffect: effect Console | Fetch */` is an upper bound. Missing transitive
+effects are errors; declared but unused effects are warnings. A function may
+use fewer effects than its declaration. No `yield`, wrapper function, or
+runtime handler is required.
 
-補助情報はすべて通常の `/* ... */` コメントに置き、既存のTypeScript構文とemitを変えません。文法、数値helper、任意のValibot assertionは[段階導入ガイド](./docs/gradual-annotations.md)、Effect TSとの比較は[比較メモ](./docs/effect-ts-comparison.md)を参照してください。
+## Status
 
-effect の漸進性、Verse を参考にした semantic footprint、Rust/corsa-bind への配置、optimizer が利用できる証明条件は [設計メモ](./docs/effect-system.md) にまとめています。
-async phase と inline invalidate の扱い、および Quint と Rust の中立 IR の対応は [形式モデル](./docs/formal-models.md) にまとめています。
-英語版の設計文書一覧は [docs](./docs/README.md) を参照してください。
+This package is an alpha-stage research prototype, not a verifier for all of
+JavaScript. It has executable coverage for selected fragments of:
 
-## fixtures
+- capability effects, including Deno-shaped filesystem, network, environment,
+  process, FFI, and system scopes;
+- `Console`, `Fetch`, DOM operations, mutation regions, typed `Throw`, and
+  user-defined effects;
+- integer contracts, loop invariants, bounded machine-number and typed-array
+  checks, and optional runtime assertions;
+- Promise ownership, timers, event-loop ordering, explicit resource management,
+  and selected Promise combinators;
+- temporal specifications lowered to a neutral IR, Z3, and Quint;
+- refinement bindings between temporal actions and restricted TypeScript
+  implementation bodies.
 
-`fixtures/` には入力のソースと、その検査結果 `.diag` を同じ名前で併置しています。1 ファイルが 1 つの機能または 1 つの失敗モードに対応し、先頭の `//` 行がその意図を述べます。
+Dynamic dispatch, unknown aliases, Proxy/Reflection, a general exception-aware
+CFG, full host event loops, termination, and the SharedArrayBuffer memory model
+are not proved. Unsupported constructs produce `unknown` or a diagnostic; they
+are not silently accepted. Z3 and Quint results are reproducible evidence, not
+independently checkable proof certificates.
 
-```
-fixtures/contracts/postcondition-off-by-one.ts   # 入力
-fixtures/contracts/postcondition-off-by-one.diag # `uneffect --evidence <file>` の出力
-```
+See [Implementation status](./docs/implementation-status.md) and the
+[feature matrix](./docs/feature-matrix.md) before relying on a specific proof.
 
-診断は sat/unsat を返すだけではなく、反例を IR 上で評価して意味を説明します。
+## Quickstart
 
-```
-error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decrement
-  message: `ensures result > x` can fail on this return
-  5 |   return x - 1;
-    |   ^
-  rule: every input allowed by requires must leave this return with ensures true
-  counterexample: x = 0
-  state: result = x - 1 = -1
-  still holds: x >= 0 (0 >= 0)
-  fails: ensures result > x evaluates to -1 > 0, which is false
-  hint: weaken the postcondition, strengthen the precondition, or change the returned expression so the counterexample above cannot occur
-```
-
-`.diag` は生成物です。検査に成功した場合も、証明した obligation と推論した effect を `evidence:` 節に出力します。`just fixtures` で最新かを検査し、`just fixtures-update` で再生成します。メッセージ自体の質は `fixtures/quality.md` の rubric スコアで評価ループに載せています。詳細は [診断とフィクスチャ](./docs/diagnostics.md) を参照してください。
-
-`requires` / `ensures` / `invariant` は整数論理式です。Z3 で反例が存在しないことを確認します。現状の契約検査は整数、四則演算、比較、論理演算、単純な変数宣言・代入・return、および単純代入だけの while に限定されています。
-
-## CLI
-
-公開しているバイナリは `uneffect` 1 本で、機能はサブコマンドです。`uneffect --help` と `uneffect <command> --help` が入口になります。
+Uneffect requires Node.js 24 or newer and uses the consuming project's
+TypeScript installation.
 
 ```sh
 npm install --save-dev @mizchi/uneffect typescript
-npx uneffect check src/*.ts
+npx uneffect doctor
+npx uneffect check src/example.ts
 ```
 
-TypeScript は peer dependency です（解析対象と同じコンパイラを使うため、バージョンは利用側が決めます）。Node.js 24 以降が必要です。
+`check` reports effect, contract, and async-safety diagnostics. It exits with
+0 when no error is found, 1 when the checked program fails, and 2 for invalid
+CLI usage.
 
-`@informalsystems/quint` は optional peer dependency です。モデルの生成だけなら不要で、生成した `.qnt` を実行したいときに入れます（`quint` バイナリもパッケージに同梱されています）。
+For a copyable project setup, a passing example, intentional failure cases,
+runtime instrumentation, and Quint generation, read the
+[Quickstart guide](./docs/quickstart.md).
+
+## Gradual adoption
+
+Existing projects do not need to annotate everything at once. A typical rollout
+is:
+
+1. Run `uneffect check --infer` on selected files to establish a baseline.
+2. Annotate leaf functions and external I/O boundaries with effect upper bounds.
+3. Narrow broad filesystem and network effects to Deno-compatible scope sets.
+4. Add `requires`, `ensures`, and invariants around high-value data boundaries.
+5. Enable async ownership and resource checks at application entrypoints.
+6. Add temporal models only where ordering, retries, leases, or cancellation
+   make state transitions important.
+7. Gate new diagnostics in CI while preserving explicit `unknown` and trusted
+   evidence in reviewable artifacts.
+
+The [Adoption patterns guide](./docs/adoption-patterns.md) describes these
+patterns, monorepo and library boundaries, CI ratcheting, escape hatches, and
+common failure modes.
+
+## Annotation model
+
+Only block comments containing the exact `uneffect:` marker are interpreted.
+Normal JSDoc is untouched, and the canonical annotation form is `/* ... */`
+rather than `/** ... */`.
+
+```ts
+import type { Nat } from "@mizchi/uneffect"
+
+/*
+ * uneffect:
+ * effect Console | Mutate<typeof state>
+ * requires amount >= 0
+ * ensures result >= amount
+ * assert amount: Nat
+ */
+function deposit(state: Account, amount: Nat): Nat {
+  state.balance += amount
+  console.log(amount)
+  return state.balance
+}
+```
+
+Built-in effect families include `FsRead`, `FsWrite`, `Console`, `Fetch`,
+`Dom`, `Mutate<typeof ref>`, and `Throw<ErrorType>`. Platform APIs receive their
+semantics through TypeChecker symbol identity; user code does not need wrapper
+functions.
+
+Read [Gradual annotations](./docs/gradual-annotations.md),
+[Effect system](./docs/effect-system.md), and
+[Deno-compatible permissions](./docs/deno-permissions.md) for the grammar and
+scope lattice.
+
+## CLI
+
+The package publishes one binary, `uneffect`, with subcommands:
+
+| Command | Purpose |
+| --- | --- |
+| `check <file.ts> [...]` | Check effects, contracts, and async safety. This is the default command. |
+| `doctor` | Check Node, TypeScript, Z3 WASM, and optional model-runner prerequisites. |
+| `spec <backend> <file.ts> [function]` | Emit neutral IR or a Z3/Quint/composed model. |
+| `instrument <file.ts>` | Emit source with optional contract or ownership assertions. |
+| `evidence <file.ts>` | Emit a machine-readable effect evidence artifact. |
+| `resource-model <file.ts>` | Emit a Quint resource-safety model. |
+| `async-model <file.ts> <function>` | Emit a unified Promise, exception, and resource model. |
+
+Generated artifacts go to stdout; diagnostics go to stderr. Options are parsed
+strictly, so a misspelled option is a usage error. See the full
+[CLI reference](./docs/cli.md).
+
+Quint is optional when generating models and required only when running them:
 
 ```sh
 npm install --save-dev @informalsystems/quint
@@ -70,21 +152,22 @@ npx uneffect spec quint src/protocol.ts > protocol.qnt
 npx quint run protocol.qnt
 ```
 
-| コマンド | 用途 |
-| --- | --- |
-| `check <file.ts> [...]` | effect / 契約 / async safety の診断。既定コマンドなので `uneffect <file.ts>` でも走ります |
-| `doctor` | 実行前提（Node、peer の TypeScript、`@types/node`、Z3 の WASM、optional peer の Quint、任意の `java`）の確認 |
-| `spec <backend> <file.ts> [function]` | 仕様 IR と各バックエンド向けプログラム（`ir` `lint` `z3` `quint` `compose` `async-quint` `web-loop-quint` `node-loop-quint` `promise-quint`） |
-| `instrument <file.ts>` | 契約・所有権のランタイムアサーションを挿入したソース |
-| `evidence <file.ts>` | effect の evidence artifact（JSON） |
-| `resource-model <file.ts>` | resource safety の Quint モデル |
-| `async-model <file.ts> <function>` | Promise / 例外 / リソースを統合した Quint モデル |
+The Z3 checks use the `z3-solver` WASM package and do not require a system Z3
+binary.
 
-ネイティブの依存はありません。契約検証も所有権の evidence も `z3-solver` の WASM で動くので、Z3 のバイナリを入れる必要はありません（残る任意項目は、生成した Quint モデルを *実行* したいときの Quint と Java だけです）。前提が多いので、動かす前に `uneffect doctor` で環境を確認できます。各項目が「何に必要か」と「どう直すか」を出し、必須が欠けていれば終了コード 1、任意ツールが無いだけなら警告扱いで 0 です（`--json` で機械可読、`--skip-solver-probe` で遅い Z3 WASM の起動確認を省略）。
+## Diagnostics and evidence
 
-生成物は stdout、診断は stderr に出ます。終了コードは 0 =問題なし、1 =検査対象に問題あり、2 =コマンドラインが不正です。オプションは厳密に検査するので、`--stict` のような打ち間違いは黙って無視されず usage エラーになります。詳細は [CLI ドキュメント](./docs/cli.md) を参照してください。
+Diagnostics include source spans, the failed obligation, and a counterexample
+when the supported solver fragment can produce one. Successful checks can emit
+the obligations and inferred effects with `--evidence`.
 
-開発時は just を使います。
+The `fixtures/` directory keeps source inputs beside generated `.diag` files.
+Run `just fixtures` to verify them or `just fixtures-update` to regenerate them.
+See [Diagnostics and fixtures](./docs/diagnostics.md).
+
+## Development
+
+The repository uses pnpm, Node.js 24+, Cargo, and `just`.
 
 ```sh
 just install
@@ -92,24 +175,28 @@ just check
 just demo
 ```
 
-## 実現性の判断
+Run a focused benchmark with Vitest Bench:
 
-コメントを構文拡張せず trivia として読む方式は、既存 TypeScript と互換なまま導入でき、effect の関数間伝播にも十分です。まず TypeScript Compiler API でルールと意味論を固め、その後 AST/シンボル解決アダプタを Corsa/tsgo 側へ移す構成が現実的です。
+```sh
+pnpm vitest bench bench/typed-array-safety.bench.ts --run
+```
 
-tsgo 本体の公開 API はまだ未準備です。tsgolint は高速な type-aware lint の実証ですが、独自ルールを npm パッケージとして差し込む安定 API ではありません。corsa-bind は Node/Rust の拡張点を提供しますが 0.x です。このため PoC で直接依存せず、解析結果と検査器を分離しています。
+## Architecture and roadmap
 
-## PoC の限界
+The TypeScript frontend currently establishes semantics through the TypeScript
+Compiler API. The analysis and proof layers are separated from frontend facts
+so that a Corsa/tsgo adapter can replace the frontend without changing the
+contracts or evidence schemas. The native bridge remains versioned and
+fail-closed while upstream APIs are unstable.
 
-Uneffect は広い TypeScript/JavaScript 全体を証明するものではありません。
-現在の実装は、各ドキュメントで明示した構文・型・制御フローの断片に対してのみ
-回帰テストを持つ実現性プロトタイプです。動的 dispatch、Proxy/Reflection、未知の
-alias、一般の例外付きCFG、完全なホストイベントループ、停止性、SharedArrayBufferの
-メモリモデルは保守的な `unknown` または診断になります。Z3/Quintの実行結果は
-再現可能な evidence ですが、独立検証可能な proof certificate ではありません。
+- [Documentation index](./docs/README.md)
+- [Native integration](./docs/native-integration.md)
+- [Formal models](./docs/formal-models.md)
+- [Roadmap and known gaps](./docs/roadmap.md)
+- [Implementation TODO](./TODO.md)
+- [GitHub Issues](https://github.com/mizchi/uneffect/issues)
 
-実装済み範囲と明示的な非保証は[Implementation status](./docs/implementation-status.md)、
-未実装項目と優先順位は[Roadmap and known gaps](./docs/roadmap.md)、詳細な履歴は
-[TODO.md](./TODO.md)を参照してください。今後の作業はGitHub Issuesを正本とします。
+GitHub Issues are the source of truth for unfinished roadmap work.
 
 ## License
 
