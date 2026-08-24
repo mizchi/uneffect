@@ -528,6 +528,16 @@ describe("property-test generation", () => {
     expect(result.boundaries[0]?.generatorTuples).toEqual([[true]]);
   });
 
+  it("enumerates satisfying string literal-union members with the String sort", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "string-union.ts": `
+      /* uneffect: requires mode !== "off" */
+      /* uneffect: ensures result >= 1 */
+      export function modeWeight(mode: "off" | "safe" | "fast"): number { return mode.length }
+    ` } });
+    expect(result.solverDiagnostics).toEqual([]);
+    expect(result.boundaries[0]?.generatorTuples).toEqual([["fast"], ["safe"]]);
+  });
+
   it("uses JavaScript truncation and signed-remainder semantics in Z3 generation", async () => {
     const result = await generateUneffectPropertyTestsWithZ3({ files: { "signed-arithmetic.ts": `
       type Int = number

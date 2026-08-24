@@ -339,7 +339,10 @@ describe("Uneffect dogfood", () => {
     const solved = await generateUneffectPropertyTestsWithZ3({ files: { [fileName]: readFileSync(fileName, "utf8") } });
     expect(solved.solverDiagnostics).toEqual([]);
     expect(solved.boundaries.find((boundary) => boundary.functionName === "supportedReplicaCount")?.generatorTuples)
-      .toEqual([[4, false], [4, true], [9, true]]);
+      .toEqual([
+        [4, false, "local"], [4, true, "edge"], [4, true, "local"],
+        [9, true, "edge"], [9, true, "local"],
+      ]);
   });
 
   it("proves that every telemetry attempt has exactly one outcome", async () => {
