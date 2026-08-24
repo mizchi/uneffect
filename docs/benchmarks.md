@@ -825,12 +825,15 @@ catch-local control flow. A field missing from either branch is a negative
 control and remains unproved; this run does not support dynamically computed
 keys or general structural object typing.
 
-The warm TypeChecker benchmark for 64 reviewed DOM property contracts measured
-2.9817 ms mean over 168 samples (0.95% relative margin of error). It covers dot
-and literal-bracket reads, compound writes, symbol/owner-type resolution, and
-effect comparison. It reuses one TypeScript Program and therefore does not
-measure parsing or program construction; unreviewed Web IDL properties still
-fall outside this claim.
+The warm TypeChecker benchmark for 64 categorized DOM property contracts
+measured 13.9849 ms mean over 36 samples (7.97% relative margin of error). Each
+contract combines a reflected Web IDL property read/write, an attribute
+collection read, a tree-topology read, and a `CharacterData.data` compound
+write, including receiver-scoped mutation and effect comparison. It reuses one
+TypeScript Program and therefore does not measure parsing or program
+construction. The local run had visible variance, so it is an observation, not
+a regression budget. Unreviewed Web IDL properties and mutation through a
+returned live collection still fall outside this claim.
 
 The warm-program Promise ownership benchmark for 64 structured throw
 completions routed through catches measured 8.0718 ms mean over 186 samples

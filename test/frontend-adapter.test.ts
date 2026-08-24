@@ -139,6 +139,16 @@ describe("TypeChecker symbol adapter", () => {
       function replaceText(node: Node) { node.textContent = "updated" }
       /* uneffect: effect Dom<TextWrite, typeof node> | Mutate<typeof node> */
       function writeNodeValue(node: Node) { node.nodeValue = "updated" }
+      /* uneffect: effect Dom<TextRead, typeof data> */
+      function readCharacterData(data: CharacterData) { return data.data }
+      /* uneffect: effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
+      function writeCharacterData(data: CharacterData) { data.data = "updated" }
+      /* uneffect: effect Dom<NodeRead, typeof node> */
+      function readParent(node: Node) { return node.parentNode }
+      /* uneffect: effect Dom<NodeRead, typeof element> */
+      function readChildren(element: Element) { return element.children }
+      /* uneffect: effect Dom<AttributeRead, typeof element> */
+      function readAttributes(element: Element) { return element.attributes }
       /* uneffect: effect Dom<PropertyRead, typeof input> */
       function readValue(input: HTMLInputElement) { return input.value }
       /* uneffect: effect Dom<PropertyRead, typeof input> */
@@ -158,6 +168,11 @@ describe("TypeChecker symbol adapter", () => {
       interface LocalInput { value: string }
       /* uneffect: effect Mutate<typeof input> */
       function localWrite(input: LocalInput) { input.value = "local" }
+      interface LocalNode { parentNode: object; attributes: object }
+      function localTopology(node: LocalNode) { return [node.parentNode, node.attributes] }
+      interface LocalCharacterData { data: string }
+      /* uneffect: effect Mutate<typeof data> */
+      function localDataWrite(data: LocalCharacterData) { data.data = "local" }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
     const source = program.getSourceFile(fileName)!;

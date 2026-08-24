@@ -18,6 +18,10 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeWrite" }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeRead" }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeWrite" }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#attributes" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#parentNode" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#children" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#data" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"] }) }),
     ]));
   });
 

@@ -284,12 +284,27 @@ function domBuiltinContracts(): BuiltinContract[] {
 }
 
 function domPropertyBuiltinContracts(): BuiltinContract[] {
+  const readOnly = (operation: DomOperation): DomPropertyBuiltinOperation => ({
+    kind: "dom-property", readOperations: [operation], writeOperations: [],
+  });
   const entries: Array<[string, DomPropertyBuiltinOperation]> = [
+    ["Element#attributes", readOnly("AttributeRead")],
+    ...[
+      "Node#parentNode", "Node#parentElement", "Node#childNodes", "Node#firstChild", "Node#lastChild",
+      "Node#nextSibling", "Node#previousSibling", "Node#ownerDocument", "Node#isConnected",
+      "ParentNode#children", "ParentNode#firstElementChild", "ParentNode#lastElementChild",
+      "ParentNode#childElementCount", "NonDocumentTypeChildNode#nextElementSibling",
+      "NonDocumentTypeChildNode#previousElementSibling",
+    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("NodeRead")]),
     ["Node#textContent", {
       kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"],
       mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true,
     }],
     ["Node#nodeValue", {
+      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
+      mutatesReceiverOnWrite: true,
+    }],
+    ["CharacterData#data", {
       kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
       mutatesReceiverOnWrite: true,
     }],

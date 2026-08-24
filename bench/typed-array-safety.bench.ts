@@ -116,8 +116,11 @@ const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerO
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
 const domPropertySourceName = "/bench/dom-properties.ts";
 const domPropertySourceText = Array.from({ length: 64 }, (_, index) => `
-  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
-  function update${index}(input: HTMLInputElement) { input.value += "${index}"; return input["value"] }
+  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<NodeRead, typeof element> | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
+  function update${index}(input: HTMLInputElement, element: Element, data: CharacterData) {
+    input.value += "${index}"; data.data += input["value"]
+    return [element.attributes, element.children, data.data]
+  }
 `).join("\n");
 const domCompilerOptions: ts.CompilerOptions = { ...compilerOptions, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] };
 const domCompilerHost = ts.createCompilerHost(domCompilerOptions);
@@ -151,7 +154,7 @@ describe("refinement receiver identity", () => {
 });
 
 describe("DOM property effect inference", () => {
-  bench("analyze 64 warm property read/write contracts", () => {
+  bench("analyze 64 warm categorized property contracts", () => {
     analyzeEffectsInProgram(domPropertyProgram, domPropertySource);
   }, { time: 500, iterations: 20 });
 });

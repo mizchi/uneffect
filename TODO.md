@@ -19,7 +19,7 @@ Open-work mapping:
 - unified Promise/exception/resource flow: [#9](https://github.com/mizchi/uneffect/issues/9)
 - Node and Web event-loop ownership: [#10](https://github.com/mizchi/uneffect/issues/10)
 - proof-gated optimizer transformations: [#13](https://github.com/mizchi/uneffect/issues/13)
-- Extend the reviewed DOM property getter/setter overlay beyond `textContent`, `nodeValue`, and `HTMLInputElement.value`: [#14](https://github.com/mizchi/uneffect/issues/14)
+- Extend the reviewed DOM property getter/setter overlay beyond attribute collections, tree topology, `textContent`, `nodeValue`, `CharacterData.data`, and `HTMLInputElement.value`: [#14](https://github.com/mizchi/uneffect/issues/14)
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -118,7 +118,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 ## P2 — DOM semantic overlay
 
-- [x] Split DOM operations into `AttributeRead`/`AttributeWrite`, `NodeRead`/`NodeWrite`, `TextRead`/`TextWrite`, `PropertyRead`/`PropertyWrite`, `LayoutRead`, `Create`, `Listen`, `Dispatch`, and `Parse`; selected call overlays and reviewed `textContent`, `nodeValue`, and `HTMLInputElement.value` property access are executable, while broader Web IDL coverage remains [#14](https://github.com/mizchi/uneffect/issues/14).
+- [x] Split DOM operations into `AttributeRead`/`AttributeWrite`, `NodeRead`/`NodeWrite`, `TextRead`/`TextWrite`, `PropertyRead`/`PropertyWrite`, `LayoutRead`, `Create`, `Listen`, `Dispatch`, and `Parse`; selected call overlays and reviewed attribute collection, tree topology, text, and `HTMLInputElement.value` property access are executable, while broader Web IDL coverage remains [#14](https://github.com/mizchi/uneffect/issues/14).
 - [x] Use receiver identity regions as proof-grade DOM scopes.
 - [x] Record CSS selectors as query refinements, not authority boundaries.
 - [x] Model compound contracts for tree ownership changes.
