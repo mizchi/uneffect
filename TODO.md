@@ -36,6 +36,7 @@ documentation are all updated.
 - [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
 - [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands, each naming what it blocks and how to satisfy it.
 - [x] Drop the native Z3 installation from the toolchain: run ownership evidence on the `z3-solver` WASM build like contract verification already did, and keep it that way with a manifest test.
+- [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

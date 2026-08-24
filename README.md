@@ -29,6 +29,11 @@ effects are errors; declared but unused effects are warnings. A function may
 use fewer effects than its declaration. No `yield`, wrapper function, or
 runtime handler is required.
 
+A `Mutate` region names the member path a write touches, so `state.calls = 1`
+infers `Mutate<typeof state.calls>`. Containment is prefix-based: declaring
+`Mutate<typeof state>` covers every member below it, while declaring a sibling
+property does not.
+
 ## Status
 
 This package is an alpha-stage research prototype, not a verifier for all of

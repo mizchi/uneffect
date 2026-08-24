@@ -55,7 +55,44 @@ function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
 function sameConstructor(left: Effect, right: Effect): boolean {
   if (left.kind !== right.kind || formatEffect(left) === formatEffect(right)) return false;
   if (left.kind === "capability" && right.kind === "capability") return left.name === right.name;
+  if (left.kind === "mutate" && right.kind === "mutate") return regionRoot(left.region) === regionRoot(right.region);
   return left.kind === "throw";
+}
+
+/** The declaration a diagnostic is judged against, shown so a reader need not open the source. */
+function declaredNote(declared: readonly Effect[]): DiagnosticNote {
+  return { label: "declared", detail: declared.length > 0 ? declared.map(formatEffect).join(" | ") : "(no /* uneffect: effect ... */ comment)" };
+}
+
+function inferredNote(actual: readonly Effect[]): DiagnosticNote {
+  return { label: "inferred", detail: actual.length > 0 ? actual.map(formatEffect).join(" | ") : "no effect" };
+}
+
+/** Notes shared by both analyzers; the program-wide path adds the origin of the effect. */
+function missingEffectNotes(declared: readonly Effect[], effect: Effect, origin?: string): DiagnosticNote[] {
+  const related = declared.filter((item) => sameConstructor(item, effect));
+  return [
+    declaredNote(declared),
+    ...(origin ? [{ label: "because", detail: origin }] : []),
+    ...(related.length > 0 ? [{ label: "out of authority", detail: authorityMismatch(related, effect) }] : []),
+  ];
+}
+
+function unusedEffectNotes(name: string, declared: readonly Effect[], actual: readonly Effect[], effect: Effect): DiagnosticNote[] {
+  return [declaredNote(declared), inferredNote(actual), { label: "because", detail: `nothing in ${name} or its callees produces ${formatEffect(effect)}` }];
+}
+
+function unknownEffectNotes(declared: readonly Effect[], effect: Effect): DiagnosticNote[] {
+  return [declaredNote(declared), { label: "because", detail: `${formatEffect(effect)} is not one of the effect constructors this checker understands, so it constrains nothing` }];
+}
+
+/** Why a declaration that looks related still does not permit the required effect. */
+function authorityMismatch(declared: readonly Effect[], required: Effect): string {
+  const names = declared.map(formatEffect).join(" | ");
+  if (required.kind === "mutate") {
+    return `the declared ${names} names a different region of ${regionRoot(required.region)}; a region only permits itself and the members below it`;
+  }
+  return `the declared ${names} shares this effect constructor, but its arguments do not cover ${formatEffect(required)}`;
 }
 
 function snippet(node: ts.Node, source: ts.SourceFile): string {
@@ -74,14 +111,37 @@ function declaration(source: ts.SourceFile, node: ts.Node): Effect[] {
   return extractAnnotations(text, "effect").flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
 }
 
+/** Property names that can be written as a member path; anything else stays bracketed. */
+const plainMember = /^[A-Za-z_$][\w$]*$/u;
+
+/**
+ * The region a write names: the member path of the location itself, so `state.calls = 1` is
+ * `Mutate<typeof state.calls>` rather than the whole of `state`. A declaration of the container
+ * still permits it, because region containment is prefix-based.
+ *
+ * An element access is only as precise as its key: a literal key is a property, while a computed
+ * one names no member the checker can compare, so the region conservatively widens to the container.
+ */
 function mutationRegion(expression: ts.Expression): string {
-  if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) return expression.expression.getText();
+  if (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
+    || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) return mutationRegion(expression.expression);
+  if (ts.isPropertyAccessExpression(expression)) return `${mutationRegion(expression.expression)}.${expression.name.text}`;
+  if (ts.isElementAccessExpression(expression)) {
+    const container = mutationRegion(expression.expression), key = expression.argumentExpression;
+    if (ts.isStringLiteralLike(key)) return plainMember.test(key.text) ? `${container}.${key.text}` : `${container}["${key.text}"]`;
+    return container;
+  }
   return expression.getText();
 }
 function mutateEffect(expression: ts.Expression): Effect {
   return { kind: "mutate", region: mutationRegion(expression) };
 }
 function mutateRegionEffect(region: string): Effect { return { kind: "mutate", region }; }
+
+/** The binding a region is rooted at, used to tell a different property from a different object. */
+function regionRoot(region: string): string {
+  return /^[A-Za-z_$][\w$]*/u.exec(region)?.[0] ?? region;
+}
 
 function localBindings(scope: ts.FunctionLikeDeclaration): Set<string> {
   const names = new Set<string>();
@@ -537,14 +597,17 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "unknown",
       severity: options.mode === "strict" ? "error" : "warning", line,
       message: `${info.name} declares unknown effect ${formatEffect(effect)}`,
+      notes: unknownEffectNotes(info.declared, effect),
     });
     for (const effect of actual) if (!permits(info.declared, effect) && (info.declared.length > 0 || options.requireAnnotations !== false)) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "missing", severity: "error", line,
       message: `${info.name} requires /* uneffect: effect ${formatEffect(effect)} */`,
+      notes: missingEffectNotes(info.declared, effect),
     });
     for (const effect of info.declared) if (![...actual].some((item) => permits([effect], item))) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line,
       message: `${info.name} declares unused effect ${formatEffect(effect)}`,
+      notes: unusedEffectNotes(info.name, info.declared, actual, effect),
     });
   }
   const summaries = [...functions.values()].map((info): EffectSummary => {
@@ -728,23 +791,16 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   for (const graphNode of graph.nodes) {
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
-    const declaredNote: DiagnosticNote = { label: "declared", detail: allowed.length > 0 ? allowed.map(formatEffect).join(" | ") : "(no /* uneffect: effect ... */ comment)" };
-    for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: [declaredNote, { label: "because", detail: `${formatEffect(effect)} is not one of the effect constructors this checker understands, so it constrains nothing` }] });
+    for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: unknownEffectNotes(allowed, effect) });
     for (const effect of actual) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) {
       const key = formatEffect(effect);
-      const because = origin(graphNode.id, key, source.fileName);
-      const narrower = allowed.filter((item) => sameConstructor(item, effect)).map(formatEffect);
       diagnostics.push({
         fileName: source.fileName, functionName: graphNode.name, effect: key, kind: "missing", severity: "error", line,
         message: `${graphNode.name} requires /* uneffect: effect ${key} */`,
-        notes: [
-          declaredNote,
-          ...(because ? [{ label: "because", detail: because }] : []),
-          ...(narrower.length > 0 ? [{ label: "out of authority", detail: `the declared ${narrower.join(" | ")} shares this effect constructor, but its arguments do not cover ${key}` }] : []),
-        ],
+        notes: missingEffectNotes(allowed, effect, origin(graphNode.id, key, source.fileName)),
       });
     }
-    for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: [declaredNote, { label: "inferred", detail: actual.length > 0 ? actual.map(formatEffect).join(" | ") : "no effect" }, { label: "because", detail: `nothing in ${graphNode.name} or its callees produces ${formatEffect(effect)}` }] });
+    for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, actual, effect) });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });

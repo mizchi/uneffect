@@ -8,7 +8,7 @@ anything.
 
 | directory | what it demonstrates |
 | --- | --- |
-| `effects/` | declared vs. inferred effects, transitive propagation through calls, scoped authorities, unused and misspelled declarations |
+| `effects/` | declared vs. inferred effects, transitive propagation through calls, scoped authorities, property-level mutation regions, unused and misspelled declarations |
 | `contracts/` | Hoare triples Z3 proves, postcondition and loop-invariant counterexamples, and the limits of the verified subset |
 | `async/` | floating Promises and `using` disposal errors |
 

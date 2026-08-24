@@ -1,4 +1,4 @@
-// Writing through a binding that outlives the call is a Mutate effect over that region.
+// Writing through a binding that outlives the call is a Mutate effect over the written region.
 const state = { calls: 0 };
 
 export function record() {

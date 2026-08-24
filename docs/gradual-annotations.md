@@ -69,7 +69,15 @@ effect_term  = qualified_name
              | "Mutate", "<", "typeof", region, ">"
              | "Throw", "<", error_type, ">"
              | scoped_effect ;
+region       = identifier, { ".", identifier | "[", string_literal, "]" } ;
 ```
+
+A region is a member path, so it can name a single property: `Mutate<typeof
+state.calls>` is the authority to write that property, and a declaration of any
+prefix (`Mutate<typeof state>`) permits everything below it. Inference produces
+the path the code actually writes; see the
+[effect system](./effect-system.md) for containment and for how computed keys
+widen to their container.
 
 A return refinement describes a value more precisely for Uneffect analysis without changing runtime behavior:
 
