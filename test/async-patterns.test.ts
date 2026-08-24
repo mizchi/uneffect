@@ -2116,6 +2116,51 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("keeps conditional nextTick and scheduler callback children exclusive", () => {
+    const nodeModel = analyzeAsyncPatterns("conditional-next-tick.ts", `
+      function left() { queueMicrotask(() => "left") }
+      function right() { queueMicrotask(() => "right") }
+      function start(flag: boolean) { process.nextTick(flag ? left : right) }
+    `);
+    const node = generateNodeEventLoopQuint("conditional_next_tick", nodeModel);
+    const left = node.slice(node.indexOf("action drain_next_tick_0_alt_0"), node.indexOf("action drain_next_tick_0_alt_1"));
+    const right = node.slice(node.indexOf("action drain_next_tick_0_alt_1"), node.indexOf("action drain_microtask_1"));
+    expect(left).toContain("callback_1_pending' = true");
+    expect(left).not.toContain("callback_2_pending' = true");
+    expect(right).toContain("callback_2_pending' = true");
+    expect(right).not.toContain("callback_1_pending' = true");
+
+    const webModel = analyzeAsyncPatterns("conditional-scheduler.ts", `
+      function left() { queueMicrotask(() => "left") }
+      function right() { queueMicrotask(() => "right") }
+      function start(flag: boolean) { scheduler.postTask(flag ? left : right) }
+    `);
+    const web = generateWebEventLoopQuint("conditional_scheduler", webModel);
+    const webLeft = web.slice(web.indexOf("action run_scheduler_task_0_alt_0"), web.indexOf("action run_scheduler_task_0_alt_1"));
+    const webRight = web.slice(web.indexOf("action run_scheduler_task_0_alt_1"), web.indexOf("action step = any"));
+    expect(webLeft).toContain("callback_1_pending' = true");
+    expect(webLeft).not.toContain("callback_2_pending' = true");
+    expect(webRight).toContain("callback_2_pending' = true");
+    expect(webRight).not.toContain("callback_1_pending' = true");
+  });
+
+  it("keeps conditional Web microtask and animation-frame children exclusive", () => {
+    const model = analyzeAsyncPatterns("conditional-web-jobs.ts", `
+      function left() { queueMicrotask(() => "left") }
+      function right() { queueMicrotask(() => "right") }
+      function start(flag: boolean) {
+        queueMicrotask(flag ? left : right)
+        requestAnimationFrame(flag ? left : right)
+      }
+    `);
+    const quint = generateWebEventLoopQuint("conditional_web_jobs", model);
+    expect(quint).toContain("action drain_microtask_0_alt_0");
+    expect(quint).toContain("action drain_microtask_0_alt_1");
+    expect(quint).toContain("action run_animation_frame_3_alt_0");
+    expect(quint).toContain("action run_animation_frame_3_alt_1");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("resolves a finite computed callback selection from an immutable table", () => {
     const exact = analyzeAsyncPatterns("computed-callback-table.ts", `
       function afterSuccess() { queueMicrotask(() => undefined) }

@@ -641,7 +641,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
       - [x] Resolve an immediately consumed, preceding-statement `const` alias of a conditional abort-source array while rejecting intervening mutation.
       - [x] Preserve finite conditional timer callback alternatives in IR and emit exclusive Node/Web parent actions instead of enqueueing every branch's nested jobs together.
-      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, non-adjacent/escaped/mutated dynamic abort composition, non-timer conditional parents, and polymorphic callback-parameter dispatch.
+      - [x] Generalize exclusive callback-alternative actions to Node next-tick/microtask/poll/check/close and Web microtask/animation-frame/scheduler parents.
+      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, non-adjacent/escaped/mutated dynamic abort composition, and polymorphic callback-parameter dispatch.
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.

@@ -1809,15 +1809,19 @@ export function generateNodeEventLoopQuint(
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
   const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
   nextTicks.forEach((index, order) => {
-    const updates = new Map<string, string>([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]]);
-    enqueueNodeChildren(index, updates);
-    action(`drain_next_tick_${index}`, [
-      ...phaseGuard(0), `callback_${index}_pending`,
-      ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
-      ...(options.topLevelMode === "esm" && esmInitialNextTicks.has(index) && !options.allowEsmNextTickBeforeMicrotask
-        ? initialV8Pending.map((pending) => `not(${pending})`) : []),
-      ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
-    ], updates);
+    const alternatives: (number | undefined)[] = model.timers[index]!.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([[`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", phaseViolation(0)]]);
+      enqueueNodeChildren(index, updates, alternative);
+      const baseName = `drain_next_tick_${index}`;
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
+        ...phaseGuard(0), `callback_${index}_pending`,
+        ...(options.allowMicrotaskBeforeNextTick ? microtasks.map((microtask) => `not(callback_${microtask}_pending)`) : []),
+        ...(options.topLevelMode === "esm" && esmInitialNextTicks.has(index) && !options.allowEsmNextTickBeforeMicrotask
+          ? initialV8Pending.map((pending) => `not(${pending})`) : []),
+        ...nextTicks.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`),
+      ], updates);
+    }
   });
   microtasks.forEach((index, order) => {
     const esmInitialJob = options.topLevelMode === "esm" && model.timers[index]!.owner === "<module>"
@@ -1831,18 +1835,22 @@ export function generateNodeEventLoopQuint(
       .map((candidate) => ({ key: `callback:${candidate}` }))).map((job) =>
       job.key.startsWith("callback:") ? `callback_${job.key.slice("callback:".length)}_pending`
         : `promise_reaction_${job.key.slice("reaction:".length).replace(":", "_")}_pending`);
-    const updates = new Map<string, string>([
-      [`callback_${index}_pending`, "false"],
-      [`callback_${index}_fires`, `callback_${index}_fires + 1`],
-      ["wrong_checkpoint_order", `wrong_checkpoint_order or (${pendingNextTick.join(" or ") || "false"})`],
-      ["wrong_phase", phaseViolation(0)],
-    ]);
-    enqueueNodeChildren(index, updates);
-    action(`drain_microtask_${index}`, [
-      ...phaseGuard(0), `callback_${index}_pending`,
-      ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
-      ...earlierV8.map((pending) => `not(${pending})`),
-    ], updates);
+    const alternatives: (number | undefined)[] = model.timers[index]!.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([
+        [`callback_${index}_pending`, "false"],
+        [`callback_${index}_fires`, `callback_${index}_fires + 1`],
+        ["wrong_checkpoint_order", `wrong_checkpoint_order or (${pendingNextTick.join(" or ") || "false"})`],
+        ["wrong_phase", phaseViolation(0)],
+      ]);
+      enqueueNodeChildren(index, updates, alternative);
+      const baseName = `drain_microtask_${index}`;
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
+        ...phaseGuard(0), `callback_${index}_pending`,
+        ...(options.allowMicrotaskBeforeNextTick ? [] : pendingNextTick.map((pending) => `not(${pending})`)),
+        ...earlierV8.map((pending) => `not(${pending})`),
+      ], updates);
+    }
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     const key = `reaction:${chainIndex}:${stage}`;
@@ -2030,13 +2038,17 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   };
   microtasks.forEach((index) => {
     const ticket = `callback_${index}_ticket`;
-    const updates = new Map<string, string>([
-      [`callback_${index}_pending`, "false"], [ticket, "-1"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 1`], ["fifo_broken", fifoViolation(ticket)],
-    ]);
-    enqueueChildren(index, updates);
-    const guards = [...phaseGuard(1), `callback_${index}_pending`, ...fifoGuards(ticket)];
-    applyCallbackSummary(index, guards, updates);
-    action(`drain_microtask_${index}`, guards, updates);
+    const alternatives: (number | undefined)[] = model.timers[index]!.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([
+        [`callback_${index}_pending`, "false"], [ticket, "-1"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 1`], ["fifo_broken", fifoViolation(ticket)],
+      ]);
+      enqueueChildren(index, updates, alternative);
+      const guards = [...phaseGuard(1), `callback_${index}_pending`, ...fifoGuards(ticket)];
+      applyCallbackSummary(index, guards, updates);
+      const baseName = `drain_microtask_${index}`;
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
+    }
   });
   const promisePending: string[] = [];
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
@@ -2052,11 +2064,15 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   }));
   action("finish_microtask_checkpoint", [...phaseGuard(1), ...microtasks.map((index) => `not(callback_${index}_pending)`), ...promisePending.map((name) => `not(${name})`)], new Map([[phase, "2"], ["wrong_phase", `${phase} != 1`]]));
   frames.forEach((index, order) => {
-    const updates = new Map<string, string>([[phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 2`]]);
-    enqueueChildren(index, updates);
-    const guards = [...phaseGuard(2), `callback_${index}_pending`, ...frames.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`)];
-    applyCallbackSummary(index, guards, updates);
-    action(`run_animation_frame_${index}`, guards, updates);
+    const alternatives: (number | undefined)[] = model.timers[index]!.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([[phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 2`]]);
+      enqueueChildren(index, updates, alternative);
+      const guards = [...phaseGuard(2), `callback_${index}_pending`, ...frames.slice(0, order).map((earlier) => `not(callback_${earlier}_pending)`)];
+      applyCallbackSummary(index, guards, updates);
+      const baseName = `run_animation_frame_${index}`;
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
+    }
   });
   action("paint", [...phaseGuard(2), ...frames.map((index) => `not(callback_${index}_pending)`)], new Map([[phase, "0"], ["wrong_phase", `${phase} != 2`]]));
   action("skip_rendering_opportunity", phaseGuard(2), new Map([[phase, "0"], ["wrong_phase", `${phase} != 2`]]));
@@ -2083,13 +2099,17 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     const abortViolation = [timer.abortComposition === undefined ? undefined : `abort_${timer.abortComposition}_aborted`, timer.abortTimer === undefined ? undefined : `callback_${timer.abortTimer}_fires > 0`].filter((term): term is string => Boolean(term)).join(" or ") || "false";
     const abortChoiceGuards = timer.abortComposition !== undefined && abortCompositions[timer.abortComposition]?.sourcePaths
       ? [`abort_${timer.abortComposition}_path >= 0`] : [];
-    const updates = new Map<string, string>([
-      [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
-    ]);
-    enqueueChildren(index, updates);
-    const guards = [...phaseGuard(0), ...pendingPriorityChanges, ...abortChoiceGuards, `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
-    applyCallbackSummary(index, guards, updates);
-    action(timerAction("run", timer, index), guards, updates);
+    const alternatives: (number | undefined)[] = timer.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([
+        [phase, "1"], [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`], ["scheduler_priority_broken", violation], ["scheduler_abort_broken", `scheduler_abort_broken or (${abortViolation})`],
+      ]);
+      enqueueChildren(index, updates, alternative);
+      const guards = [...phaseGuard(0), ...pendingPriorityChanges, ...abortChoiceGuards, `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...(options.allowWrongSchedulerPriority ? [] : [`not(${violation})`]), ...(options.allowRunAbortedSchedulerTask ? [] : [`not(${abortViolation})`])];
+      applyCallbackSummary(index, guards, updates);
+      const baseName = timerAction("run", timer, index);
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
+    }
     if (options.allowRunAbortedSchedulerTask && abortViolation !== "false") action(`run_aborted_scheduler_task_${index}`, [`callback_${index}_pending`, `(${abortViolation})`], new Map([
       [`callback_${index}_pending`, "false"], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["scheduler_abort_broken", "true"],
     ]));

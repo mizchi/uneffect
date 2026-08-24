@@ -152,11 +152,10 @@ object tables whose every selected property has a source callback body. Mutable
 tables, getters, missing keys, and other dynamic selections remain unresolved.
 Source callback factories use a definite-return block/`if` subset and retain
 every resolved return candidate. Concise conditional arrows are included;
-for timer parents, each finite callback alternative is retained in the IR and
-lowered to a separate Node/Web action, so nested jobs from mutually exclusive
-callbacks are not enqueued together. Conditional parents in other queue
-families and callback parameters dispatched through higher-order helpers remain
-conservative gaps;
+for modeled Node/Web queue parents, each finite callback alternative is retained
+in the IR and lowered to a separate action, so nested jobs from mutually
+exclusive callbacks are not enqueued together. Callback parameters dispatched
+through higher-order helpers remain a conservative gap;
 parameter symbols are specialized from concrete call arguments, so identity
 factories and finite literal-key selection from immutable callback tables can
 remain exact. An object-literal method factory may also select through
