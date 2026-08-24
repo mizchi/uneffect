@@ -28,7 +28,7 @@ export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "next-tick" | "poll" | "close"; repeats?: boolean; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
+export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "next-tick" | "poll" | "close"; repeats?: boolean; resultHandleFamily?: "server"; closesReceiverFamily?: "server"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
 export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument?: number; handleReceiver?: boolean; family: "timeout" | "immediate" | "animation-frame" | "watcher"; effect?: string }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
@@ -157,7 +157,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     ...fsBuiltinContracts("node:fs"),
     ...fsBuiltinContracts("node:fs/promises"),
     trusted({ symbol: { module: "node:fs", export: "FSWatcher#close" }, operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" } }),
-    trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" } }),
+    trusted({ symbol: { module: "node:net", export: "Server#close" }, operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" } }),
     trusted({
       symbol: { module: "node:net", export: "Server#listen" },
       operation: {
@@ -181,7 +181,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       symbol: { module, export: "createServer" },
       operation: {
         kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 1,
-        callbackMustBeCallable: true, queue: "poll", repeats: true,
+        callbackMustBeCallable: true, queue: "poll", repeats: true, resultHandleFamily: "server",
       },
     })),
     ...(["node:http", "node:https"] as const).flatMap((module) => ["request", "get"].map((name): BuiltinContract => trusted({

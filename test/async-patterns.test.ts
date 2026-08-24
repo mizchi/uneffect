@@ -2497,15 +2497,58 @@ describe("builtin async temporal patterns", () => {
       }
     `);
     expect(model.timers).toMatchObject([
-      { queue: "poll", repeats: true, externallyReady: true },
-      { queue: "close", repeats: false, externallyReady: true, enqueuedBy: 0 },
+      { queue: "poll", repeats: true, externallyReady: true, handle: "server", handleFamily: "server" },
+      { queue: "close", repeats: false, externallyReady: true, enqueuedBy: 0, closesSource: 0 },
       { queue: "microtask", enqueuedBy: 1 },
     ]);
     const quint = generateNodeEventLoopQuint("node_http_graceful_close", model);
+    expect(quint).toContain("var callback_0_source_open: bool");
+    expect(quint).toMatch(/action complete_poll_0[\s\S]*callback_0_source_open/);
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_0_source_open' = false/);
     expect(quint).toContain("var callback_1_registered: int");
     expect(quint).toMatch(/action run_poll_0[\s\S]*callback_1_registered' = callback_1_registered \+ 1/);
     expect(quint).toMatch(/action complete_close_1[\s\S]*callback_1_registered > 0[\s\S]*callback_1_registered' = callback_1_registered - 1/);
     expect(quint).toMatch(/action run_close_1[\s\S]*node_phase == 4[\s\S]*callback_2_pending' = true/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("closes only the request source with the matching immutable server handle", () => {
+    const model = analyzeAsyncPatterns("node-http-close-identity.ts", `
+      import { createServer } from "node:http"
+      function serve() {
+        const closing = createServer((_request, _response) => undefined)
+        const serving = createServer((_request, _response) => {
+          closing.close(() => undefined)
+        })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "closing", handleFamily: "server" },
+      { handle: "serving", handleFamily: "server" },
+      { queue: "close", enqueuedBy: 1, closesSource: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_close_identity", model);
+    expect(quint).toContain("var callback_0_source_open: bool");
+    expect(quint).not.toContain("var callback_1_source_open: bool");
+    expect(quint).toMatch(/action run_poll_1[\s\S]*callback_0_source_open' = false/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("starts a directly closed server request source in the closed state", () => {
+    const model = analyzeAsyncPatterns("node-http-close-before-loop.ts", `
+      import { createServer } from "node:http"
+      function createAndClose() {
+        const server = createServer((_request, _response) => undefined)
+        server.close(() => undefined)
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "server", handleFamily: "server" },
+      { queue: "close", closesSource: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_close_before_loop", model);
+    expect(quint).toContain("callback_0_source_open' = false");
+    expect(quint).toMatch(/action complete_poll_0[\s\S]*callback_0_source_open/);
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 

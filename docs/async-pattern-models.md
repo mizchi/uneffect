@@ -178,8 +178,14 @@ its Node phase. This preserves multiple in-flight registrations instead of
 collapsing a call site to one Boolean. The shutdown-server dogfood exercises a
 request listener that calls `Server.close`, whose callback then schedules a V8
 microtask. The current abstraction conservatively permits another request
-arrival after `close` is requested: linking a concrete server handle's closing
-state back to its request source remains open.
+arrival only until `close` is requested. TypeChecker-resolved `createServer`
+results receive a server-handle identity, and a callback-bearing `Server.close`
+on that immutable handle closes only the matching request source. A close call
+made while a request listener runs disables later external completions in the
+same action; a close made directly before the modeled loop starts initializes
+the source as closed. Calls without a close callback, mutable/interprocedural
+server aliases, and lifecycle events registered through EventEmitter APIs
+remain open.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and

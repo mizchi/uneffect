@@ -1105,7 +1105,9 @@ describe("Uneffect dogfood", () => {
     ]);
     const quint = generateNodeEventLoopQuint("node_server_shutdown", model);
     expect(quint).toContain("var callback_1_registered: int");
+    expect(quint).toContain("var callback_0_source_open: bool");
     expect(quint).toMatch(/action run_poll_0[\s\S]*callback_1_registered' = callback_1_registered \+ 1/);
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_0_source_open' = false/);
     expect(quint).toMatch(/action complete_close_1[\s\S]*callback_1_registered > 0/);
     expect(quint).toMatch(/action run_close_1[\s\S]*node_phase == 4[\s\S]*callback_2_pending' = true/);
 

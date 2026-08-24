@@ -17,7 +17,9 @@ export interface TimerPattern {
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
-  handleFamily?: "timeout" | "immediate" | "animation-frame" | "watcher";
+  handleFamily?: "timeout" | "immediate" | "animation-frame" | "watcher" | "server";
+  /** A source timer disabled synchronously when this callback is registered. */
+  closesSource?: number;
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
@@ -1279,11 +1281,16 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               if (callbackNode) {
                 const child = timers.length;
                 const childSource = node.getSourceFile();
+                const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+                  ? node.expression.expression : undefined;
+                const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
+                  ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
                 timers.push({
                   owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
                   recursive: false, repeats: operation.repeats ?? false,
                   queue: operation.queue, enqueuedBy: parent,
                   externallyReady: operation.queue === "poll" || operation.queue === "close",
+                  ...(closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
                   ...(callbacks.length > 1 ? { parentAlternative } : {}),
                   span: { start: node.getStart(childSource), end: node.getEnd() },
                 });
@@ -1397,6 +1404,11 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
           const callbackNode = deferredCallbackArgument(node, operation)!;
+          const declaration = assignedBinding(node);
+          const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+            ? node.expression.expression : undefined;
+          const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
+            ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
@@ -1405,9 +1417,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             recursive: false,
             repeats: operation.repeats ?? false,
             queue: operation.queue,
+            handle: operation.resultHandleFamily ? declaration : undefined,
+            handleKind: operation.resultHandleFamily ? "object" : undefined,
+            handleFamily: operation.resultHandleFamily,
+            ...(closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
             externallyReady: operation.queue === "poll" || operation.queue === "close",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (operation.resultHandleFamily && declaration) handleTargets.set(declaration, timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
@@ -1840,6 +1857,10 @@ export function generateNodeEventLoopQuint(
     const timer = model.timers[index]!;
     return timer.externallyReady && timer.enqueuedBy !== undefined;
   }));
+  const closableSources = new Set(supported.flatMap((index) => {
+    const source = model.timers[index]!.closesSource;
+    return source !== undefined && supported.includes(source) ? [source] : [];
+  }));
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
@@ -1861,6 +1882,7 @@ export function generateNodeEventLoopQuint(
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
     if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`, `  var callback_${index}_due_times: List[int]`);
     if (externalRegistrations.has(index)) lines.push(`  var callback_${index}_registered: int`);
+    if (closableSources.has(index)) lines.push(`  var callback_${index}_source_open: bool`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
   lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
@@ -1870,6 +1892,11 @@ export function generateNodeEventLoopQuint(
     lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined && !timer.externallyReady},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
     if (multiInstanceTimers.has(index)) lines.push(`    callback_${index}_instances' = 0,`, `    callback_${index}_due_times' = [],`);
     if (externalRegistrations.has(index)) lines.push(`    callback_${index}_registered' = 0,`);
+    if (closableSources.has(index)) {
+      const closedBeforeLoop = supported.some((candidate) => model.timers[candidate]!.closesSource === index
+        && model.timers[candidate]!.enqueuedBy === undefined);
+      lines.push(`    callback_${index}_source_open' = ${!closedBeforeLoop},`);
+    }
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -1880,6 +1907,7 @@ export function generateNodeEventLoopQuint(
     `callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`,
     ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`, `callback_${index}_due_times`] : []),
     ...(externalRegistrations.has(index) ? [`callback_${index}_registered`] : []),
+    ...(closableSources.has(index) ? [`callback_${index}_source_open`] : []),
   ]), ...reactionVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
@@ -1910,6 +1938,8 @@ export function generateNodeEventLoopQuint(
     [...polls, ...closes].filter((index) => externalRegistrations.has(index)
       && model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_registered`, `callback_${child}_registered + 1`);
+      const closesSource = model.timers[child]!.closesSource;
+      if (closesSource !== undefined) updates.set(`callback_${closesSource}_source_open`, "false");
     });
   };
   polls.filter((index) => !model.timers[index]!.initiallyCancelled
@@ -1919,6 +1949,7 @@ export function generateNodeEventLoopQuint(
     if (externalRegistrations.has(index) && !timer.repeats) updates.set(`callback_${index}_registered`, `callback_${index}_registered - 1`);
     action(`complete_poll_${index}`, [
       ...(externalRegistrations.has(index) ? [`callback_${index}_registered > 0`] : []),
+      ...(closableSources.has(index) ? [`callback_${index}_source_open`] : []),
       ...(timer.repeats || externalRegistrations.has(index) ? [] : [`callback_${index}_fires == 0`]),
       `not(callback_${index}_pending)`,
     ], updates);

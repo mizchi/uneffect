@@ -58,7 +58,7 @@ describe("builtin semantic overlays", () => {
   it("registers node:net Server.close as an externally completed close-phase callback", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
       symbol: { module: "node:net", export: "Server#close" },
-      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close" },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "close", closesReceiverFamily: "server" },
     }));
   });
 
@@ -152,7 +152,7 @@ describe("builtin semantic overlays", () => {
         symbol: { module, export: "createServer" },
         operation: {
           kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 1,
-          callbackMustBeCallable: true, queue: "poll", repeats: true,
+          callbackMustBeCallable: true, queue: "poll", repeats: true, resultHandleFamily: "server",
         },
       }));
     }
