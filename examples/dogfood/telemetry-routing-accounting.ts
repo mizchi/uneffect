@@ -63,7 +63,13 @@ export function observeTelemetryRouting(runtime: TelemetryRoutingAccounting): Te
 }
 
 /* uneffect: refinement telemetryRouting@1 action deliver */
-export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("delivered"); }
+export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    runtime.delivered += 1;
+  } finally {
+    runtime.attempted += 1;
+  }
+}
 
 /* uneffect: refinement telemetryRouting@1 action drop */
 export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("dropped"); }

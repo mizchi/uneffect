@@ -437,6 +437,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "telemetryRouting", temporal)).toEqual([]);
     expect(validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal)).toEqual([]);
+    const missingFinallyUpdate = source.replace("runtime.attempted += 1;", "// missing attempted update");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyUpdate, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "attempted" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

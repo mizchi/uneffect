@@ -241,6 +241,40 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("switch-without-default.ts", withoutDefault, "counter", parseSpec("switch-without-default.ts", withoutDefault).temporal)).toEqual([]);
   });
 
+  it("composes mandatory finally updates after a normally completing try block", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state phase: int
+      init attempted = 0
+      init phase = 0
+      action account: attempted' = attempted + 1, phase' = 2
+    */
+      interface Runtime { attempted: number; phase: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action account */
+      export function account(runtime: Runtime) {
+        try {
+          runtime.attempted++;
+          runtime.phase = 1;
+        } finally {
+          runtime.phase = 2;
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("finally.ts", source, "accounting", parseSpec("finally.ts", source).temporal)).toEqual([]);
+
+    const withCatch = source.replace("} finally {", "} catch (error) { runtime.phase = 3 } finally {");
+    expect(validateRefinementActionBodies("catch-finally.ts", withCatch, "accounting", parseSpec("catch-finally.ts", withCatch).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "account" }),
+    ]);
+
+    const abrupt = source.replace("runtime.phase = 1;", "runtime.phase = 1; return;");
+    expect(validateRefinementActionBodies("abrupt-finally.ts", abrupt, "accounting", parseSpec("abrupt-finally.ts", abrupt).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "account" }),
+    ]);
+  });
+
   it("unrolls a statically bounded ascending for loop and rejects dynamic bounds", () => {
     const model = `/* uneffect:
       state value: int

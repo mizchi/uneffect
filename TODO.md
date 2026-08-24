@@ -154,6 +154,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Preserve immutable action-local scalar snapshots so temporary-variable swaps refine simultaneous model updates; keep mutable locals unsupported.
       - [x] Add typed conditional expressions to the temporal IR with runtime, Quint, replay, and Z3 `ite` lowering, then merge scalar `if`/`else` action branches symbolically.
       - [x] Compose scalar `switch` entry, fallthrough, unlabeled `break`, and `default` paths into conditional temporal updates; reject dynamic labels, duplicate labels, labeled breaks, and other unsupported abrupt flow.
+      - [x] Sequence mandatory `finally` updates after a normally completing action `try` block; reject catches and return/throw/break completion until the exception-aware completion lattice is implemented.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

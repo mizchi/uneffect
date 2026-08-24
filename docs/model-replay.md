@@ -133,6 +133,12 @@ and literal `switch` labels with JavaScript entry order, fallthrough, unlabeled
 the discriminant evaluated before any clause update. Dynamic or duplicate
 labels, labeled breaks, and unsupported abrupt completion fail closed as
 `unsupported-action-body`; they are never accepted by replay evidence alone.
+The checker also sequences a mandatory `finally` block after a normally
+completing `try` update. A catch clause or any return/throw/break completion in
+that region remains unsupported, because proving only the normal path would be
+unsound for an exception-capable implementation. The telemetry accounting
+dogfood uses this fragment to ensure an attempted-delivery counter is updated
+by `finally` after the outcome counter.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

@@ -77,6 +77,14 @@ fallthrough updates, break termination, conditional joins, and comparison with
 the temporal action; dynamic-label rejection is covered by tests rather than
 timed in this baseline.
 
+After the telemetry dogfood `deliver` action was changed to place the attempted
+counter update in a mandatory `finally`, the complete telemetry scalar
+refinement benchmark measured 0.9079 ms mean over 551 samples (3.53% RME). This
+run includes parsing and validating the normal `try` update followed by the
+mandatory cleanup update. It is a new development-host observation, not a
+claim that the difference from the older 0.6436 ms result is entirely caused
+by `finally` handling.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

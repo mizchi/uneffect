@@ -819,6 +819,18 @@ function validateRefinementActionBodiesInSource(
         }
         continue;
       }
+      if (ts.isTryStatement(statement)) {
+        if (statement.catchClause || !statement.finallyBlock) return undefined;
+        if (!collect(
+          statement.tryBlock, receiver, runtimeClass, substitutions,
+          updates, new Map(localValues), activeCalls, false,
+        )) return undefined;
+        if (!collect(
+          statement.finallyBlock, receiver, runtimeClass, substitutions,
+          updates, new Map(localValues), activeCalls, false,
+        )) return undefined;
+        continue;
+      }
       if (ts.isIfStatement(statement)) {
         const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
         if (!normalizedCondition) return undefined;

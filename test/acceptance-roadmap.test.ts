@@ -381,6 +381,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("refines a mandatory finally accounting update and rejects an unmodeled catch path", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state outcome: int
+      state attempted: int
+      init outcome = 0
+      init attempted = 0
+      action deliver: outcome' = outcome + 1, attempted' = attempted + 1
+    */
+      interface Runtime { outcome: number; attempted: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        try { runtime.outcome++ }
+        finally { runtime.attempted++ }
+      }
+    `;
+    const temporal = (parseSpec("finally-accounting.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("finally-accounting.ts", source, "accounting", temporal)).toEqual([]);
+    const withCatch = source.replace("finally {", "catch (error) { runtime.outcome-- } finally {");
+    expect(validateActions("catch-accounting.ts", withCatch, "accounting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
+    );
+  });
+
   it("refines a Set-backed lease implementation against its temporal actions and invariants", async () => {
     const parseSpec = futureApi("parseSpec");
     const validateProjection = futureApi("validateRefinementStateProjectionInProgram");
