@@ -816,3 +816,11 @@ direct object literal with integer and boolean fields, immutable catch binding,
 static field projection, and a catch-local compound predicate. String-valued,
 effectful, and duplicate fields are negative controls; conditional record joins
 are not claimed by this benchmark.
+
+After adding field projection through conditional record joins, the dedicated
+`project conditional record throw payloads` benchmark measured 0.2068 ms mean
+over 2,418 samples (0.43% relative margin of error). It covers two normalized
+object-literal payloads, branch-selected integer and boolean fields, and
+catch-local control flow. A field missing from either branch is a negative
+control and remains unproved; this run does not support dynamically computed
+keys or general structural object typing.

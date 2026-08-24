@@ -1047,4 +1047,29 @@ describe("typed-array static verification", () => {
     `;
     validateRefinementActionBodies("record-payload-bench.ts", source, "accounting", parseSpec("record-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("project conditional record throw payloads", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state primary: bool
+      init failed = 0
+      init primary = false
+      action reject: failed' = failed + (primary ? 1 : 2)
+    */
+      interface Runtime { failed: number; primary: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          if (runtime.primary) throw { code: 1, retryable: true }
+          throw { code: 2, retryable: false }
+        } catch (error) {
+          if (error.retryable) runtime.failed = runtime.failed + error.code
+          else runtime.failed = runtime.failed + error.code
+        }
+      }
+    `;
+    validateRefinementActionBodies("conditional-record-payload-bench.ts", source, "accounting", parseSpec("conditional-record-payload-bench.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

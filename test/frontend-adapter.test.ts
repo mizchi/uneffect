@@ -110,9 +110,9 @@ describe("TypeChecker symbol adapter", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-"));
     const fileName = join(directory, "input.ts");
     writeFileSync(fileName, `
-      /* uneffect: effect Dom<Read, typeof document> */
+      /* uneffect: effect Dom<NodeRead, typeof document> */
       function query() { return document.querySelector(".item") }
-      /* uneffect: effect Dom<TreeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | InvokeUserCode */
+      /* uneffect: effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | InvokeUserCode */
       function attach(root: Element, child: Node) { root.appendChild(child) }
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });

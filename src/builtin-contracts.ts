@@ -37,7 +37,12 @@ export interface SchedulerPostTaskBuiltinOperation { kind: "scheduler-post-task"
 export interface SchedulerYieldBuiltinOperation { kind: "scheduler-yield" }
 export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
 export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
-export type DomOperation = "Read" | "LayoutRead" | "ValueWrite" | "TreeWrite" | "Create" | "Listen" | "Dispatch" | "Parse";
+export type DomOperation =
+  | "AttributeRead" | "AttributeWrite"
+  | "NodeRead" | "NodeWrite"
+  | "TextRead" | "TextWrite"
+  | "PropertyRead" | "PropertyWrite"
+  | "LayoutRead" | "Create" | "Listen" | "Dispatch" | "Parse";
 export interface DomBuiltinOperation {
   kind: "dom";
   operation: DomOperation;
@@ -246,22 +251,22 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
 
 function domBuiltinContracts(): BuiltinContract[] {
   const entries: Array<[string, DomBuiltinOperation]> = [
-    ["ParentNode#querySelector", { kind: "dom", operation: "Read", queryArgument: 0 }],
-    ["ParentNode#querySelectorAll", { kind: "dom", operation: "Read", queryArgument: 0 }],
-    ["Document#getElementById", { kind: "dom", operation: "Read" }],
-    ["Element#getAttribute", { kind: "dom", operation: "Read" }],
-    ["Element#matches", { kind: "dom", operation: "Read", invokesUserCode: true, queryArgument: 0 }],
-    ["Element#closest", { kind: "dom", operation: "Read", invokesUserCode: true, queryArgument: 0 }],
+    ["ParentNode#querySelector", { kind: "dom", operation: "NodeRead", queryArgument: 0 }],
+    ["ParentNode#querySelectorAll", { kind: "dom", operation: "NodeRead", queryArgument: 0 }],
+    ["Document#getElementById", { kind: "dom", operation: "NodeRead" }],
+    ["Element#getAttribute", { kind: "dom", operation: "AttributeRead" }],
+    ["Element#matches", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
+    ["Element#closest", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
     ["Element#getBoundingClientRect", { kind: "dom", operation: "LayoutRead" }],
     ["Document#createElement", { kind: "dom", operation: "Create" }],
     ["Document#createTextNode", { kind: "dom", operation: "Create" }],
-    ["Element#setAttribute", { kind: "dom", operation: "ValueWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["Node#appendChild", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
-    ["Node#removeChild", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
-    ["ParentNode#replaceChildren", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ParentNode#append", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ParentNode#prepend", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ChildNode#remove", { kind: "dom", operation: "TreeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["Element#setAttribute", { kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["Node#appendChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
+    ["Node#removeChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
+    ["ParentNode#replaceChildren", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ParentNode#append", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ParentNode#prepend", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ["ChildNode#remove", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
     ["EventTarget#addEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true, invokesUserCode: true }],
     ["EventTarget#removeEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true }],
     ["EventTarget#dispatchEvent", { kind: "dom", operation: "Dispatch", invokesUserCode: true }],

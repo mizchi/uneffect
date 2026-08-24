@@ -12,7 +12,13 @@ describe("builtin semantic overlays", () => {
 
   it("classifies every initial DOM operation kind", () => {
     const kinds = builtinContractRegistry.contracts.flatMap((contract) => contract.operation?.kind === "dom" ? [contract.operation.operation] : []);
-    expect(new Set(kinds)).toEqual(new Set(["Read", "LayoutRead", "ValueWrite", "TreeWrite", "Create", "Listen", "Dispatch", "Parse"]));
+    expect(new Set(kinds)).toEqual(new Set(["AttributeRead", "AttributeWrite", "NodeRead", "NodeWrite", "LayoutRead", "Create", "Listen", "Dispatch", "Parse"]));
+    expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#getAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeRead" }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeWrite" }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeRead" }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeWrite" }) }),
+    ]));
   });
 
   it("registers AbortSignal composition by builtin symbol identity", () => {

@@ -65,10 +65,15 @@ The initial operation set is:
 
 | Operation | Representative APIs | Notes |
 |---|---|---|
-| `Read` | `querySelector`, `children`, `getAttribute` | Reads logical DOM state |
+| `AttributeRead` | `getAttribute`, `hasAttribute` | Reads serialized element attributes |
+| `AttributeWrite` | `setAttribute`, `removeAttribute`, `toggleAttribute` | Changes serialized element attributes |
+| `NodeRead` | `querySelector`, `children`, `parentNode` | Reads node identity or tree topology |
+| `NodeWrite` | `appendChild`, `remove`, `replaceChildren`, `insertBefore` | Changes parent/child relationships |
+| `TextRead` | `textContent`, `nodeValue`, `CharacterData.data` | Reads textual node content |
+| `TextWrite` | `textContent=`, `nodeValue=`, `CharacterData.replaceData` | Changes textual node content |
+| `PropertyRead` | `input.value`, `element.id` | Reads a Web IDL property rather than its attribute |
+| `PropertyWrite` | `input.value=`, `element.id=` | Changes a Web IDL property rather than its attribute |
 | `LayoutRead` | `getBoundingClientRect`, `offsetWidth`, `getComputedStyle` | May force style/layout work |
-| `ValueWrite` | `value=`, `textContent=`, `setAttribute`, `classList.add` | Changes values without classifying tree ownership |
-| `TreeWrite` | `appendChild`, `remove`, `replaceChildren`, `insertBefore` | Changes parent/child relationships |
 | `Create` | `createElement`, `createTextNode`, `createDocumentFragment` | Creates identity, usually detached |
 | `Listen` | `addEventListener`, `removeEventListener` | Mutates listener state |
 | `Dispatch` | `dispatchEvent`, `click`, `focus` | Can synchronously invoke user code |
@@ -77,17 +82,17 @@ The initial operation set is:
 Examples:
 
 ```ts
-/* uneffect: effect Dom<Read, typeof root> */
+/* uneffect: effect Dom<NodeRead, typeof root> */
 function find(root: Element) {
   return root.querySelector(".item")
 }
 
-/* uneffect: effect Dom<ValueWrite, typeof input> */
+/* uneffect: effect Dom<PropertyWrite, typeof input> */
 function clear(input: HTMLInputElement) {
   input.value = ""
 }
 
-/* uneffect: effect Dom<TreeWrite, typeof root> */
+/* uneffect: effect Dom<NodeWrite, typeof root> */
 function mount(root: Element, child: Node) {
   root.appendChild(child)
 }
@@ -101,7 +106,14 @@ Proof-grade DOM scopes are symbol/identity regions such as `typeof root` or buil
 Dom<Query<".item">, typeof root>
 ```
 
-The TypeChecker adapter now recognizes DOM members by their declaring `lib.dom.d.ts` interface symbol (including mixins such as `ParentNode` and `ChildNode`). Calls produce `Dom<Operation, typeof receiver>`. Tree operations additionally mutate the receiver and transferred child regions; contracts that may synchronously invoke callbacks or custom-element reactions emit `InvokeUserCode`. Literal selector arguments are retained as `{ kind: "css-selector" }` query refinements but never used to authorize a different receiver.
+The TypeChecker adapter now recognizes selected DOM calls by their declaring `lib.dom.d.ts` interface symbol (including mixins such as `ParentNode` and `ChildNode`). Calls produce `Dom<Operation, typeof receiver>`. `NodeWrite` operations additionally mutate the receiver and transferred child regions; contracts that may synchronously invoke callbacks or custom-element reactions emit `InvokeUserCode`. Literal selector arguments are retained as `{ kind: "css-selector" }` query refinements but never used to authorize a different receiver.
+
+The operation vocabulary includes text and Web IDL property reads/writes, but
+the current executable overlay does not yet infer ordinary property getter and
+setter syntax. Until that frontend path is implemented, `textContent`,
+`nodeValue`, `input.value`, and similar property operations must not be claimed
+as automatically checked. The current tested vertical slice covers the call
+operations listed in the registry.
 
 The registry pins the consumed `lib.dom.d.ts` SHA-256 and TypeScript version. `auditBuiltinDeclarationDrift` reports a missing or changed declaration library so new platform APIs cannot silently inherit purity or an old classification.
 
@@ -110,8 +122,8 @@ Selector results depend on mutable DOM state, and general selector-language incl
 Attribute or property qualifiers may use the restricted string-glob lattice:
 
 ```text
-Dom<ValueWrite<"value">, typeof input>
-Dom<ValueWrite<"aria-*">, typeof element>
+Dom<PropertyWrite<"value">, typeof input>
+Dom<AttributeWrite<"aria-*">, typeof element>
 ```
 
 ### Compound contracts
@@ -126,7 +138,7 @@ Document.createElement(tag)
    + possibly InvokeUserCode(CustomElementReaction)
 
 Node.appendChild(child)
-  => Dom<TreeWrite, receiver>
+  => Dom<NodeWrite, receiver>
    + Mutate(child.parent relation)
    + Throw<DOMException>
    + possibly InvokeUserCode(CustomElementReaction)

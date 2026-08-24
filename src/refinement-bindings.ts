@@ -830,10 +830,20 @@ function validateRefinementActionBodiesInSource(
       if (expression.kind === "field") {
         const receiver = expandLocalSnapshots(expression.receiver);
         const project = (value: TemporalExpression): TemporalExpression | undefined => {
-          if (value.kind !== "record") return undefined;
-          const own = value.fields[expression.name];
-          if (own) return expandLocalSnapshots(own);
-          return value.base ? project(value.base) : undefined;
+          if (value.kind === "record") {
+            const own = value.fields[expression.name];
+            if (own) return expandLocalSnapshots(own);
+            return value.base ? project(value.base) : undefined;
+          }
+          if (value.kind === "conditional") {
+            const whenTrue = project(value.whenTrue);
+            const whenFalse = project(value.whenFalse);
+            if (!whenTrue || !whenFalse) return undefined;
+            return sameRefinementExpression(whenTrue, whenFalse)
+              ? whenTrue
+              : { kind: "conditional", condition: value.condition, whenTrue, whenFalse };
+          }
+          return undefined;
         };
         return project(receiver) ?? { ...expression, receiver };
       }

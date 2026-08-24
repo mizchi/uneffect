@@ -627,6 +627,34 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("record-payload.ts", source, "accounting", temporal)).toEqual([]);
   });
 
+  it("uses common fields from conditional record throw payloads", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state failed: int
+      state primary: bool
+      init failed = 0
+      init primary = false
+      action reject: failed' = failed + (primary ? 1 : 2)
+    */
+      interface Runtime { failed: number; primary: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          if (runtime.primary) throw { code: 1, retryable: true }
+          throw { code: 2, retryable: false }
+        } catch (error) {
+          if (error.retryable) runtime.failed = runtime.failed + error.code
+          else runtime.failed = runtime.failed + error.code
+        }
+      }
+    `;
+    const temporal = (parseSpec("conditional-record-payload.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("conditional-record-payload.ts", source, "accounting", temporal)).toEqual([]);
+  });
+
   it("routes a nested conditional throw through the enclosing catch path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

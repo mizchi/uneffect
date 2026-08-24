@@ -37,9 +37,11 @@ same property is proved for arbitrary TypeScript.
 - Filesystem scopes support explicit `$WORKSPACE_ROOT`, `$PACKAGE_ROOT`,
   `$SOURCE_DIR`, `$CWD`, and target-profile `$TEMP` anchors. Separator, dot
   segment, case-policy, and containment normalization are implemented.
-- DOM contracts distinguish reads, layout reads, value/tree writes, creation,
-  listeners, dispatch, and parsing. Authority is based on receiver identity
-  regions; selectors are refinements rather than security boundaries.
+- DOM contracts distinguish attribute, node-topology, text, Web IDL property,
+  and layout operations from creation, listeners, dispatch, and parsing.
+  Authority is based on receiver identity regions; selectors are refinements
+  rather than security boundaries. The executable overlay currently infers the
+  reviewed call subset; ordinary property getter/setter syntax remains open.
 - Transferable values are modeled as ownership transitions with invalidation
   and use-after-transfer diagnostics.
 
@@ -78,9 +80,10 @@ same property is proved for arbitrary TypeScript.
   `switch` completion and can bind immutable catch-local predicates. Normalized
   integer and boolean literals are tracked, including switch fallthrough and
   default paths. Switch joins require every selected throwing path to carry a
-  tracked payload. A direct normalized object-literal throw may expose its
-  scalar fields through catch-local property reads. Conditional/dynamic object
-  shapes, effectful or unresolved return calls, string/null payloads, other
+  tracked payload. Direct and conditionally joined normalized object-literal
+  throws may expose fields present on every joined branch through catch-local
+  property reads. Missing/dynamic object fields, effectful or unresolved return
+  calls, string/null payloads, other
   abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
   unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.

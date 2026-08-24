@@ -566,6 +566,39 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("projects common scalar fields across conditional record throw payloads", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state primary: bool
+      init failed = 0
+      init primary = false
+      action reject: failed' = failed + (primary ? 1 : 2)
+    */
+      interface Runtime { failed: number; primary: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          if (runtime.primary) throw { code: 1, retryable: true }
+          throw { code: 2, retryable: false }
+        } catch (error) {
+          if (error.retryable) runtime.failed = runtime.failed + error.code
+          else runtime.failed = runtime.failed + error.code
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("conditional-record-payload.ts", source, "accounting", parseSpec("conditional-record-payload.ts", source).temporal)).toEqual([]);
+
+    const missingField = source.replace(
+      "throw { code: 2, retryable: false }",
+      "throw { retryable: false }",
+    );
+    expect(validateRefinementActionBodies("missing-record-field.ts", missingField, "accounting", parseSpec("missing-record-field.ts", missingField).temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "reject" }),
+    );
+  });
+
   it("propagates a nested conditional throw to the enclosing catch path", () => {
     const source = `/* uneffect:
       state delivered: int
