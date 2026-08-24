@@ -797,6 +797,30 @@ function validateRefinementActionBodiesInSource(
         || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
         || value.kind === ts.SyntaxKind.NullKeyword;
     };
+    const directPureThrow = (statement: ts.Statement): ts.ThrowStatement | undefined => {
+      if (ts.isThrowStatement(statement) && isPureThrownValue(statement.expression)) return statement;
+      if (!ts.isBlock(statement) || statement.statements.length !== 1) return undefined;
+      const only = statement.statements[0]!;
+      return ts.isThrowStatement(only) && isPureThrownValue(only.expression) ? only : undefined;
+    };
+    const mergeConditionalUpdates = (
+      condition: TemporalExpression,
+      whenTrue: ReadonlyMap<string, TemporalExpression>,
+      whenFalse: ReadonlyMap<string, TemporalExpression>,
+      before: ReadonlyMap<string, TemporalExpression>,
+    ): void => {
+      updates.clear();
+      for (const name of stateNames) {
+        const initial = { kind: "name", name } as TemporalExpression;
+        const original = before.get(name) ?? initial;
+        const trueValue = whenTrue.get(name) ?? original;
+        const falseValue = whenFalse.get(name) ?? original;
+        const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
+          ? trueValue
+          : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
+        if (!sameRefinementExpression(merged, initial)) updates.set(name, merged);
+      }
+    };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
@@ -829,15 +853,43 @@ function validateRefinementActionBodiesInSource(
         if (statement.catchClause) {
           const tryStatements = [...statement.tryBlock.statements];
           const abrupt = tryStatements.at(-1);
-          if (!abrupt || !ts.isThrowStatement(abrupt) || !isPureThrownValue(abrupt.expression)) return undefined;
-          if (!collect(
-            ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, false,
-          )) return undefined;
-          if (!collect(
-            statement.catchClause.block, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, false,
-          )) return undefined;
+          if (abrupt && directPureThrow(abrupt)) {
+            if (!collect(
+              ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+              updates, new Map(localValues), activeCalls, false,
+            )) return undefined;
+            if (!collect(
+              statement.catchClause.block, receiver, runtimeClass, substitutions,
+              updates, new Map(localValues), activeCalls, false,
+            )) return undefined;
+          } else {
+            const throwIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
+              && !candidate.elseStatement && directPureThrow(candidate.thenStatement) !== undefined);
+            if (throwIndex < 0 || tryStatements.slice(throwIndex + 1).some((candidate) => ts.isIfStatement(candidate)
+              && !candidate.elseStatement && directPureThrow(candidate.thenStatement) !== undefined)) return undefined;
+            const conditionalThrow = tryStatements[throwIndex] as ts.IfStatement;
+            const tryLocals = new Map(localValues);
+            if (!collect(
+              ts.factory.createBlock(tryStatements.slice(0, throwIndex), true), receiver, runtimeClass, substitutions,
+              updates, tryLocals, activeCalls, false,
+            )) return undefined;
+            const normalizedCondition = normalizeRefinementExpression(
+              conditionalThrow.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), tryLocals,
+            );
+            if (!normalizedCondition) return undefined;
+            const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
+            const before = new Map(updates);
+            const thrown = collect(
+              statement.catchClause.block, receiver, runtimeClass, substitutions,
+              new Map(before), new Map(localValues), activeCalls, false,
+            );
+            const normal = collect(
+              ts.factory.createBlock(tryStatements.slice(throwIndex + 1), true), receiver, runtimeClass, substitutions,
+              new Map(before), new Map(tryLocals), activeCalls, false,
+            );
+            if (!thrown || !normal) return undefined;
+            mergeConditionalUpdates(condition, thrown, normal, before);
+          }
         } else if (!collect(
           statement.tryBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, false,
@@ -876,17 +928,7 @@ function validateRefinementActionBodiesInSource(
         const whenTrue = collect(branchBody(trueCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
         const whenFalse = collect(branchBody(falseCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
         if (!whenTrue || !whenFalse) return undefined;
-        updates.clear();
-        for (const name of stateNames) {
-          const initial = { kind: "name", name } as TemporalExpression;
-          const original = before.get(name) ?? initial;
-          const trueValue = whenTrue.get(name) ?? original;
-          const falseValue = whenFalse.get(name) ?? original;
-          const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
-            ? trueValue
-            : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
-          if (!sameRefinementExpression(merged, initial)) updates.set(name, merged);
-        }
+        mergeConditionalUpdates(condition, whenTrue, whenFalse, before);
         if (hasBranchReturn) return updates;
         continue;
       }

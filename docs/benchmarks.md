@@ -98,6 +98,13 @@ throws a primitive literal, applies catch accounting, and then applies a
 mandatory `finally` update. Effectful throw expressions and unresolved
 exception paths are negative controls and are not included in the timed path.
 
+Changing that dogfood to conditionally reject an already audit-armed delivery
+measured 0.9686 ms mean over 517 samples (0.48% RME). The checker now constructs
+normal and exceptional abstract states, applies catch only to the latter,
+joins both under the pre-throw condition, and applies `finally` to the joined
+state. Inverting the implementation condition is a solver-checked negative
+control outside the timed benchmark.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

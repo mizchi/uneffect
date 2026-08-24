@@ -138,10 +138,14 @@ completing `try` update. Its first exception-aware fragment recognizes a direct
 terminal primitive `throw` in the try block, routes the accumulated state
 through the catch body, and then applies an optional `finally`. The thrown
 expression must be a primitive literal so evaluating it cannot hide another
-effect; catch-value-dependent code, implicit exceptions, branch-local or
-nonterminal throws, rethrows, and abrupt completion during unwinding remain
-fail-closed. The telemetry accounting dogfood covers both normal cleanup and a
-caught rejected-delivery path whose accounting is finalized by `finally`.
+effect. A top-level `if (condition) throw <primitive>` in the try block also
+splits exceptional and normal paths: only the exceptional path executes catch,
+the normal path executes the remaining try statements, both states are joined,
+and `finally` plus statements after the try run on the join. Catch-value-
+dependent code, implicit exceptions, nested or nonterminal throws, rethrows,
+and abrupt completion during unwinding remain fail-closed. The telemetry
+accounting dogfood selects delivered or dropped accounting through this join
+and finalizes its audit state in `finally`.
 Outside a `try`, a direct branch-final void `return` is a supported completion:
 the returned path keeps its updates while only the continuing path executes
 the statements following the `if`. Updates made before the branch are retained

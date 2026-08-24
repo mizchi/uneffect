@@ -449,6 +449,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
     );
+    const invertedFailurePath = source.replace("if (runtime.auditArmed) throw", "if (!runtime.auditArmed) throw");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, invertedFailurePath, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "reject" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

@@ -439,6 +439,39 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("caught-throw.ts", source, "accounting", temporal)).toEqual([]);
   });
 
+  it("joins a conditional failure with the normal path through catch and finally", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state delivered: int
+      state failed: int
+      state settled: int
+      state shouldFail: bool
+      init delivered = 0
+      init failed = 0
+      init settled = 0
+      init shouldFail = false
+      action deliver: delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1
+    */
+      interface Runtime { delivered: number; failed: number; settled: number; shouldFail: boolean }
+      /* uneffect: refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement delivery@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        try {
+          if (runtime.shouldFail) throw "delivery failed"
+          runtime.delivered++
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    const temporal = (parseSpec("conditional-throw.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("conditional-throw.ts", source, "delivery", temporal)).toEqual([]);
+  });
+
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

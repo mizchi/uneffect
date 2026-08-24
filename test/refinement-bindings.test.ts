@@ -313,6 +313,47 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("joins conditional throw and normal paths before finally and trailing updates", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state delivered: int
+      state failed: int
+      state settled: int
+      state observed: int
+      state shouldFail: bool
+      init attempted = 0
+      init delivered = 0
+      init failed = 0
+      init settled = 0
+      init observed = 0
+      init shouldFail = false
+      action deliver: attempted' = attempted + 1, delivered' = shouldFail ? delivered : delivered + 1, failed' = shouldFail ? failed + 1 : failed, settled' = settled + 1, observed' = observed + 1
+    */
+      interface Runtime { attempted: number; delivered: number; failed: number; settled: number; observed: number; shouldFail: boolean }
+      /* uneffect: refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement delivery@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          if (runtime.shouldFail) throw "delivery failed"
+          runtime.delivered++
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    expect(validateRefinementActionBodies("conditional-throw.ts", source, "delivery", parseSpec("conditional-throw.ts", source).temporal)).toEqual([]);
+
+    const nestedThrow = source.replace('if (runtime.shouldFail) throw "delivery failed"', 'if (runtime.shouldFail) { if (runtime.attempted > 0) throw "delivery failed" }');
+    expect(validateRefinementActionBodies("nested-throw.ts", nestedThrow, "delivery", parseSpec("nested-throw.ts", nestedThrow).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
+    ]);
+  });
+
   it("joins a branch-local void return with the continuing path", () => {
     const source = `/* uneffect:
       state value: int
