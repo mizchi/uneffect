@@ -408,6 +408,37 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("refines an explicitly thrown failure through catch and finally", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state attempted: int
+      state failed: int
+      state settled: int
+      init attempted = 0
+      init failed = 0
+      init settled = 0
+      action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1
+    */
+      interface Runtime { attempted: number; failed: number; settled: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          throw "delivery failed"
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    const temporal = (parseSpec("caught-throw.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("caught-throw.ts", source, "accounting", temporal)).toEqual([]);
+  });
+
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

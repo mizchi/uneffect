@@ -791,6 +791,12 @@ function validateRefinementActionBodiesInSource(
     const asBlock = (statement: ts.Statement | undefined): ts.Block => !statement
       ? ts.factory.createBlock([], true)
       : ts.isBlock(statement) ? statement : ts.factory.createBlock([statement], true);
+    const isPureThrownValue = (expression: ts.Expression): boolean => {
+      const value = unwrap(expression);
+      return ts.isStringLiteral(value) || ts.isNumericLiteral(value)
+        || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
+        || value.kind === ts.SyntaxKind.NullKeyword;
+    };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
@@ -820,11 +826,23 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isTryStatement(statement)) {
-        if (statement.catchClause || !statement.finallyBlock) return undefined;
-        if (!collect(
+        if (statement.catchClause) {
+          const tryStatements = [...statement.tryBlock.statements];
+          const abrupt = tryStatements.at(-1);
+          if (!abrupt || !ts.isThrowStatement(abrupt) || !isPureThrownValue(abrupt.expression)) return undefined;
+          if (!collect(
+            ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+            updates, new Map(localValues), activeCalls, false,
+          )) return undefined;
+          if (!collect(
+            statement.catchClause.block, receiver, runtimeClass, substitutions,
+            updates, new Map(localValues), activeCalls, false,
+          )) return undefined;
+        } else if (!collect(
           statement.tryBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, false,
         )) return undefined;
+        if (!statement.finallyBlock) continue;
         if (!collect(
           statement.finallyBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, false,

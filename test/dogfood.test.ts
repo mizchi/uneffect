@@ -425,7 +425,7 @@ describe("Uneffect dogfood", () => {
     );
   });
 
-  it("proves four-way telemetry routing accounting and rejects a missing update", async () => {
+  it("proves telemetry routing accounting, including caught failure, and rejects missing updates", async () => {
     const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
@@ -444,6 +444,10 @@ describe("Uneffect dogfood", () => {
     const missingEarlyReturn = source.replace("if (runtime.attempted <= 0) return;", "void runtime.attempted;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingEarlyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "armAudit" }),
+    );
+    const effectfulThrow = source.replace('throw "telemetry delivery rejected";', "throw makeTelemetryError(runtime);");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
     );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,

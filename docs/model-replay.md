@@ -134,11 +134,14 @@ the discriminant evaluated before any clause update. Dynamic or duplicate
 labels, labeled breaks, and unsupported abrupt completion fail closed as
 `unsupported-action-body`; they are never accepted by replay evidence alone.
 The checker also sequences a mandatory `finally` block after a normally
-completing `try` update. A catch clause or any return/throw/break completion in
-that region remains unsupported, because proving only the normal path would be
-unsound for an exception-capable implementation. The telemetry accounting
-dogfood uses this fragment to ensure an attempted-delivery counter is updated
-by `finally` after the outcome counter.
+completing `try` update. Its first exception-aware fragment recognizes a direct
+terminal primitive `throw` in the try block, routes the accumulated state
+through the catch body, and then applies an optional `finally`. The thrown
+expression must be a primitive literal so evaluating it cannot hide another
+effect; catch-value-dependent code, implicit exceptions, branch-local or
+nonterminal throws, rethrows, and abrupt completion during unwinding remain
+fail-closed. The telemetry accounting dogfood covers both normal cleanup and a
+caught rejected-delivery path whose accounting is finalized by `finally`.
 Outside a `try`, a direct branch-final void `return` is a supported completion:
 the returned path keeps its updates while only the continuing path executes
 the statements following the `if`. Updates made before the branch are retained

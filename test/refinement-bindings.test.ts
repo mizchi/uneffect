@@ -275,6 +275,44 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("routes a direct terminal throw through catch and mandatory finally updates", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state failed: int
+      state settled: int
+      init attempted = 0
+      init failed = 0
+      init settled = 0
+      action reject: attempted' = attempted + 1, failed' = failed + 1, settled' = settled + 1
+    */
+      interface Runtime { attempted: number; failed: number; settled: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          throw "delivery failed"
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("caught-throw.ts", source, "accounting", parseSpec("caught-throw.ts", source).temporal)).toEqual([]);
+
+    const readsCaughtValue = source.replace("catch {", "catch (error) {").replace("runtime.failed++", "if (error) runtime.failed++");
+    expect(validateRefinementActionBodies("caught-value.ts", readsCaughtValue, "accounting", parseSpec("caught-value.ts", readsCaughtValue).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    ]);
+
+    const effectfulThrow = source.replace('throw "delivery failed"', "throw makeError(runtime)");
+    expect(validateRefinementActionBodies("effectful-throw.ts", effectfulThrow, "accounting", parseSpec("effectful-throw.ts", effectfulThrow).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    ]);
+  });
+
   it("joins a branch-local void return with the continuing path", () => {
     const source = `/* uneffect:
       state value: int

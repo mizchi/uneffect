@@ -92,6 +92,12 @@ abstract path and preserving the common pre-branch state. The lower mean than
 the preceding run is measurement variation, not evidence that the extra CFG
 join is free.
 
+After adding the caught rejected-delivery path, the same benchmark measured
+0.9242 ms mean over 541 samples (0.53% RME). The path performs a state update,
+throws a primitive literal, applies catch accounting, and then applies a
+mandatory `finally` update. Effectful throw expressions and unresolved
+exception paths are negative controls and are not included in the timed path.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
