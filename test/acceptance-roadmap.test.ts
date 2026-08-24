@@ -221,6 +221,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = await analyzeProject({ files: files({
       "src/errors.ts": `
         class ParseError extends Error {}
+        /* uneffect: effect Throw<Error> */
+        function fail(): never { throw new Error("route") }
         /* uneffect: effect Throw<ParseError> */
         function parse(input: string) { if (!input) throw new ParseError(); return input }
         function syncHandled() { try { parse("") } catch (error) {} }
@@ -234,6 +236,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           const pending = Promise.reject(new ParseError())
           try { if (flag) throw new Error("route") } catch { await pending }
         }
+        async function caughtNeverCall() {
+          let pending: Promise<never>
+          try { pending = Promise.reject(new ParseError()); fail() }
+          catch { await pending }
+        }
       `,
     }) }) as { diagnostics: Array<{ code: string; functionName: string }>; summaries: Array<{ functionName: string; effects: string[] }> };
     expect(result.summaries).toContainEqual(expect.objectContaining({ functionName: "parse", effects: ["Throw<ParseError>"] }));
@@ -241,6 +248,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "syncHandled" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "asyncHandled" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "caughtBinding" }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "caughtNeverCall" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "floating" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "conditionalBinding" }));
   });

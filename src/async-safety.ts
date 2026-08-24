@@ -238,6 +238,13 @@ function disposalFailureType(symbol: ts.Symbol | undefined): string {
   return "unknown";
 }
 
+function declaresSynchronousThrow(declaration: ts.Declaration | undefined): boolean {
+  if (!declaration) return false;
+  const source = declaration.getSourceFile();
+  const comments = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+  return extractAnnotations(comments, "effect").some((effect) => /(?:^|\|)\s*Throw<\s*[^>]+?\s*>/.test(effect));
+}
+
 interface IndexedOwnershipContract {
   indices: Set<number>;
   errors: { position: number; message: string }[];
@@ -1446,6 +1453,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(statement);
         return reassigned;
       };
+      const isNeverReturningThrowCall = (statement: ts.Statement): boolean => {
+        if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false;
+        const signature = checker.getResolvedSignature(statement.expression);
+        return signature !== undefined
+          && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
+          && declaresSynchronousThrow(signature.declaration);
+      };
       const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
         if (statement.caseBlock.clauses.some(ts.isDefaultClause)) return true;
         const type = checker.getTypeAtLocation(statement.expression);
@@ -1551,7 +1565,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (activates(statement) && !next.active) { next.active = true; next.pending = true; }
         if (reassigns(statement) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
         if (consumes(statement) && next.active) next.pending = false;
-        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
+        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement) || isNeverReturningThrowCall(statement)) {
           next.terminated = true;
           next.completion = ts.isReturnStatement(statement) ? "return" : "throw";
         }

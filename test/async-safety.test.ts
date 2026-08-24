@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -414,6 +414,53 @@ describe("async error and explicit resource safety", () => {
       expect.objectContaining({ functionName: "rethrown" }),
       expect.objectContaining({ functionName: "conditional" }),
     ]);
+  });
+
+  it("routes TypeChecker-proven never calls into catch with the current ownership state", () => {
+    const result = analyzeAsyncSafety("never-call-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: effect Throw<Error> */
+      declare function fail(): never
+      declare function terminate(): never
+      declare function maybeFail(): void
+      async function caughtNever() {
+        let pending: Promise<number>
+        try { pending = task(); fail() }
+        catch { await pending }
+      }
+      async function maybeReturns() {
+        let pending: Promise<number>
+        try { pending = task(); maybeFail() }
+        catch { await pending }
+      }
+      async function nonThrowingNever() {
+        let pending: Promise<number>
+        try { pending = task(); terminate() }
+        catch { await pending }
+      }
+      async function conditionalNever(flag: boolean) {
+        let pending: Promise<number>
+        try { pending = task(); if (flag) fail() }
+        catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "caughtNever", status: "observed" },
+      { owner: "maybeReturns", status: "floating" },
+      { owner: "nonThrowingNever", status: "floating" },
+      { owner: "conditionalNever", status: "floating" },
+    ]);
+  });
+
+  it("dogfoods audit delivery before a typed fatal throw", () => {
+    const fileName = "examples/dogfood/audit-before-fatal.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.promiseBindings).toContainEqual(expect.objectContaining({
+      owner: "auditInvalidRequest", binding: "delivery", status: "observed",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "auditInvalidRequest", kind: "floating-promise",
+    }));
   });
 
   it("connects awaited rejection to the nearest catch and leaves bare Promise calls uncaught", () => {
