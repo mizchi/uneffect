@@ -894,7 +894,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (options.allowVoid !== false) markBinding(expression.expression, "observed", "void");
         }
         else if (isPromiseLike(checker, expression)
-          && !(ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(expression.left))) {
+          && !(ts.isBinaryExpression(expression)
+            && expression.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+            && expression.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+            && ts.isIdentifier(expression.left))) {
           const handled = handledChain(expression);
           observe(expression, handled ?? "floating", Boolean(handled));
           const receiver = handled && handledReceiver(expression);
@@ -1446,7 +1449,9 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         let reassigned = false;
         const scan = (node: ts.Node): void => {
           if (reassigned || (node !== statement && ts.isFunctionLike(node))) return;
-          if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          if (ts.isBinaryExpression(node)
+            && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+            && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
             && referencesGroup(node.left) && isPromiseLike(checker, node.right) && !referencesGroup(node.right)) { reassigned = true; return; }
           ts.forEachChild(node, scan);
         };
@@ -1586,6 +1591,12 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const statementGuaranteesObservationBeforeCatch = (statement: ts.Statement): boolean => {
         if (ts.isBlock(statement)) return statementsGuaranteeObservationBeforeCatch(statement.statements);
         if (directGroupAwait(statement)) return true;
+        if (ts.isTryStatement(statement)) {
+          if (!statementsGuaranteeObservationBeforeCatch(statement.tryBlock.statements)) return false;
+          if (statement.catchClause && reassigns(statement.catchClause.block)) return false;
+          if (statement.finallyBlock && reassigns(statement.finallyBlock)) return false;
+          return true;
+        }
         if (ts.isSwitchStatement(statement)) {
           if (!nonThrowingPrimitiveExpression(statement.expression) || !switchIsExhaustive(statement)
             || statement.caseBlock.clauses.some((clause) =>

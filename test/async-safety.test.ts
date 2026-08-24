@@ -405,6 +405,50 @@ describe("async error and explicit resource safety", () => {
         }
         await pending
       }
+      async function observedNestedTryFinally() {
+        let pending = task()
+        while (retry) {
+          try {
+            try { await pending }
+            finally { recordAttempt(1) }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function observedNestedCatch() {
+        let pending = task()
+        while (retry) {
+          try {
+            try { await pending }
+            catch { recordAttempt(0) }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function replacementInFinally() {
+        let pending = task()
+        while (retry) {
+          try {
+            try { await pending }
+            finally { pending = task(); recordAttempt(1) }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function logicalReplacementInFinally() {
+        let pending = task()
+        while (retry) {
+          try {
+            try { await pending }
+            finally { pending &&= task(); recordAttempt(1) }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
     `);
     expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "observedAfterRetry", status: "observed" },
@@ -417,6 +461,10 @@ describe("async error and explicit resource safety", () => {
       { owner: "unobservedSwitchCase", status: "floating" },
       { owner: "observedFallthroughSwitch", status: "observed" },
       { owner: "riskySwitchDiscriminant", status: "floating" },
+      { owner: "observedNestedTryFinally", status: "observed" },
+      { owner: "observedNestedCatch", status: "observed" },
+      { owner: "replacementInFinally", status: "floating" },
+      { owner: "logicalReplacementInFinally", status: "floating" },
     ]);
     expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
       expect.objectContaining({ functionName: "lostAfterRetry" }),
@@ -426,6 +474,8 @@ describe("async error and explicit resource safety", () => {
       expect.objectContaining({ functionName: "riskyBranchCondition" }),
       expect.objectContaining({ functionName: "unobservedSwitchCase" }),
       expect.objectContaining({ functionName: "riskySwitchDiscriminant" }),
+      expect.objectContaining({ functionName: "replacementInFinally" }),
+      expect.objectContaining({ functionName: "logicalReplacementInFinally" }),
     ]);
   });
 

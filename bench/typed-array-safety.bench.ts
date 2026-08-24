@@ -65,10 +65,12 @@ const loopCatchOwnershipSource = Array.from({ length: 64 }, (_, index) => `
     while (retry) {
       try {
         const attempt = ${index}; void attempt
-        switch (mode) {
-          case "primary":
-          case "backup": { const value = await pending; recordAttempt(value); break }
-        }
+        try {
+          switch (mode) {
+            case "primary":
+            case "backup": { const value = await pending; recordAttempt(value); break }
+          }
+        } finally { recordAttempt(attempt) }
         break
       }
       catch { pending = task(); continue }

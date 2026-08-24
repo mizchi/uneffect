@@ -124,14 +124,18 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           try {
             const attempt = 1
             void attempt
-            switch (mode) {
-              case "primary":
-              case "backup":
-                {
-                  const value = await pending
-                  recordAttempt(value)
-                }
-                break
+            try {
+              switch (mode) {
+                case "primary":
+                case "backup":
+                  {
+                    const value = await pending
+                    recordAttempt(value)
+                  }
+                  break
+              }
+            } finally {
+              void attempt
             }
             break
           } catch {

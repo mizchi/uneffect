@@ -124,6 +124,11 @@ same property is proved for arbitrary TypeScript.
   per-clause entry paths through unlabeled-break fallthrough. Every possible
   entry must observe before risk; call/property discriminants, effectful case
   labels, or one unobserved entry retain the conservative catch state.
+- Nested `try`/`catch`/`finally` composes into the outer catch-entry proof when
+  the inner try must observe first and neither handler replaces the tracked
+  Promise generation. Handler calls may throw after observation; replacement
+  in `catch` or `finally` remains conservative because a later throw can lose
+  the replacement.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

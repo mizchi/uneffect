@@ -557,6 +557,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Preserve Promise observation across a loop-local catch/retry join with a statically primitive non-throwing prefix, a direct tracked `await`, and a suffix that does not replace the tracked generation; retain conservative entries for earlier throw risks or later reassignment.
       - [x] Join nested `if`/`else` catch-entry paths when a primitive non-throwing condition and both branches must observe the tracked Promise before any throw risk; keep one-sided observation and call/property conditions conservative.
       - [x] Join exhaustive finite-literal/default `switch` catch-entry paths, including empty-label fallthrough groups, when every possible entry must observe before risk; reject unobserved cases and throw-capable discriminants or labels.
+      - [x] Compose nested `try`/`catch`/`finally` into an outer catch-entry proof when the inner try must observe first and its handlers do not replace the tracked generation; reject replacement-before-later-throw paths.
+      - [x] Treat every TypeScript assignment operator, including logical assignment, as a tracked Promise generation replacement in the ownership fixed point.
       - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
