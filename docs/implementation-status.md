@@ -45,7 +45,8 @@ same property is proved for arbitrary TypeScript.
   clone/normalize/adjacent-content operations, plus reviewed
   attribute-collection and tree-topology reads,
   direct/immutable-alias `NamedNodeMap` origin projection,
-  `Node.textContent`, `Node.nodeValue`, `CharacterData.data`, and
+  markup serialization/parsing, layout metrics, `Node.textContent`,
+  `Node.nodeValue`, `CharacterData.data`, and
   `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
   remain open.
 - Transferable values are modeled as ownership transitions with invalidation

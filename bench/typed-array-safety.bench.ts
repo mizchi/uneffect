@@ -116,13 +116,13 @@ const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerO
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
 const domPropertySourceName = "/bench/dom-properties.ts";
 const domPropertySourceText = Array.from({ length: 64 }, (_, index) => `
-  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Dom<NodeRead, typeof element> | Dom<NodeWrite, typeof element> | Dom<TextWrite, typeof element> | Dom<Create, typeof element> | Dom<Parse, typeof element> | Mutate<typeof element> | InvokeUserCode | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
+  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Dom<NodeRead, typeof element> | Dom<NodeWrite, typeof element> | Dom<TextRead, typeof element> | Dom<TextWrite, typeof element> | Dom<LayoutRead, typeof element> | Dom<Create, typeof element> | Dom<Parse, typeof element> | Mutate<typeof element> | InvokeUserCode | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
   function update${index}(input: HTMLInputElement, element: Element, data: CharacterData) {
     input.value += "${index}"; data.data += input["value"]; data.replaceData(0, 0, "")
     const attrs = element.attributes; attrs.getNamedItem("data-active"); attrs.removeNamedItem("data-stale")
     element.toggleAttribute("data-active", element.hasAttribute("data-active")); element.normalize()
-    element.insertAdjacentHTML("beforeend", "<span></span>")
-    return [element.cloneNode(false), element.attributes, element.children, element.contains(element.firstChild), data.substringData(0, 1)]
+    element.innerHTML += "<span></span>"
+    return [element.cloneNode(false), element.attributes, element.children, element.clientWidth, element.contains(element.firstChild), data.substringData(0, 1)]
   }
 `).join("\n");
 const domCompilerOptions: ts.CompilerOptions = { ...compilerOptions, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] };

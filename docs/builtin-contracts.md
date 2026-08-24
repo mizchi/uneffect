@@ -141,8 +141,12 @@ and insertion may synchronously run custom-element reactions.
 
 The executable property overlay covers the reviewed attribute collection,
 tree-topology properties, `textContent`, `nodeValue`, `CharacterData.data`, and
-`HTMLInputElement.value`. Other Web IDL properties remain unclassified; a
-dynamic key on a DOM receiver falls back to `Dom<All, Scope>`.
+`HTMLInputElement.value`. `Element.innerHTML` and `ShadowRoot.innerHTML` reads
+serialize node, attribute, and text state; writes parse markup, replace child
+topology, mutate the receiver, and retain the custom-element invocation
+boundary. Reviewed client/scroll/offset metric properties produce
+`LayoutRead`. Other Web IDL properties remain unclassified; a dynamic key on a
+DOM receiver falls back to `Dom<All, Scope>`.
 
 `Element.attributes` is a reviewed live-view result. Calls on its
 `NamedNodeMap`, such as `getNamedItem`, `setNamedItem`, and `removeNamedItem`,

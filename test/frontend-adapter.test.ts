@@ -194,6 +194,30 @@ describe("TypeChecker symbol adapter", () => {
     expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
   });
 
+  it("classifies markup serialization, parsing, and layout properties", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-markup-layout-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
+      function readMarkup(element: Element) { return element.innerHTML }
+      /* uneffect: effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      function writeMarkup(element: Element) { element.innerHTML = "<span>ready</span>" }
+      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      function appendMarkup(element: Element) { element.innerHTML += "<span>ready</span>" }
+      /* uneffect: effect Dom<NodeRead, typeof root> | Dom<AttributeRead, typeof root> | Dom<TextRead, typeof root> */
+      function readShadowMarkup(root: ShadowRoot) { return root.innerHTML }
+      /* uneffect: effect Dom<LayoutRead, typeof element> */
+      function measure(element: HTMLElement) { return element.clientWidth + element.scrollHeight + element.offsetHeight }
+      interface LocalMarkup { innerHTML: string; clientWidth: number }
+      /* uneffect: effect Mutate<typeof value> */
+      function local(value: LocalMarkup) { value.innerHTML = String(value.clientWidth) }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
   it("distinguishes DOM text and Web IDL property reads from writes", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");

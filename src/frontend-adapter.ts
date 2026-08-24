@@ -37,6 +37,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #declarationContracts: Map<ts.Declaration, BuiltinContract>;
   readonly #globalContracts: Map<string, BuiltinContract>;
   readonly #memberContracts: Map<string, BuiltinContract>;
+  readonly #domPropertyContractsByName = new Map<string, Array<{ owner: string; contract: BuiltinContract }>>();
   readonly #errorType?: ts.Type;
   readonly #nodeType?: ts.Type;
   readonly #domOwnerTypes = new Map<string, ts.Type>();
@@ -47,6 +48,16 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     this.#declarationContracts = new Map();
     this.#globalContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module === "global").map((contract) => [contract.symbol.export, contract]));
     this.#memberContracts = new Map(registry.contracts.filter((contract) => contract.symbol.module.startsWith("lib.")).map((contract) => [contract.symbol.export, contract]));
+    for (const contract of registry.contracts) {
+      if (contract.operation?.kind !== "dom-property") continue;
+      const separator = contract.symbol.export.indexOf("#");
+      if (separator < 0) continue;
+      const owner = contract.symbol.export.slice(0, separator);
+      const name = contract.symbol.export.slice(separator + 1);
+      const candidates = this.#domPropertyContractsByName.get(name) ?? [];
+      candidates.push({ owner, contract });
+      this.#domPropertyContractsByName.set(name, candidates);
+    }
     const errorDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Error");
     const errorSymbol = errorDeclaration ? this.#checker.getSymbolAtLocation(errorDeclaration.name) : undefined;
     this.#errorType = errorSymbol ? this.#checker.getDeclaredTypeOfSymbol(errorSymbol) : undefined;
@@ -163,10 +174,8 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     if (!contract && propertyName !== undefined) {
       const receiverType = this.#checker.getTypeAtLocation(access.expression);
       if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) {
-        for (const [key, candidate] of this.#memberContracts) {
-          const separator = key.indexOf("#");
-          if (separator < 0 || key.slice(separator + 1) !== propertyName || candidate.operation?.kind !== "dom-property") continue;
-          const ownerType = this.#domOwnerTypes.get(key.slice(0, separator));
+        for (const { owner, contract: candidate } of this.#domPropertyContractsByName.get(propertyName) ?? []) {
+          const ownerType = this.#domOwnerTypes.get(owner);
           if (ownerType && this.#checker.isTypeAssignableTo(receiverType, ownerType)) {
             contract = candidate;
             break;

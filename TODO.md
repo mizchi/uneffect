@@ -22,6 +22,7 @@ Open-work mapping:
 - Extend the reviewed DOM overlay beyond the current attribute/tree/text method set, attribute collections, tree topology, `textContent`, `nodeValue`, `CharacterData.data`, and `HTMLInputElement.value`: [#14](https://github.com/mizchi/uneffect/issues/14)
   - [x] Represent DOM call contracts as non-empty operation sets and infer compound clone, normalize, adjacent-text, and adjacent-HTML effects without a legacy scalar form.
   - [x] Project reviewed `NamedNodeMap` reads/writes through direct `Element.attributes` access and immutable const aliases; reassigned and escaping live views remain collection-scoped.
+  - [x] Infer compound `innerHTML` serialization/parsing effects and reviewed client/scroll/offset layout reads; exclude parent-mutating `outerHTML` until parent regions are expressible.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

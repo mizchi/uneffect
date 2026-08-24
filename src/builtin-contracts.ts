@@ -353,6 +353,17 @@ function domPropertyBuiltinContracts(): BuiltinContract[] {
       kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
       mutatesReceiverOnWrite: true,
     }],
+    ...["Element#innerHTML", "ShadowRoot#innerHTML"].map((key): [string, DomPropertyBuiltinOperation] => [key, {
+      kind: "dom-property",
+      readOperations: ["NodeRead", "AttributeRead", "TextRead"],
+      writeOperations: ["Parse", "NodeWrite"],
+      mutatesReceiverOnWrite: true,
+      invokesUserCodeOnWrite: true,
+    }]),
+    ...[
+      "Element#clientHeight", "Element#clientLeft", "Element#clientTop", "Element#clientWidth",
+      "Element#scrollHeight", "Element#scrollWidth", "HTMLElement#offsetHeight", "HTMLElement#offsetWidth",
+    ].map((key): [string, DomPropertyBuiltinOperation] => [key, readOnly("LayoutRead")]),
     ["HTMLInputElement#value", {
       kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
       mutatesReceiverOnWrite: true,
