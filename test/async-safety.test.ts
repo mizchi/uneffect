@@ -284,6 +284,46 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("joins an observed Promise generation through a loop-local catch and continue", () => {
+    const result = analyzeAsyncSafety("loop-try-catch-promises.ts", `
+      declare const retry: boolean
+      declare function task(): Promise<number>
+      async function observedAfterRetry() {
+        let pending = task()
+        while (retry) {
+          try { await pending; break }
+          catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function lostAfterRetry() {
+        let pending = task()
+        while (retry) {
+          try { await pending; break }
+          catch { pending = task(); break }
+        }
+      }
+      declare function mayThrowBeforeAwait(): void
+      async function riskBeforeObservation() {
+        let pending = task()
+        while (retry) {
+          try { mayThrowBeforeAwait(); await pending; break }
+          catch { pending = task(); continue }
+        }
+        await pending
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "observedAfterRetry", status: "observed" },
+      { owner: "lostAfterRetry", status: "floating" },
+      { owner: "riskBeforeObservation", status: "floating" },
+    ]);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "lostAfterRetry" }),
+      expect.objectContaining({ functionName: "riskBeforeObservation" }),
+    ]);
+  });
+
   it("executes for initializers and incrementors in Promise ownership fixed points", () => {
     const result = analyzeAsyncSafety("for-flow-promises.ts", `
       declare const flag: boolean

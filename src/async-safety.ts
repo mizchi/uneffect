@@ -1546,6 +1546,23 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           ...next, terminated: wasTerminated, completion: previousCompletion, abrupt: previousAbrupt, label: previousLabel,
         }));
       };
+      const directGroupAwait = (statement: ts.Statement): boolean => {
+        if (!ts.isExpressionStatement(statement)) return false;
+        let expression = statement.expression;
+        while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
+        return ts.isAwaitExpression(expression) && referencesGroup(expression.expression);
+      };
+      const preciseAwaitCatchEntries = (block: ts.Block, state: PathState): PathState[] | undefined => {
+        const [first, ...rest] = block.statements;
+        if (!first || !directGroupAwait(first)) return undefined;
+        // This restricted shape has no operation before the await that can
+        // enter catch, and its suffix cannot throw. The rejection edge owns
+        // the Promise exactly like the fulfillment edge; break/continue only
+        // runs after fulfillment and therefore is not retained on catch.
+        if (!rest.every((statement) => ts.isBreakStatement(statement) || ts.isContinueStatement(statement))) return undefined;
+        const observed = executeNodeEffects(first, state);
+        return [{ ...observed, terminated: false, completion: undefined, abrupt: undefined, label: undefined }];
+      };
       const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;
       const uniqueStates = (states: PathState[]): PathState[] => [...new Map(states.map((state) => [stateKey(state), state])).values()];
       const executeNodeEffects = (node: ts.Node, state: PathState): PathState => {
@@ -1656,8 +1673,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           // property access whose synchronous throw behavior is not yet explicit
           // in this finite walker. Explicit throw completions retain their
           // ownership facts and are routed exclusively through the catch.
+          const preciseAwaitEntries = statement.catchClause
+            ? preciseAwaitCatchEntries(statement.tryBlock, state)
+            : undefined;
           const catchInputs = statement.catchClause
-            ? uniqueStates([{ ...state }, ...thrown.map((completion) => ({ ...completion, terminated: false, completion: undefined }))])
+            ? uniqueStates([
+              ...(preciseAwaitEntries ?? [{ ...state }]),
+              ...thrown.map((completion) => ({ ...completion, terminated: false, completion: undefined })),
+            ])
             : [];
           const catchStates = statement.catchClause
             ? catchInputs.flatMap((entry) => executeStatement(statement.catchClause!.block, entry))

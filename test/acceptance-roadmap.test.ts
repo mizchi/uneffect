@@ -111,6 +111,47 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     ]);
   });
 
+  it("keeps Promise rejection ownership through a loop-local catch and continue join", () => {
+    const analyzeAsyncSafety = futureApi("analyzeAsyncSafety");
+    const result = analyzeAsyncSafety("src/retry.ts", `
+      declare const retry: boolean
+      declare function task(): Promise<number>
+      export async function observedAfterRetry() {
+        let pending = task()
+        while (retry) {
+          try {
+            await pending
+            break
+          } catch {
+            pending = task()
+            continue
+          }
+        }
+        await pending
+      }
+      export async function lostAfterRetry() {
+        let pending = task()
+        while (retry) {
+          try {
+            await pending
+            break
+          } catch {
+            pending = task()
+            break
+          }
+        }
+      }
+    `) as { diagnostics: Array<{ functionName: string; kind: string }> };
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "observedAfterRetry",
+      kind: "floating-promise",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "lostAfterRetry",
+      kind: "floating-promise",
+    }));
+  });
+
   it("checks scoped builtin and user-defined capability sets transitively and warns about unused upper bounds", async () => {
     const analyzeProject = futureApi("analyzeUneffectProject");
     const result = await analyzeProject({
