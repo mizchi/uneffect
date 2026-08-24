@@ -17,7 +17,7 @@ export interface TimerPattern {
   enqueuedBy?: number;
   handle?: string;
   handleKind?: "number" | "object" | "unknown";
-  handleFamily?: "timeout" | "immediate" | "animation-frame";
+  handleFamily?: "timeout" | "immediate" | "animation-frame" | "watcher";
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
@@ -69,7 +69,7 @@ export interface TimerCancellation {
   handle: string;
   timer?: number;
   definite: boolean;
-  clearFamily?: "timeout" | "immediate" | "animation-frame";
+  clearFamily?: "timeout" | "immediate" | "animation-frame" | "watcher";
   compatible?: boolean;
   span: { start: number; end: number };
 }
@@ -1347,6 +1347,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue && fsCallbackArgument(node, operation)) {
           const callbackNode = fsCallbackArgument(node, operation)!;
+          const declaration = assignedBinding(node);
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
@@ -1355,9 +1356,13 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             recursive: false,
             repeats: operation.callbackRepeats ?? false,
             queue: operation.callbackQueue,
+            handle: operation.callbackRepeats ? declaration : undefined,
+            handleKind: operation.callbackRepeats ? "object" : undefined,
+            handleFamily: operation.callbackRepeats ? "watcher" : undefined,
             externallyReady: true,
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+          if (operation.callbackRepeats && declaration) handleTargets.set(declaration, timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
         } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
           const callbackNode = deferredCallbackArgument(node, operation)!;
@@ -1457,7 +1462,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             span: { start: node.getStart(source), end: node.getEnd() },
           });
         } else if (operation?.kind === "timer-clear") {
-          const handleNode = node.arguments[operation.handleArgument];
+          const handleNode = operation.handleReceiver && ts.isPropertyAccessExpression(node.expression)
+            ? node.expression.expression
+            : operation.handleArgument === undefined ? undefined : node.arguments[operation.handleArgument];
           const handle = handleNode && ts.isIdentifier(handleNode) ? resolveHandle(handleNode.text) : handleNode?.getText(source) ?? "<unknown>";
           let current: ts.Node = node;
           let definite = true;
@@ -1863,7 +1870,8 @@ export function generateNodeEventLoopQuint(
       }
     });
   };
-  polls.forEach((index) => action(`complete_poll_${index}`, [
+  polls.filter((index) => !model.timers[index]!.initiallyCancelled
+    && !model.cancellations.some((item) => item.timer === index && item.definite)).forEach((index) => action(`complete_poll_${index}`, [
     ...(model.timers[index]!.repeats ? [] : [`callback_${index}_fires == 0`]),
     `not(callback_${index}_pending)`,
   ], new Map([[`callback_${index}_pending`, "true"]])));

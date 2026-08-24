@@ -103,7 +103,7 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   if (resolved?.operation?.kind === "fs") return effectsForBuiltinOperation(resolved.operation, call);
   if (resolved?.operation?.kind === "fetch") return effectsForFetch(call);
   if (resolved?.operation?.kind === "timer") return [capability("Timer")];
-  if (resolved?.operation?.kind === "timer-clear") return [capability("Timer")];
+  if (resolved?.operation?.kind === "timer-clear") return resolved.operation.effect ? [capability(resolved.operation.effect)] : [];
   if (resolved?.operation?.kind === "abort-timeout") return [capability("Timer")];
   if (resolved?.operation?.kind === "abort-static" || resolved?.operation?.kind === "abort-any") return [];
   if (resolved?.operation?.kind === "deferred-callback") {

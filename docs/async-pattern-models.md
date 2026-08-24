@@ -89,8 +89,12 @@ can run only in phase `2` and returns through the ordinary checkpoint. `watch`
 and `watchFile` use the same authority but are repeating external poll sources,
 and their listener effects propagate into the creating callable. Promise,
 synchronous, and stream variants do not receive this callback projection.
-Watcher `close()`/`unref()` state and poll callbacks registered dynamically by
-a watcher remain open. Independent poll completions are intentionally not
+A watcher stored in a direct local binding has a distinct object handle. A
+subsequent definite TypeChecker-resolved `FSWatcher.close()` removes later
+external arrivals without adding `Timer` authority; same-named application
+methods do not cancel it. Conditional, callback-local, aliased/interprocedural
+closure, `unref()` liveness, and poll callbacks registered dynamically by a
+watcher remain open. Independent poll completions are intentionally not
 constrained by source registration order.
 
 A statically resolved nested `setImmediate` is also registered dynamically.

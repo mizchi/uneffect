@@ -1261,6 +1261,10 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source.replace('FsRead<"config.json"> | ', ""))).toContainEqual(expect.objectContaining({
       functionName: "reportConfigChanges", kind: "missing", effect: 'FsRead<"config.json">',
     }));
+    expect(analyzeEffects(fileName, source.replace('/* uneffect: effect FsRead<"config.json"> */\nexport function probe', "export function probe")))
+      .toContainEqual(expect.objectContaining({
+        functionName: "probeConfigWatcherLifecycle", kind: "missing", effect: 'FsRead<"config.json">',
+      }));
   });
 
   it("keeps conditional cancellation policies path-correlated", () => {

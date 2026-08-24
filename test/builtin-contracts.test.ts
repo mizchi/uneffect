@@ -62,6 +62,13 @@ describe("builtin semantic overlays", () => {
     }));
   });
 
+  it("registers node:fs FSWatcher.close as receiver-handle cancellation", () => {
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+      symbol: { module: "node:fs", export: "FSWatcher#close" },
+      operation: { kind: "timer-clear", handleReceiver: true, family: "watcher" },
+    }));
+  });
+
   it("registers node:net Server.listen as scoped next-tick work", () => {
     expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module: "node:net", export: "Server#listen" },

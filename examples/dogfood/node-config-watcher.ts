@@ -6,3 +6,9 @@ export function reportConfigChanges(): void {
     console.log("config changed", eventType);
   });
 }
+
+/* uneffect: effect FsRead<"config.json"> */
+export function probeConfigWatcherLifecycle(): void {
+  const watcher = watch("config.json", () => undefined);
+  watcher.close();
+}

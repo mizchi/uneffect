@@ -15,6 +15,11 @@ file/path read and write, copy, descriptor read/write, and path mutation APIs.
 `node:fs/promises`, and stream symbols retain only their applicable
 effect/Promise semantics.
 
+The returned `FSWatcher` is an object-valued watcher handle in the temporal
+overlay. `FSWatcher.close()` is a receiver-handle cancellation contract, not a
+`Timer` capability. A direct definite close suppresses future modeled watcher
+arrivals; dynamic lifecycle joins remain conservative.
+
 The program-wide call graph consumes the same resolved contract to classify
 these completion callbacks as deferred. Effects in a callback are therefore
 composed into the registering function (for example, `FsRead | Console`), and

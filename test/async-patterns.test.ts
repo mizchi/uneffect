@@ -2504,6 +2504,25 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("prevents external watcher events after a direct FSWatcher.close", () => {
+    const model = analyzeAsyncPatterns("node-fs-watch-close.ts", `
+      import { watch } from "node:fs"
+      function monitor() {
+        const watcher = watch("config.json", () => queueMicrotask(() => undefined))
+        watcher.close()
+      }
+      class Watcher { close() {} }
+      new Watcher().close()
+    `);
+    expect(model.timers[0]).toMatchObject({ handle: "watcher", handleFamily: "watcher" });
+    expect(model.cancellations).toContainEqual(expect.objectContaining({
+      handle: "watcher", timer: 0, definite: true, clearFamily: "watcher", compatible: true,
+    }));
+    const quint = generateNodeEventLoopQuint("node_fs_watch_close", model);
+    expect(quint).not.toContain("action complete_poll_0");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"
