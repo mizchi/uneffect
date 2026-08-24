@@ -40,7 +40,10 @@ local result survives composition with real application control flow.
    moves inferred facts and ordered events off the TypeScript reference adapter.
 2. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
    fills host phases, dynamic cancellation, and polymorphic callback gaps.
-3. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
+3. [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
+   completes TypeChecker-identified `Text*` and `Property*` inference without
+   conflating Web IDL properties with attributes or node topology.
+4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
    evaluates certificates and narrows the trusted computing base.
 
 ## Phase 4 — Consume proofs without widening their claims
