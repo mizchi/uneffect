@@ -44,6 +44,7 @@ same property is proved for arbitrary TypeScript.
   call subset including reviewed attribute/tree/text methods and compound
   clone/normalize/adjacent-content operations, plus reviewed
   attribute-collection and tree-topology reads,
+  direct/immutable-alias `NamedNodeMap` origin projection,
   `Node.textContent`, `Node.nodeValue`, `CharacterData.data`, and
   `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
   remain open.

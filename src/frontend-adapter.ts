@@ -19,6 +19,7 @@ export interface ResolvedPropertySite {
 export interface FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
   resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined;
+  resolveDomReceiverRegion(expression: ts.Expression): ts.Expression | undefined;
   isDomReceiver(expression: ts.Expression): boolean;
   mayInvokeUserCode(node: ts.Node): boolean;
   ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared";
@@ -179,6 +180,30 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       span: { start: access.getStart(), end: access.getEnd() },
       operation: contract.operation,
     };
+  }
+
+  resolveDomReceiverRegion(original: ts.Expression): ts.Expression | undefined {
+    const seen = new Set<ts.Symbol>();
+    const resolve = (value: ts.Expression): ts.Expression | undefined => {
+      while (ts.isParenthesizedExpression(value) || ts.isAsExpression(value)
+        || ts.isTypeAssertionExpression(value) || ts.isSatisfiesExpression(value)
+        || ts.isNonNullExpression(value)) value = value.expression;
+      if (ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)) {
+        const property = this.resolveProperty(value);
+        if (property?.operation.resultRegion === "receiver") return resolve(value.expression) ?? value.expression;
+        return undefined;
+      }
+      if (!ts.isIdentifier(value)) return undefined;
+      const symbol = targetSymbol(this.#checker, value);
+      if (!symbol || seen.has(symbol)) return undefined;
+      seen.add(symbol);
+      const declaration = symbol.valueDeclaration;
+      if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
+        || !ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0) return undefined;
+      return resolve(declaration.initializer);
+    };
+    return resolve(original);
   }
 
   isDomReceiver(expression: ts.Expression): boolean {

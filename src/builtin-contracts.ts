@@ -55,6 +55,7 @@ export interface DomPropertyBuiltinOperation {
   kind: "dom-property";
   readOperations: readonly DomOperation[];
   writeOperations: readonly DomOperation[];
+  resultRegion?: "receiver";
   mutatesReceiverOnWrite?: boolean;
   invokesUserCodeOnWrite?: boolean;
 }
@@ -307,6 +308,16 @@ function domBuiltinContracts(): BuiltinContract[] {
       .map((key): [string, DomBuiltinOperation] => [key, dom("TextWrite", { mutatesReceiver: true })]),
     ["Element#insertAdjacentHTML", dom(["Parse", "NodeWrite"], { mutatesReceiver: true, invokesUserCode: true })],
     ["Element#insertAdjacentText", dom(["TextWrite", "NodeWrite"], { mutatesReceiver: true })],
+    ...["NamedNodeMap#getNamedItem", "NamedNodeMap#getNamedItemNS", "NamedNodeMap#item"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeRead")]),
+    ...["NamedNodeMap#removeNamedItem", "NamedNodeMap#removeNamedItemNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", {
+        mutatesReceiver: true, invokesUserCode: true,
+      })]),
+    ...["NamedNodeMap#setNamedItem", "NamedNodeMap#setNamedItemNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", {
+        mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true,
+      })]),
     ["EventTarget#addEventListener", dom("Listen", { mutatesReceiver: true, invokesUserCode: true })],
     ["EventTarget#removeEventListener", dom("Listen", { mutatesReceiver: true })],
     ["EventTarget#dispatchEvent", dom("Dispatch", { invokesUserCode: true })],
@@ -320,7 +331,9 @@ function domPropertyBuiltinContracts(): BuiltinContract[] {
     kind: "dom-property", readOperations: [operation], writeOperations: [],
   });
   const entries: Array<[string, DomPropertyBuiltinOperation]> = [
-    ["Element#attributes", readOnly("AttributeRead")],
+    ["Element#attributes", {
+      kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [], resultRegion: "receiver",
+    }],
     ...[
       "Node#parentNode", "Node#parentElement", "Node#childNodes", "Node#firstChild", "Node#lastChild",
       "Node#nextSibling", "Node#previousSibling", "Node#ownerDocument", "Node#isConnected",

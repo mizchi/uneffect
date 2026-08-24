@@ -175,6 +175,25 @@ describe("TypeChecker symbol adapter", () => {
     expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
   });
 
+  it("projects NamedNodeMap effects back to a proven Element origin", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-live-view-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | Mutate<typeof attr> | InvokeUserCode */
+      function direct(element: Element, attr: Attr) { element.attributes.setNamedItem(attr); return element.attributes.getNamedItem("role") }
+      /* uneffect: effect Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      function immutableAlias(element: Element) { const attrs = element.attributes; attrs.removeNamedItem("hidden") }
+      /* uneffect: effect Dom<AttributeRead, typeof first> | Dom<AttributeRead, typeof second> | Dom<AttributeWrite, typeof attrs> | InvokeUserCode */
+      function mutableAlias(first: Element, second: Element) { let attrs = first.attributes; attrs = second.attributes; attrs.removeNamedItem("hidden") }
+      interface LocalMap { setNamedItem(attr: object): void }
+      function local(map: LocalMap, attr: object) { map.setNamedItem(attr) }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
   it("distinguishes DOM text and Web IDL property reads from writes", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");

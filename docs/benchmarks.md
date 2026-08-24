@@ -826,15 +826,17 @@ control and remains unproved; this run does not support dynamically computed
 keys or general structural object typing.
 
 The warm TypeChecker benchmark for 64 categorized DOM contracts measured
-20.7096 ms mean over 25 samples (1.30% relative margin of error). Each contract
+26.5728 ms mean over 20 samples (5.05% relative margin of error). Each contract
 combines reflected Web IDL property access, attribute collection and method
 reads/writes, tree-topology property and method reads, CharacterData property
 and range-method reads/writes, and compound clone/normalize/adjacent-HTML
-operations. It includes receiver-scoped mutation, custom-element invocation
-boundaries, and effect comparison. It reuses one TypeScript Program and
-therefore does not measure parsing or program construction. This is an
-observation, not a regression budget. Unreviewed Web IDL members and mutation
-through a returned live collection still fall outside this claim.
+operations. Attribute calls run through immutable live-view aliases and are
+projected back to their Element regions. The workload includes receiver-scoped
+mutation, custom-element invocation boundaries, and effect comparison. It
+reuses one TypeScript Program and therefore does not measure parsing or program
+construction. The run had visible variance and is an observation, not a
+regression budget. Reassigned/escaping live views and unreviewed Web IDL
+members still fall outside this claim.
 
 The warm-program Promise ownership benchmark for 64 structured throw
 completions routed through catches measured 8.0718 ms mean over 186 samples

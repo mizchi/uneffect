@@ -144,6 +144,15 @@ tree-topology properties, `textContent`, `nodeValue`, `CharacterData.data`, and
 `HTMLInputElement.value`. Other Web IDL properties remain unclassified; a
 dynamic key on a DOM receiver falls back to `Dom<All, Scope>`.
 
+`Element.attributes` is a reviewed live-view result. Calls on its
+`NamedNodeMap`, such as `getNamedItem`, `setNamedItem`, and `removeNamedItem`,
+are projected back to the originating Element region for direct access and
+cycle-safe immutable const aliases. Writes then emit `AttributeWrite`, mutate
+the Element (and an inserted `Attr` where applicable), and retain the custom
+element `InvokeUserCode` boundary. A reassigned `let`, a returned/passed live
+view, computed method access, or an unknown collection origin is not projected;
+its effects remain scoped to the collection expression.
+
 The registry pins the consumed `lib.dom.d.ts` SHA-256 and TypeScript version. `auditBuiltinDeclarationDrift` reports a missing or changed declaration library so new platform APIs cannot silently inherit purity or an old classification.
 
 Selector results depend on mutable DOM state, and general selector-language inclusion is not the desired proof obligation. A selector records how a region is searched; it does not prove that future reads or writes are confined to a stable set of matching nodes.

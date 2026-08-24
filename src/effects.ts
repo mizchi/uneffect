@@ -199,9 +199,10 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   }
   if (resolved?.operation?.kind === "dom" && ts.isPropertyAccessExpression(call.expression)) {
     const receiver = call.expression.expression;
+    const region = adapter.resolveDomReceiverRegion(receiver) ?? receiver;
     const effects: Effect[] = resolved.operation.operations
-      .map((operation) => capability(`Dom<${operation}, typeof ${receiver.getText()}>`));
-    if (resolved.operation.mutatesReceiver) effects.push(mutateEffect(receiver));
+      .map((operation) => capability(`Dom<${operation}, typeof ${region.getText()}>`));
+    if (resolved.operation.mutatesReceiver) effects.push(mutateEffect(region));
     for (const index of resolved.operation.mutatesArguments ?? []) if (call.arguments[index]) effects.push(mutateEffect(call.arguments[index]!));
     if (resolved.operation.invokesUserCode) effects.push(capability("InvokeUserCode"));
     return effects;
