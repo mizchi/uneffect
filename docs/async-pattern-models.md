@@ -171,7 +171,10 @@ Node callback overlays currently cover one-shot `node:fs` completions,
 `node:dns` lookups, `node:net` `connect`/`createConnection` listeners in the
 poll phase, and `net.Server.close` callbacks in the close phase. They are
 matched by TypeChecker symbol identity; a user method with the same spelling is
-not treated as a Node event-loop boundary.
+not treated as a Node event-loop boundary. Literal `node:net` options containing
+both `host` and `port`, and the literal `(port, host, listener)` overload, narrow
+the capability to `Net<"host:port">`; dynamic or partial options retain broad
+`Net` authority.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

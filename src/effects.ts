@@ -109,7 +109,22 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   if (resolved?.operation?.kind === "deferred-callback") {
     if (!resolved.operation.effect) return [];
     const scope = resolved.operation.effectScopeArgument === undefined ? undefined : call.arguments[resolved.operation.effectScopeArgument];
-    return [capability(scope && ts.isStringLiteralLike(scope) ? `${resolved.operation.effect}<${JSON.stringify(scope.text)}>` : resolved.operation.effect)];
+    let literalScope = scope && ts.isStringLiteralLike(scope) ? scope.text : undefined;
+    if (resolved.operation.effectScopeKind === "net-connect" && scope) {
+      if (ts.isObjectLiteralExpression(scope)) {
+        const value = (name: string): ts.Expression | undefined => {
+          const property = scope.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+            && !ts.isComputedPropertyName(candidate.name) && candidate.name.getText().replace(/^['"]|['"]$/g, "") === name);
+          return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
+        };
+        const host = value("host"), port = value("port");
+        if (host && ts.isStringLiteralLike(host) && port && ts.isNumericLiteral(port)) literalScope = `${host.text}:${port.text}`;
+      } else if (ts.isNumericLiteral(scope)) {
+        const host = call.arguments[resolved.operation.effectScopeArgument! + 1];
+        if (host && ts.isStringLiteralLike(host)) literalScope = `${host.text}:${scope.text}`;
+      }
+    }
+    return [capability(literalScope ? `${resolved.operation.effect}<${JSON.stringify(literalScope)}>` : resolved.operation.effect)];
   }
   if (resolved?.operation?.kind === "scheduler-post-task" || resolved?.operation?.kind === "scheduler-yield") return [capability("Timer")];
   if (resolved?.operation?.kind === "promise-combinator") {

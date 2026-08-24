@@ -138,6 +138,19 @@ describe("effect checker", () => {
     );
   });
 
+  it("narrows literal node:net connection options to a host-and-port authority", () => {
+    const source = `
+      import { createConnection as dial } from "node:net";
+      /* uneffect: effect Net<"api.example.com:443"> */
+      function connect() { return dial({ host: "api.example.com", port: 443 }, () => undefined) }
+    `;
+    expect(analyzeEffects("node-net-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-net-effects.ts", source.replace("api.example.com:443", "other.example:443")))
+      .toContainEqual(expect.objectContaining({
+        functionName: "connect", kind: "missing", effect: 'Net<"api.example.com:443">',
+      }));
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

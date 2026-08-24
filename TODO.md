@@ -638,7 +638,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Resolve the imported `node:net` `Server.close(callback)` member by TypeChecker identity and model its external completion and close-phase execution without matching user-defined `close` methods.
       - [x] Propagate capability effects from inline and named deferred builtin callback bodies into the enclosing callable summary without treating callback registration itself as that capability; keep synchronous `Throw` separate across the deferred boundary.
       - [x] Model TypeChecker-resolved `node:dns` `lookup` and `lookupService` as `Net`-capable externally completed poll callbacks while ignoring shadowed names; narrow literal `lookup` hostnames to `Net<"host">` and retain dynamic/reverse lookups as broad `Net`.
-      - [x] Model TypeChecker-resolved `node:net` `connect`/`createConnection` listeners as `Net`-capable externally completed poll callbacks and dogfood the boundary on a TCP client adapter.
+      - [x] Model TypeChecker-resolved `node:net` `connect`/`createConnection` listeners as `Net`-capable externally completed poll callbacks, narrow literal host/port overloads to `Net<"host:port">`, and dogfood the dynamic boundary on a TCP client adapter.
       - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
       - [x] Resolve an immediately consumed, preceding-statement `const` alias of a conditional abort-source array while rejecting intervening mutation.
       - [x] Preserve finite conditional timer callback alternatives in IR and emit exclusive Node/Web parent actions instead of enqueueing every branch's nested jobs together.

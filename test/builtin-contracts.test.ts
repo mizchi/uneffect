@@ -61,7 +61,7 @@ describe("builtin semantic overlays", () => {
     for (const name of ["connect", "createConnection"]) {
       expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
         symbol: { module: "node:net", export: name },
-        operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
+        operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net", effectScopeArgument: 0, effectScopeKind: "net-connect" },
       }));
     }
   });
