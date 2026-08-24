@@ -1,0 +1,9 @@
+$ uneffect --evidence fixtures/contracts/verified-increment.ts
+# A Hoare triple Z3 proves: for every x >= 0 the returned value is greater than x.
+
+no diagnostics
+0 error(s), 0 warning(s)
+
+evidence:
+  proved increment: ensures result > x
+  effects increment: no effect (inferred)

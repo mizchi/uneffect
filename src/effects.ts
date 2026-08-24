@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
+import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import type { FsBuiltinOperation } from "./builtin-contracts.js";
@@ -15,6 +16,7 @@ export interface EffectDiagnostic {
   severity: "error" | "warning";
   line: number;
   message: string;
+  notes?: DiagnosticNote[];
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
 export interface EffectSummary {
@@ -27,6 +29,11 @@ export interface EffectSummary {
   span?: { start: number; end: number };
 }
 export interface EffectAnalysisResult { diagnostics: EffectDiagnostic[]; summaries: EffectSummary[] }
+
+/** Where an effect is produced directly, so a report can quote the operation instead of only naming it. */
+interface EffectWitness { fileName: string; line: number; text: string }
+/** How an effect reached a caller: which call edge carried it, and under which name in the callee. */
+interface EffectPropagation { callee: string; calleeEffect: string; fileName: string; line: number }
 
 interface CallEdge { target: string; arguments: string[]; dischargesThrow: boolean }
 interface FunctionInfo {
@@ -42,6 +49,18 @@ interface FunctionInfo {
 
 function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
   return kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment;
+}
+
+/** Same effect constructor, different arguments: an authority mismatch rather than an undeclared effect. */
+function sameConstructor(left: Effect, right: Effect): boolean {
+  if (left.kind !== right.kind || formatEffect(left) === formatEffect(right)) return false;
+  if (left.kind === "capability" && right.kind === "capability") return left.name === right.name;
+  return left.kind === "throw";
+}
+
+function snippet(node: ts.Node, source: ts.SourceFile): string {
+  const text = node.getText(source).split(/\r?\n/u)[0]!.trim();
+  return text.length > 60 ? `${text.slice(0, 57)}...` : text;
 }
 
 function leadingText(source: ts.SourceFile, node: ts.Node): string {
@@ -525,15 +544,24 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
+  const witnesses = new Map<string, Map<string, EffectWitness>>(), propagation = new Map<string, Map<string, EffectPropagation>>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
     if (isAsyncFunction(node)) asyncOwners.add(graphNode.id);
     const locals = localBindings(node);
     localsById.set(graphNode.id, locals);
     const source = node.getSourceFile(), effects: Effect[] = [];
+    const witness = new Map<string, EffectWitness>();
+    witnesses.set(graphNode.id, witness);
+    /** Remember where an effect first entered this function so a diagnostic can point at the operation. */
+    const observe = (effect: Effect, at: ts.Node): void => {
+      const key = formatEffect(effect);
+      if (!witness.has(key)) witness.set(key, { fileName: source.fileName, line: source.getLineAndCharacterOfPosition(at.getStart(source)).line + 1, text: snippet(at, source) });
+      addEffect(effects, effect);
+    };
     let promiseModel = promiseModels.get(source);
     if (!promiseModel) { promiseModel = analyzePromiseChainsInProgram(program, source); promiseModels.set(source, promiseModel); }
-    if (mayAssimilateUserCode(promiseModel, node)) addEffect(effects, capability("InvokeUserCode"));
+    if (mayAssimilateUserCode(promiseModel, node)) observe(capability("InvokeUserCode"), node);
     direct.set(graphNode.id, effects);
     const nameNode = (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node)) && node.name ? node.name
       : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) ? node.parent.name : undefined;
@@ -549,7 +577,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (child.finallyBlock) visit(child.finallyBlock, catches);
         return;
       }
-      if (ts.isThrowStatement(child) && !catches && !asyncOwners.has(graphNode.id)) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(child.expression) });
+      if (ts.isThrowStatement(child) && !catches && !asyncOwners.has(graphNode.id)) observe({ kind: "throw", errorType: adapter.thrownErrorType(child.expression) }, child);
       if (ts.isVariableStatement(child)) {
         const flags = ts.getCombinedNodeFlags(child.declarationList);
         if ((flags & ts.NodeFlags.Using) === ts.NodeFlags.Using) for (const declaration of child.declarationList.declarations) {
@@ -565,10 +593,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           }
         }
       }
-      if (adapter.mayInvokeUserCode(child)) addEffect(effects, capability("InvokeUserCode"));
-      if (ts.isBinaryExpression(child) && isAssignmentOperator(child.operatorToken.kind) && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) addEffect(effects, effect); }
-      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) addEffect(effects, effect); }
-      if (ts.isCallExpression(child)) for (const effect of primitiveEffects(child, adapter)) if (observableMutation(effect, locals)) addEffect(effects, effect);
+      if (adapter.mayInvokeUserCode(child)) observe(capability("InvokeUserCode"), child);
+      if (ts.isBinaryExpression(child) && isAssignmentOperator(child.operatorToken.kind) && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
+      if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
+      if (ts.isCallExpression(child)) for (const effect of primitiveEffects(child, adapter)) if (observableMutation(effect, locals)) observe(effect, child);
       ts.forEachChild(child, (next) => visit(next, catches));
     };
     visit(node.body, false);
@@ -607,18 +635,59 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           return raw;
         })() : raw;
         if (!observableMutation(effect, localsById.get(edge.caller) ?? new Set())) continue;
-        const own = inferred.get(edge.caller)!;
-        if (!own.some((item) => formatEffect(item) === formatEffect(effect))) { own.push(effect); changed = true; }
+        const own = inferred.get(edge.caller)!, key = formatEffect(effect);
+        if (!own.some((item) => formatEffect(item) === key)) {
+          own.push(effect);
+          changed = true;
+          const inherited = propagation.get(edge.caller) ?? new Map<string, EffectPropagation>();
+          propagation.set(edge.caller, inherited);
+          const callerSource = nodes.get(edge.caller)!.getSourceFile();
+          if (!inherited.has(key)) inherited.set(key, { callee: edge.callee, calleeEffect: formatEffect(raw), fileName: callerSource.fileName, line: callerSource.getLineAndCharacterOfPosition(edge.span.start).line + 1 });
+        }
       }
     }
   }
+  const names = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode.name]));
+  const basename = (fileName: string): string => fileName.slice(fileName.lastIndexOf("/") + 1);
+  /** Walk one effect back to the operation that produces it, through the call edges that carried it. */
+  const origin = (id: string, effect: string, from: string): string | undefined => {
+    const steps: string[] = [], visited = new Set<string>();
+    let cursor = { id, effect };
+    for (;;) {
+      const mark = `${cursor.id}#${cursor.effect}`;
+      if (visited.has(mark)) break;
+      visited.add(mark);
+      const at = (place: { fileName: string; line: number }): string => place.fileName === from ? `line ${place.line}` : `${basename(place.fileName)}:${place.line}`;
+      const produced = witnesses.get(cursor.id)?.get(cursor.effect);
+      if (produced) { steps.push(`${names.get(cursor.id) ?? cursor.id} performs ${produced.text} at ${at(produced)}`); break; }
+      const inherited = propagation.get(cursor.id)?.get(cursor.effect);
+      if (!inherited) break;
+      steps.push(`${names.get(cursor.id) ?? cursor.id} calls ${names.get(inherited.callee) ?? inherited.callee} at ${at(inherited)}`);
+      cursor = { id: inherited.callee, effect: inherited.calleeEffect };
+    }
+    return steps.length > 0 ? steps.join("; ") : undefined;
+  };
   const diagnostics: EffectDiagnostic[] = [], summaries: EffectSummary[] = [];
   for (const graphNode of graph.nodes) {
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
-    for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}` });
-    for (const effect of actual) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "missing", severity: "error", line, message: `${graphNode.name} requires /* uneffect: effect ${formatEffect(effect)} */` });
-    for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}` });
+    const declaredNote: DiagnosticNote = { label: "declared", detail: allowed.length > 0 ? allowed.map(formatEffect).join(" | ") : "(no /* uneffect: effect ... */ comment)" };
+    for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: [declaredNote, { label: "because", detail: `${formatEffect(effect)} is not one of the effect constructors this checker understands, so it constrains nothing` }] });
+    for (const effect of actual) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) {
+      const key = formatEffect(effect);
+      const because = origin(graphNode.id, key, source.fileName);
+      const narrower = allowed.filter((item) => sameConstructor(item, effect)).map(formatEffect);
+      diagnostics.push({
+        fileName: source.fileName, functionName: graphNode.name, effect: key, kind: "missing", severity: "error", line,
+        message: `${graphNode.name} requires /* uneffect: effect ${key} */`,
+        notes: [
+          declaredNote,
+          ...(because ? [{ label: "because", detail: because }] : []),
+          ...(narrower.length > 0 ? [{ label: "out of authority", detail: `the declared ${narrower.join(" | ")} shares this effect constructor, but its arguments do not cover ${key}` }] : []),
+        ],
+      });
+    }
+    for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: [declaredNote, { label: "inferred", detail: actual.length > 0 ? actual.map(formatEffect).join(" | ") : "no effect" }, { label: "because", detail: `nothing in ${graphNode.name} or its callees produces ${formatEffect(effect)}` }] });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });

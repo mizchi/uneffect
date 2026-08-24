@@ -1,0 +1,20 @@
+$ uneffect --evidence fixtures/contracts/loop-invariant-not-preserved.ts
+# The invariant holds on entry but one iteration of the body breaks it.
+
+error contract/invariant fixtures/contracts/loop-invariant-not-preserved.ts:7 in countByTwo
+  message: `invariant i >= 0 && i <= n` is not preserved by one iteration of the loop body
+  7 |   while (i < n) {
+    |   ^
+  rule: an iteration that starts with the invariant and the loop guard true must end with the invariant true
+  counterexample: n@loop = 1, i@loop = 0
+  state: n = n@loop = 1, i = i@loop + 2 = 2
+  still holds: i@loop >= 0 && i@loop <= n@loop (0 >= 0 && 0 <= 1), i@loop < n@loop (0 < 1)
+  fails: invariant i >= 0 && i <= n breaks at i <= n, which evaluates to 2 <= 1
+  hint: establish the invariant before the loop and restore it in the body, or weaken it until both hold
+
+1 error(s), 0 warning(s)
+
+evidence:
+  proved countByTwo: invariant i >= 0 && i <= n
+  proved countByTwo: ensures result >= n
+  effects countByTwo: no effect (inferred)

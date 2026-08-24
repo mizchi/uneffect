@@ -14,6 +14,8 @@ export type LogicExpression =
   | { kind: "binary"; operator: string; left: LogicExpression; right: LogicExpression };
 
 export interface ObligationVariable { name: string; sort: LogicSort; domain: NumericDomain }
+/** How a source-level name (`result`, a local, a loop snapshot) is defined over the obligation variables. */
+export interface ObligationBinding { name: string; expression: LogicExpression }
 export interface InvariantObligation {
   id: string;
   kind: "postcondition" | "loop-init" | "loop-preserve";
@@ -24,6 +26,23 @@ export interface InvariantObligation {
   assumptions: LogicExpression[];
   goal: LogicExpression;
   source: string;
+  bindings: ObligationBinding[];
+  /** Readable aliases for generated variables, e.g. `count_i_loop_84` displayed as `i@loop`. */
+  displayNames: Record<string, string>;
+}
+
+/** A lowering rejection that stays locatable and actionable instead of collapsing to a bare message. */
+export class InvariantLoweringError extends Error {
+  readonly functionName: string | undefined;
+  readonly span: { start: number; end: number } | undefined;
+  readonly hint: string | undefined;
+  constructor(message: string, detail: { functionName?: string; span?: { start: number; end: number }; hint?: string } = {}) {
+    super(message);
+    this.name = "InvariantLoweringError";
+    this.functionName = detail.functionName;
+    this.span = detail.span;
+    this.hint = detail.hint;
+  }
 }
 
 type Environment = Map<string, LogicExpression>;
@@ -134,6 +153,25 @@ function stableId(value: Omit<InvariantObligation, "id">): string {
 
 function makeObligation(value: Omit<InvariantObligation, "id">): InvariantObligation { return { id: stableId(value), ...value }; }
 
+/** Maps a lowering rejection to the concrete edit that brings the function back into the verified subset. */
+function loweringHint(message: string): string | undefined {
+  if (message.startsWith("call requires a verified function summary")) return "inline the callee, or move the call out of the contracted function; the prototype has no call summaries yet";
+  if (message.startsWith("unsupported invariant statement")) return "the verified statement subset is: initialized let/const, plain assignment, if/else, while with /* uneffect: invariant ... */, and return";
+  if (message.startsWith("while requires")) return "write /* uneffect: invariant ... */ directly above the while statement";
+  if (message.startsWith("unsupported invariant expression") || message.startsWith("invalid invariant expression")) return "the expression language is integers, + - * / %, comparisons, && || !, and imported effect/Function pipe with inline unary callbacks";
+  if (message.startsWith("unsupported contract parameter type")) return "annotate the parameter as number, Int, Nat, Float, or boolean";
+  if (message.startsWith("destructured contract parameters")) return "give the parameter one identifier name and destructure inside the body";
+  if (message.startsWith("only initialized identifier variables")) return "declare one identifier per binding and initialize it where it is declared";
+  if (message.startsWith("verified effect/Function pipe")) return "write each pipe stage as an inline arrow with one parameter and an expression body";
+  return undefined;
+}
+
+function locatedLowering(cause: unknown, functionName: string, span: { start: number; end: number }): InvariantLoweringError {
+  if (cause instanceof InvariantLoweringError) return cause;
+  const message = cause instanceof Error ? cause.message : String(cause);
+  return new InvariantLoweringError(message, { functionName, span, hint: loweringHint(message) });
+}
+
 export function lowerInvariantProgram(fileName: string, text: string): InvariantObligation[] {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const pipeBindings = new Set(source.statements.flatMap((statement): string[] => {
@@ -148,80 +186,111 @@ export function lowerInvariantProgram(fileName: string, text: string): Invariant
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const comments = source.text.slice(node.getFullStart(), node.getStart(source));
-    const requires = extractAnnotations(comments, "requires").map(parseLogicExpression);
-    const ensures = extractAnnotations(comments, "ensures").map((value) => ({ source: value, expression: parseLogicExpression(value) }));
+    const header = { start: node.getStart(source), end: node.getEnd() };
+    let requires: LogicExpression[];
+    let ensures: Array<{ source: string; expression: LogicExpression }>;
+    try {
+      requires = extractAnnotations(comments, "requires").map(parseLogicExpression);
+      ensures = extractAnnotations(comments, "ensures").map((value) => ({ source: value, expression: parseLogicExpression(value) }));
+    } catch (cause) {
+      throw locatedLowering(cause, node.name.text, header);
+    }
     if (!requires.length && !ensures.length) continue;
     const variables: ObligationVariable[] = [];
     const env: Environment = new Map();
     const baseAssumptions = [...requires];
     for (const parameter of node.parameters) {
-      if (!ts.isIdentifier(parameter.name)) throw new Error("destructured contract parameters are unsupported");
-      const parameterDomain = domain(parameter.type);
+      if (!ts.isIdentifier(parameter.name)) throw new InvariantLoweringError(`destructured contract parameters are unsupported: ${parameter.name.getText(source)}`, { functionName: node.name.text, span: { start: parameter.getStart(source), end: parameter.getEnd() }, hint: loweringHint("destructured contract parameters") });
+      let parameterDomain: NumericDomain;
+      try {
+        parameterDomain = domain(parameter.type);
+      } catch (cause) {
+        throw locatedLowering(cause, node.name.text, header);
+      }
       variables.push({ name: parameter.name.text, domain: parameterDomain, sort: sort(parameterDomain) });
       env.set(parameter.name.text, variable(parameter.name.text));
       if (parameterDomain === "nat") baseAssumptions.push({ kind: "binary", operator: "gte", left: variable(parameter.name.text), right: { kind: "integer", value: "0" } });
     }
     const fn = node.name.text;
-    const add = (kind: InvariantObligation["kind"], target: ts.Node, assumptions: LogicExpression[], goal: LogicExpression, clause: string): void => {
-      const value: Omit<InvariantObligation, "id"> = { kind, fileName, functionName: fn, span: { start: target.getStart(source), end: target.getEnd() }, variables: [...variables], assumptions, goal, source: clause };
+    const displayNames: Record<string, string> = {};
+    const visibleBindings = (bound: Environment): ObligationBinding[] => [...bound]
+      .filter(([name, expression]) => !(expression.kind === "variable" && expression.name === name))
+      .map(([name, expression]) => ({ name, expression }));
+    const add = (kind: InvariantObligation["kind"], target: ts.Node, assumptions: LogicExpression[], goal: LogicExpression, clause: string, bound: Environment): void => {
+      const value: Omit<InvariantObligation, "id"> = { kind, fileName, functionName: fn, span: { start: target.getStart(source), end: target.getEnd() }, variables: [...variables], assumptions, goal, source: clause, bindings: visibleBindings(bound), displayNames: { ...displayNames } };
       obligations.push(makeObligation(value));
     };
     const execute = (statements: readonly ts.Statement[], initial: PathState[]): PathState[] => {
       let paths = initial;
       for (const statement of statements) {
-        if (ts.isVariableStatement(statement)) {
-          for (const path of paths) for (const declaration of statement.declarationList.declarations) {
-            if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error("only initialized identifier variables are supported");
-            path.env.set(declaration.name.text, substitute(logic(declaration.initializer, pipeBindings), path.env));
-          }
-        } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
-          for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right, pipeBindings), path.env));
-        } else if (ts.isIfStatement(statement)) {
-          const forked: PathState[] = [];
-          for (const path of paths) {
-            const condition = substitute(logic(statement.expression, pipeBindings), path.env);
-            const thenStatements = ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement];
-            forked.push(...execute(thenStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
-            const elseStatements = statement.elseStatement ? (ts.isBlock(statement.elseStatement) ? statement.elseStatement.statements : [statement.elseStatement]) : [];
-            forked.push(...execute(elseStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] }]));
-          }
-          paths = forked;
-        } else if (ts.isWhileStatement(statement)) {
-          const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
-          if (!invariantSource) throw new Error("while requires /* uneffect: invariant ... */");
-          const invariant = parseLogicExpression(invariantSource);
-          const exited: PathState[] = [];
-          for (const path of paths) {
-            add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource);
-            const loopEnv: Environment = new Map();
-            for (const name of path.env.keys()) {
-              const fresh = `${fn}_${name}_loop_${statement.getStart(source)}`;
-              if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
-              loopEnv.set(name, variable(fresh));
-            }
-            const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings), loopEnv);
-            const bodyStatements = ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement];
-            const bodyPaths = execute(bodyStatements, [{ env: new Map(loopEnv), assumptions: [inv, condition] }]);
-            for (const bodyPath of bodyPaths) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource);
-            exited.push({ env: loopEnv, assumptions: [inv, negate(condition)] });
-          }
-          paths = exited;
-        } else if (ts.isReturnStatement(statement) && statement.expression) {
-          for (const path of paths) {
-            const resultEnv = new Map(path.env);
-            resultEnv.set("result", substitute(logic(statement.expression, pipeBindings), path.env));
-            for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source);
-          }
-          paths = [];
-        } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {
-          throw new Error(`call requires a verified function summary: ${statement.expression.expression.getText(source)}`);
-        } else if (!ts.isEmptyStatement(statement)) {
-          throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
+        try {
+          paths = step(statement, paths);
+        } catch (cause) {
+          throw locatedLowering(cause, fn, { start: statement.getStart(source), end: statement.getEnd() });
         }
       }
       return paths;
     };
-    execute(node.body.statements, [{ env, assumptions: baseAssumptions }]);
+    /** One statement of the verified subset; anything else is rejected with its own location. */
+    const step = (statement: ts.Statement, incoming: PathState[]): PathState[] => {
+      let paths = incoming;
+      if (ts.isVariableStatement(statement)) {
+        for (const path of paths) for (const declaration of statement.declarationList.declarations) {
+          if (!ts.isIdentifier(declaration.name) || !declaration.initializer) throw new Error(`only initialized identifier variables are supported: ${declaration.getText(source)}`);
+          path.env.set(declaration.name.text, substitute(logic(declaration.initializer, pipeBindings), path.env));
+        }
+      } else if (ts.isExpressionStatement(statement) && ts.isBinaryExpression(statement.expression) && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken && ts.isIdentifier(statement.expression.left)) {
+        for (const path of paths) path.env.set(statement.expression.left.text, substitute(logic(statement.expression.right, pipeBindings), path.env));
+      } else if (ts.isIfStatement(statement)) {
+        const forked: PathState[] = [];
+        for (const path of paths) {
+          const condition = substitute(logic(statement.expression, pipeBindings), path.env);
+          const thenStatements = ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement];
+          forked.push(...execute(thenStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, condition] }]));
+          const elseStatements = statement.elseStatement ? (ts.isBlock(statement.elseStatement) ? statement.elseStatement.statements : [statement.elseStatement]) : [];
+          forked.push(...execute(elseStatements, [{ env: new Map(path.env), assumptions: [...path.assumptions, negate(condition)] }]));
+        }
+        paths = forked;
+      } else if (ts.isWhileStatement(statement)) {
+        const invariantSource = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "invariant")[0];
+        if (!invariantSource) throw new Error(`while requires /* uneffect: invariant ... */ but ${statement.expression.getText(source)} has none`);
+        const invariant = parseLogicExpression(invariantSource);
+        const exited: PathState[] = [];
+        for (const path of paths) {
+          add("loop-init", statement, path.assumptions, substitute(invariant, path.env), invariantSource, path.env);
+          const loopEnv: Environment = new Map();
+          for (const name of path.env.keys()) {
+            const fresh = `${fn}_${name}_loop_${statement.getStart(source)}`;
+            displayNames[fresh] = `${name}@loop`;
+            if (!variables.some((item) => item.name === fresh)) variables.push({ name: fresh, domain: "int", sort: "Int" });
+            loopEnv.set(name, variable(fresh));
+          }
+          const inv = substitute(invariant, loopEnv), condition = substitute(logic(statement.expression, pipeBindings), loopEnv);
+          const bodyStatements = ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement];
+          const bodyPaths = execute(bodyStatements, [{ env: new Map(loopEnv), assumptions: [inv, condition] }]);
+          for (const bodyPath of bodyPaths) add("loop-preserve", statement, bodyPath.assumptions, substitute(invariant, bodyPath.env), invariantSource, bodyPath.env);
+          exited.push({ env: loopEnv, assumptions: [inv, negate(condition)] });
+        }
+        paths = exited;
+      } else if (ts.isReturnStatement(statement) && statement.expression) {
+        for (const path of paths) {
+          const resultEnv = new Map(path.env);
+          resultEnv.set("result", substitute(logic(statement.expression, pipeBindings), path.env));
+          for (const ensure of ensures) add("postcondition", statement, path.assumptions, substitute(ensure.expression, resultEnv), ensure.source, resultEnv);
+        }
+        paths = [];
+      } else if (ts.isExpressionStatement(statement) && ts.isCallExpression(statement.expression)) {
+        throw new Error(`call requires a verified function summary: ${statement.expression.expression.getText(source)}`);
+      } else if (!ts.isEmptyStatement(statement)) {
+        throw new Error(`unsupported invariant statement: ${statement.getText(source)}`);
+      }
+      return paths;
+    };
+    try {
+      execute(node.body.statements, [{ env, assumptions: baseAssumptions }]);
+    } catch (cause) {
+      throw locatedLowering(cause, fn, { start: node.getStart(source), end: node.getEnd() });
+    }
   }
   return obligations;
 }
@@ -255,6 +324,6 @@ export function obligationFromSpec(spec: InvariantSpec): InvariantObligation {
   assumptions.push({ kind: "binary", operator: "eq", left: variable("result"), right: parseLogicExpression(spec.result) });
   const goals = spec.ensures.map(parseLogicExpression);
   const goal = goals.reduce((left, right): LogicExpression => ({ kind: "binary", operator: "and", left, right }));
-  const value = { kind: "postcondition" as const, fileName: spec.fileName ?? "<spec>", functionName: spec.functionName, span: spec.span ?? { start: 0, end: 0 }, variables, assumptions, goal, source: spec.ensures.join(" && ") };
+  const value = { kind: "postcondition" as const, fileName: spec.fileName ?? "<spec>", functionName: spec.functionName, span: spec.span ?? { start: 0, end: 0 }, variables, assumptions, goal, source: spec.ensures.join(" && "), bindings: [{ name: "result", expression: parseLogicExpression(spec.result) }], displayNames: {} };
   return makeObligation(value);
 }

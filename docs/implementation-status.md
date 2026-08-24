@@ -100,6 +100,13 @@ same property is proved for arbitrary TypeScript.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test
   files are process-isolated.
+- Diagnostics from every checker share one reportable shape with explanation
+  notes: a counterexample is replayed over the invariant IR as concrete values,
+  an effect is traced back to the operation that produces it, and a construct
+  outside the verified subset is located where it appears. The `fixtures/`
+  corpus commits each input next to its `.diag` output, and
+  `fixtures/quality.md` scores every diagnostic against a rubric that CI holds
+  at its current level.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.

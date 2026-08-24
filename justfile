@@ -82,6 +82,12 @@ spec-node-esm-event-loop file:
 build:
     pnpm build
 
+fixtures:
+    pnpm tsx ci/fixtures.ts check
+
+fixtures-update:
+    pnpm tsx ci/fixtures.ts update
+
 demo:
     pnpm tsx src/cli.ts examples/demo.ts
 

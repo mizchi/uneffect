@@ -1,0 +1,32 @@
+$ uneffect --evidence fixtures/effects/unknown-effect.ts
+# A misspelled effect constrains nothing, so the real Console effect is still missing.
+
+warning effect/unknown fixtures/effects/unknown-effect.ts:3 in report
+  message: report declares unknown effect Consoel
+  3 | export function report(value: number) {
+    | ^
+  declared: Consoel
+  because: Consoel is not one of the effect constructors this checker understands, so it constrains nothing
+  hint: fix the effect name; the known constructors are FsRead, FsWrite, Console, Fetch, Dom, Env, Random, Timer, Mutate<region>, and Throw<ErrorType>
+
+error effect/missing fixtures/effects/unknown-effect.ts:3 in report
+  message: report requires /* uneffect: effect Console */
+  3 | export function report(value: number) {
+    | ^
+  declared: Consoel
+  because: report performs console.log(value) at line 4
+  hint: declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it
+
+warning effect/unused fixtures/effects/unknown-effect.ts:3 in report
+  message: report declares unused effect Consoel
+  3 | export function report(value: number) {
+    | ^
+  declared: Consoel
+  inferred: Console
+  because: nothing in report or its callees produces Consoel
+  hint: delete the declared effect, or keep it deliberately as a wider upper bound; unused declarations never fail the CLI
+
+1 error(s), 2 warning(s)
+
+evidence:
+  effects report: Console (unknown)
