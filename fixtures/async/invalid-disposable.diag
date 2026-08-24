@@ -1,0 +1,25 @@
+$ uneffect --evidence fixtures/async/invalid-disposable.ts
+# `using` requires the disposal protocol; this resource never releases anything.
+
+error async/invalid-disposable fixtures/async/invalid-disposable.ts:7 in withResource
+  message: withResource binds resource with using, which requires the Symbol.dispose protocol that resource does not provide
+  7 |   using resource = open();
+    |   ^
+  binding: resource = open()
+  because: the type of resource declares no [Symbol.dispose] method, so leaving the scope releases nothing
+  hint: give the resource a Symbol.dispose or Symbol.asyncDispose method, or bind it with const instead of using
+
+error async/disposed-resource-escape fixtures/async/invalid-disposable.ts:8 in withResource
+  message: withResource lets resource escape through return but disposes it before the caller can use it
+  8 |   return resource;
+    |   ^
+  binding: resource = open()
+  because: the using scope disposes resource before this function returns, so the caller receives a released resource
+  hint: stop the resource from escaping its disposal scope, or hand the caller an owned resource instead
+
+2 error(s), 0 warning(s)
+
+evidence:
+  effects open: no effect (inferred)
+  effects close: no effect (inferred)
+  effects withResource: no effect (inferred)

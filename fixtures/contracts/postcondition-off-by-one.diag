@@ -1,0 +1,18 @@
+$ uneffect --evidence fixtures/contracts/postcondition-off-by-one.ts
+# The postcondition is false for one input; the report replays that input through the body.
+
+error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decrement
+  message: `ensures result > x` can fail on this return
+  5 |   return x - 1;
+    |   ^
+  rule: every input allowed by requires must leave this return with ensures true
+  counterexample: x = 0
+  state: result = x - 1 = -1
+  still holds: x >= 0 (0 >= 0)
+  fails: ensures result > x evaluates to -1 > 0, which is false
+  hint: weaken the postcondition, strengthen the precondition, or change the returned expression so the counterexample above cannot occur
+
+1 error(s), 0 warning(s)
+
+evidence:
+  effects decrement: no effect (inferred)

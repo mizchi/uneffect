@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
+import type { DiagnosticNote } from "./diagnostics.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicExpression } from "./invariant-ir.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
@@ -94,6 +95,7 @@ export interface AsyncSafetyDiagnostic {
   kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "invalid-resource-contract" | "disposed-resource-use" | "disposed-resource-escape";
   severity: "error";
   message: string;
+  notes?: DiagnosticNote[];
 }
 export interface AsyncSafetyResult {
   fileName: string;
@@ -513,16 +515,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
   const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
-      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "an ownership directive that does not resolve against this declaration transfers nothing, so callers keep the rejection responsibility" }] });
     }
     if (ts.isFunctionLike(node)) for (const error of parseIndexedOwnershipContract(node, "retains_resource").errors) {
-      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message });
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "a resource directive that does not resolve against this declaration is ignored, so retention stays unmodeled" }] });
     }
     if (ts.isFunctionLike(node)) for (const error of conditionalOwnershipParameters(undefined, node, undefined, "retains_resource_when").errors) {
-      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message });
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-resource-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "a resource directive that does not resolve against this declaration is ignored, so retention stays unmodeled" }] });
     }
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection_when", "consumes_callback_rejection_when"] as const) for (const error of conditionalOwnershipParameters(undefined, node, undefined, directive).errors) {
-      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message });
+      diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "an ownership directive that does not resolve against this declaration transfers nothing, so callers keep the rejection responsibility" }] });
     }
     if (ts.isCallExpression(node)) {
       const consumed = callbackRejectionConsumerParameters(checker, node);
@@ -530,6 +532,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (!consumed.has(index) && isPromiseReturningCallback(checker, argument)) diagnostics.push({
           fileName: source.fileName, functionName: enclosingFunctionName(node), line: lineAt(source, argument.getStart(source)), kind: "floating-callback-promise", severity: "error",
           message: `${node.expression.getText(source)} does not declare ownership of the Promise returned by callback argument ${index}`,
+          notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect: consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],
         });
       });
       const declaration = checker.getResolvedSignature(node)?.declaration;
@@ -831,7 +834,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const observe = (expression: ts.Expression, observation: PromiseObservationKind, catchesRejection: boolean): void => {
       const paths = controlPaths(expression);
       promises.push({ owner, source: expression.getText(source), observation, catchesRejection, conditional: isConditionalExecution(expression), controlConditions: paths[0] ?? [], controlPaths: paths, span: { start: expression.getStart(source), end: expression.getEnd() } });
-      if (observation === "floating") diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, expression.getStart(source)), kind: "floating-promise", severity: "error", message: `${owner} has a floating Promise whose rejection is not observed; await, return, catch, or explicitly void it` });
+      if (observation === "floating") diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, expression.getStart(source)), kind: "floating-promise", severity: "error", message: `${owner} has a floating Promise whose rejection is not observed; await, return, catch, or explicitly void it`, notes: [{ label: "because", detail: `${expression.getText(source)} evaluates to a Promise that no await, return, catch, then-rejection handler, or void expression observes` }] });
     };
     const visit = (node: ts.Node): void => {
       if (node !== ownerNode.body && ts.isFunctionLike(node)) return;
@@ -872,7 +875,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             resourceSymbols.set(resourceSymbol, resource);
             if (isInsideIteration(declaration)) repeatedResourceSymbols.add(resourceSymbol);
           }
-          if ((!asynchronous && !protocol.sync) || (asynchronous && !protocol.async && !protocol.sync)) diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, declaration.getStart(source)), kind: "invalid-disposable", severity: "error", message: `${declaration.name.text} does not provide the ${asynchronous ? "Symbol.asyncDispose or Symbol.dispose" : "Symbol.dispose"} protocol required by ${asynchronous ? "await using" : "using"}` });
+          if ((!asynchronous && !protocol.sync) || (asynchronous && !protocol.async && !protocol.sync)) diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, declaration.getStart(source)), kind: "invalid-disposable", severity: "error", message: `${owner} binds ${declaration.name.text} with ${asynchronous ? "await using" : "using"}, which requires the ${asynchronous ? "Symbol.asyncDispose or Symbol.dispose" : "Symbol.dispose"} protocol that ${declaration.name.text} does not provide`, notes: [{ label: "binding", detail: declaration.getText(source) }, { label: "because", detail: `the type of ${declaration.name.text} declares no ${asynchronous ? "[Symbol.asyncDispose] or [Symbol.dispose]" : "[Symbol.dispose]"} method, so leaving the scope releases nothing` }] });
         }
       }
       if (ts.isAwaitExpression(node) && isPromiseLike(checker, node.expression)) { observe(node.expression, "await", catchesAwaitRejection(node)); markBinding(node.expression, "observed", "await"); }
@@ -1014,7 +1017,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (reportedAliasUses.has(identity) || node.getStart(source) < escaped.resource.scopeEnd) return;
       const alias: ResourceAliasEscape = { owner, resource: escaped.resource.binding, alias: escaped.alias, generation: escaped.generation, assignmentSpan: escaped.assignmentSpan, useSpan: { start: node.getStart(source), end: node.getEnd() } };
       resourceAliases.push(alias); reportedAliasUses.add(identity);
-      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${escaped.alias} aliases using resource ${escaped.resource.binding} after its lexical disposal scope` });
+      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-use", severity: "error", message: `${owner} uses ${escaped.alias}, an alias of using resource ${escaped.resource.binding}, after its lexical disposal scope`, notes: [{ label: "binding", detail: source.text.slice(escaped.resource.span.start, escaped.resource.span.end) }, { label: "because", detail: `${escaped.resource.binding} is disposed when its using scope ends, so this use observes a released resource` }] });
     };
     const capturedResourceFact = (node: ts.Node): ResourceAliasFact | undefined => {
       if (ts.isShorthandPropertyAssignment(node)) {
@@ -1246,14 +1249,15 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         resourceEscapes.push({ owner, resource: retained.resource.binding, via, span: { start: node.getStart(source), end: node.getEnd() } });
         diagnostics.push({
           fileName: source.fileName, functionName: owner, line: lineAt(source, argument.getStart(source)), kind: "disposed-resource-escape", severity: "error",
-          message: `${retained.resource.binding} escapes through retaining ${ts.isNewExpression(node) ? "construction" : "call"} ${node.expression.getText(source)} argument ${index} and may be used after lexical disposal`,
+          message: `${owner} lets ${retained.resource.binding} escape through retaining ${ts.isNewExpression(node) ? "construction" : "call"} ${node.expression.getText(source)} argument ${index}, so it may be used after lexical disposal`,
+          notes: [{ label: "because", detail: `${node.expression.getText(source)} retains argument ${index} beyond this call, while ${retained.resource.binding} is disposed at the end of its using scope` }],
         });
       }
       if (ts.isReturnStatement(node) && node.expression) {
         const returned = returnedResourceFact(node.expression);
         if (returned) {
           resourceEscapes.push({ owner, resource: returned.fact.resource.binding, via: returned.via, span: { start: node.getStart(source), end: node.getEnd() } });
-          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${returned.fact.resource.binding} escapes through ${returned.via === "returned-closure" ? "a returned closure" : "return"} but is disposed before the caller can use it` });
+          diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, node.getStart(source)), kind: "disposed-resource-escape", severity: "error", message: `${owner} lets ${returned.fact.resource.binding} escape through ${returned.via === "returned-closure" ? "a returned closure" : "return"} but disposes it before the caller can use it`, notes: [{ label: "binding", detail: source.text.slice(returned.fact.resource.span.start, returned.fact.resource.span.end) }, { label: "because", detail: `the using scope disposes ${returned.fact.resource.binding} before this function returns, so the caller receives a released resource` }] });
         }
       }
       if (ts.isIfStatement(node)) {
@@ -1541,7 +1545,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const group = symbol && bindingGroups.get(symbol);
       if (!group || reported.has(group) || group[0]!.status !== "floating") continue;
       reported.add(group);
-      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, binding.span.start), kind: "floating-promise", severity: "error", message: `${owner} leaves Promise binding ${binding.binding} without await, return, rejection handler, explicit void, or responsibility transfer` });
+      diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, binding.span.start), kind: "floating-promise", severity: "error", message: `${owner} leaves Promise binding ${binding.binding} without await, return, rejection handler, explicit void, or responsibility transfer`, notes: [{ label: "because", detail: `every path through ${owner} leaves ${binding.binding} unobserved, so its rejection escapes as an unhandled rejection` }] });
     }
   };
   const visit = (node: ts.Node): void => {

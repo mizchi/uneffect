@@ -1,0 +1,16 @@
+$ uneffect --evidence fixtures/contracts/unsupported-call.ts
+# A call inside a contracted body leaves the verified subset: no obligation is generated at all.
+
+error contract/unsupported fixtures/contracts/unsupported-call.ts:11 in announce
+  message: announce has no verified contract: call requires a verified function summary: report
+  11 |   report(n);
+     |   ^
+  construct: report(n);
+  because: the contract is not checked at all while this construct is outside the verified subset; no obligation was generated for this function
+  hint: inline the callee, or move the call out of the contracted function; the prototype has no call summaries yet
+
+1 error(s), 0 warning(s)
+
+evidence:
+  effects report: Console (verified)
+  effects announce: Console (verified)

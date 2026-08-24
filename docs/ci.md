@@ -11,7 +11,7 @@ that does not provision that verifier.
 | `fast` | Node.js and Rust | Type checking, parser/analyzer unit tests, Rust parity, build, and package checks |
 | `z3` | Z3 | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
-| `integration` | Z3, Quint, and Java/TLC | End-to-end acceptance, dogfood, evidence import, and mixed backend tests |
+| `integration` | Z3, Quint, and Java/TLC | End-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
 
 Files that exercise both verifier APIs belong to `integration`, even when one

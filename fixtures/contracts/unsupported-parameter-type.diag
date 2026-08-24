@@ -1,0 +1,15 @@
+$ uneffect --evidence fixtures/contracts/unsupported-parameter-type.ts
+# Contracts are integer logic only: a string parameter has no domain to lower into.
+
+error contract/unsupported fixtures/contracts/unsupported-parameter-type.ts:3 in length
+  message: length has no verified contract: unsupported contract parameter type: string
+  3 | export function length(text: string) {
+    | ^
+  construct: export function length(text: string) {
+  because: the contract is not checked at all while this construct is outside the verified subset; no obligation was generated for this function
+  hint: annotate the parameter as number, Int, Nat, Float, or boolean
+
+1 error(s), 0 warning(s)
+
+evidence:
+  effects length: no effect (inferred)

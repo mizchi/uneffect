@@ -1,0 +1,15 @@
+$ uneffect --evidence fixtures/effects/mutation-effect.ts
+# Writing through a binding that outlives the call is a Mutate effect over that region.
+
+error effect/missing fixtures/effects/mutation-effect.ts:4 in record
+  message: record requires /* uneffect: effect Mutate<typeof state> */
+  4 | export function record() {
+    | ^
+  declared: (no /* uneffect: effect ... */ comment)
+  because: record performs state.calls = state.calls + 1 at line 5
+  hint: declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it
+
+1 error(s), 0 warning(s)
+
+evidence:
+  effects record: Mutate<typeof state> (inferred)

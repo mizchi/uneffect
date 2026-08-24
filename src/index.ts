@@ -141,8 +141,16 @@ export { analyzeEffectRecovery, compareEffectImplementations, measureUneffectAdo
 export type { AdoptionFixtureName, AdoptionReport, EffectFailureOwnership, EffectImplementationComparison, EffectRecoveryAnalysis, ExternalAdoptionReport } from "./adoption.js";
 export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "./typed-array-safety.js";
 export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult, TypedArraySafetyStatistics } from "./typed-array-safety.js";
-export { generateObligationSmt, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
-export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationVariable } from "./invariant-ir.js";
+export { generateObligationSmt, InvariantLoweringError, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
+export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationBinding, ObligationVariable } from "./invariant-ir.js";
+export { checkFiles, createCheckHost } from "./check.js";
+export type { CheckOptions, CheckResult } from "./check.js";
+export { diagnosticHint, formatCheckEvidence, formatDiagnostic, formatDiagnostics, reportDiagnostic } from "./diagnostics.js";
+export type { CheckerDiagnostic, DiagnosticFormatOptions, DiagnosticNote, DiagnosticSeverity, ReportedDiagnostic } from "./diagnostics.js";
+export { describeObligation, evaluateLogic, explainCounterexample, failingConjunct, formatEvaluated, formatLogic, formatValue, obligationRule, parseModel, parseModelValue } from "./contract-explanations.js";
+export type { LogicModel, LogicValue } from "./contract-explanations.js";
+export { evaluateQuality, formatQualityReport, qualityCriteria, qualityThreshold, scoreDiagnostic } from "./diagnostic-quality.js";
+export type { DiagnosticScore, QualityCriterion, QualityReport } from "./diagnostic-quality.js";
 export { parseSpec } from "./spec-ir.js";
 export { checkTemporalExpressionEquivalenceWithZ3, findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "./spec-lint.js";
 export type { SpecLintDiagnostic, SpecLintWithZ3Options, TemporalCounterexampleResult, TemporalEquivalenceResult, TemporalReachabilityLintOptions } from "./spec-lint.js";

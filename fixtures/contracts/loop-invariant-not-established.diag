@@ -1,0 +1,20 @@
+$ uneffect --evidence fixtures/contracts/loop-invariant-not-established.ts
+# The invariant is already false the first time the loop is reached.
+
+error contract/invariant fixtures/contracts/loop-invariant-not-established.ts:7 in count
+  message: `invariant i >= 0 && i <= n` is not established before the loop runs
+  7 |   while (i < n) {
+    |   ^
+  rule: the invariant must already hold the first time the loop is reached
+  counterexample: n = 0
+  state: i = 1
+  still holds: n >= 0 (0 >= 0)
+  fails: invariant i >= 0 && i <= n breaks at i <= n, which evaluates to 1 <= 0
+  hint: establish the invariant before the loop and restore it in the body, or weaken it until both hold
+
+1 error(s), 0 warning(s)
+
+evidence:
+  proved count: invariant i >= 0 && i <= n
+  proved count: ensures result == n
+  effects count: no effect (inferred)

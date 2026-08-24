@@ -23,6 +23,32 @@ effect の漸進性、Verse を参考にした semantic footprint、Rust/corsa-b
 async phase と inline invalidate の扱い、および Quint と Rust の中立 IR の対応は [形式モデル](./docs/formal-models.md) にまとめています。
 英語版の設計文書一覧は [docs](./docs/README.md) を参照してください。
 
+## fixtures
+
+`fixtures/` には入力のソースと、その検査結果 `.diag` を同じ名前で併置しています。1 ファイルが 1 つの機能または 1 つの失敗モードに対応し、先頭の `//` 行がその意図を述べます。
+
+```
+fixtures/contracts/postcondition-off-by-one.ts   # 入力
+fixtures/contracts/postcondition-off-by-one.diag # `uneffect --evidence <file>` の出力
+```
+
+診断は sat/unsat を返すだけではなく、反例を IR 上で評価して意味を説明します。
+
+```
+error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decrement
+  message: `ensures result > x` can fail on this return
+  5 |   return x - 1;
+    |   ^
+  rule: every input allowed by requires must leave this return with ensures true
+  counterexample: x = 0
+  state: result = x - 1 = -1
+  still holds: x >= 0 (0 >= 0)
+  fails: ensures result > x evaluates to -1 > 0, which is false
+  hint: weaken the postcondition, strengthen the precondition, or change the returned expression so the counterexample above cannot occur
+```
+
+`.diag` は生成物です。検査に成功した場合も、証明した obligation と推論した effect を `evidence:` 節に出力します。`just fixtures` で最新かを検査し、`just fixtures-update` で再生成します。メッセージ自体の質は `fixtures/quality.md` の rubric スコアで評価ループに載せています。詳細は [診断とフィクスチャ](./docs/diagnostics.md) を参照してください。
+
 `requires` / `ensures` / `invariant` は整数論理式です。Z3 で反例が存在しないことを確認します。現状の契約検査は整数、四則演算、比較、論理演算、単純な変数宣言・代入・return、および単純代入だけの while に限定されています。
 
 ```sh
