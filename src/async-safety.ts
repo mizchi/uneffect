@@ -1453,6 +1453,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(statement);
         return reassigned;
       };
+      const staticNullish = (original: ts.Expression): boolean | undefined => {
+        let expression = original;
+        while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+          || ts.isNonNullExpression(expression)) expression = expression.expression;
+        if (expression.kind === ts.SyntaxKind.NullKeyword || ts.isVoidExpression(expression)) return true;
+        if (expression.kind === ts.SyntaxKind.TrueKeyword || expression.kind === ts.SyntaxKind.FalseKeyword
+          || ts.isStringLiteralLike(expression) || ts.isNumericLiteral(expression)) return false;
+        if (ts.isIdentifier(expression)) {
+          const initializer = immutableInitializer(expression);
+          if (initializer && initializer !== expression) return staticNullish(initializer);
+          const type = checker.getTypeAtLocation(expression);
+          if ((type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined)) !== 0) return true;
+        }
+        return undefined;
+      };
       const isGuaranteedThrowExpression = (original: ts.Expression): boolean => {
         let expression = original;
         while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
@@ -1478,6 +1494,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             ? Boolean(left)
             : !Boolean(left);
           return evaluatesRight && isGuaranteedThrowExpression(expression.right);
+        }
+        if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+          if (isGuaranteedThrowExpression(expression.left)) return true;
+          return staticNullish(expression.left) === true && isGuaranteedThrowExpression(expression.right);
         }
         if (ts.isConditionalExpression(expression)) {
           if (isGuaranteedThrowExpression(expression.condition)) return true;

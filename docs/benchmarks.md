@@ -833,11 +833,12 @@ measure parsing or program construction; unreviewed Web IDL properties still
 fall outside this claim.
 
 The warm-program Promise ownership benchmark for 64 structured throw
-completions routed through catches measured 15.3036 ms mean over 99 samples
-(8.59% relative margin of error). It rotates through explicit throws, direct
+completions routed through catches measured 8.0718 ms mean over 186 samples
+(1.64% relative margin of error). It rotates through explicit throws, direct
 calls resolved as both `never` and `Throw<E>`, return, void, comma-tail,
-all-throw ternary, and statically selected `&&`/`||` forms. It includes
+all-throw ternary, statically selected `&&`/`||`, and statically nullish
+`null`/`void`/global-`undefined` coalescing forms. It includes
 TypeChecker-backed Promise discovery and the structured ownership fixed point,
-but reuses one parsed Program. The local run had visible GC/outlier variance,
-so it is recorded as an observation rather than a regression budget. It does
-not measure program construction or general expression-level exception edges.
+but reuses one parsed Program. It is recorded as an observation rather than a
+regression budget and does not measure program construction, nullable-union
+selection, shadowed identifiers, or general expression-level exception edges.

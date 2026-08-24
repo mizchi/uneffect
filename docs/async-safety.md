@@ -374,9 +374,13 @@ than bypassing it as a return. `&&` and `||` preserve a guaranteed throw when
 the left operand already throws, or when a finite literal or immutable-const
 primitive proves that short-circuit evaluation must enter a throwing right
 operand. A statically selected ternary follows only its selected branch.
-Unknown short-circuit conditions, `??`, multiple declarators, call-argument
-nesting, and unresolved dynamic dispatch remain outside this guaranteed-edge
-fragment.
+`??` preserves the edge when its left operand already throws, or when `null`,
+`void`, the global `undefined`, or a recursively immutable const alias proves
+that evaluation must enter a throwing right operand. A definitely non-null
+primitive does not enter the right operand. Nullable unions, shadowed
+`undefined` identifiers, unknown short-circuit conditions, multiple
+declarators, call-argument nesting, and unresolved dynamic dispatch remain
+outside this guaranteed-edge fragment.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
 execute their body at least once. Loop bodies are iterated to a finite abstract
 state closure. Unlabeled and labeled `break`/`continue` propagate through nested

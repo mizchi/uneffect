@@ -548,6 +548,57 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("respects nullish coalescing evaluation for guaranteed throw completion", () => {
+    const result = analyzeAsyncSafety("nullish-throw-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: effect Throw<Error> */ declare function fail(): never
+      declare function maybeFail(): void
+      async function throwingLeft() {
+        const pending = task()
+        try { fail() ?? maybeFail() } catch { await pending }
+      }
+      async function nullLeft() {
+        const pending = task()
+        try { null ?? fail() } catch { await pending }
+      }
+      async function voidLeft() {
+        const pending = task()
+        try { void 0 ?? fail() } catch { await pending }
+      }
+      async function globalUndefined() {
+        const pending = task()
+        try { undefined ?? fail() } catch { await pending }
+      }
+      async function constAlias() {
+        const pending = task()
+        const missing = null as null
+        try { missing ?? fail() } catch { await pending }
+      }
+      async function presentLeft() {
+        const pending = task()
+        try { "ready" ?? fail() } catch { await pending }
+      }
+      async function unknownLeft(value: string | null) {
+        const pending = task()
+        try { value ?? fail() } catch { await pending }
+      }
+      async function shadowedUndefined(undefined: string) {
+        const pending = task()
+        try { undefined ?? fail() } catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "throwingLeft", status: "observed" },
+      { owner: "nullLeft", status: "observed" },
+      { owner: "voidLeft", status: "observed" },
+      { owner: "globalUndefined", status: "observed" },
+      { owner: "constAlias", status: "observed" },
+      { owner: "presentLeft", status: "floating" },
+      { owner: "unknownLeft", status: "floating" },
+      { owner: "shadowedUndefined", status: "floating" },
+    ]);
+  });
+
   it("dogfoods audit delivery before a typed fatal throw", () => {
     const fileName = "examples/dogfood/audit-before-fatal.ts";
     const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));

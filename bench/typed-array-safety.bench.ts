@@ -53,7 +53,10 @@ ${Array.from({ length: 64 }, (_, index) => `
       "fail() && void 0",
       "true && fail()",
       "false || fail()",
-    ][index % 9]} } catch { await pending }
+      "null ?? fail()",
+      "void 0 ?? fail()",
+      "undefined ?? fail()",
+    ][index % 12]} } catch { await pending }
   }
 `).join("\n")}`;
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");

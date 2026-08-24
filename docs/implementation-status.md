@@ -101,8 +101,10 @@ same property is proved for arbitrary TypeScript.
   completions and a structured expression fragment proven both `never` and
   `Throw<E>` into the nearest `catch`, including `return fail()` without
   misclassifying it as a completed return. Literal/immutable-const truthiness
-  selects supported `&&`, `||`, and ternary paths. Arbitrary expressions still
-  retain a conservative possible-throw catch entry.
+  selects supported `&&`, `||`, and ternary paths. Statically nullish literals,
+  `void`, global `undefined`, and immutable aliases select a supported `??`
+  right side; nullable unions and shadowed identifiers remain unknown.
+  Arbitrary expressions still retain a conservative possible-throw catch entry.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for
