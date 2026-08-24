@@ -275,6 +275,48 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("joins a branch-local void return with the continuing path", () => {
+    const source = `/* uneffect:
+      state value: int
+      state stop: bool
+      state attempts: int
+      init value = 0
+      init stop = false
+      init attempts = 0
+      action route: value' = stop ? value + 1 : value + 2, attempts' = attempts + 1
+    */
+      interface Runtime { value: number; stop: boolean; attempts: number }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        runtime.attempts++;
+        if (runtime.stop) {
+          runtime.value += 1;
+          return;
+        }
+        runtime.value += 2;
+      }
+    `;
+    expect(validateRefinementActionBodies("early-return.ts", source, "routing", parseSpec("early-return.ts", source).temporal)).toEqual([]);
+
+    const returningValue = source.replace("return;", "return runtime.value;");
+    expect(validateRefinementActionBodies("value-return.ts", returningValue, "routing", parseSpec("value-return.ts", returningValue).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    ]);
+
+    const insideFinally = source.replace(
+      "if (runtime.stop) {",
+      "try { if (runtime.stop) {",
+    ).replace(
+      "runtime.value += 2;\n      }",
+      "runtime.value += 2; } finally { runtime.value += 0 }\n      }",
+    );
+    expect(validateRefinementActionBodies("finally-return.ts", insideFinally, "routing", parseSpec("finally-return.ts", insideFinally).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    ]);
+  });
+
   it("unrolls a statically bounded ascending for loop and rejects dynamic bounds", () => {
     const model = `/* uneffect:
       state value: int

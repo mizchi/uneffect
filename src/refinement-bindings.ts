@@ -836,19 +836,40 @@ function validateRefinementActionBodiesInSource(
         if (!normalizedCondition) return undefined;
         const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
         const before = new Map(updates);
-        const whenTrue = collect(asBlock(statement.thenStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
-        const whenFalse = collect(asBlock(statement.elseStatement), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
+        const trueBlock = asBlock(statement.thenStatement);
+        const falseBlock = asBlock(statement.elseStatement);
+        const splitReturn = (block: ts.Block): { statements: ts.Statement[]; returned: boolean } | undefined => {
+          const statements = [...block.statements];
+          const returned = statements.at(-1);
+          if (!returned || !ts.isReturnStatement(returned)) return { statements, returned: false };
+          if (returned.expression) return undefined;
+          return { statements: statements.slice(0, -1), returned: true };
+        };
+        const trueCompletion = splitReturn(trueBlock);
+        const falseCompletion = splitReturn(falseBlock);
+        if (!trueCompletion || !falseCompletion) return undefined;
+        const hasBranchReturn = trueCompletion.returned || falseCompletion.returned;
+        if (hasBranchReturn && !allowTerminalReturn) return undefined;
+        const continuation = [...body.statements.slice(statementIndex + 1)];
+        const branchBody = (completion: { statements: ts.Statement[]; returned: boolean }): ts.Block => ts.factory.createBlock([
+          ...completion.statements,
+          ...(hasBranchReturn && !completion.returned ? continuation : []),
+        ], true);
+        const whenTrue = collect(branchBody(trueCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
+        const whenFalse = collect(branchBody(falseCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
         if (!whenTrue || !whenFalse) return undefined;
         updates.clear();
         for (const name of stateNames) {
-          const original = { kind: "name", name } as TemporalExpression;
+          const initial = { kind: "name", name } as TemporalExpression;
+          const original = before.get(name) ?? initial;
           const trueValue = whenTrue.get(name) ?? original;
           const falseValue = whenFalse.get(name) ?? original;
           const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
             ? trueValue
             : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
-          if (!sameRefinementExpression(merged, original)) updates.set(name, merged);
+          if (!sameRefinementExpression(merged, initial)) updates.set(name, merged);
         }
+        if (hasBranchReturn) return updates;
         continue;
       }
       if (ts.isSwitchStatement(statement)) {

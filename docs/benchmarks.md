@@ -85,6 +85,13 @@ mandatory cleanup update. It is a new development-host observation, not a
 claim that the difference from the older 0.6436 ms result is entirely caused
 by `finally` handling.
 
+After the same dogfood moved `armAudit` to an early-return form, the complete
+telemetry refinement benchmark measured 0.8229 ms mean over 608 samples (0.66%
+RME). This includes cloning the trailing statements only onto the continuing
+abstract path and preserving the common pre-branch state. The lower mean than
+the preceding run is measurement variation, not evidence that the extra CFG
+join is free.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

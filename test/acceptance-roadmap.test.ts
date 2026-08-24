@@ -408,6 +408,36 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("joins an early-return action branch without executing its trailing updates", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state attempts: int
+      state routed: int
+      state stop: bool
+      init attempts = 0
+      init routed = 0
+      init stop = false
+      action route: attempts' = attempts + 1, routed' = stop ? routed + 1 : routed + 2
+    */
+      interface Runtime { attempts: number; routed: number; stop: boolean }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        runtime.attempts++
+        if (runtime.stop) { runtime.routed++; return }
+        runtime.routed += 2
+      }
+    `;
+    const temporal = (parseSpec("early-return-routing.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("early-return-routing.ts", source, "routing", temporal)).toEqual([]);
+    const valueReturn = source.replace("return }", "return runtime.routed }");
+    expect(validateActions("value-return-routing.ts", valueReturn, "routing", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    );
+  });
+
   it("refines a Set-backed lease implementation against its temporal actions and invariants", async () => {
     const parseSpec = futureApi("parseSpec");
     const validateProjection = futureApi("validateRefinementStateProjectionInProgram");

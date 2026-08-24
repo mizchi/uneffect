@@ -14,7 +14,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action deliver: delivered' = delivered + 1, attempted' = attempted + 1
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
-  action armAudit: auditArmed' = attempted > 0 ? true : auditArmed
+  action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action observeLostOutcome: auditArmed' = auditArmed
   action_when observeLostOutcome: auditArmed && delivered + dropped + buffered < attempted
   temporal allAttemptsHaveOneOutcome: delivered + dropped + buffered === attempted
@@ -77,13 +77,10 @@ export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runti
 /* uneffect: refinement telemetryRouting@1 action buffer */
 export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }
 
-function armAuditAfterAttempt(runtime: TelemetryRoutingAccounting): void {
-  if (runtime.attempted > 0) runtime.auditArmed = true;
-}
-
 /* uneffect: refinement telemetryRouting@1 action armAudit */
 export function armTelemetryAudit(runtime: TelemetryRoutingAccounting): void {
-  return armAuditAfterAttempt(runtime);
+  if (runtime.attempted <= 0) return;
+  runtime.auditArmed = true;
 }
 
 /* uneffect: refinement telemetryRouting@1 action observeLostOutcome */
