@@ -22,21 +22,27 @@ parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
 
 On 2026-08-25 with Vitest 4.1.11, after enabling local resource identity,
-replay projection, and lexical dependency checking, the analyzer measured
-3.35 ms mean (2.42% RME, 150 samples), while the parse-only baseline measured
-0.75 ms (0.49% RME, 663 samples). The combined parse-and-analysis path was
-therefore about 4.44 times the parse-only cost for this synthetic cold call, or
-roughly 0.026 ms per
+replay projection, lexical dependency checking, symbol-resolved custom-Hook
+imports, and cycle detection, the analyzer measured 3.77 ms mean (1.37% RME,
+133 samples), while the parse-only baseline measured 0.80 ms (1.29% RME, 623
+samples). The combined parse-and-analysis path was therefore about 4.70 times
+the parse-only cost for this synthetic cold call, or roughly 0.029 ms per
 annotated component. This implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-4.81 ms mean (0.51% RME, 104 samples). It performs two source walks to establish
+5.56 ms mean (1.36% RME, 90 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk; the pre-refactor observation was 7.00 ms
 mean. This synthetic one-file Program has no cross-file imports and therefore
 shows fixed-point overhead rather than its intended multi-file benefit.
+An initial call-site-wide symbol implementation measured 8.88 ms mean. Limiting
+external candidates to import declarations and namespace property calls, then
+resolving namespace members from the module export table, and reusing Hook
+nodes already collected by the fixed-point analysis for cycle detection,
+reduced that observation to 5.56 ms without dropping the tested
+named/barrel/namespace/default forms.
 
 The scaled-affine strengthening dogfood initially measured 3,412.12 ms for one
 sample because every candidate obligation constructed a fresh Z3 Context.

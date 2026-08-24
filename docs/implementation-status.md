@@ -127,8 +127,11 @@ same property is proved for arbitrary TypeScript.
   event callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
   cleanup functions. Aliased named imports from `react` are recognized.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
-  Hooks. Source-local calls and TypeScript-resolved named import aliases compose
-  their phase summaries into components through a Program-level fixed point.
+  Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
+  barrels, namespace properties, and default imports compose their phase
+  summaries into components through a Program-level fixed point.
+- Local and cross-module custom-Hook call cycles are diagnosed on each
+  participating edge, including indirect recursion.
 - The tested fragment rejects direct render capabilities, selected
   non-idempotent host reads, member mutation rooted at an identifier props
   parameter, and control-flow-dependent built-in Effect Hook calls.
@@ -147,14 +150,16 @@ same property is proved for arbitrary TypeScript.
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common
   stable React return positions, and rejects opaque/dynamic/unstable evidence.
-- Barrel/namespace/default Hook imports, indirect recursion, symbol-resolved
-  dependency aliases, custom stability contracts, refs/state/context flow,
+- Dynamic/higher-order Hook calls, symbol-resolved dependency callback aliases,
+  custom stability contracts, refs/state/context flow,
   Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
   calculation, custom subscription setup/cleanup, and a Fetch event. Removing
-  cleanup, substituting another resource identity, or mutating props is a
-  load-bearing negative control.
+  cleanup, substituting another resource identity, removing a dependency, or
+  mutating props is a load-bearing negative control.
+- A checked-in multi-file dashboard additionally exercises named barrel,
+  namespace, and default custom-Hook composition through TypeScript symbols.
 
 ## Validators, generators, and numeric memory safety
 

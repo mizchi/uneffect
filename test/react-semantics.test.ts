@@ -165,6 +165,98 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("resolves barrel, namespace, and default custom Hook calls by TypeScript symbol", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-imports-"));
+    const namedFile = join(directory, "named.tsx"), barrelFile = join(directory, "barrel.ts");
+    const defaultFile = join(directory, "default.tsx"), appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(namedFile, `
+        import { useEffect, useLayoutEffect } from "react"
+        /* uneffect: react hook */
+        export function useAudit() { useEffect(() => console.log("audit"), []) }
+        /* uneffect: react hook */
+        export function useTitle() { useLayoutEffect(() => { document.title = "ready" }, []) }
+      `);
+      writeFileSync(barrelFile, `export { useAudit } from "./named.js"`);
+      writeFileSync(defaultFile, `
+        import { useEffect } from "react"
+        /* uneffect: react hook */
+        export default function useRefresh() { useEffect(() => { fetch("/refresh") }, []) }
+      `);
+      writeFileSync(appFile, `
+        import { useAudit as useBarrelAudit } from "./barrel.js"
+        import * as namedHooks from "./named.js"
+        import useRefresh from "./default.js"
+        /* uneffect: react component */
+        export function App() {
+          useBarrelAudit()
+          namedHooks.useTitle()
+          useRefresh()
+          return null
+        }
+      `);
+      const program = ts.createProgram([namedFile, barrelFile, defaultFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.diagnostics).toEqual([]);
+      expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+        { phase: "passive-effect", effects: expect.arrayContaining(["Console", "Fetch"]) },
+        { phase: "layout-effect", effects: ["DomWrite"] },
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects indirect custom Hook recursion", () => {
+    const result = analyzeReactSemantics("recursive-hooks.tsx", `
+      /* uneffect: react hook */
+      function useFirst() { useSecond() }
+      /* uneffect: react hook */
+      function useSecond() { useThird() }
+      /* uneffect: react hook */
+      function useThird() { useFirst() }
+    `);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "useFirst", kind: "recursive-hook", hook: "useSecond" }),
+      expect.objectContaining({ functionName: "useSecond", kind: "recursive-hook", hook: "useThird" }),
+      expect.objectContaining({ functionName: "useThird", kind: "recursive-hook", hook: "useFirst" }),
+    ]));
+  });
+
+  it("rejects indirect custom Hook recursion across modules", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-cycle-"));
+    const firstFile = join(directory, "first.tsx"), secondFile = join(directory, "second.tsx");
+    try {
+      writeFileSync(firstFile, `
+        import { useSecond } from "./second.js"
+        /* uneffect: react hook */
+        export function useFirst() { useSecond() }
+      `);
+      writeFileSync(secondFile, `
+        import { useFirst } from "./first.js"
+        /* uneffect: react hook */
+        export function useSecond() { useFirst() }
+      `);
+      const program = ts.createProgram([firstFile, secondFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const first = analyzeReactSemanticsInProgram(program, program.getSourceFile(firstFile)!);
+      const second = analyzeReactSemanticsInProgram(program, program.getSourceFile(secondFile)!);
+      expect(first.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "useFirst", kind: "recursive-hook", hook: "useSecond",
+      }));
+      expect(second.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "useSecond", kind: "recursive-hook", hook: "useFirst",
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("checks an annotated custom Hook as a replayable render boundary", () => {
     const result = analyzeReactSemantics("broken-hook.tsx", `
       import { useEffect } from "react"
@@ -600,5 +692,23 @@ describe("React Function Component semantics", () => {
     expect(mutating.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "TelemetryDashboard", kind: "immutable-input-mutation",
     }));
+  });
+
+  it("dogfoods checked-in symbol-resolved React modules", async () => {
+    const hooksFile = "examples/dogfood/react-symbol-hooks.tsx";
+    const barrelFile = "examples/dogfood/react-symbol-barrel.ts";
+    const appFile = "examples/dogfood/react-symbol-dashboard.tsx";
+    const program = ts.createProgram([hooksFile, barrelFile, appFile], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+    });
+    const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      { phase: "layout-effect", effects: ["DomWrite"] },
+      { phase: "passive-effect", effects: ["Console"] },
+    ]));
+    const checked = await checkFiles([hooksFile, barrelFile, appFile]);
+    expect(checked.diagnostics.filter((diagnostic) => "component" in diagnostic)).toEqual([]);
   });
 });

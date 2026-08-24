@@ -46,8 +46,11 @@ Named imports of `useEffect` and `useLayoutEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
 function is not treated as a built-in Hook boundary. Annotated custom Hooks
 compose their render, Effect, and cleanup summaries into callers. The
-Program-backed checker follows TypeScript-resolved named imports and aliases
-across files and computes the Hook summary fixed point once for the Program.
+Program-backed checker resolves each custom-Hook call site through its
+TypeScript symbol to the annotated declaration. Named aliases, barrel
+re-exports, namespace properties, and default imports therefore share one
+resolution path across files. Hook summaries reach a fixed point once for the
+Program.
 
 ## Render obligations
 
@@ -69,6 +72,8 @@ The tested fragment reports:
   rather than executed and is not charged to render;
 - unresolved `useX` calls and direct custom-Hook recursion fail closed instead
   of producing a pure summary.
+- local and cross-module indirect custom-Hook cycles are diagnosed on every
+  participating call edge.
 
 ## Dependency and stale-closure checks
 
@@ -202,9 +207,9 @@ metadata-only and adds no runtime dependency.
 
 This is a tested initial fragment, not a complete React semantics:
 
-- named imports of annotated custom Hooks are resolved, but barrel re-exports,
-  namespace/default imports, indirect recursion, and dynamically selected Hook
-  calls are not resolved yet;
+- direct identifier/property calls of annotated custom Hooks resolve through
+  named, barrel, namespace, and default imports; element access, dynamically
+  selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
 - event extraction covers inline JSX function callbacks, not referenced
   handlers or callbacks passed through component props;
 - props mutation currently covers member writes rooted at an identifier
@@ -228,7 +233,9 @@ summary only claims coverage for the constructs listed above.
 
 `examples/dogfood/react-telemetry-dashboard.tsx` combines `useState`, a pure
 `useMemo` calculation, a custom subscription Hook, matching cleanup, and an
-inline Fetch event. Its regression test removes cleanup and mutates props as
-independent negative controls. This demonstrates that the initial constraints
-are load-bearing, but it is one controlled fixture rather than an ecosystem
-false-positive measurement.
+inline Fetch event. Its regression test removes cleanup, substitutes another
+resource, removes a dependency, and mutates props as independent negative
+controls. The checked-in `react-symbol-*` modules additionally compose a
+component through a named barrel, namespace property, and default custom-Hook
+import using the Program-backed checker. These are controlled fixtures rather
+than an ecosystem false-positive measurement.

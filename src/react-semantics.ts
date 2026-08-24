@@ -563,7 +563,11 @@ function isPropsMutation(node: ts.BinaryExpression, parameters: ReadonlySet<stri
   return root !== undefined && parameters.has(root) && node.left.getText() !== root;
 }
 
-interface InternalReactAnalysis { result: ReactSemanticsResult; hookSummaries: Map<string, CustomHookSummary> }
+interface InternalReactAnalysis {
+  result: ReactSemanticsResult;
+  hookSummaries: Map<string, CustomHookSummary>;
+  hookNodes: Map<string, ComponentNode>;
+}
 
 function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map()): InternalReactAnalysis {
   const fileName = source.fileName;
@@ -592,6 +596,30 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
   const customHooks = new Map<string, ComponentNode>();
   for (const candidate of candidates) if (extractAnnotations(leadingText(source, candidate), "react").some((value) => value.trim() === "hook")) {
     customHooks.set(componentName(candidate), candidate);
+  }
+  const localHookCalls = new Map<string, Array<{ called: string; node: ts.CallExpression }>>();
+  for (const [name, hook] of customHooks) {
+    const calls: Array<{ called: string; node: ts.CallExpression }> = [];
+    const visit = (node: ts.Node): void => {
+      if (node !== hook.body && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) {
+        const called = callName(node);
+        if (called && customHooks.has(called)) calls.push({ called, node });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(hook.body);
+    localHookCalls.set(name, calls);
+  }
+  const reachesHook = (from: string, target: string, seen = new Set<string>()): boolean => {
+    if (from === target) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (localHookCalls.get(from) ?? []).some(({ called }) => reachesHook(called, target, seen));
+  };
+  const recursiveLocalEdges = new Set<string>();
+  for (const [from, calls] of localHookCalls) for (const { called } of calls) {
+    if (reachesHook(called, from)) recursiveLocalEdges.add(`${from}->${called}`);
   }
   const customHookCache = new Map<string, CustomHookSummary>(externalHooks);
   for (const hookName of customHooks.keys()) customHookCache.delete(hookName);
@@ -668,9 +696,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, hook, source)) reportHook(issue.node, {
             kind: issue.kind, phase: dependencyHook.phase, hook: called, dependencies: issue.dependencies, message: issue.detail,
           });
-          if (called === hookName) reportHook(node, {
+          if (called && recursiveLocalEdges.has(`${hookName}->${called}`)) reportHook(node, {
             kind: "recursive-hook", phase: "render", hook: called,
-            message: `${called} recursively calls itself, so its Hook order and phase summary are not finite`,
+            message: `${hookName} -> ${called} participates in a recursive Hook cycle, so Hook order and phase summaries are not finite`,
           });
           if (isConditionalWithin(node, hook)) reportHook(node, {
             kind: "conditional-hook", phase: "render", hook: called,
@@ -818,7 +846,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       replay: replayModel(summary.phases),
     };
   });
-  return { result: { components, hooks: publicHooks, diagnostics }, hookSummaries: customHookCache };
+  return { result: { components, hooks: publicHooks, diagnostics }, hookSummaries: customHookCache, hookNodes: customHooks };
 }
 
 /** Analyze one source string without requiring React at runtime. */
@@ -827,13 +855,29 @@ export function analyzeReactSemantics(fileName: string, text: string): ReactSema
   return analyzeReactSource(source).result;
 }
 
-function resolvedSymbol(checker: ts.TypeChecker, node: ts.Node): ts.Symbol | undefined {
-  const symbol = checker.getSymbolAtLocation(node);
-  return symbol && (symbol.flags & ts.SymbolFlags.Alias) ? checker.getAliasedSymbol(symbol) : symbol;
-}
-
 function declarationKey(node: AnnotatableFunction): string {
   return `${node.getSourceFile().fileName}:${componentName(node)}`;
+}
+
+function functionDeclarationForSymbol(
+  checker: ts.TypeChecker,
+  symbol: ts.Symbol | undefined,
+  seen = new Set<ts.Symbol>(),
+): AnnotatableFunction | undefined {
+  if (!symbol || seen.has(symbol)) return undefined;
+  seen.add(symbol);
+  const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  if (target !== symbol) return functionDeclarationForSymbol(checker, target, seen);
+  for (const declaration of target.declarations ?? []) {
+    if (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration)) return declaration;
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer
+      && (ts.isFunctionExpression(declaration.initializer) || ts.isArrowFunction(declaration.initializer))) return declaration.initializer;
+    if (ts.isExportAssignment(declaration)) {
+      const resolved = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(declaration.expression), seen);
+      if (resolved) return resolved;
+    }
+  }
+  return undefined;
 }
 
 function importedCustomHooks(
@@ -842,31 +886,88 @@ function importedCustomHooks(
   summaries: ReadonlyMap<string, CustomHookSummary>,
 ): Map<string, CustomHookSummary> {
   const imports = new Map<string, CustomHookSummary>();
+  const add = (localName: string, location: ts.Node): void => {
+    const declaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(location));
+    const summary = declaration ? summaries.get(declarationKey(declaration)) : undefined;
+    if (summary) imports.set(localName, summary);
+  };
   for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !statement.importClause?.namedBindings
-      || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
-    for (const element of statement.importClause.namedBindings.elements) {
-      const target = resolvedSymbol(checker, element.name);
-      const declaration = target?.declarations?.find((candidate): candidate is AnnotatableFunction =>
-        ts.isFunctionDeclaration(candidate) || ts.isFunctionExpression(candidate) || ts.isArrowFunction(candidate));
-      if (!declaration) continue;
-      const summary = summaries.get(declarationKey(declaration));
-      if (summary) imports.set(element.name.text, summary);
+    if (!ts.isImportDeclaration(statement) || !statement.importClause) continue;
+    if (statement.importClause.name) add(statement.importClause.name.text, statement.importClause.name);
+    const bindings = statement.importClause.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) add(element.name.text, element.name);
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      const symbol = checker.getSymbolAtLocation(bindings.name);
+      const moduleSymbol = symbol && symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      if (moduleSymbol) for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+        const declaration = functionDeclarationForSymbol(checker, exported);
+        const summary = declaration ? summaries.get(declarationKey(declaration)) : undefined;
+        if (summary) imports.set(`${bindings.name.text}.${exported.name}`, summary);
+      }
     }
   }
   return imports;
+}
+
+function addProgramHookCycleDiagnostics(
+  program: ts.Program,
+  results: Map<string, ReactSemanticsResult>,
+  hooks: ReadonlyMap<string, ComponentNode>,
+): Map<string, ReactSemanticsResult> {
+  const checker = program.getTypeChecker();
+  const edges = new Map<string, Array<{ target: string; called: string; node: ts.CallExpression }>>();
+  for (const [key, hook] of hooks) {
+    const calls: Array<{ target: string; called: string; node: ts.CallExpression }> = [];
+    const visit = (node: ts.Node): void => {
+      if (node !== hook.body && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) {
+        const called = callName(node);
+        const location = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+        const target = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(location));
+        const targetKey = target ? declarationKey(target) : undefined;
+        if (called && targetKey && hooks.has(targetKey)) calls.push({ target: targetKey, called, node });
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(hook.body);
+    edges.set(key, calls);
+  }
+  const reaches = (from: string, target: string, seen = new Set<string>()): boolean => {
+    if (from === target) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (edges.get(from) ?? []).some((edge) => reaches(edge.target, target, seen));
+  };
+  for (const [from, calls] of edges) for (const edge of calls) {
+    if (!reaches(edge.target, from)) continue;
+    const hook = hooks.get(from)!, source = hook.getSourceFile(), name = componentName(hook);
+    const line = source.getLineAndCharacterOfPosition(edge.node.getStart(source)).line + 1;
+    const result = results.get(source.fileName);
+    if (!result || result.diagnostics.some((diagnostic) => diagnostic.kind === "recursive-hook"
+      && diagnostic.functionName === name && diagnostic.hook === edge.called && diagnostic.line === line)) continue;
+    result.diagnostics.push({
+      fileName: source.fileName, component: name, functionName: name, kind: "recursive-hook",
+      phase: "render", severity: "error", line, hook: edge.called,
+      message: `${name} -> ${edge.called} participates in a recursive Hook cycle, so Hook order and phase summaries are not finite`,
+    });
+  }
+  return results;
 }
 
 function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanticsResult> {
   const checker = program.getTypeChecker();
   const sources = program.getSourceFiles().filter((candidate) => !candidate.isDeclarationFile);
   let summaries = new Map<string, CustomHookSummary>(), results = new Map<string, ReactSemanticsResult>();
+  let hookNodes = new Map<string, ComponentNode>();
   for (let iteration = 0; iteration <= sources.length; iteration++) {
     const next = new Map<string, CustomHookSummary>(), nextResults = new Map<string, ReactSemanticsResult>();
+    const nextHookNodes = new Map<string, ComponentNode>();
     for (const candidate of sources) {
       const analysis = analyzeReactSource(candidate, importedCustomHooks(candidate, checker, summaries));
       nextResults.set(candidate.fileName, analysis.result);
       for (const hook of analysis.result.hooks) next.set(`${candidate.fileName}:${hook.name}`, analysis.hookSummaries.get(hook.name)!);
+      for (const [name, node] of analysis.hookNodes) nextHookNodes.set(`${candidate.fileName}:${name}`, node);
     }
     const fingerprint = (values: ReadonlyMap<string, CustomHookSummary>): string => JSON.stringify([...values].map(([key, summary]) => [
       key,
@@ -874,11 +975,12 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
       summary.leaked,
       summary.lifecycleIssues.map(({ kind, capability, phase, detail }) => ({ kind, capability, phase, detail })),
     ]).sort(([left], [right]) => String(left).localeCompare(String(right))));
-    if (fingerprint(next) === fingerprint(summaries)) return nextResults;
+    if (fingerprint(next) === fingerprint(summaries)) return addProgramHookCycleDiagnostics(program, nextResults, nextHookNodes);
     summaries = next;
     results = nextResults;
+    hookNodes = nextHookNodes;
   }
-  return results;
+  return addProgramHookCycleDiagnostics(program, results, hookNodes);
 }
 
 /** Analyze every implementation source while computing the custom-Hook fixed point only once. */
