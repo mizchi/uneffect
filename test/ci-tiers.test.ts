@@ -86,6 +86,7 @@ describe("CI test tier manifest", () => {
       "test/dogfood.test.ts > Second suite > duplicate",
     ].join("\n"))).toThrow(/duplicate isolated test title/);
     expect(didVitestRunExactlyOneTest("Tests  1 passed | 45 skipped (46)")).toBe(true);
+    expect(didVitestRunExactlyOneTest("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m \u001b[2m| \u001b[22m\u001b[33m45 skipped\u001b[39m")).toBe(true);
     expect(didVitestRunExactlyOneTest("Tests  46 skipped (46)")).toBe(false);
     expect(didVitestRunExactlyOneTest("Tests  2 passed | 44 skipped (46)")).toBe(false);
   });

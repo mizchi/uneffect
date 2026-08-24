@@ -80,7 +80,8 @@ export function parseVitestListNames(file: string, output: string): readonly str
 }
 
 export function didVitestRunExactlyOneTest(output: string): boolean {
-  return /Tests\s+1 passed(?:\s+\|\s+\d+ skipped)?/.test(output);
+  const plain = output.replaceAll(/\u001b\[[0-9;]*m/g, "");
+  return /Tests\s+1 passed(?:\s+\|\s+\d+ skipped)?/.test(plain);
 }
 
 export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readonly string[]): readonly string[] | undefined {
