@@ -2552,6 +2552,35 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("closes a request source when Server.close omits its optional callback", () => {
+    const model = analyzeAsyncPatterns("node-http-close-without-callback.ts", `
+      import { createServer } from "node:http"
+      function serve() {
+        const server = createServer((_request, _response) => server.close())
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "server", handleFamily: "server", closesSources: [0] },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_close_without_callback", model);
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_0_source_open' = false/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("suppresses a request source directly closed without a callback before the loop", () => {
+    const model = analyzeAsyncPatterns("node-http-direct-close-without-callback.ts", `
+      import { createServer } from "node:http"
+      function createAndClose() {
+        const server = createServer((_request, _response) => undefined)
+        server.close()
+      }
+    `);
+    expect(model.timers[0]).toMatchObject({ handle: "server", handleFamily: "server", initiallyCancelled: true });
+    const quint = generateNodeEventLoopQuint("node_http_direct_close_without_callback", model);
+    expect(quint).not.toContain("action complete_poll_0");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models node:fs watchers as repeating externally completed poll work", () => {
     const model = analyzeAsyncPatterns("node-fs-watch.ts", `
       import { watch as watchFs } from "node:fs"

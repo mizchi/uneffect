@@ -651,6 +651,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Model TypeChecker-resolved `node:net`/`node:http`/`node:https` `createServer` listeners as repeatable externally completed poll work, propagate their callback effects, and verify repeated request arrivals in Quint.
       - [x] Count one-shot close registrations created by repeating request listeners, compose their close-phase microtasks, and dogfood a request-triggered shutdown while documenting the conservative post-close arrival gap.
       - [x] Link callback-bearing `Server.close` calls to the matching immutable `createServer` result, prohibit later request arrivals after nested close registration, and initialize directly closed sources as closed.
+      - [x] Apply the same source closure when `Server.close()` omits its optional callback, both inside a request listener and before the modeled loop starts.
       - [x] Track TypeChecker-resolved `node:child_process` execution as Deno-compatible `Run`: keep shell-based `exec`/`execSync` and `fork` broad, narrow literal `execFile`/`execFileSync`/`spawn`/`spawnSync`, model only completion callbacks as poll work, and dogfood a scoped Git adapter.
       - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
       - [x] Resolve an immediately consumed, preceding-statement `const` alias of a conditional abort-source array while rejecting intervening mutation.

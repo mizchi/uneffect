@@ -20,6 +20,8 @@ export interface TimerPattern {
   handleFamily?: "timeout" | "immediate" | "animation-frame" | "watcher" | "server";
   /** A source timer disabled synchronously when this callback is registered. */
   closesSource?: number;
+  /** Source timers disabled synchronously while this callback body runs. */
+  closesSources?: number[];
   kind?: "abort-timeout" | "scheduler-post-task" | "scheduler-yield";
   abortReason?: "TimeoutError";
   priority?: "user-blocking" | "user-visible" | "background";
@@ -1278,19 +1280,22 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               }
             } else if (operation?.kind === "deferred-callback") {
               const callbackNode = deferredCallbackArgument(node, operation);
+              const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+                ? node.expression.expression : undefined;
+              const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
+                ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
+              const compatibleClose = closesSource !== undefined
+                && timers[closesSource]?.handleFamily === operation.closesReceiverFamily;
+              if (!callbackNode && compatibleClose) (timers[parent]!.closesSources ??= []).push(closesSource);
               if (callbackNode) {
                 const child = timers.length;
                 const childSource = node.getSourceFile();
-                const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
-                  ? node.expression.expression : undefined;
-                const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
-                  ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
                 timers.push({
                   owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
                   recursive: false, repeats: operation.repeats ?? false,
                   queue: operation.queue, enqueuedBy: parent,
                   externallyReady: operation.queue === "poll" || operation.queue === "close",
-                  ...(closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
+                  ...(compatibleClose ? { closesSource } : {}),
                   ...(callbacks.length > 1 ? { parentAlternative } : {}),
                   span: { start: node.getStart(childSource), end: node.getEnd() },
                 });
@@ -1426,6 +1431,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           });
           if (operation.resultHandleFamily && declaration) handleTargets.set(declaration, timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
+        } else if (operation?.kind === "deferred-callback" && operation.closesReceiverFamily) {
+          const receiver = ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)
+            ? node.expression.expression : undefined;
+          const closesSource = receiver && ts.isIdentifier(receiver)
+            ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
+          if (closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily) {
+            timers[closesSource]!.initiallyCancelled = true;
+          }
         } else if (operation?.kind === "abort-timeout") {
           const delayNode = node.arguments[operation.delayArgument];
           const declaration = ts.isVariableDeclaration(node.parent) && node.parent.initializer === node && ts.isIdentifier(node.parent.name) ? node.parent.name.text : undefined;
@@ -1858,8 +1871,9 @@ export function generateNodeEventLoopQuint(
     return timer.externallyReady && timer.enqueuedBy !== undefined;
   }));
   const closableSources = new Set(supported.flatMap((index) => {
-    const source = model.timers[index]!.closesSource;
-    return source !== undefined && supported.includes(source) ? [source] : [];
+    const timer = model.timers[index]!;
+    return [timer.closesSource, ...(timer.closesSources ?? [])]
+      .filter((source): source is number => source !== undefined && supported.includes(source));
   }));
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
@@ -2063,6 +2077,7 @@ export function generateNodeEventLoopQuint(
           ? `callback_${index}_due_times.tail().append(clock + ${nodeDelay(timer)})`
           : `callback_${index}_due_times.tail()`);
       }
+      for (const source of timer.closesSources ?? []) updates.set(`callback_${source}_source_open`, "false");
       enqueueNodeChildren(index, updates, alternative);
       const baseName = timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`;
       action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
