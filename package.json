@@ -20,6 +20,7 @@
   "bugs": {
     "url": "https://github.com/mizchi/uneffect/issues"
   },
+  "license": "MIT",
   "author": "mizchi",
   "type": "module",
   "exports": {

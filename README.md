@@ -99,3 +99,7 @@ alias、一般の例外付きCFG、完全なホストイベントループ、停
 実装済み範囲と明示的な非保証は[Implementation status](./docs/implementation-status.md)、
 未実装項目と優先順位は[Roadmap and known gaps](./docs/roadmap.md)、詳細な履歴は
 [TODO.md](./TODO.md)を参照してください。今後の作業はGitHub Issuesを正本とします。
+
+## License
+
+MIT
