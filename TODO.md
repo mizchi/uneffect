@@ -548,6 +548,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
   - [ ] Replace the restricted path walker with a CFG fixed point covering `switch`, `try`/`finally`, labeled control flow, and complex loop joins.
     - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
+    - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [ ] Build a general exception-aware CFG fixed point for complex loop joins and nested labeled transfers.
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.

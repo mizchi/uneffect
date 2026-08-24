@@ -36,6 +36,12 @@ const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
   "let delivery: Promise<void>;\n  delivery = sendTelemetryBatch();",
   "const delivery = sendTelemetryBatch();",
 );
+const explicitCatchOwnershipSource = `declare function task(): Promise<number>\n${Array.from({ length: 64 }, (_, index) => `
+  async function caught${index}() {
+    const pending = task()
+    try { throw new Error("route-${index}") } catch { await pending }
+  }
+`).join("\n")}`;
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
 const dynamicThenableSource = `declare const flag: boolean; declare const external: PromiseLike<number>; function run() { const conditional = { get then() { if (flag) throw new Error(); return (resolve: (value: number) => void) => resolve(1) } }; const proxied = new Proxy({ then(resolve: (value: number) => void) { resolve(1) } }, {}); const a = new Promise<number>(resolve => resolve(conditional)); const b = new Promise<number>(resolve => resolve(proxied)); const c = new Promise<number>(resolve => resolve(external)); a.catch(() => 0); b.catch(() => 0); return c.catch(() => 0) }`;
 const mixedPromiseBatchSource = readFileSync(new URL("../examples/dogfood/mixed-promise-batch.ts", import.meta.url), "utf8");
@@ -106,6 +112,16 @@ domCompilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreat
   : defaultDomGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
 const domPropertyProgram = ts.createProgram([domPropertySourceName], domCompilerOptions, domCompilerHost);
 const domPropertySource = domPropertyProgram.getSourceFile(domPropertySourceName)!;
+const explicitCatchSourceName = "/bench/explicit-catch-ownership.ts";
+const explicitCatchCompilerHost = ts.createCompilerHost(compilerOptions);
+const defaultExplicitCatchGetSourceFile = explicitCatchCompilerHost.getSourceFile.bind(explicitCatchCompilerHost);
+explicitCatchCompilerHost.fileExists = (fileName) => fileName === explicitCatchSourceName || ts.sys.fileExists(fileName);
+explicitCatchCompilerHost.readFile = (fileName) => fileName === explicitCatchSourceName ? explicitCatchOwnershipSource : ts.sys.readFile(fileName);
+explicitCatchCompilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === explicitCatchSourceName
+  ? ts.createSourceFile(fileName, explicitCatchOwnershipSource, languageVersion, true)
+  : defaultExplicitCatchGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+const explicitCatchProgram = ts.createProgram([explicitCatchSourceName], compilerOptions, explicitCatchCompilerHost);
+const explicitCatchSource = explicitCatchProgram.getSourceFile(explicitCatchSourceName)!;
 
 describe("refinement receiver identity", () => {
   bench("syntax-only Node Lease collection actions", () => {
@@ -202,6 +218,10 @@ describe("typed-array static verification", () => {
   bench("check initialized telemetry Promise ownership baseline", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", initializedTelemetryDeliverySource);
   }, { time: 500, iterations: 5 });
+
+  bench("route 64 explicit throws through Promise ownership catches", () => {
+    analyzeAsyncSafetyInProgram(explicitCatchProgram, explicitCatchSource);
+  }, { time: 500, iterations: 20 });
 
   bench("link Promise adapter assimilation by symbol", () => {
     analyzePromiseChains("promise-adapter.ts", promiseAdapterSource);

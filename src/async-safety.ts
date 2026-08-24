@@ -1389,7 +1389,15 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const uniqueGroups = [...new Set(bindingGroups.values())];
     for (const group of uniqueGroups) {
       const symbols = new Set([...bindingGroups].filter(([, value]) => value === group).map(([symbol]) => symbol));
-      type PathState = { active: boolean; pending: boolean; lost: boolean; terminated: boolean; abrupt?: "break" | "continue"; label?: string };
+      type PathState = {
+        active: boolean;
+        pending: boolean;
+        lost: boolean;
+        terminated: boolean;
+        completion?: "return" | "throw";
+        abrupt?: "break" | "continue";
+        label?: string;
+      };
       const referencesGroup = (expression: ts.Expression): boolean => ts.isIdentifier(expression) && symbols.has(checker.getSymbolAtLocation(expression)!);
       const consumes = (node: ts.Node): boolean => {
         let consumed = false;
@@ -1461,12 +1469,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const executeFinally = (block: ts.Block, state: PathState): PathState[] => {
         const wasTerminated = state.terminated;
+        const previousCompletion = state.completion;
         const previousAbrupt = state.abrupt, previousLabel = state.label;
-        return executeStatements(block.statements, [{ ...state, terminated: false, abrupt: undefined, label: undefined }]).map((next) => next.terminated || next.abrupt ? next : ({
-          ...next, terminated: wasTerminated, abrupt: previousAbrupt, label: previousLabel,
+        return executeStatements(block.statements, [{ ...state, terminated: false, completion: undefined, abrupt: undefined, label: undefined }]).map((next) => next.terminated || next.abrupt ? next : ({
+          ...next, terminated: wasTerminated, completion: previousCompletion, abrupt: previousAbrupt, label: previousLabel,
         }));
       };
-      const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.abrupt ?? ""}:${state.label ?? ""}`;
+      const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;
       const uniqueStates = (states: PathState[]): PathState[] => [...new Map(states.map((state) => [stateKey(state), state])).values()];
       const executeLoop = (statement: ts.IterationStatement, state: PathState, atLeastOnce: boolean, loopLabel?: string): PathState[] => {
         const exits: PathState[] = atLeastOnce ? [] : [{ ...state }];
@@ -1515,10 +1524,21 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         }
         if (ts.isTryStatement(statement)) {
           const tryStates = executeStatement(statement.tryBlock, { ...state });
-          const catchStates = statement.catchClause
-            ? executeStatement(statement.catchClause.block, { ...state })
+          const thrown = tryStates.filter((completion) => completion.completion === "throw");
+          const normal = statement.catchClause
+            ? tryStates.filter((completion) => completion.completion !== "throw")
+            : tryStates;
+          // The initial state remains a conservative catch entry for calls and
+          // property access whose synchronous throw behavior is not yet explicit
+          // in this finite walker. Explicit throw completions retain their
+          // ownership facts and are routed exclusively through the catch.
+          const catchInputs = statement.catchClause
+            ? uniqueStates([{ ...state }, ...thrown.map((completion) => ({ ...completion, terminated: false, completion: undefined }))])
             : [];
-          const completions = [...tryStates, ...catchStates];
+          const catchStates = statement.catchClause
+            ? catchInputs.flatMap((entry) => executeStatement(statement.catchClause!.block, entry))
+            : [];
+          const completions = [...normal, ...catchStates];
           return statement.finallyBlock
             ? completions.flatMap((completion) => executeFinally(statement.finallyBlock!, completion))
             : completions;
@@ -1531,7 +1551,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (activates(statement) && !next.active) { next.active = true; next.pending = true; }
         if (reassigns(statement) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
         if (consumes(statement) && next.active) next.pending = false;
-        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) next.terminated = true;
+        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement)) {
+          next.terminated = true;
+          next.completion = ts.isReturnStatement(statement) ? "return" : "throw";
+        }
         return [next];
       };
       const executeStatements = (statements: readonly ts.Statement[], initial: PathState[]): PathState[] =>

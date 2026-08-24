@@ -386,6 +386,36 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("routes explicit throw completions into catch before deciding Promise ownership", () => {
+    const result = analyzeAsyncSafety("explicit-throw-promises.ts", `
+      declare function task(): Promise<number>
+      async function caught() {
+        const pending = task()
+        try { throw new Error("route") }
+        catch { await pending }
+      }
+      async function rethrown() {
+        const pending = task()
+        try { throw new Error("route") }
+        catch (error) { throw error }
+      }
+      async function conditional(flag: boolean) {
+        const pending = task()
+        try { if (flag) throw new Error("route") }
+        catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "caught", status: "observed" },
+      { owner: "rethrown", status: "floating" },
+      { owner: "conditional", status: "floating" },
+    ]);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
+      expect.objectContaining({ functionName: "rethrown" }),
+      expect.objectContaining({ functionName: "conditional" }),
+    ]);
+  });
+
   it("connects awaited rejection to the nearest catch and leaves bare Promise calls uncaught", () => {
     const result = analyzeAsyncSafety("catch.ts", `
       declare function task(): Promise<number>

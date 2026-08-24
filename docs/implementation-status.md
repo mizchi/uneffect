@@ -97,7 +97,9 @@ same property is proved for arbitrary TypeScript.
 
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
-  the documented fragments.
+  the documented fragments. The ownership fixed point routes explicit `throw`
+  completions into the nearest structured `catch`; arbitrary expressions still
+  retain a conservative possible-throw catch entry.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

@@ -226,13 +226,23 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         function syncHandled() { try { parse("") } catch (error) {} }
         async function asyncHandled() { try { await Promise.reject(new ParseError()) } catch (error) {} }
         async function floating() { Promise.reject(new ParseError()) }
+        async function caughtBinding() {
+          const pending = Promise.reject(new ParseError())
+          try { throw new Error("route") } catch { await pending }
+        }
+        async function conditionalBinding(flag: boolean) {
+          const pending = Promise.reject(new ParseError())
+          try { if (flag) throw new Error("route") } catch { await pending }
+        }
       `,
     }) }) as { diagnostics: Array<{ code: string; functionName: string }>; summaries: Array<{ functionName: string; effects: string[] }> };
     expect(result.summaries).toContainEqual(expect.objectContaining({ functionName: "parse", effects: ["Throw<ParseError>"] }));
     expect(result.summaries).toContainEqual(expect.objectContaining({ functionName: "syncHandled", effects: [] }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "syncHandled" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "asyncHandled" }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "caughtBinding" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "floating" }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "conditionalBinding" }));
   });
 
   it("verifies Hoare contracts with Z3 and emits explicit Valibot assertions in the same optional runtime build", async () => {
