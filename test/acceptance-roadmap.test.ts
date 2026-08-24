@@ -350,6 +350,37 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "unbounded", kind: "max-length" }));
   });
 
+  it("refines switch entry, fallthrough, break, and default as a symbolic temporal update", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state value: int
+      state mode: int
+      init value = 0
+      init mode = 0
+      action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4
+    */
+      interface Runtime { value: number; mode: number }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        switch (runtime.mode) {
+          case 0: runtime.value += 1; break
+          case 1: runtime.value += 2
+          default: runtime.value += 4; break
+        }
+      }
+    `;
+    const temporal = (parseSpec("switch-routing.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("switch-routing.ts", source, "routing", temporal)).toEqual([]);
+
+    const dynamic = source.replace("case 1:", "case chooseMode():");
+    expect(validateActions("dynamic-switch-routing.ts", dynamic, "routing", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    );
+  });
+
   it("refines a Set-backed lease implementation against its temporal actions and invariants", async () => {
     const parseSpec = futureApi("parseSpec");
     const validateProjection = futureApi("validateRefinementStateProjectionInProgram");

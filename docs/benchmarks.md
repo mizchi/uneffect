@@ -70,6 +70,13 @@ action, the same complete scalar-refinement benchmark measured 0.6436 ms mean
 over 777 samples (1.16% RME). This includes normalization and comparison of the
 four-field accounting guard as well as the previously measured boundaries.
 
+Composing and checking a 16-case scalar `switch` refinement with four-case
+fallthrough groups measured 1.1717 ms mean over 427 samples (1.30% RME). The
+benchmark includes annotation parsing, entry-path construction, sequential
+fallthrough updates, break termination, conditional joins, and comparison with
+the temporal action; dynamic-label rejection is covered by tests rather than
+timed in this baseline.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

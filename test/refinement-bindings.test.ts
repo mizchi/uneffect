@@ -198,6 +198,49 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("conditional.ts", source, "counter", parseSpec("conditional.ts", source).temporal)).toEqual([]);
   });
 
+  it("composes switch entry, fallthrough, break, and default into one model update", () => {
+    const source = `/* uneffect:
+      state value: int
+      state mode: int
+      init value = 0
+      init mode = 0
+      action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4
+    */
+      interface Runtime { value: number; mode: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action route */
+      export function route(runtime: Runtime) {
+        switch (runtime.mode) {
+          case 0:
+            runtime.value += 1;
+            break;
+          case 1:
+            runtime.value += 2;
+          default:
+            runtime.value += 4;
+            break;
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("switch.ts", source, "counter", parseSpec("switch.ts", source).temporal)).toEqual([]);
+
+    const dynamicLabel = source.replace("case 1:", "case chooseMode():");
+    expect(validateRefinementActionBodies("dynamic-switch.ts", dynamicLabel, "counter", parseSpec("dynamic-switch.ts", dynamicLabel).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    ]);
+
+    const duplicateLabel = source.replace("case 1:", "case 0:");
+    expect(validateRefinementActionBodies("duplicate-switch.ts", duplicateLabel, "counter", parseSpec("duplicate-switch.ts", duplicateLabel).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    ]);
+
+    const withoutDefault = source
+      .replace("action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 + 4 : value + 4", "action route: value' = mode === 0 ? value + 1 : mode === 1 ? value + 2 : value")
+      .replace("          default:\n            runtime.value += 4;\n            break;\n", "          break;\n");
+    expect(validateRefinementActionBodies("switch-without-default.ts", withoutDefault, "counter", parseSpec("switch-without-default.ts", withoutDefault).temporal)).toEqual([]);
+  });
+
   it("unrolls a statically bounded ascending for loop and rejects dynamic bounds", () => {
     const model = `/* uneffect:
       state value: int

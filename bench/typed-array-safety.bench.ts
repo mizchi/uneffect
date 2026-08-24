@@ -834,4 +834,23 @@ describe("typed-array static verification", () => {
     validateRefinementInvariantBodies(fileName, source, "telemetryRouting", temporal);
     validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("compose a 16-case switch refinement with fallthrough", () => {
+    const cases = Array.from({ length: 16 }, (_, index) => `case ${index}: runtime.value += 1;${index % 4 === 3 ? " break;" : ""}`).join("\n");
+    const expression = Array.from({ length: 16 }, (_, index) => `mode === ${index} ? value ${Array.from({ length: 4 - index % 4 }, () => "+ 1").join(" ")} : `).join("") + "value";
+    const source = `/* uneffect:
+      state value: int
+      state mode: int
+      init value = 0
+      init mode = 0
+      action route: value' = ${expression}
+    */
+      interface Runtime { value: number; mode: number }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) { switch (runtime.mode) { ${cases} } }
+    `;
+    validateRefinementActionBodies("switch-routing.ts", source, "routing", parseSpec("switch-routing.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

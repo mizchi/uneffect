@@ -124,7 +124,15 @@ parses one annotated source into temporal IR, asks Z3 for its shortest
 counterexample, builds the adapter from the same source annotations, and
 replays the violation through the implementation functions.
 
-These bindings are structural refinement plumbing, not a proof that the
-implementation refines the model. A successful replay confirms the selected
-counterexample only. Function bodies, source hashes, and generated module type
-checking must still participate in any proof-grade evidence policy.
+Replay alone is structural refinement plumbing, not a proof that the
+implementation refines the model. The separate action-body checker symbolically
+compares the supported TypeScript update fragment with each model action. Its
+scalar control-flow fragment includes `if`/`else`, bounded literal `for` loops,
+and literal `switch` labels with JavaScript entry order, fallthrough, unlabeled
+`break`, and `default`. A switch becomes conditional temporal expressions over
+the discriminant evaluated before any clause update. Dynamic or duplicate
+labels, labeled breaks, and unsupported abrupt completion fail closed as
+`unsupported-action-body`; they are never accepted by replay evidence alone.
+
+Function bodies, source hashes, checked refinement results, and generated
+module type checking must all participate in any proof-grade evidence policy.

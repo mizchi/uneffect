@@ -839,6 +839,69 @@ function validateRefinementActionBodiesInSource(
         }
         continue;
       }
+      if (ts.isSwitchStatement(statement)) {
+        const normalizedDiscriminant = normalizeRefinementExpression(
+          statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+        );
+        if (!normalizedDiscriminant) return undefined;
+        const discriminant = expandLocalSnapshots(resolveCurrentState(normalizedDiscriminant));
+        const clauses = [...statement.caseBlock.clauses];
+        const caseMatches: TemporalExpression[] = [];
+        const caseKeys = new Set<string>();
+        for (const clause of clauses) {
+          if (!ts.isCaseClause(clause)) continue;
+          const label = normalizeRefinementExpression(
+            clause.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+          );
+          if (!label || label.kind !== "integer" && label.kind !== "boolean") return undefined;
+          const key = refinementExpressionKey(label);
+          if (caseKeys.has(key)) return undefined;
+          caseKeys.add(key);
+          caseMatches.push({ kind: "binary", operator: "eq", left: discriminant, right: label });
+        }
+        if (clauses.filter(ts.isDefaultClause).length > 1) return undefined;
+        const before = new Map(updates);
+        const branches: Array<{ condition: TemporalExpression; updates: Map<string, TemporalExpression> }> = [];
+        let defaultUpdates: Map<string, TemporalExpression> | undefined;
+        let caseIndex = 0;
+        for (let entry = 0; entry < clauses.length; entry++) {
+          const clause = clauses[entry]!;
+          const condition = ts.isCaseClause(clause) ? caseMatches[caseIndex++]! : undefined;
+          const pathStatements: ts.Statement[] = [];
+          let stopped = false;
+          for (let clauseIndex = entry; clauseIndex < clauses.length && !stopped; clauseIndex++) {
+            const statements = [...clauses[clauseIndex]!.statements];
+            const breakIndex = statements.findIndex(ts.isBreakStatement);
+            if (breakIndex >= 0) {
+              const abrupt = statements[breakIndex] as ts.BreakStatement;
+              if (abrupt.label || breakIndex !== statements.length - 1) return undefined;
+              pathStatements.push(...statements.slice(0, breakIndex));
+              stopped = true;
+            } else pathStatements.push(...statements);
+          }
+          const branch = collect(
+            ts.factory.createBlock(pathStatements, true), receiver, runtimeClass, substitutions,
+            new Map(before), new Map(localValues), activeCalls, false,
+          );
+          if (!branch) return undefined;
+          if (condition) branches.push({ condition, updates: branch });
+          else defaultUpdates = branch;
+        }
+        updates.clear();
+        for (const name of stateNames) {
+          const original = before.get(name) ?? { kind: "name", name } as TemporalExpression;
+          let merged = defaultUpdates?.get(name) ?? original;
+          for (let index = branches.length - 1; index >= 0; index--) {
+            const branch = branches[index]!;
+            const value = branch.updates.get(name) ?? original;
+            if (!sameRefinementExpression(value, merged)) merged = {
+              kind: "conditional", condition: branch.condition, whenTrue: value, whenFalse: merged,
+            };
+          }
+          if (!sameRefinementExpression(merged, { kind: "name", name })) updates.set(name, merged);
+        }
+        continue;
+      }
       if (ts.isVariableStatement(statement)) {
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
         for (const declaration of statement.declarationList.declarations) {
