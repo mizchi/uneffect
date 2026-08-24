@@ -11,21 +11,24 @@ describe("builtin semantic overlays", () => {
   });
 
   it("classifies every initial DOM operation kind", () => {
-    const kinds = builtinContractRegistry.contracts.flatMap((contract) => contract.operation?.kind === "dom" ? [contract.operation.operation] : []);
+    const kinds = builtinContractRegistry.contracts.flatMap((contract) => contract.operation?.kind === "dom" ? contract.operation.operations : []);
     expect(new Set(kinds)).toEqual(new Set(["AttributeRead", "AttributeWrite", "NodeRead", "NodeWrite", "TextRead", "TextWrite", "LayoutRead", "Create", "Listen", "Dispatch", "Parse"]));
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#getAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeRead" }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeWrite" }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeRead" }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeWrite" }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#getAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeRead"] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#setAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#querySelector" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeRead"] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#appendChild" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite"] }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#attributes" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["AttributeRead"], writeOperations: [] }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#parentNode" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "ParentNode#children" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead"], writeOperations: [] }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#data" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"] }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#hasAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeRead" }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#toggleAttribute" }, operation: expect.objectContaining({ kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#insertBefore" }, operation: expect.objectContaining({ kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }) }),
-      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#replaceData" }, operation: expect.objectContaining({ kind: "dom", operation: "TextWrite", mutatesReceiver: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#hasAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeRead"] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#toggleAttribute" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, invokesUserCode: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#insertBefore" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite"], mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "CharacterData#replaceData" }, operation: expect.objectContaining({ kind: "dom", operations: ["TextWrite"], mutatesReceiver: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#cloneNode" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeRead", "Create"] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Node#normalize" }, operation: expect.objectContaining({ kind: "dom", operations: ["NodeWrite", "TextWrite"], mutatesReceiver: true }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#insertAdjacentHTML" }, operation: expect.objectContaining({ kind: "dom", operations: ["Parse", "NodeWrite"], mutatesReceiver: true, invokesUserCode: true }) }),
     ]));
   });
 

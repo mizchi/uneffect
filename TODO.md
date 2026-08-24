@@ -20,6 +20,7 @@ Open-work mapping:
 - Node and Web event-loop ownership: [#10](https://github.com/mizchi/uneffect/issues/10)
 - proof-gated optimizer transformations: [#13](https://github.com/mizchi/uneffect/issues/13)
 - Extend the reviewed DOM overlay beyond the current attribute/tree/text method set, attribute collections, tree topology, `textContent`, `nodeValue`, `CharacterData.data`, and `HTMLInputElement.value`: [#14](https://github.com/mizchi/uneffect/issues/14)
+  - [x] Represent DOM call contracts as non-empty operation sets and infer compound clone, normalize, adjacent-text, and adjacent-HTML effects without a legacy scalar form.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

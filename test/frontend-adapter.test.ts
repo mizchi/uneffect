@@ -154,6 +154,27 @@ describe("TypeChecker symbol adapter", () => {
     expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
   });
 
+  it("emits compound DOM effects for clone, normalize, and adjacent content", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-compound-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<NodeRead, typeof node> | Dom<Create, typeof node> */
+      function clone(node: Node) { return node.cloneNode(true) }
+      /* uneffect: effect Dom<NodeWrite, typeof node> | Dom<TextWrite, typeof node> | Mutate<typeof node> */
+      function normalize(node: Node) { node.normalize() }
+      /* uneffect: effect Dom<Parse, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      function insertMarkup(element: Element) { element.insertAdjacentHTML("beforeend", "<span>ready</span>") }
+      /* uneffect: effect Dom<TextWrite, typeof element> | Dom<NodeWrite, typeof element> | Mutate<typeof element> */
+      function insertText(element: Element) { element.insertAdjacentText("beforeend", "ready") }
+      interface LocalNode { cloneNode(deep?: boolean): LocalNode; normalize(): void }
+      function local(node: LocalNode) { node.normalize(); return node.cloneNode(true) }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
   it("distinguishes DOM text and Web IDL property reads from writes", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");

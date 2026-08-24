@@ -45,7 +45,7 @@ export type DomOperation =
   | "LayoutRead" | "Create" | "Listen" | "Dispatch" | "Parse";
 export interface DomBuiltinOperation {
   kind: "dom";
-  operation: DomOperation;
+  operations: readonly [DomOperation, ...DomOperation[]];
   mutatesReceiver?: boolean;
   mutatesArguments?: readonly number[];
   invokesUserCode?: boolean;
@@ -258,51 +258,59 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
 };
 
 function domBuiltinContracts(): BuiltinContract[] {
+  const dom = (
+    operations: DomOperation | readonly [DomOperation, ...DomOperation[]],
+    options: Omit<DomBuiltinOperation, "kind" | "operations"> = {},
+  ): DomBuiltinOperation => ({
+    kind: "dom", operations: typeof operations === "string" ? [operations] : operations, ...options,
+  });
   const entries: Array<[string, DomBuiltinOperation]> = [
-    ["ParentNode#querySelector", { kind: "dom", operation: "NodeRead", queryArgument: 0 }],
-    ["ParentNode#querySelectorAll", { kind: "dom", operation: "NodeRead", queryArgument: 0 }],
-    ["Document#getElementById", { kind: "dom", operation: "NodeRead" }],
-    ["Element#getAttribute", { kind: "dom", operation: "AttributeRead" }],
+    ["ParentNode#querySelector", dom("NodeRead", { queryArgument: 0 })],
+    ["ParentNode#querySelectorAll", dom("NodeRead", { queryArgument: 0 })],
+    ["Document#getElementById", dom("NodeRead")],
+    ["Element#getAttribute", dom("AttributeRead")],
     ...[
       "Element#getAttributeNS", "Element#getAttributeNames", "Element#getAttributeNode",
       "Element#getAttributeNodeNS", "Element#hasAttribute", "Element#hasAttributeNS", "Element#hasAttributes",
-    ].map((key): [string, DomBuiltinOperation] => [key, { kind: "dom", operation: "AttributeRead" }]),
+    ].map((key): [string, DomBuiltinOperation] => [key, dom("AttributeRead")]),
     ...[
       "Node#compareDocumentPosition", "Node#contains", "Node#getRootNode", "Node#hasChildNodes",
       "Node#isEqualNode", "Node#isSameNode",
-    ].map((key): [string, DomBuiltinOperation] => [key, { kind: "dom", operation: "NodeRead" }]),
-    ["CharacterData#substringData", { kind: "dom", operation: "TextRead" }],
-    ["Element#matches", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
-    ["Element#closest", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
-    ["Element#getBoundingClientRect", { kind: "dom", operation: "LayoutRead" }],
-    ["Document#createElement", { kind: "dom", operation: "Create" }],
-    ["Document#createTextNode", { kind: "dom", operation: "Create" }],
-    ["Element#setAttribute", { kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ].map((key): [string, DomBuiltinOperation] => [key, dom("NodeRead")]),
+    ["CharacterData#substringData", dom("TextRead")],
+    ["Element#matches", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
+    ["Element#closest", dom("NodeRead", { invokesUserCode: true, queryArgument: 0 })],
+    ["Element#getBoundingClientRect", dom("LayoutRead")],
+    ["Document#createElement", dom("Create")],
+    ["Document#createTextNode", dom("Create")],
+    ["Element#setAttribute", dom("AttributeWrite", { mutatesReceiver: true, invokesUserCode: true })],
     ...[
       "Element#removeAttribute", "Element#removeAttributeNS", "Element#setAttributeNS", "Element#toggleAttribute",
-    ].map((key): [string, DomBuiltinOperation] => [key, {
-      kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true,
-    }]),
+    ].map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", {
+      mutatesReceiver: true, invokesUserCode: true,
+    })]),
     ...["Element#removeAttributeNode", "Element#setAttributeNode", "Element#setAttributeNodeNS"]
-      .map((key): [string, DomBuiltinOperation] => [key, {
-        kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true,
-      }]),
-    ["Node#appendChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
-    ["Node#removeChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
-    ["Node#insertBefore", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }],
-    ["Node#replaceChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }],
-    ["ParentNode#replaceChildren", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ParentNode#append", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ParentNode#prepend", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
-    ["ChildNode#remove", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
+      .map((key): [string, DomBuiltinOperation] => [key, dom("AttributeWrite", {
+        mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true,
+      })]),
+    ["Node#appendChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })],
+    ["Node#removeChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true })],
+    ["Node#insertBefore", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true })],
+    ["Node#replaceChild", dom("NodeWrite", { mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true })],
+    ["Node#cloneNode", dom(["NodeRead", "Create"])],
+    ["Node#normalize", dom(["NodeWrite", "TextWrite"], { mutatesReceiver: true })],
+    ["ParentNode#replaceChildren", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ParentNode#append", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ParentNode#prepend", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
+    ["ChildNode#remove", dom("NodeWrite", { mutatesReceiver: true, invokesUserCode: true })],
     ...["CharacterData#appendData", "CharacterData#deleteData", "CharacterData#insertData", "CharacterData#replaceData"]
-      .map((key): [string, DomBuiltinOperation] => [key, {
-        kind: "dom", operation: "TextWrite", mutatesReceiver: true,
-      }]),
-    ["EventTarget#addEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true, invokesUserCode: true }],
-    ["EventTarget#removeEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true }],
-    ["EventTarget#dispatchEvent", { kind: "dom", operation: "Dispatch", invokesUserCode: true }],
-    ["DOMParser#parseFromString", { kind: "dom", operation: "Parse" }],
+      .map((key): [string, DomBuiltinOperation] => [key, dom("TextWrite", { mutatesReceiver: true })]),
+    ["Element#insertAdjacentHTML", dom(["Parse", "NodeWrite"], { mutatesReceiver: true, invokesUserCode: true })],
+    ["Element#insertAdjacentText", dom(["TextWrite", "NodeWrite"], { mutatesReceiver: true })],
+    ["EventTarget#addEventListener", dom("Listen", { mutatesReceiver: true, invokesUserCode: true })],
+    ["EventTarget#removeEventListener", dom("Listen", { mutatesReceiver: true })],
+    ["EventTarget#dispatchEvent", dom("Dispatch", { invokesUserCode: true })],
+    ["DOMParser#parseFromString", dom("Parse")],
   ];
   return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
 }

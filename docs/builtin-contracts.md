@@ -131,12 +131,18 @@ not claim synchronous callback invocation. Literal selector arguments are
 retained as `{ kind: "css-selector" }` query refinements but never used to
 authorize a different receiver.
 
-The operation vocabulary includes text and Web IDL property reads/writes, but
-the current executable overlay does not yet infer ordinary property getter and
-setter syntax. Until that frontend path is implemented, `textContent`,
-`nodeValue`, `input.value`, and similar property operations must not be claimed
-as automatically checked. The current tested vertical slice covers the call
-operations listed in the registry.
+A call contract stores a non-empty `operations` array. This is also the
+canonical representation for one-operation calls; there is no legacy scalar
+field. Compound calls therefore retain every relevant category. `cloneNode`
+is `NodeRead + Create`, `normalize` is `NodeWrite + TextWrite`,
+`insertAdjacentText` is `TextWrite + NodeWrite`, and `insertAdjacentHTML` is
+`Parse + NodeWrite`. The latter also carries `InvokeUserCode` because parsing
+and insertion may synchronously run custom-element reactions.
+
+The executable property overlay covers the reviewed attribute collection,
+tree-topology properties, `textContent`, `nodeValue`, `CharacterData.data`, and
+`HTMLInputElement.value`. Other Web IDL properties remain unclassified; a
+dynamic key on a DOM receiver falls back to `Dom<All, Scope>`.
 
 The registry pins the consumed `lib.dom.d.ts` SHA-256 and TypeScript version. `auditBuiltinDeclarationDrift` reports a missing or changed declaration library so new platform APIs cannot silently inherit purity or an old classification.
 
