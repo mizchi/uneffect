@@ -12,16 +12,20 @@ interface TelemetryRow {
   failures: number;
 }
 
-/* uneffect: react acquire TelemetrySubscription */
-declare function subscribeToTelemetry(service: string): void;
-/* uneffect: react release TelemetrySubscription */
-declare function unsubscribeFromTelemetry(service: string): void;
+interface TelemetrySubscription {
+  readonly service: string;
+}
+
+/* uneffect: react acquire TelemetrySubscription result */
+declare function subscribeToTelemetry(service: string): TelemetrySubscription;
+/* uneffect: react release TelemetrySubscription parameter 0 */
+declare function unsubscribeFromTelemetry(subscription: TelemetrySubscription): void;
 
 /* uneffect: react hook */
 function useTelemetrySubscription(service: string): void {
   useEffect(() => {
-    subscribeToTelemetry(service);
-    return () => unsubscribeFromTelemetry(service);
+    const subscription = subscribeToTelemetry(service);
+    return () => unsubscribeFromTelemetry(subscription);
   }, [service]);
 }
 

@@ -136,15 +136,21 @@ same property is proved for arbitrary TypeScript.
   `useMemo`, lazy `useState`, and `useReducer` initializer callbacks are
   executed in render summaries, while retained `useCallback` bodies are not.
 - `react acquire Capability` and `react release Capability` contracts require
-  setup acquisition to have a matching returned cleanup release. This is
-  capability-level matching, not yet resource-identity or exactly-once proof.
+  setup acquisition to have a matching returned cleanup release. Optional
+  `acquire Capability result` / `release Capability parameter N` contracts
+  additionally prove exact-once cleanup for direct result bindings and local
+  immutable identifier aliases.
+- Component and custom-Hook summaries expose production and development Strict
+  Mode initial-mount replay projections. These model render multiplicity and
+  per-phase setup/cleanup cycles without claiming total host scheduling order.
 - Barrel/namespace/default Hook imports, indirect recursion, dependency
   completeness, stale closures, refs/state/context aliases,
   Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
   calculation, custom subscription setup/cleanup, and a Fetch event. Removing
-  cleanup or mutating props is a load-bearing negative control.
+  cleanup, substituting another resource identity, or mutating props is a
+  load-bearing negative control.
 
 ## Validators, generators, and numeric memory safety
 

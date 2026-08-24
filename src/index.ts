@@ -231,7 +231,7 @@ export type { CompareUneffectFrontendsOptions, CompareUneffectFrontendsResult, F
 export { buildProgramCallGraph, instantiateCallbackEffects } from "./call-graph.js";
 export type { CallableKind, CallGraphEdge, CallGraphNode, EffectParameter, InstantiatedCallbackEffects, InvocationTiming, ProgramCallGraph } from "./call-graph.js";
 export { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram } from "./react-semantics.js";
-export type { ReactComponentSummary, ReactDiagnosticKind, ReactHookSummary, ReactPhase, ReactPhaseSummary, ReactSemanticDiagnostic, ReactSemanticsResult } from "./react-semantics.js";
+export type { ReactComponentSummary, ReactDiagnosticKind, ReactEffectTransition, ReactHookSummary, ReactPhase, ReactPhaseSummary, ReactReplayEffect, ReactReplayModel, ReactReplayScenario, ReactSemanticDiagnostic, ReactSemanticsResult } from "./react-semantics.js";
 export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProject } from "./custom-validators.js";
 export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
 export { verifyUneffectProject } from "./project-verification.js";

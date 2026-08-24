@@ -13,15 +13,16 @@ const components = Array.from({ length: 128 }, (_, index) => `
 const source = `
   import { useEffect } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; children?: unknown } } }
-  /* uneffect: react acquire Subscription */
-  declare function subscribe(): void
-  /* uneffect: react release Subscription */
-  declare function unsubscribe(): void
+  interface Subscription { readonly label: string }
+  /* uneffect: react acquire Subscription result */
+  declare function subscribe(label: string): Subscription
+  /* uneffect: react release Subscription parameter 0 */
+  declare function unsubscribe(subscription: Subscription): void
   /* uneffect: react hook */
   function useCatalogSubscription(label: string) {
     useEffect(() => {
-      subscribe()
-      return () => unsubscribe()
+      const subscription = subscribe(label)
+      return () => unsubscribe(subscription)
     }, [label])
   }
   ${components}

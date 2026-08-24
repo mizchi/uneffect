@@ -15,21 +15,22 @@ Compare results on the same machine and runtime before and after a change.
 
 `bench/react-semantics.bench.ts` constructs one TSX module containing 128
 opted-in components. Every component calls one shared annotated custom Hook
-whose passive Effect has a matching acquire/release cleanup, and also declares
-an inline JSX event handler. The paired baseline
+whose passive Effect has a result/parameter identity contract and matching
+acquire/release cleanup, and also declares an inline JSX event handler. The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
 
-On 2026-08-25 with Vitest 4.1.11, the analyzer measured 3.75 ms mean
-(0.91% RME, 134 samples), while the parse-only baseline measured 0.76 ms
-(0.42% RME, 658 samples). The combined parse-and-analysis path was therefore
-about 4.94 times the parse-only cost for this synthetic cold call, or roughly
-0.03 ms per annotated component. This implementation reparses the supplied
+On 2026-08-25 with Vitest 4.1.11, after enabling local resource-identity and
+replay projection, the analyzer measured 3.24 ms mean (0.81% RME, 155
+samples), while the parse-only baseline measured 0.77 ms (0.47% RME, 650
+samples). The combined parse-and-analysis path was therefore about 4.21 times
+the parse-only cost for this synthetic cold call, or roughly 0.025 ms per
+annotated component. This implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-5.76 ms mean (0.52% RME, 87 samples). It performs two source walks to establish
+4.69 ms mean (0.53% RME, 107 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk; the pre-refactor observation was 7.00 ms
 mean. This synthetic one-file Program has no cross-file imports and therefore

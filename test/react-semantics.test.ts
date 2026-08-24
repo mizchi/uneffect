@@ -288,6 +288,148 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("matches Effect cleanup by acquired resource identity", () => {
+    const safe = analyzeReactSemantics("identity.tsx", `
+      import { useEffect } from "react"
+      interface Subscription { readonly id: string }
+      /* uneffect: react acquire Subscription result */
+      declare function subscribe(): Subscription
+      /* uneffect: react release Subscription parameter 0 */
+      declare function unsubscribe(value: Subscription): void
+      /* uneffect: react component */
+      function Feed() {
+        useEffect(() => {
+          const acquired = subscribe()
+          const alias = acquired
+          return () => unsubscribe(alias)
+        }, [])
+        return null
+      }
+    `);
+
+    expect(safe.diagnostics).toEqual([]);
+    expect(safe.components[0]!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "passive-effect", effects: ["Acquire<Subscription>"] }),
+      expect.objectContaining({ phase: "cleanup", effects: ["Release<Subscription>"] }),
+    ]));
+  });
+
+  it("rejects releasing a different resource identity and duplicate cleanup", () => {
+    const result = analyzeReactSemantics("identity.tsx", `
+      import { useEffect } from "react"
+      interface Subscription { readonly id: string }
+      /* uneffect: react acquire Subscription result */
+      declare function subscribe(): Subscription
+      /* uneffect: react release Subscription parameter 0 */
+      declare function unsubscribe(value: Subscription): void
+      declare const other: Subscription
+      /* uneffect: react component */
+      function WrongIdentity() {
+        useEffect(() => {
+          const acquired = subscribe()
+          return () => unsubscribe(other)
+        }, [])
+        return null
+      }
+      /* uneffect: react component */
+      function DuplicateCleanup() {
+        useEffect(() => {
+          const acquired = subscribe()
+          return () => { unsubscribe(acquired); unsubscribe(acquired) }
+        }, [])
+        return null
+      }
+      /* uneffect: react component */
+      function LeavesSecondIdentityOpen() {
+        useEffect(() => {
+          const first = subscribe()
+          const second = subscribe()
+          return () => unsubscribe(first)
+        }, [])
+        return null
+      }
+      /* uneffect: react component */
+      function ReassignedIdentity() {
+        useEffect(() => {
+          let acquired = subscribe()
+          acquired = other
+          return () => unsubscribe(acquired)
+        }, [])
+        return null
+      }
+      /* uneffect: react component */
+      function ConditionalCleanup(props: { enabled: boolean }) {
+        useEffect(() => {
+          const acquired = subscribe()
+          return () => { if (props.enabled) unsubscribe(acquired) }
+        }, [props.enabled])
+        return null
+      }
+      /* uneffect: react component */
+      function ConditionalAcquisition(props: { enabled: boolean }) {
+        useEffect(() => {
+          if (props.enabled) subscribe()
+        }, [props.enabled])
+        return null
+      }
+    `);
+
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: "WrongIdentity", kind: "resource-identity-mismatch", effect: "Subscription" }),
+      expect.objectContaining({ component: "DuplicateCleanup", kind: "duplicate-effect-cleanup", effect: "Subscription" }),
+      expect.objectContaining({ component: "LeavesSecondIdentityOpen", kind: "missing-effect-cleanup", effect: "Subscription" }),
+      expect.objectContaining({ component: "ReassignedIdentity", kind: "resource-identity-mismatch", effect: "Subscription" }),
+      expect.objectContaining({ component: "ConditionalCleanup", kind: "conditional-resource-lifecycle", effect: "Subscription" }),
+      expect.objectContaining({ component: "ConditionalAcquisition", kind: "conditional-resource-lifecycle", effect: "Subscription" }),
+    ]));
+  });
+
+  it("rejects malformed resource identity lifecycle annotations", () => {
+    const result = analyzeReactSemantics("invalid-identity.tsx", `
+      /* uneffect: react acquire Socket parameter 0 */
+      declare function open(): object
+      /* uneffect: react release Socket result */
+      declare function close(value: object): void
+      /* uneffect: react release Socket parameter 1 */
+      declare function closeMissingParameter(value: object): void
+    `);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "invalid-react-annotation" }),
+    ]));
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
+  it("exposes production and Strict Mode development replay models", () => {
+    const result = analyzeReactSemantics("strict-mode.tsx", `
+      import { useEffect, useLayoutEffect } from "react"
+      /* uneffect: effect Console */
+      declare function observe(): void
+      /* uneffect: react component */
+      function Panel() {
+        useLayoutEffect(() => { observe(); return () => observe() }, [])
+        useEffect(() => { observe(); return () => observe() }, [])
+        return null
+      }
+    `);
+
+    expect(result.components[0]!.replay).toEqual({
+      production: {
+        renderInvocations: 1,
+        effects: [
+          { phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+          { phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+        ],
+      },
+      strictModeDevelopment: {
+        renderInvocations: 2,
+        effects: [
+          { phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+          { phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+        ],
+      },
+    });
+  });
+
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -342,11 +484,19 @@ describe("React Function Component semantics", () => {
     }));
 
     const leaking = analyzeReactSemantics(fileName, source.replace(
-      "return () => unsubscribeFromTelemetry(service);",
+      "return () => unsubscribeFromTelemetry(subscription);",
       "return undefined;",
     ));
     expect(leaking.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "useTelemetrySubscription", kind: "missing-effect-cleanup", effect: "TelemetrySubscription",
+    }));
+
+    const wrongIdentity = analyzeReactSemantics(fileName, source.replace(
+      "return () => unsubscribeFromTelemetry(subscription);",
+      "return () => unsubscribeFromTelemetry({ service });",
+    ));
+    expect(wrongIdentity.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "useTelemetrySubscription", kind: "resource-identity-mismatch", effect: "TelemetrySubscription",
     }));
 
     const mutating = analyzeReactSemantics(fileName, source.replace(

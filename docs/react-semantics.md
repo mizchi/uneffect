@@ -70,10 +70,10 @@ The tested fragment reports:
 - unresolved `useX` calls and direct custom-Hook recursion fail closed instead
   of producing a pure summary.
 
-Malformed React payloads are errors. The accepted initial forms are exactly
-`react component`, `react hook`, `react acquire Capability`, and
-`react release Capability`; misspellings and missing or excess fields are not
-silently ignored.
+Malformed React payloads are errors. The accepted forms are `react component`,
+`react hook`, `react acquire Capability`, `react release Capability`, and the
+identity-aware lifecycle forms described below. Misspellings and unsupported
+fields are not silently ignored.
 
 Inline JSX event callbacks are analyzed as `event`, so their capabilities do
 not produce render diagnostics.
@@ -110,6 +110,53 @@ Phase summaries expose these transitions as `Acquire<Capability>` and
 `Release<Capability>` entries even when the boundary has no ordinary Uneffect
 capability-effect declaration.
 
+Capability matching cannot distinguish two resources of the same kind. A
+boundary can opt into local resource identity with `result` and `parameter N`:
+
+```tsx
+interface Subscription { readonly id: string }
+
+/* uneffect: react acquire Subscription result */
+declare function subscribe(): Subscription
+
+/* uneffect: react release Subscription parameter 0 */
+declare function unsubscribe(value: Subscription): void
+
+/* uneffect: react component */
+function Feed() {
+  useEffect(() => {
+    const subscription = subscribe()
+    const cleanupTarget = subscription
+    return () => unsubscribe(cleanupTarget)
+  }, [])
+  return null
+}
+```
+
+Within an inline Effect setup and its returned inline cleanup, the analyzer
+tracks the acquired result through identifier-bound immutable aliases. It
+rejects a release of an unrelated expression, duplicate release of one
+identity, an unreleased second identity of the same capability, and
+control-flow-dependent acquisition or release that cannot establish an
+exactly-once lifecycle. This is a
+local syntactic identity proof: mutable/reassigned aliases, properties,
+collections, closures returned from helper functions, and interprocedural
+ownership transfer are not accepted as evidence yet.
+
+## Replay model
+
+Every component and custom-Hook summary exposes a zero-runtime `replay` model.
+The production initial-mount scenario has one render invocation and one setup
+transition for each present layout/passive phase. The development Strict Mode
+scenario has two render invocations and models each present Effect phase as
+`setup, cleanup, setup`. Setup effects and a conservative union of possible
+cleanup effects remain visible in the model.
+
+This is deliberately a lifecycle projection, not a claim about total ordering
+between all layout and passive Effect instances, browser tasks, Suspense, or
+concurrent commits. Production cleanup occurs on a later dependency change or
+unmount and therefore is not placed into the initial-mount transition list.
+
 ## Public result
 
 `analyzeReactSemantics(fileName, source)` returns opted-in component and custom
@@ -132,8 +179,9 @@ This is a tested initial fragment, not a complete React semantics:
   parameter; destructured props, state snapshots, context values, refs, aliases,
   and mutations performed by callees need flow-sensitive regions;
 - Effect dependency completeness and stale closure analysis are not checked;
-- setup/release matching is capability-level and does not yet prove identity of
-  individual acquired resource handles or exactly-once cleanup;
+- identity-aware setup/release matching is local to direct return bindings and
+  immutable identifier aliases; general aliasing and interprocedural ownership
+  remain unsupported;
 - Suspense, transitions, Offscreen trees, server components, hydration,
   ref callbacks, insertion effects, and React compiler assumptions are not
   modeled;

@@ -10,17 +10,38 @@ export type ReactDiagnosticKind =
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
   | "unknown-hook-summary"
-  | "recursive-hook";
+  | "recursive-hook"
+  | "resource-identity-mismatch"
+  | "duplicate-effect-cleanup"
+  | "conditional-resource-lifecycle";
 
 export interface ReactPhaseSummary {
   phase: ReactPhase;
   effects: string[];
 }
 
+export type ReactEffectTransition = "setup" | "cleanup";
+export interface ReactReplayEffect {
+  phase: HookKind;
+  transitions: ReactEffectTransition[];
+  setupEffects: string[];
+  /** Conservative union until per-call Effect instances are preserved through custom Hook summaries. */
+  possibleCleanupEffects: string[];
+}
+export interface ReactReplayScenario {
+  renderInvocations: number;
+  effects: ReactReplayEffect[];
+}
+export interface ReactReplayModel {
+  production: ReactReplayScenario;
+  strictModeDevelopment: ReactReplayScenario;
+}
+
 export interface ReactComponentSummary {
   name: string;
   span: { start: number; end: number };
   phases: ReactPhaseSummary[];
+  replay: ReactReplayModel;
 }
 export interface ReactHookSummary extends ReactComponentSummary {}
 
@@ -49,7 +70,41 @@ type ComponentNode = (ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowF
 type AnnotatableFunction = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
 type HookKind = "passive-effect" | "layout-effect";
 type BuiltinHookKind = HookKind | "render-hook";
-interface CustomHookSummary { phases: Map<ReactPhase, Set<string>>; leaked: Array<{ phase: HookKind; capabilities: string[] }> }
+interface LifecycleContract { capability: string; identity?: "result" | number }
+interface LifecycleIssue {
+  kind: "resource-identity-mismatch" | "duplicate-effect-cleanup" | "conditional-resource-lifecycle";
+  capability: string;
+  node: ts.Node;
+  detail: string;
+}
+interface LifecycleSummary {
+  acquired: string[];
+  released: string[];
+  missing: string[];
+  issues: LifecycleIssue[];
+}
+interface CustomHookSummary {
+  phases: Map<ReactPhase, Set<string>>;
+  leaked: Array<{ phase: HookKind; capabilities: string[] }>;
+  lifecycleIssues: Array<LifecycleIssue & { phase: HookKind }>;
+}
+
+function replayModel(phases: ReadonlyMap<ReactPhase, ReadonlySet<string>>): ReactReplayModel {
+  const cleanup = [...(phases.get("cleanup") ?? [])];
+  const effects = (["layout-effect", "passive-effect"] as const)
+    .filter((phase) => phases.has(phase))
+    .map((phase) => ({ phase, setupEffects: [...(phases.get(phase) ?? [])], possibleCleanupEffects: cleanup }));
+  return {
+    production: {
+      renderInvocations: 1,
+      effects: effects.map((effect) => ({ ...effect, transitions: ["setup"] })),
+    },
+    strictModeDevelopment: {
+      renderInvocations: 2,
+      effects: effects.map((effect) => ({ ...effect, transitions: ["setup", "cleanup", "setup"] })),
+    },
+  };
+}
 
 function ownerNode(node: AnnotatableFunction): ts.Node {
   return (ts.isArrowFunction(node) || ts.isFunctionExpression(node))
@@ -78,6 +133,13 @@ function annotationParts(source: ts.SourceFile, node: ts.Node): string[][] {
   return extractAnnotations(text, "react").map((value) => value.trim().split(/\s+/u));
 }
 
+function validReactAnnotation(value: string, node: AnnotatableFunction): boolean {
+  if (value === "component" || value === "hook" || /^(?:acquire|release)\s+\S+$/u.test(value)) return true;
+  if (/^acquire\s+\S+\s+result$/u.test(value)) return node.type?.kind !== ts.SyntaxKind.VoidKeyword;
+  const release = /^release\s+\S+\s+parameter\s+(\d+)$/u.exec(value);
+  return release !== null && Number(release[1]) < node.parameters.length;
+}
+
 function effectDeclarations(source: ts.SourceFile): Map<string, string[]> {
   const result = new Map<string, string[]>();
   for (const statement of source.statements) {
@@ -89,15 +151,135 @@ function effectDeclarations(source: ts.SourceFile): Map<string, string[]> {
   return result;
 }
 
-function lifecycleDeclarations(source: ts.SourceFile, lifecycle: "acquire" | "release"): Map<string, string> {
-  const result = new Map<string, string>();
+function lifecycleDeclarations(source: ts.SourceFile, lifecycle: "acquire" | "release"): Map<string, LifecycleContract> {
+  const result = new Map<string, LifecycleContract>();
   for (const statement of source.statements) {
     if (!ts.isFunctionDeclaration(statement) || !statement.name) continue;
-    for (const [kind, capability] of annotationParts(source, statement)) {
-      if (kind === lifecycle && capability) result.set(statement.name.text, capability);
+    for (const [kind, capability, identityKind, identityValue] of annotationParts(source, statement)) {
+      if (kind !== lifecycle || !capability) continue;
+      if (!identityKind) result.set(statement.name.text, { capability });
+      else if (lifecycle === "acquire" && identityKind === "result" && !identityValue) {
+        result.set(statement.name.text, { capability, identity: "result" });
+      } else if (lifecycle === "release" && identityKind === "parameter" && /^\d+$/u.test(identityValue ?? "")
+        && Number(identityValue) < statement.parameters.length) {
+        result.set(statement.name.text, { capability, identity: Number(identityValue) });
+      }
     }
   }
   return result;
+}
+
+function lifecycleSummary(
+  setup: ts.ArrowFunction | ts.FunctionExpression,
+  cleanup: ts.ArrowFunction | ts.FunctionExpression | undefined,
+  acquisitions: ReadonlyMap<string, LifecycleContract>,
+  releases: ReadonlyMap<string, LifecycleContract>,
+): LifecycleSummary {
+  const acquired = new Set<string>(), released = new Set<string>();
+  const acquiredIdentities = new Map<string, string>();
+  const identityAcquisitionCounts = new Map<string, number>();
+  const aliases = new Map<string, string>();
+  const releaseCalls: Array<{ contract: LifecycleContract; call: ts.CallExpression; identity?: string; conditional: boolean }> = [];
+  const issues: LifecycleIssue[] = [];
+  const canonical = (name: string): string => {
+    const seen = new Set<string>();
+    let current = name;
+    while (aliases.has(current) && !seen.has(current)) {
+      seen.add(current);
+      current = aliases.get(current)!;
+    }
+    return current;
+  };
+  const collectAliases = (root: ts.Node): void => {
+    const visit = (node: ts.Node): void => {
+      if (node !== root && ts.isFunctionLike(node)) return;
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer
+        && ts.isVariableDeclarationList(node.parent) && (node.parent.flags & ts.NodeFlags.Const) !== 0) {
+        if (ts.isIdentifier(node.initializer)) aliases.set(node.name.text, canonical(node.initializer.text));
+        if (ts.isCallExpression(node.initializer)) {
+          const contract = acquisitions.get(callName(node.initializer) ?? "");
+          if (contract?.identity === "result") acquiredIdentities.set(node.name.text, contract.capability);
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(root);
+  };
+  collectAliases(setup.body);
+  if (cleanup) collectAliases(cleanup.body);
+  const collectSetup = (node: ts.Node): void => {
+    if (node !== setup.body && ts.isFunctionLike(node)) return;
+    if (ts.isCallExpression(node)) {
+      const contract = acquisitions.get(callName(node) ?? "");
+      if (contract) {
+        acquired.add(contract.capability);
+        if (isConditionalWithin(node, setup as ComponentNode)) issues.push({
+          kind: "conditional-resource-lifecycle", capability: contract.capability, node,
+          detail: `${node.expression.getText()} is control-flow-dependent, so a balanced Effect lifecycle is not established`,
+        });
+        if (contract.identity === "result") identityAcquisitionCounts.set(
+          contract.capability,
+          (identityAcquisitionCounts.get(contract.capability) ?? 0) + 1,
+        );
+      }
+    }
+    ts.forEachChild(node, collectSetup);
+  };
+  collectSetup(setup.body);
+  if (cleanup) {
+    const collectCleanup = (node: ts.Node): void => {
+      if (node !== cleanup.body && ts.isFunctionLike(node)) return;
+      if (ts.isCallExpression(node)) {
+        const contract = releases.get(callName(node) ?? "");
+        if (contract) {
+          released.add(contract.capability);
+          const argument = typeof contract.identity === "number" ? node.arguments[contract.identity] : undefined;
+          releaseCalls.push({
+            contract, call: node,
+            identity: argument && ts.isIdentifier(argument) ? canonical(argument.text) : undefined,
+            conditional: isConditionalWithin(node, cleanup as ComponentNode),
+          });
+        }
+      }
+      ts.forEachChild(node, collectCleanup);
+    };
+    collectCleanup(cleanup.body);
+  }
+  const identityCapabilities = new Set([...acquisitions.values()].filter((contract) => contract.identity === "result").map((contract) => contract.capability));
+  const matchedIdentities = new Set<string>();
+  const counts = new Map<string, number>();
+  for (const entry of releaseCalls) {
+    if (typeof entry.contract.identity !== "number") continue;
+    if (entry.conditional) {
+      issues.push({
+        kind: "conditional-resource-lifecycle", capability: entry.contract.capability, node: entry.call,
+        detail: `${entry.call.expression.getText()} is control-flow-dependent, so exactly-once cleanup is not established`,
+      });
+      continue;
+    }
+    const identity = entry.identity;
+    const capability = identity && acquiredIdentities.get(identity);
+    if (!identity || capability !== entry.contract.capability) {
+      issues.push({
+        kind: "resource-identity-mismatch", capability: entry.contract.capability, node: entry.call,
+        detail: `${entry.call.expression.getText()} does not receive an identity acquired by this Effect setup`,
+      });
+      continue;
+    }
+    matchedIdentities.add(identity);
+    const key = `${capability}:${identity}`;
+    const count = (counts.get(key) ?? 0) + 1;
+    counts.set(key, count);
+    if (count > 1) issues.push({
+      kind: "duplicate-effect-cleanup", capability, node: entry.call,
+      detail: `${identity} is released more than once by the same cleanup`,
+    });
+  }
+  const missing = [...acquired].filter((capability) => identityCapabilities.has(capability)
+    ? [...acquiredIdentities].some(([identity, acquiredCapability]) => acquiredCapability === capability && !matchedIdentities.has(canonical(identity)))
+      || (identityAcquisitionCounts.get(capability) ?? 0) > [...acquiredIdentities.values()].filter((item) => item === capability).length
+    : !released.has(capability));
+  return { acquired: [...acquired], released: [...released], missing, issues };
 }
 
 function importedHooks(source: ts.SourceFile): Map<string, BuiltinHookKind> {
@@ -175,6 +357,7 @@ function returnedCleanup(callback: ts.ArrowFunction | ts.FunctionExpression): ts
 }
 
 function isConditionalWithin(node: ts.Node, boundary: ComponentNode): boolean {
+  if (node === boundary.body) return false;
   for (let current = node.parent; current && current !== boundary.body; current = current.parent) {
     if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
       || ts.isIterationStatement(current, false) || ts.isCaseClause(current) || ts.isDefaultClause(current)
@@ -207,12 +390,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
   };
   collect(source);
   for (const node of annotatable) for (const value of extractAnnotations(leadingText(source, node), "react")) {
-    if (value === "component" || value === "hook" || /^(?:acquire|release)\s+\S+$/u.test(value)) continue;
+    if (validReactAnnotation(value, node)) continue;
     const name = componentName(node);
     diagnostics.push({
       fileName, component: name, functionName: name, kind: "invalid-react-annotation", phase: "render", severity: "error",
       line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1,
-      message: `invalid React annotation \`${value}\`; expected component, hook, acquire Capability, or release Capability`,
+      message: `invalid React annotation \`${value}\`; expected component, hook, acquire Capability [result], or release Capability [parameter N]`,
     });
   }
   const customHooks = new Map<string, ComponentNode>();
@@ -225,8 +408,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const cached = customHookCache.get(hookName);
     if (cached) return cached;
     const phases = new Map<ReactPhase, Set<string>>([["render", new Set()]]), leaked: CustomHookSummary["leaked"] = [];
+    const lifecycleIssues: CustomHookSummary["lifecycleIssues"] = [];
     const hook = customHooks.get(hookName);
-    if (!hook || stack.has(hookName)) return { phases, leaked };
+    if (!hook || stack.has(hookName)) return { phases, leaked, lifecycleIssues };
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
       const target = phases.get(phase) ?? new Set<string>();
@@ -248,21 +432,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             add(builtinPhase, directEffects(callback.body, declared));
             const cleanup = returnedCleanup(callback);
             if (cleanup) add("cleanup", directEffects(cleanup.body, declared));
-            const acquired = new Set<string>(), released = new Set<string>();
-            const collectLifecycle = (current: ts.Node, declarations: ReadonlyMap<string, string>, target: Set<string>, root: ts.Node): void => {
-              if (current !== root && ts.isFunctionLike(current)) return;
-              if (ts.isCallExpression(current)) {
-                const capability = declarations.get(callName(current) ?? "");
-                if (capability) target.add(capability);
-              }
-              ts.forEachChild(current, (child) => collectLifecycle(child, declarations, target, root));
-            };
-            collectLifecycle(callback.body, acquisitions, acquired, callback.body);
-            if (cleanup) collectLifecycle(cleanup.body, releases, released, cleanup.body);
-            add(builtinPhase, [...acquired].map((capability) => `Acquire<${capability}>`));
-            add("cleanup", [...released].map((capability) => `Release<${capability}>`));
-            const missing = [...acquired].filter((capability) => !released.has(capability));
-            if (missing.length > 0) leaked.push({ phase: builtinPhase, capabilities: missing });
+            const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+            add(builtinPhase, lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
+            add("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+            if (lifecycle.missing.length > 0) leaked.push({ phase: builtinPhase, capabilities: lifecycle.missing });
+            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({ ...issue, phase: builtinPhase })));
           } else add(builtinPhase, []);
           return;
         }
@@ -270,6 +444,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           const child = summarizeCustomHook(called, nextStack);
           for (const [phase, effects] of child.phases) add(phase, [...effects]);
           leaked.push(...child.leaked);
+          lifecycleIssues.push(...child.lifecycleIssues);
           return;
         }
         add("render", effectsForCall(node, declared));
@@ -280,7 +455,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       ts.forEachChild(node, visit);
     };
     visit(hook.body);
-    const summary = { phases, leaked };
+    const summary = { phases, leaked, lifecycleIssues };
     customHookCache.set(hookName, summary);
     return summary;
   };
@@ -338,6 +513,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       kind: "missing-effect-cleanup", phase: leak.phase, effect: leak.capabilities.join(" | "),
       message: `${hookName} acquires ${leak.capabilities.join(", ")} without a matching cleanup release`,
     });
+    for (const issue of customHookCache.get(hookName)?.lifecycleIssues ?? []) reportHook(issue.node, {
+      kind: issue.kind, phase: issue.phase, effect: issue.capability,
+      message: issue.detail,
+    });
   }
   for (const component of candidates) {
     if (!extractAnnotations(leadingText(source, component), "react").some((value) => value.trim() === "component")) continue;
@@ -387,34 +566,15 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             addPhase(hookPhase, effects);
             const cleanup = returnedCleanup(callback);
             if (cleanup) addPhase("cleanup", directEffects(cleanup.body, declared));
-            const acquired = new Set<string>();
-            const findAcquisition = (current: ts.Node): void => {
-              if (current !== callback.body && ts.isFunctionLike(current)) return;
-              if (ts.isCallExpression(current)) {
-                const acquisition = acquisitions.get(callName(current) ?? "");
-                if (acquisition) acquired.add(acquisition);
-              }
-              ts.forEachChild(current, findAcquisition);
-            };
-            findAcquisition(callback.body);
-            addPhase(hookPhase, [...acquired].map((capability) => `Acquire<${capability}>`));
-            const released = new Set<string>();
-            if (cleanup) {
-              const findRelease = (current: ts.Node): void => {
-                if (current !== cleanup.body && ts.isFunctionLike(current)) return;
-                if (ts.isCallExpression(current)) {
-                  const release = releases.get(callName(current) ?? "");
-                  if (release) released.add(release);
-                }
-                ts.forEachChild(current, findRelease);
-              };
-              findRelease(cleanup.body);
-              addPhase("cleanup", [...released].map((capability) => `Release<${capability}>`));
-            }
-            const leaked = [...acquired].filter((capability) => !released.has(capability));
-            if (leaked.length > 0) report(node, {
+            const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+            addPhase(hookPhase, lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
+            addPhase("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+            if (lifecycle.missing.length > 0) report(node, {
               kind: "missing-effect-cleanup", phase: hookPhase,
-              effect: leaked.join(" | "), message: `Effect acquires ${leaked.join(", ")} without a matching cleanup release`,
+              effect: lifecycle.missing.join(" | "), message: `Effect acquires ${lifecycle.missing.join(", ")} without a matching cleanup release`,
+            });
+            for (const issue of lifecycle.issues) report(issue.node, {
+              kind: issue.kind, phase: hookPhase, effect: issue.capability, message: issue.detail,
             });
           } else addPhase(hookPhase);
           return;
@@ -448,6 +608,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     components.push({
       name, span: { start: component.getStart(source), end: component.getEnd() },
       phases: [...phaseEffects].map(([phase, effects]) => ({ phase, effects: [...effects] })),
+      replay: replayModel(phaseEffects),
     });
   }
   const publicHooks = [...customHooks.keys()].map((name): ReactHookSummary => {
@@ -455,6 +616,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     return {
       name, span: { start: node.getStart(source), end: node.getEnd() },
       phases: [...summary.phases].map(([phase, effects]) => ({ phase, effects: [...effects] })),
+      replay: replayModel(summary.phases),
     };
   });
   return { result: { components, hooks: publicHooks, diagnostics }, hookSummaries: customHookCache };
@@ -508,7 +670,10 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
       for (const hook of analysis.result.hooks) next.set(`${candidate.fileName}:${hook.name}`, analysis.hookSummaries.get(hook.name)!);
     }
     const fingerprint = (values: ReadonlyMap<string, CustomHookSummary>): string => JSON.stringify([...values].map(([key, summary]) => [
-      key, [...summary.phases].map(([phase, effects]) => [phase, [...effects].sort()]), summary.leaked,
+      key,
+      [...summary.phases].map(([phase, effects]) => [phase, [...effects].sort()]),
+      summary.leaked,
+      summary.lifecycleIssues.map(({ kind, capability, phase, detail }) => ({ kind, capability, phase, detail })),
     ]).sort(([left], [right]) => String(left).localeCompare(String(right))));
     if (fingerprint(next) === fingerprint(summaries)) return nextResults;
     summaries = next;
