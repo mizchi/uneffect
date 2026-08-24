@@ -68,6 +68,7 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
 };
 
 export const ciIsolatedTestFiles: readonly string[] = ["test/dogfood.test.ts"];
+export const ciIsolatedTestTimeoutMs = 60_000;
 
 export function parseVitestListNames(file: string, output: string): readonly string[] {
   const prefix = `${file} > `;

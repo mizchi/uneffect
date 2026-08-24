@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedTestFiles, ciIsolatedTestNames, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -72,6 +72,7 @@ describe("CI test tier manifest", () => {
 
   it("discovers named tests for whole-file process isolation", () => {
     expect(ciIsolatedTestFiles).toContain("test/dogfood.test.ts");
+    expect(ciIsolatedTestTimeoutMs).toBe(60_000);
     expect(parseVitestListNames("test/dogfood.test.ts", [
       "test/dogfood.test.ts > Uneffect dogfood > first proof",
       "test/dogfood.test.ts > Uneffect dogfood > nested > second proof",
