@@ -2042,6 +2042,43 @@ describe("builtin async temporal patterns", () => {
     expect(model.timers.some((timer) => timer.enqueuedBy === dynamic)).toBe(false);
   });
 
+  it("specializes callback parameters only for closed local higher-order helpers", () => {
+    const closed = analyzeAsyncPatterns("local-higher-order-callback.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function afterFailure() { process.nextTick(() => undefined) }
+      function defer(callback: () => void) { setTimeout(callback, 0) }
+      function start(flag: boolean) {
+        defer(flag ? afterSuccess : afterFailure)
+      }
+    `);
+    const parent = closed.timers.findIndex((timer) => timer.callback === "callback");
+    expect(parent).toBeGreaterThanOrEqual(0);
+    expect(closed.timers[parent]?.callbackAlternatives).toEqual(["afterSuccess", "afterFailure"]);
+    expect(closed.timers.filter((timer) => timer.enqueuedBy === parent).map((timer) => timer.queue).sort())
+      .toEqual(["microtask", "next-tick"]);
+
+    const open = analyzeAsyncPatterns("open-higher-order-callback.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      export function defer(callback: () => void) { setTimeout(callback, 0) }
+      defer(afterSuccess)
+    `);
+    const openParent = open.timers.findIndex((timer) => timer.callback === "callback");
+    expect(openParent).toBeGreaterThanOrEqual(0);
+    expect(open.timers[openParent]?.callbackAlternatives).toBeUndefined();
+    expect(open.timers.some((timer) => timer.enqueuedBy === openParent)).toBe(false);
+
+    const escaped = analyzeAsyncPatterns("escaped-higher-order-callback.ts", `
+      function afterSuccess() { queueMicrotask(() => undefined) }
+      function defer(callback: () => void) { setTimeout(callback, 0) }
+      const indirect = defer
+      indirect(afterSuccess)
+    `);
+    const escapedParent = escaped.timers.findIndex((timer) => timer.callback === "callback");
+    expect(escapedParent).toBeGreaterThanOrEqual(0);
+    expect(escaped.timers[escapedParent]?.callbackAlternatives).toBeUndefined();
+    expect(escaped.timers.some((timer) => timer.enqueuedBy === escapedParent)).toBe(false);
+  });
+
   it("resolves a callback selected by an immutable method factory", () => {
     const model = analyzeAsyncPatterns("method-callback-factory.ts", `
       function afterSuccess() { queueMicrotask(() => undefined) }

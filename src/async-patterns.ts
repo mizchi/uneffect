@@ -783,6 +783,33 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     }
     return undefined;
   };
+  const closedLocalParameterArguments = (symbol: ts.Symbol): ts.Expression[] | undefined => {
+    const parameter = symbol.valueDeclaration;
+    if (!parameter || !ts.isParameter(parameter) || !ts.isIdentifier(parameter.name)) return undefined;
+    const owner = parameter.parent;
+    if (!ts.isFunctionDeclaration(owner) || !owner.name || owner.getSourceFile() !== source
+      || ts.canHaveModifiers(owner) && ts.getModifiers(owner)?.some((modifier) =>
+        modifier.kind === ts.SyntaxKind.ExportKeyword || modifier.kind === ts.SyntaxKind.DefaultKeyword)) return undefined;
+    const ownerSymbol = resolvedSymbol(owner.name);
+    if (!ownerSymbol) return undefined;
+    const parameterIndex = owner.parameters.indexOf(parameter);
+    const argumentsAtCalls: ts.Expression[] = [];
+    let escaped = false;
+    const inspect = (node: ts.Node): void => {
+      if (escaped) return;
+      if (ts.isIdentifier(node) && node !== owner.name && resolvedSymbol(node) === ownerSymbol) {
+        const call = node.parent;
+        if (!ts.isCallExpression(call) || call.expression !== node || !call.arguments[parameterIndex]) {
+          escaped = true;
+          return;
+        }
+        argumentsAtCalls.push(call.arguments[parameterIndex]);
+      }
+      ts.forEachChild(node, inspect);
+    };
+    inspect(source);
+    return !escaped && argumentsAtCalls.length > 0 ? argumentsAtCalls : undefined;
+  };
   const resolveCallbacks = (
     callback: ts.Expression | undefined,
     seen = new Set<ts.Symbol>(),
@@ -796,6 +823,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const nextSubstitutions = new Map(substitutions);
         nextSubstitutions.delete(symbol);
         return resolveCallbacks(replacement, seen, nextSubstitutions, receiver);
+      }
+      if (symbol && !seen.has(symbol)) {
+        const argumentsAtCalls = closedLocalParameterArguments(symbol);
+        if (argumentsAtCalls) {
+          const nextSeen = new Set([...seen, symbol]);
+          const candidates = argumentsAtCalls.map((argument) =>
+            resolveCallbacks(argument, new Set(nextSeen), new Map(substitutions), receiver));
+          if (candidates.every((resolved) => resolved.length > 0)) return [...new Set(candidates.flat())];
+        }
       }
     }
     if (ts.isParenthesizedExpression(callback) || ts.isAsExpression(callback) || ts.isTypeAssertionExpression(callback) || ts.isNonNullExpression(callback)) {

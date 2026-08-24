@@ -155,8 +155,10 @@ every resolved return candidate. Concise conditional arrows are included;
 for modeled Node/Web queue parents, each finite callback alternative is retained
 in the IR and lowered to a separate action, so nested jobs from mutually
 exclusive callbacks are not enqueued together. Callback parameters dispatched
-through higher-order helpers remain a conservative gap;
-parameter symbols are specialized from concrete call arguments, so identity
+through a non-exported local function are specialized only when every reference
+to that function is a direct call and every corresponding argument has a finite
+source callback body. Exported, escaped, imported, or partly dynamic higher-order
+helpers remain unresolved. Parameter symbols are also specialized from concrete call arguments, so identity
 factories and finite literal-key selection from immutable callback tables can
 remain exact. An object-literal method factory may also select through
 `this.table[key]` when the receiver and nested table are immutable. Mutable,
