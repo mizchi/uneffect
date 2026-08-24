@@ -57,6 +57,19 @@ Mutate<typeof state> permits Mutate<typeof state.user>
 Mutate<typeof left> does not permit Mutate<typeof right>
 ```
 
+Inference names the region a write actually touches, down to the property:
+`state.calls = 1` infers `Mutate<typeof state.calls>`, and `state.items.push(x)`
+infers `Mutate<typeof state.items>` — the receiver the builtin mutates. A
+declaration of any prefix still permits it, so `Mutate<typeof state>` covers
+both; a declaration of a sibling property does not, and the diagnostic says so
+rather than only reporting an undeclared effect.
+
+An element access is only as precise as its key. A literal key is a property, so
+`table["ready"] = v` infers `Mutate<typeof table.ready>`. A computed key names no
+member the checker can compare, so `values[index] = v` widens to
+`Mutate<typeof values>` — which is why the quicksort dogfood still proves exactly
+`Mutate<typeof values>`.
+
 Parameter regions are substituted at call sites. **Implemented across TypeChecker-resolved program edges, including aliases, methods, arrows, overloads, and callbacks.** The current escape filter proves freshly declared locals non-observable; deeper heap escape analysis remains conservative.
 
 `Throw<E>` is covariant over known `Error` subtypes. `Throw<Error>` admits a concrete error such as `Throw<RangeError>`, but does not admit `Throw<unknown>`, which represents JavaScript throwing a value not proven assignable to the global `Error` interface. The frontend performs that subtype check with the TypeChecker, including constrained type parameters. A synchronous `catch` discharges all `Throw<E>` effects originating in its `try` block. Throws from the `catch` or `finally` block still propagate.

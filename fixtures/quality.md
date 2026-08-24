@@ -13,7 +13,7 @@ regress; the remaining ones move the score and point at the next message to impr
 | action | yes | does a hint say what to change next? |
 | plain-language | yes | is the message free of raw solver verdicts and SMT jargon? |
 
-Score: **1.000** (120/120 criteria over 20 diagnostics, threshold 1.000)
+Score: **1.000** (126/126 criteria over 21 diagnostics, threshold 1.000)
 
 | fixture | diagnostic | line | missing |
 | --- | --- | --- | --- |
@@ -26,6 +26,7 @@ Score: **1.000** (120/120 criteria over 20 diagnostics, threshold 1.000)
 | fixtures/contracts/unsupported-call.ts | contract/unsupported | 11 | — |
 | fixtures/contracts/unsupported-parameter-type.ts | contract/unsupported | 3 | — |
 | fixtures/effects/missing-console.ts | effect/missing | 2 | — |
+| fixtures/effects/mutate-property.ts | effect/missing | 5 | — |
 | fixtures/effects/mutation-effect.ts | effect/missing | 4 | — |
 | fixtures/effects/scoped-fetch.ts | effect/missing | 8 | — |
 | fixtures/effects/scoped-fetch.ts | effect/missing | 8 | — |

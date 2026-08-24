@@ -360,8 +360,56 @@ describe("effect checker", () => {
       function bad(left: { n: number }, right: { n: number }) { right.n = left.n }
     `;
     expect(analyzeEffects("mutate.ts", source)).toContainEqual(
-      expect.objectContaining({ functionName: "bad", effect: "Mutate<typeof right>", kind: "missing" }),
+      expect.objectContaining({ functionName: "bad", effect: "Mutate<typeof right.n>", kind: "missing" }),
     );
+  });
+
+  it("names the written property, not only the object that holds it", () => {
+    const source = `
+      /* uneffect: effect Mutate<typeof state.calls> */
+      function bump(state: { calls: number; total: number }) { state.total += 1 }
+    `;
+    const [missing] = analyzeEffects("mutate.ts", source);
+    expect(missing).toMatchObject({ functionName: "bump", effect: "Mutate<typeof state.total>", kind: "missing" });
+    expect(missing?.notes).toContainEqual(expect.objectContaining({
+      label: "out of authority",
+      detail: expect.stringContaining("names a different region of state"),
+    }));
+  });
+
+  it("accepts a declaration of exactly the written property", () => {
+    expect(analyzeEffects("mutate.ts", `
+      /* uneffect: effect Mutate<typeof state.calls> */
+      function bump(state: { calls: number; total: number }) { state.calls += 1 }
+    `)).toEqual([]);
+  });
+
+  it("keeps a mutating builtin at the receiver it is called on", () => {
+    expect(analyzeEffects("mutate.ts", `
+      /* uneffect: effect Mutate<typeof state.items> */
+      function add(state: { items: number[] }, value: number) { state.items.push(value) }
+    `)).toEqual([]);
+  });
+
+  it("widens a computed element write to its container and keeps a literal key a property", () => {
+    const dynamic = analyzeEffects("mutate.ts", `
+      function write(values: number[], index: number, value: number) { values[index] = value }
+    `);
+    expect(dynamic).toContainEqual(expect.objectContaining({ effect: "Mutate<typeof values>", kind: "missing" }));
+
+    const literal = analyzeEffects("mutate.ts", `
+      function write(table: Record<string, number>, value: number) { table["ready"] = value }
+    `);
+    expect(literal).toContainEqual(expect.objectContaining({ effect: "Mutate<typeof table.ready>", kind: "missing" }));
+  });
+
+  it("substitutes a member-path region through a call", () => {
+    expect(analyzeEffects("mutate.ts", `
+      /* uneffect: effect Mutate<typeof target.count> */
+      function increment(target: { count: number }) { target.count++ }
+      /* uneffect: effect Mutate<typeof state.inner.count> */
+      function update(state: { inner: { count: number } }) { increment(state.inner) }
+    `)).toEqual([]);
   });
 
   it("tracks the concrete Error constructed by a throw statement", () => {
