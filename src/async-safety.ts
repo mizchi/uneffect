@@ -1466,9 +1466,23 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             && declaresSynchronousThrow(signature.declaration);
         }
         if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
-          return isGuaranteedThrowExpression(expression.right);
+          return isGuaranteedThrowExpression(expression.left) || isGuaranteedThrowExpression(expression.right);
+        }
+        if (ts.isBinaryExpression(expression)
+          && (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            || expression.operatorToken.kind === ts.SyntaxKind.BarBarToken)) {
+          if (isGuaranteedThrowExpression(expression.left)) return true;
+          const left = staticPrimitive(expression.left, new Map())?.value;
+          if (left === undefined) return false;
+          const evaluatesRight = expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken
+            ? Boolean(left)
+            : !Boolean(left);
+          return evaluatesRight && isGuaranteedThrowExpression(expression.right);
         }
         if (ts.isConditionalExpression(expression)) {
+          if (isGuaranteedThrowExpression(expression.condition)) return true;
+          const condition = staticPrimitive(expression.condition, new Map())?.value;
+          if (condition !== undefined) return isGuaranteedThrowExpression(Boolean(condition) ? expression.whenTrue : expression.whenFalse);
           return isGuaranteedThrowExpression(expression.whenTrue)
             && isGuaranteedThrowExpression(expression.whenFalse);
         }

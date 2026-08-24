@@ -50,7 +50,10 @@ ${Array.from({ length: 64 }, (_, index) => `
       "void fail()",
       "(void 0, fail())",
       "flag ? fail() : fail()",
-    ][index % 6]} } catch { await pending }
+      "fail() && void 0",
+      "true && fail()",
+      "false || fail()",
+    ][index % 9]} } catch { await pending }
   }
 `).join("\n")}`;
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
@@ -232,7 +235,7 @@ describe("typed-array static verification", () => {
 
   bench("route 64 structured throw completions through Promise ownership catches", () => {
     analyzeAsyncSafetyInProgram(explicitCatchProgram, explicitCatchSource);
-  }, { time: 500, iterations: 20 });
+  }, { time: 1_500, iterations: 50 });
 
   bench("link Promise adapter assimilation by symbol", () => {
     analyzePromiseChains("promise-adapter.ts", promiseAdapterSource);

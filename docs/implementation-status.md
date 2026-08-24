@@ -100,8 +100,9 @@ same property is proved for arbitrary TypeScript.
   the documented fragments. The ownership fixed point routes explicit `throw`
   completions and a structured expression fragment proven both `never` and
   `Throw<E>` into the nearest `catch`, including `return fail()` without
-  misclassifying it as a completed return. Arbitrary expressions still retain
-  a conservative possible-throw catch entry.
+  misclassifying it as a completed return. Literal/immutable-const truthiness
+  selects supported `&&`, `||`, and ternary paths. Arbitrary expressions still
+  retain a conservative possible-throw catch entry.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

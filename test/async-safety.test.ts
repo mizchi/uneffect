@@ -502,6 +502,52 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("respects logical short-circuit evaluation for guaranteed throw completion", () => {
+    const result = analyzeAsyncSafety("logical-throw-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: effect Throw<Error> */ declare function fail(): never
+      declare function maybeFail(): void
+      async function throwingLeft() {
+        const pending = task()
+        try { fail() && maybeFail() } catch { await pending }
+      }
+      async function requiredAnd() {
+        const pending = task()
+        try { true && fail() } catch { await pending }
+      }
+      async function requiredOr() {
+        const pending = task()
+        try { false || fail() } catch { await pending }
+      }
+      async function staticTernary() {
+        const pending = task()
+        try { true ? fail() : maybeFail() } catch { await pending }
+      }
+      async function constAlias() {
+        const pending = task()
+        const required = true as const
+        try { required && fail() } catch { await pending }
+      }
+      async function skippedAnd() {
+        const pending = task()
+        try { false && fail() } catch { await pending }
+      }
+      async function skippedOr() {
+        const pending = task()
+        try { true || fail() } catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "throwingLeft", status: "observed" },
+      { owner: "requiredAnd", status: "observed" },
+      { owner: "requiredOr", status: "observed" },
+      { owner: "staticTernary", status: "observed" },
+      { owner: "constAlias", status: "observed" },
+      { owner: "skippedAnd", status: "floating" },
+      { owner: "skippedOr", status: "floating" },
+    ]);
+  });
+
   it("dogfoods audit delivery before a typed fatal throw", () => {
     const fileName = "examples/dogfood/audit-before-fatal.ts";
     const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));

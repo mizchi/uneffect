@@ -370,9 +370,13 @@ parentheses, `as`/type assertions, `satisfies`, non-null, `await`, and `void`;
 through the right side of a comma expression; and through a ternary only when
 both branches are guaranteed throws. This matters for `return fail()`: the
 call throws before a return can complete, so the edge enters `catch` rather
-than bypassing it as a return. Logical operators, multiple declarators,
-call-argument nesting, and unresolved dynamic dispatch remain outside this
-guaranteed-edge fragment.
+than bypassing it as a return. `&&` and `||` preserve a guaranteed throw when
+the left operand already throws, or when a finite literal or immutable-const
+primitive proves that short-circuit evaluation must enter a throwing right
+operand. A statically selected ternary follows only its selected branch.
+Unknown short-circuit conditions, `??`, multiple declarators, call-argument
+nesting, and unresolved dynamic dispatch remain outside this guaranteed-edge
+fragment.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
 execute their body at least once. Loop bodies are iterated to a finite abstract
 state closure. Unlabeled and labeled `break`/`continue` propagate through nested
