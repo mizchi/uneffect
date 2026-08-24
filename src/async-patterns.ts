@@ -1054,9 +1054,10 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       if (members.every((member) => Boolean(member.flags & ts.TypeFlags.Object))) return "object";
       return "unknown";
     };
-    const immediatelyConsumedConstInitializer = (value: ts.Expression, use: ts.Node): ts.Expression | undefined => {
+    const stableConstInitializerAtUse = (value: ts.Expression, use: ts.Node): ts.Expression | undefined => {
       if (!ts.isIdentifier(value)) return undefined;
-      const declaration = resolvedSymbol(value)?.valueDeclaration;
+      const valueSymbol = resolvedSymbol(value);
+      const declaration = valueSymbol?.valueDeclaration;
       if (!declaration || !ts.isVariableDeclaration(declaration) || !declaration.initializer
         || !ts.isVariableDeclarationList(declaration.parent) || (declaration.parent.flags & ts.NodeFlags.Const) === 0
         || declaration.parent.declarations.length !== 1 || !ts.isVariableStatement(declaration.parent.parent)) return undefined;
@@ -1065,8 +1066,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       while (useStatement.parent && !ts.isBlock(useStatement.parent) && !ts.isSourceFile(useStatement.parent)) useStatement = useStatement.parent;
       if (declarationStatement.parent !== useStatement.parent || (!ts.isBlock(useStatement.parent) && !ts.isSourceFile(useStatement.parent))) return undefined;
       const statements = useStatement.parent.statements;
-      return statements.indexOf(useStatement as ts.Statement) === statements.indexOf(declarationStatement) + 1
-        ? declaration.initializer : undefined;
+      const declarationIndex = statements.indexOf(declarationStatement), useIndex = statements.indexOf(useStatement as ts.Statement);
+      if (declarationIndex < 0 || useIndex <= declarationIndex) return undefined;
+      let references = 0;
+      const countReferences = (node: ts.Node): void => {
+        if (ts.isIdentifier(node) && resolvedSymbol(node) === valueSymbol) references += 1;
+        ts.forEachChild(node, countReferences);
+      };
+      for (let index = declarationIndex + 1; index <= useIndex; index += 1) countReferences(statements[index]!);
+      return references === 1 ? declaration.initializer : undefined;
     };
     const abortTarget = (expression: ts.Expression, seen = new Set<ts.Symbol>(), bindings = new Map<ts.Symbol, ts.Expression>()): AbortTarget | undefined => {
       if (ts.isIdentifier(expression)) {
@@ -1084,7 +1092,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         const existing = bindings.size === 0 ? inlineAbortCompositionTargets.get(expression) : undefined;
         if (existing !== undefined) return existing;
         const argument = expression.arguments[operation.signalsArgument];
-        let normalizedArgument = argument && (immediatelyConsumedConstInitializer(argument, expression) ?? argument);
+        let normalizedArgument = argument && (stableConstInitializerAtUse(argument, expression) ?? argument);
         while (normalizedArgument && ts.isParenthesizedExpression(normalizedArgument)) normalizedArgument = normalizedArgument.expression;
         const conditionalPaths = normalizedArgument && ts.isConditionalExpression(normalizedArgument)
           ? [expandStaticArray(normalizedArgument.whenTrue), expandStaticArray(normalizedArgument.whenFalse)] : undefined;

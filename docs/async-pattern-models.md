@@ -128,11 +128,12 @@ hostname is narrowed to `Net<"host">`; dynamic hostnames and the two-argument
 address/port scope of `lookupService` remain conservatively broad `Net`.
 
 A direct conditional array passed to `AbortSignal.any`, or a single-use `const`
-alias declared in the immediately preceding statement, retains complete source
-paths instead of flattening them into an always-present union. The Web Quint
+alias with no intervening reference, retains complete source paths instead of
+flattening them into an always-present union. Unrelated statements may occur
+between declaration and consumption. The Web Quint
 profile chooses one path before a signal-bound scheduler task can run, applies
 pre-aborted state only for that path, and enables abort transitions only for
-sources present on the chosen path. Non-adjacent, escaped, or mutated
+sources present on the chosen path. Escaped, multiply referenced, or mutated
 conditional arrays are still outside this proof subset.
 
 Nested jobs in `Server.close(callback)` are composed into the temporal model,

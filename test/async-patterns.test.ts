@@ -382,10 +382,12 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "eventLoopSafe").status).toBe(0);
   }, 20_000);
 
-  it("resolves an immediately consumed const alias for conditional abort paths but rejects intervening mutation", () => {
+  it("resolves a non-escaping const alias for conditional abort paths but rejects intervening mutation", () => {
     const stable = analyzeAsyncPatterns("aliased-conditional-abort.ts", `
       function request(flag: boolean, external: AbortSignal) {
         const sources = flag ? [external] : [AbortSignal.timeout(25)]
+        const unrelated = 1
+        void unrelated
         return AbortSignal.any(sources)
       }
     `);
