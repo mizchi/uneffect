@@ -145,8 +145,16 @@ TypeChecker-resolved `node:net`, `node:http`, and `node:https`
 `Server.listen` calls consume `Net`. Literal `(port, host, callback)` calls
 narrow that authority to `Net<"host:port">`; other overloads remain broad.
 The optional listening callback is queued as Node next-tick work, while a
-same-named application method is not classified. Request/connection event
-listeners remain a separate open event-emitter boundary.
+same-named application method is not classified. Request/connection listeners
+attached later through EventEmitter APIs remain an open boundary.
+
+The optional connection/request listener passed directly to `createServer`
+is a supported repeating external poll source. Each modeled arrival makes the
+listener pending once; running it returns through the callback checkpoint and
+permits a later independent arrival. Effects in an inline or statically named
+listener are included in the creating function's summary. Listeners added
+later through EventEmitter APIs, stream events, socket readiness, and
+backpressure are still outside this subset.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and

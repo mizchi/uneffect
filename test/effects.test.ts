@@ -247,6 +247,22 @@ describe("effect checker", () => {
       .toContainEqual(expect.objectContaining({ functionName: "serve", kind: "missing", effect: 'Net<"127.0.0.1:8080">' }));
   });
 
+  it("propagates effects from TypeChecker-resolved Node request listeners", () => {
+    const source = `
+      import { createServer as createHttpServer } from "node:http"
+      /* uneffect: effect Net<"127.0.0.1:8080"> | Console */
+      function serve() {
+        const server = createHttpServer((_request, _response) => console.log("request"))
+        server.listen(8080, "127.0.0.1")
+      }
+      function createServer(callback: () => void) { callback(); return { listen() {} } }
+      function local() { createServer(() => console.log("local")) }
+    `;
+    expect(analyzeEffects("node-http-server-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-http-server-effects.ts", source.replace(" | Console", "")))
+      .toContainEqual(expect.objectContaining({ functionName: "serve", kind: "missing", effect: "Console" }));
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

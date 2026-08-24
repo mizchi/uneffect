@@ -82,7 +82,10 @@ export function shouldRetryIsolatedSolverFailure(output: string): boolean {
     && output.includes("UNEXPECTED CODE WAS REACHED")
     && /Z3 \d+\.\d+\.\d+/.test(output);
   const knownLeaseTimeout = output.includes("test/node-lease.test.ts")
-    && output.includes("uses a proven lease-domain invariant to exclude invalid epoch actions")
+    && [
+      "uses a proven lease-domain invariant to exclude invalid epoch actions",
+      "synthesizes a lease-domain invariant to exclude invalid epoch actions",
+    ].some((name) => output.includes(name))
     && output.includes("Test timed out in 60000ms");
   return wasmCrash || wasmHeapCorruption || z3InternalAssertion || knownLeaseTimeout;
 }

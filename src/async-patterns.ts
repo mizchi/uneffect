@@ -1359,7 +1359,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             callback: callbackNode?.getText(source) ?? "<unknown>",
             delay: 0,
             recursive: false,
-            repeats: false,
+            repeats: operation.repeats ?? false,
             queue: operation.queue,
             externallyReady: operation.queue === "poll" || operation.queue === "close",
             span: { start: node.getStart(source), end: node.getEnd() },
@@ -1856,7 +1856,8 @@ export function generateNodeEventLoopQuint(
     });
   };
   polls.forEach((index) => action(`complete_poll_${index}`, [
-    `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
+    ...(model.timers[index]!.repeats ? [] : [`callback_${index}_fires == 0`]),
+    `not(callback_${index}_pending)`,
   ], new Map([[`callback_${index}_pending`, "true"]])));
   closes.forEach((index) => action(`complete_close_${index}`, [
     `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
@@ -1940,7 +1941,7 @@ export function generateNodeEventLoopQuint(
     const alternatives: (number | undefined)[] = timer.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
     for (const alternative of alternatives) {
       const updates = new Map<string, string>([
-      [`callback_${index}_pending`, multiInstanceTimers.has(index)
+      [`callback_${index}_pending`, timer.externallyReady && timer.repeats ? "false" : multiInstanceTimers.has(index)
         ? timer.repeats ? "true" : `callback_${index}_instances > 1`
         : String(timer.repeats)],
       [`callback_${index}_fires`, `callback_${index}_fires + 1`],

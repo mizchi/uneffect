@@ -1244,6 +1244,10 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, missingListenAuthority)).toContainEqual(expect.objectContaining({
       functionName: "startHealthServer", kind: "missing", effect: 'Net<"127.0.0.1:8080">',
     }));
+    const missingHandlerAuthority = source.replace(" | Console", "");
+    expect(analyzeEffects(fileName, missingHandlerAuthority)).toContainEqual(expect.objectContaining({
+      functionName: "startHealthServer", kind: "missing", effect: "Console",
+    }));
   });
 
   it("keeps conditional cancellation policies path-correlated", () => {

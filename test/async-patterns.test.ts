@@ -2467,6 +2467,26 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("models Node request listeners as repeating externally completed poll work", () => {
+    const model = analyzeAsyncPatterns("node-http-server.ts", `
+      import { createServer as createHttpServer } from "node:http"
+      function serve() {
+        createHttpServer((_request, _response) => queueMicrotask(() => undefined))
+      }
+      function createServer(callback: () => void) { callback() }
+      createServer(() => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true, repeats: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_server", model);
+    expect(quint).toMatch(/action complete_poll_0[\s\S]*not\(callback_0_pending\)/);
+    expect(quint).not.toMatch(/action complete_poll_0[\s\S]*callback_0_fires == 0[\s\S]*action run_poll_0/);
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_0_pending' = false/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"

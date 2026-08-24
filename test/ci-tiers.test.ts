@@ -67,6 +67,7 @@ describe("CI test tier manifest", () => {
     expect(shouldRetryIsolatedSolverFailure("RuntimeError: Aborted(Runtime error: The application has corrupted its heap memory area (address zero)!)\nat z3-solver/build/z3-built.js:848:11")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("ASSERTION VIOLATION\nFile: ../src/ast/for_each_expr.h\nUNEXPECTED CODE WAS REACHED.\nZ3 4.16.0.0")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("FAIL test/node-lease.test.ts > Node Lease clock-skew model > uses a proven lease-domain invariant to exclude invalid epoch actions\nTest timed out in 60000ms")).toBe(true);
+    expect(shouldRetryIsolatedSolverFailure("FAIL test/node-lease.test.ts > Node Lease clock-skew model > synthesizes a lease-domain invariant to exclude invalid epoch actions\nTest timed out in 60000ms")).toBe(true);
     expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("FAIL test/other.test.ts\nTest timed out in 60000ms")).toBe(false);

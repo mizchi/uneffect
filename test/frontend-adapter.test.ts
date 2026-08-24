@@ -56,7 +56,7 @@ describe("TypeChecker symbol adapter", () => {
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
     const source = program.getSourceFile(fileName)!;
-    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback")).toEqual([
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.symbol.export === "Server#close")).toEqual([
       expect.objectContaining({ symbol: { module: "node:net", export: "Server#close" } }),
     ]);
   });
@@ -73,7 +73,7 @@ describe("TypeChecker symbol adapter", () => {
     `);
     const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
     const source = program.getSourceFile(fileName)!;
-    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.operation?.kind === "deferred-callback"))
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.symbol.export === "Server#listen"))
       .toEqual([expect.objectContaining({ symbol: { module: "node:net", export: "Server#listen" } })]);
   });
 

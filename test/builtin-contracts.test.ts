@@ -134,6 +134,18 @@ describe("builtin semantic overlays", () => {
     }
   });
 
+  it("registers Node server connection listeners as repeating external poll work", () => {
+    for (const module of ["node:net", "node:http", "node:https"]) {
+      expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+        symbol: { module, export: "createServer" },
+        operation: {
+          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 1,
+          callbackMustBeCallable: true, queue: "poll", repeats: true,
+        },
+      }));
+    }
+  });
+
   it("registers child_process authority without confusing process lifetime with completion callbacks", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
       expect.objectContaining({ symbol: { module: "node:child_process", export: "exec" }, operation: expect.objectContaining({ kind: "deferred-callback", queue: "poll", effect: "Run" }) }),
