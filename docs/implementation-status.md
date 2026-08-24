@@ -2,7 +2,9 @@
 
 This document is the concise, user-facing summary of the completed entries in
 `TODO.md`. The checklist remains a historical implementation ledger; open work
-is tracked in GitHub Issues and summarized in `roadmap.md`.
+is tracked in GitHub Issues and summarized in `roadmap.md`. For a compact view
+that puts tested fragments next to their unsupported boundaries, see
+`feature-matrix.md`.
 
 The project is an experimental prototype. "Implemented" below means that the
 documented fragment has executable regression tests. It does not mean that the

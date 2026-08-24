@@ -1,8 +1,9 @@
 # Uneffect implementation roadmap
 
 This file is the historical implementation ledger. Completed work is summarized
-in `docs/implementation-status.md`. Unfinished work is tracked in GitHub Issues
-and prioritized in `docs/roadmap.md`; unchecked entries below are retained for
+in `docs/implementation-status.md` and classified by confidence in
+`docs/feature-matrix.md`. Unfinished work is tracked in GitHub Issues and
+prioritized in `docs/roadmap.md`; unchecked entries below are retained for
 traceability and map to those issues rather than forming a second active queue.
 
 Open-work mapping:

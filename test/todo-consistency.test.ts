@@ -35,4 +35,15 @@ describe("TODO hierarchy consistency", () => {
     expect(todo).toContain("proof-gated optimizer transformations: [#13]");
     expect(roadmap).toContain("issues/13");
   });
+
+  it("keeps every open-work issue visible in the user-facing feature matrix", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const matrix = readFileSync("docs/feature-matrix.md", "utf8");
+    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13];
+
+    for (const issueNumber of issueNumbers) {
+      expect(todo).toContain(`[#${issueNumber}]`);
+      expect(matrix).toContain(`/issues/${issueNumber}`);
+    }
+  });
 });

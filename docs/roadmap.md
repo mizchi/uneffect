@@ -1,9 +1,9 @@
 # Roadmap and known gaps
 
 Completed implementation details live in `implementation-status.md` and the
-historical `TODO.md` ledger. GitHub Issues are the source of truth for future
-work. The ordering below reflects dependency and soundness risk, not a release
-date commitment.
+historical `TODO.md` ledger. `feature-matrix.md` is the compact boundary view.
+GitHub Issues are the source of truth for future work. The ordering below
+reflects dependency and soundness risk, not a release date commitment.
 
 ## Phase 1 — Make proof boundaries dependable
 

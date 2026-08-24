@@ -5,6 +5,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 ## Documents
 
 - [Implementation status](./implementation-status.md): the tested feature surface and explicit non-claims.
+- [Feature matrix](./feature-matrix.md): a compact tested/partial/planned view with issue ownership for every incomplete area.
 - [Roadmap and known gaps](./roadmap.md): prioritized GitHub Issues, missing capabilities, and completion policy.
 - [Effect system](./effect-system.md): algebra, evidence, regions, temporal IR, and optimizer boundary.
 - [Gradual annotations](./gradual-annotations.md): comment marker, grammar, attachment, contracts, and optional Valibot assertions.
