@@ -131,6 +131,30 @@ function assignment(input: string, kind: string): TemporalAssignment {
   return { target: match[1]!, expression, expressionAst: parseTemporalExpression(expression) };
 }
 
+function splitTemporalAssignments(input: string): string[] {
+  const values: string[] = [];
+  let start = 0, parenDepth = 0, bracketDepth = 0, braceDepth = 0, quote: string | undefined;
+  for (let index = 0; index < input.length; index++) {
+    const char = input[index]!;
+    if (quote) {
+      if (char === quote && input[index - 1] !== "\\") quote = undefined;
+    } else if (char === '"' || char === "`" || (char === "'" && !/[\w$]/.test(input[index - 1] ?? ""))) quote = char;
+    else if (char === "(") parenDepth++;
+    else if (char === ")") parenDepth--;
+    else if (char === "[") bracketDepth++;
+    else if (char === "]") bracketDepth--;
+    else if (char === "{") braceDepth++;
+    else if (char === "}") braceDepth--;
+    else if (char === "," && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+      values.push(input.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  values.push(input.slice(start).trim());
+  if (values.some((value) => value.length === 0)) throw new Error("empty temporal action assignment");
+  return values;
+}
+
 export function parseSpec(fileName: string, text: string, options: { temporalSymbols?: ReadonlyMap<string, TemporalValueType>; temporalDomains?: TemporalDomainRegistry } = {}): ParsedSpec {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const temporalDomains = options.temporalDomains ?? createDefaultTemporalDomainRegistry();
@@ -218,7 +242,7 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     const parsed = namedExpression(value, "action");
     return {
       name: parsed.name,
-      assignments: splitTopLevel(parsed.expression, ",").map((item) => assignment(item, "action")),
+      assignments: splitTemporalAssignments(parsed.expression).map((item) => assignment(item, "action")),
     };
   });
   for (const [name, messages] of Object.entries(domainExpansion.protectedStates ?? {})) for (const action of explicitActions) if (action.assignments.some((item) => item.target === name)) {

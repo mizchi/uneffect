@@ -644,6 +644,78 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("catch-rethrow.ts", source, "recovery", temporal)).toEqual([]);
   });
 
+  it("lets conditional finally return or throw override prior completion", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state worked: int
+      state released: int
+      state observed: int
+      state cancel: bool
+      state fail: bool
+      init worked = 0
+      init released = 0
+      init observed = 0
+      init cancel = false
+      init fail = false
+      action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1
+    */
+      interface Runtime { worked: number; released: number; observed: number; cancel: boolean; fail: boolean }
+      /* uneffect: refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement cleanup@1 action execute */
+      export function execute(runtime: Runtime) {
+        try {
+          runtime.worked++
+        } finally {
+          if (runtime.cancel) { runtime.released++; return }
+          if (runtime.fail) throw "cleanup failed"
+          runtime.released++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("finally-override.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("finally-override.ts", source, "cleanup", temporal)).toEqual([]);
+  });
+
+  it("lets a finally throw override a retained return completion", async () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const source = `/* uneffect:
+      state recovered: int
+      state released: int
+      state observed: int
+      state stop: bool
+      state cleanupFails: bool
+      init recovered = 0
+      init released = 0
+      init observed = 0
+      init stop = false
+      init cleanupFails = false
+      action recover: recovered' = stop ? recovered : recovered + 1, released' = cleanupFails ? released : released + 1, observed' = (stop || cleanupFails) ? observed : observed + 1
+    */
+      interface Runtime { recovered: number; released: number; observed: number; stop: boolean; cleanupFails: boolean }
+      /* uneffect: refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement cleanup@1 action recover */
+      export function recover(runtime: Runtime) {
+        try {
+          if (runtime.stop) return
+          throw "recoverable"
+        } catch {
+          runtime.recovered++
+        } finally {
+          if (runtime.cleanupFails) throw "cleanup failed"
+          runtime.released++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("finally-overrides-return.ts", source) as { temporal: unknown }).temporal;
+    expect(await validateActions("finally-overrides-return.ts", source, "cleanup", temporal)).toEqual([]);
+  });
+
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

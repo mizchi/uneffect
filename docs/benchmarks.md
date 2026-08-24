@@ -762,3 +762,12 @@ the dedicated `join catch return and rethrow completions` benchmark validates
 only two minimal actions and measured 0.2252 ms mean over 2,221 samples (0.38%
 relative margin of error). This establishes a repeatable local baseline; it is
 not yet a CI performance threshold.
+
+After adding conditional return/throw overrides in finally, the dedicated
+`join conditional finally overrides` benchmark measured 0.2368 ms mean over
+2,112 samples (0.38% relative margin of error). The telemetry fixture, expanded
+with a corresponding recovery-finalization action and negative controls,
+measured 2.2709 ms mean over 221 samples (0.60% relative margin of error).
+These remain syntax-path timings; Z3 scalar-update equivalence is invoked only
+for mismatches through the explicit `WithZ3` validator and needs a separate
+solver-cost baseline if its use grows.

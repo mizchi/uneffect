@@ -734,10 +734,18 @@ function validateRefinementActionBodiesInSource(
     : completion === "normal" || typeof completion === "string" ? { kind: "boolean", value: false }
       : completion[abrupt === "return" ? "returnWhen" : "throwWhen"] ?? { kind: "boolean", value: false };
   const isBooleanCompletionPredicate = (expression: TemporalExpression, value: boolean): boolean => expression.kind === "boolean" && expression.value === value;
-  const orCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => isBooleanCompletionPredicate(left, false) ? right
-    : isBooleanCompletionPredicate(right, false) ? left
-      : isBooleanCompletionPredicate(left, true) || isBooleanCompletionPredicate(right, true) ? { kind: "boolean", value: true }
-        : { kind: "binary", operator: "or", left, right };
+  const orCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => {
+    if (isBooleanCompletionPredicate(left, false)) return right;
+    if (isBooleanCompletionPredicate(right, false)) return left;
+    if (isBooleanCompletionPredicate(left, true) || isBooleanCompletionPredicate(right, true)) return { kind: "boolean", value: true };
+    if (right.kind === "conditional" && sameRefinementExpression(left, right.condition)) {
+      return orCompletionPredicates(left, right.whenFalse);
+    }
+    if (left.kind === "conditional" && sameRefinementExpression(right, left.condition)) {
+      return orCompletionPredicates(right, left.whenFalse);
+    }
+    return { kind: "binary", operator: "or", left, right };
+  };
   const andCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => isBooleanCompletionPredicate(left, false) || isBooleanCompletionPredicate(right, false)
     ? { kind: "boolean", value: false }
     : isBooleanCompletionPredicate(left, true) ? right
@@ -972,19 +980,20 @@ function validateRefinementActionBodiesInSource(
         if (!statement.finallyBlock) {
           if (residualCompletion === "normal") continue;
         } else {
-          const finallyStatements = [...statement.finallyBlock.statements];
-          const finallyTerminal = finallyStatements.at(-1);
-          if (finallyTerminal && directVoidReturn(finallyTerminal)) {
-            if (!collect(
-              ts.factory.createBlock(finallyStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
-              updates, new Map(localValues), activeCalls, false,
-            )) return undefined;
-            return "return";
-          }
-          if (!collect(
+          const priorReturn = completionPredicate(residualCompletion, "return");
+          const priorThrow = completionPredicate(residualCompletion, "throw");
+          const finallyCompletion = collect(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, false,
-          )) return undefined;
+            updates, new Map(localValues), activeCalls, true, true,
+          );
+          if (!finallyCompletion) return undefined;
+          const finallyReturn = completionPredicate(finallyCompletion, "return");
+          const finallyThrow = completionPredicate(finallyCompletion, "throw");
+          const finallyNormal = notCompletionPredicate(orCompletionPredicates(finallyReturn, finallyThrow));
+          residualCompletion = makeCompletion(
+            orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
+            orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
+          );
           if (residualCompletion === "normal") continue;
         }
         const priorReturn = completionPredicate(residualCompletion, "return");
@@ -1363,11 +1372,13 @@ function validateRefinementActionBodiesInSource(
       const expectedExpression = expected.get(state.name) ?? { kind: "name", name: state.name } as const;
       const actualExpression = updates.get(state.name) ?? { kind: "name", name: state.name } as const;
       if (sameRefinementExpression(expectedExpression, actualExpression)) continue;
-      diagnostics.push({
+      const diagnostic: RefinementActionDiagnostic = {
         code: "action-update-mismatch", adapterName, modelName: action.name, exportName, target: state.name,
         expected: formatRefinementExpression(expectedExpression), actual: formatRefinementExpression(actualExpression),
         message: `${exportName} updates ${state.name} as ${formatRefinementExpression(actualExpression)}, expected ${formatRefinementExpression(expectedExpression)}`,
-      });
+      };
+      refinementMismatchExpressions.set(diagnostic, { expected: expectedExpression, actual: actualExpression });
+      diagnostics.push(diagnostic);
     }
   }
   const modelActions = new Set(spec.actions.map(({ name }) => name));
@@ -1547,20 +1558,24 @@ async function dischargeExpressionMismatchesWithZ3<T extends { code: string; exp
   return discharged;
 }
 
-/** Keeps scalar update checking syntactic, while proving mismatched boolean action guards with Z3. */
+/** Keeps exact action expressions on the fast path, then proves scalar guard and update mismatches with Z3. */
 export async function validateRefinementActionBodiesWithZ3(
   fileName: string, text: string, adapterName: string, spec: TemporalSpec,
 ): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
-  return dischargeExpressionMismatchesWithZ3(validateRefinementActionBodies(fileName, text, adapterName, spec), "action-guard-mismatch", spec);
+  const guards = await dischargeExpressionMismatchesWithZ3(
+    validateRefinementActionBodies(fileName, text, adapterName, spec), "action-guard-mismatch", spec,
+  );
+  return dischargeExpressionMismatchesWithZ3(guards, "action-update-mismatch", spec);
 }
 
-/** Combines TypeChecker-backed builtin identity checks with Z3 guard equivalence. */
+/** Combines TypeChecker-backed builtin identity checks with Z3 guard and scalar-update equivalence. */
 export async function validateRefinementActionBodiesInProgramWithZ3(
   program: ts.Program, fileName: string, adapterName: string, spec: TemporalSpec,
 ): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
-  return dischargeExpressionMismatchesWithZ3(
+  const guards = await dischargeExpressionMismatchesWithZ3(
     validateRefinementActionBodiesInProgram(program, fileName, adapterName, spec), "action-guard-mismatch", spec,
   );
+  return dischargeExpressionMismatchesWithZ3(guards, "action-update-mismatch", spec);
 }
 
 /** Proves normalized single-return invariant predicates by logical rather than syntactic equivalence. */

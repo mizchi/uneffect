@@ -864,6 +864,37 @@ describe("typed-array static verification", () => {
     validateRefinementActionBodies("catch-completion-bench.ts", source, "recovery", temporal);
   }, { time: 500, iterations: 20 });
 
+  bench("join conditional finally overrides", () => {
+    const source = `/* uneffect:
+      state worked: int
+      state released: int
+      state observed: int
+      state cancel: bool
+      state fail: bool
+      init worked = 0
+      init released = 0
+      init observed = 0
+      init cancel = false
+      init fail = false
+      action execute: worked' = worked + 1, released' = cancel ? released + 1 : fail ? released : released + 1, observed' = (cancel || fail) ? observed : observed + 1
+    */
+      interface Runtime { worked: number; released: number; observed: number; cancel: boolean; fail: boolean }
+      /* uneffect: refinement cleanup@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement cleanup@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement cleanup@1 action execute */
+      export function execute(runtime: Runtime) {
+        try { runtime.worked++ } finally {
+          if (runtime.cancel) { runtime.released++; return }
+          if (runtime.fail) throw "cleanup failed"
+          runtime.released++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = parseSpec("finally-completion-bench.ts", source).temporal;
+    validateRefinementActionBodies("finally-completion-bench.ts", source, "cleanup", temporal);
+  }, { time: 500, iterations: 20 });
+
   bench("compose a 16-case switch refinement with fallthrough", () => {
     const cases = Array.from({ length: 16 }, (_, index) => `case ${index}: runtime.value += 1;${index % 4 === 3 ? " break;" : ""}`).join("\n");
     const expression = Array.from({ length: 16 }, (_, index) => `mode === ${index} ? value ${Array.from({ length: 4 - index % 4 }, () => "+ 1").join(" ")} : `).join("") + "value";

@@ -696,7 +696,7 @@ export type TemporalEquivalenceResult =
   | { status: "different"; backend: "z3" }
   | { status: "unknown"; backend: "z3"; reason: string };
 
-/** Proves typed boolean equivalence over every state valuation, independently of reachability. */
+/** Proves typed scalar equivalence over every state valuation, independently of reachability. */
 export async function checkTemporalExpressionEquivalenceWithZ3(
   spec: TemporalSpec,
   left: TemporalExpression,
@@ -707,8 +707,10 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
   }
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
   try {
-    if (typeCheckTemporalExpression(left, symbols) !== "bool" || typeCheckTemporalExpression(right, symbols) !== "bool") {
-      return { status: "unknown", backend: "z3", reason: "equivalence-requires-boolean-expressions" };
+    const leftType = typeCheckTemporalExpression(left, symbols);
+    const rightType = typeCheckTemporalExpression(right, symbols);
+    if ((leftType !== "bool" && leftType !== "int") || leftType !== rightType) {
+      return { status: "unknown", backend: "z3", reason: "equivalence-requires-matching-scalar-expressions" };
     }
     const unequal = `(not (= ${temporalToSmt(left, (name) => name, symbols)} ${temporalToSmt(right, (name) => name, symbols)}))`;
     const status = await check(spec, [unequal]);

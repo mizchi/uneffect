@@ -491,6 +491,18 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulCatchRethrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "recoverOrRethrow" }),
     );
+    const missingFinallyOverride = source.replace("      return;\n    }\n    if (runtime.attempted < 0) throw \"telemetry cleanup failed\";", "      // missing finally override\n    }\n    if (runtime.attempted < 0) throw \"telemetry cleanup failed\";");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyOverride, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "finalizeRecovery", target: "finalized" }),
+    );
+    const missingFinallyThrow = source.replace('    if (runtime.attempted < 0) throw "telemetry cleanup failed";', "    // missing finally throw");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "finalizeRecovery", target: "finalized" }),
+    );
+    const effectfulFinallyThrow = source.replace('throw "telemetry cleanup failed";', 'throw new Error("telemetry cleanup failed");');
+    expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulFinallyThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "finalizeRecovery" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

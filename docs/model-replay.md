@@ -174,8 +174,14 @@ path. A catch may itself end paths with a conditional void return or a primitive
 literal rethrow; those predicates are composed under the original `throwWhen`,
 and every resulting path still crosses a common finally. Value returns,
 effectful rethrow expressions, catch-value-dependent control, abrupt completion
-originating in finally beyond a direct terminal void return, break, continue,
-labels, and general loops are still not represented.
+originating in finally beyond the supported conditional void-return/primitive-
+throw fragment, break, continue, labels, and general loops are still not
+represented. A finally completion overrides a retained try/catch completion on
+the paths where finally returns or throws; where finally is normal, the prior
+completion survives. The Z3-backed validator can discharge syntactic
+differences between equivalent boolean guards and integer action updates. The
+syntax-only validator deliberately keeps exact normalized comparison as its
+fast path.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

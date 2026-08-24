@@ -7,6 +7,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   state attempted: int
   state postProcessed: int
   state recovered: int
+  state finalized: int
   state auditArmed: bool
   init delivered = 0
   init dropped = 0
@@ -14,6 +15,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   init attempted = 0
   init postProcessed = 0
   init recovered = 0
+  init finalized = 0
   init auditArmed = false
   action deliver: delivered' = delivered + 1, attempted' = attempted + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
@@ -23,6 +25,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed, recovered' = auditArmed ? recovered : recovered + 1
   action recoverOrStop: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action recoverOrRethrow: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
+  action finalizeRecovery: recovered' = recovered + 1, postProcessed' = (auditArmed ? postProcessed + 1 : attempted < 0 ? postProcessed : postProcessed + 1), finalized' = (auditArmed || attempted < 0) ? finalized : finalized + 1
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -39,6 +42,7 @@ export interface TelemetryRoutingState {
   attempted: number;
   postProcessed: number;
   recovered: number;
+  finalized: number;
   auditArmed: boolean;
 }
 
@@ -49,6 +53,7 @@ export class TelemetryRoutingAccounting {
   attempted = 0;
   postProcessed = 0;
   recovered = 0;
+  finalized = 0;
   auditArmed = false;
 
   record(outcome: TelemetryOutcome): void {
@@ -67,8 +72,8 @@ export function createTelemetryRouting(initial: TelemetryRoutingState): Telemetr
 }
 
 function snapshotTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
-  const { delivered, dropped, buffered, attempted, postProcessed, recovered, auditArmed } = runtime;
-  return { delivered, dropped, buffered, attempted, postProcessed, recovered, auditArmed };
+  const { delivered, dropped, buffered, attempted, postProcessed, recovered, finalized, auditArmed } = runtime;
+  return { delivered, dropped, buffered, attempted, postProcessed, recovered, finalized, auditArmed };
 }
 
 /* uneffect: refinement telemetryRouting@1 observe */
@@ -165,6 +170,21 @@ export function recoverOrRethrowTelemetry(runtime: TelemetryRoutingAccounting): 
     // A rethrow also crosses the cleanup boundary.
   }
   runtime.postProcessed += 1;
+}
+
+/* uneffect: refinement telemetryRouting@1 action finalizeRecovery */
+export function finalizeTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
+  try {
+    runtime.recovered += 1;
+  } finally {
+    if (runtime.auditArmed) {
+      runtime.postProcessed += 1;
+      return;
+    }
+    if (runtime.attempted < 0) throw "telemetry cleanup failed";
+    runtime.postProcessed += 1;
+  }
+  runtime.finalized += 1;
 }
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */

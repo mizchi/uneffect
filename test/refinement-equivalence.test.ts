@@ -28,6 +28,29 @@ describe("Z3-backed refinement expression equivalence", () => {
     )).resolves.toEqual({ status: "equivalent", backend: "z3" });
   });
 
+  it("proves integer update equivalence and discharges syntax-only action mismatches", async () => {
+    const source = `/* uneffect:
+      state value: int
+      state armed: bool
+      init value = 0
+      init armed = false
+      action increment: value' = armed ? value : value + 1
+    */
+      interface Runtime { value: number; armed: boolean }
+      /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) { if (runtime.armed) return; runtime.value++ }
+    `;
+    const spec = parseSpec("integer-equivalence.ts", source).temporal;
+    await expect(checkTemporalExpressionEquivalenceWithZ3(
+      spec,
+      parseTemporalExpression("armed ? value : value + 1"),
+      parseTemporalExpression("!armed ? value + 1 : value"),
+    )).resolves.toEqual({ status: "equivalent", backend: "z3" });
+    expect(await validateRefinementActionBodiesWithZ3("integer-equivalence.ts", source, "counter", spec)).toEqual([]);
+  });
+
   it("accepts logically equivalent invariant and guard syntax", async () => {
     const source = `${prelude}
       /* uneffect: refinement counter@1 action increment */

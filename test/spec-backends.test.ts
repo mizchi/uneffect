@@ -37,6 +37,19 @@ const source = `
 `;
 
 describe("spec IR and generated verifier programs", () => {
+  it("splits action assignments after comparison operators without treating them as type arguments", () => {
+    const temporal = parseSpec("comparison-assignments.ts", `/* uneffect:
+      state attempted: int
+      state processed: int
+      state finalized: int
+      init attempted = 0
+      init processed = 0
+      init finalized = 0
+      action finish: processed' = attempted < 0 ? processed : processed + 1, finalized' = finalized + 1
+    */`).temporal;
+    expect(temporal.actions[0]?.assignments.map(({ target }) => target)).toEqual(["processed", "finalized"]);
+  });
+
   it("expands registered temporal semantic domains without core parser conditionals", () => {
     const registry = createDefaultTemporalDomainRegistry().register({
       name: "queue-depth",

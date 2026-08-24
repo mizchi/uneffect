@@ -56,6 +56,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Complete WHATWG URL normalization and exact-or-unconstrained query semantics in the TypeScript prototype.
   - [x] Bring Rust URL normalization and query semantics to parity with the TypeScript frontend.
 - [x] Emit parse errors for malformed or unsupported Uneffect directives instead of silently ignoring them.
+- [x] Split temporal action assignments with an expression-aware comma scanner so comparison operators are not misread as generic type delimiters.
 
 ## P1 — Capability effects
 
@@ -168,6 +169,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Preserve distinct `returnWhen` and `throwWhen` predicates in heterogeneous joins, discharge only `throwWhen` through catch, and retain return completion across common `finally` at a terminal try boundary.
       - [x] Apply post-try statements only to the normally continuing path after catch discharges a heterogeneous throw completion, preserving the return path across the join.
       - [x] Compose catch-local conditional void returns and primitive rethrows with prior try completion, common finally, and normal-only post-try continuation.
+      - [x] Give conditional void return and primitive throw completions originating in `finally` precedence over retained try/catch completion, while preserving prior completion where finally is normal.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.
@@ -184,6 +186,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Follow immutable aliases initialized from a namespace-import function property while rejecting the equivalent mutable alias.
       - [x] Prove exact scalar action guards through a leading negated early-return and reject missing, mismatched, or unexpected guards.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar action guards; retain real mismatches and solver `unknown` as diagnostics.
+      - [x] Extend the opt-in Z3 equivalence pass to integer action updates, retaining syntax equality as the fast path and unsupported/non-equivalent expressions as diagnostics.
       - [x] Prove single-return scalar invariant functions against temporal safety-property expression ASTs.
       - [x] Add an opt-in Z3 equivalence pass for normalized scalar invariant predicates without weakening unsupported-body diagnostics.
       - [x] Normalize immutable local scalar constants and alias chains in invariant bindings without evaluating calls.
