@@ -58,4 +58,4 @@ The contract layers — CLI surface, evidence schema, builtin registry, Corsa JS
 
 ## CI tiers
 
-The workflow separates unit/build/package checks, Z3 obligations, Quint safety simulations with negative controls, and exhaustive Apalache verification. The exhaustive tier installs Java explicitly; local environments without Java still run every other tier.
+The workflow separates unit/build/package checks, Z3 obligations, Quint safety simulations with negative controls, and exhaustive Apalache verification. The exhaustive tier installs Java explicitly; local environments without Java still run every other tier. No solver the toolchain runs itself is native: Z3 is the `z3-solver` WASM build, and the JVM appears only in the deliberately redundant Apalache and TLC checks described in [formal models](./formal-models.md).
