@@ -4,6 +4,8 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 ## Documents
 
+- [Implementation status](./implementation-status.md): the tested feature surface and explicit non-claims.
+- [Roadmap and known gaps](./roadmap.md): prioritized GitHub Issues, missing capabilities, and completion policy.
 - [Effect system](./effect-system.md): algebra, evidence, regions, temporal IR, and optimizer boundary.
 - [Gradual annotations](./gradual-annotations.md): comment marker, grammar, attachment, contracts, and optional Valibot assertions.
 - [Builtin semantic contracts](./builtin-contracts.md): scoped Fetch authority, DOM operations, Worker messaging, transfer ownership, and extensible overlays.
@@ -36,11 +38,8 @@ Uneffect is a gradual effect specification and verification layer for existing T
 7. Transfer is a flow-sensitive ownership transition and invalidation event.
 8. Only verified evidence may authorize optimization.
 
-## Near-term design sequence
+## Planning
 
-1. Add a structured parser for parameterized effects and restricted glob sets.
-2. Introduce a versioned builtin contract IR and symbol-key format.
-3. Implement Fetch contracts as the first scoped-effect vertical slice.
-4. Implement core DOM contracts by operation category.
-5. Model transfer ownership in Quint with a broken use-after-transfer witness.
-6. Add `Transfer` to the Rust neutral IR and instantiate Worker/structured-clone contracts.
+The original near-term design sequence is complete. See the
+[current roadmap](./roadmap.md) for remaining work; GitHub Issues are the source
+of truth for unimplemented features.

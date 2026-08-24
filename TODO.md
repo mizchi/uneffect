@@ -1,6 +1,25 @@
 # Uneffect implementation roadmap
 
-This file is the implementation ledger. Work proceeds top to bottom within each priority unless a prerequisite or verifier result forces a redesign. An item is complete only when its code, regression tests, and relevant English documentation are all updated.
+This file is the historical implementation ledger. Completed work is summarized
+in `docs/implementation-status.md`. Unfinished work is tracked in GitHub Issues
+and prioritized in `docs/roadmap.md`; unchecked entries below are retained for
+traceability and map to those issues rather than forming a second active queue.
+
+Open-work mapping:
+
+- reachability, vacuity, and deadlock: [#1](https://github.com/mizchi/uneffect/issues/1)
+- temporal synthesis and general formulas: [#2](https://github.com/mizchi/uneffect/issues/2)
+- TypeScript/model refinement and general CFGs: [#3](https://github.com/mizchi/uneffect/issues/3)
+- property generators and shrinkers: [#4](https://github.com/mizchi/uneffect/issues/4)
+- collection state and TLC values/traces: [#5](https://github.com/mizchi/uneffect/issues/5)
+- typed arrays and complete SHA-256 composition: [#6](https://github.com/mizchi/uneffect/issues/6)
+- independently checkable evidence: [#7](https://github.com/mizchi/uneffect/issues/7)
+- native Corsa frontend parity: [#8](https://github.com/mizchi/uneffect/issues/8)
+- unified Promise/exception/resource flow: [#9](https://github.com/mizchi/uneffect/issues/9)
+- Node and Web event-loop ownership: [#10](https://github.com/mizchi/uneffect/issues/10)
+
+An item is complete only when its code, regression tests, and relevant English
+documentation are all updated.
 
 - [x] Replace `extractions/setup-just` with the official Linux musl release asset pinned by version and SHA-256, removing its transitive Node 20 `setup-crate` action.
 - [x] Upgrade the SHA-pinned `pnpm/action-setup` workflow dependency to Node 24-native v6.0.9 and retain `actions/setup-node` pnpm-store caching.
