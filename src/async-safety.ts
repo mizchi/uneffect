@@ -1453,12 +1453,35 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(statement);
         return reassigned;
       };
-      const isNeverReturningThrowCall = (statement: ts.Statement): boolean => {
-        if (!ts.isExpressionStatement(statement) || !ts.isCallExpression(statement.expression)) return false;
-        const signature = checker.getResolvedSignature(statement.expression);
-        return signature !== undefined
-          && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
-          && declaresSynchronousThrow(signature.declaration);
+      const isGuaranteedThrowExpression = (original: ts.Expression): boolean => {
+        let expression = original;
+        while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isSatisfiesExpression(expression)
+          || ts.isNonNullExpression(expression) || ts.isAwaitExpression(expression)
+          || ts.isVoidExpression(expression)) expression = expression.expression;
+        if (ts.isCallExpression(expression)) {
+          const signature = checker.getResolvedSignature(expression);
+          return signature !== undefined
+            && (checker.getReturnTypeOfSignature(signature).flags & ts.TypeFlags.Never) !== 0
+            && declaresSynchronousThrow(signature.declaration);
+        }
+        if (ts.isBinaryExpression(expression) && expression.operatorToken.kind === ts.SyntaxKind.CommaToken) {
+          return isGuaranteedThrowExpression(expression.right);
+        }
+        if (ts.isConditionalExpression(expression)) {
+          return isGuaranteedThrowExpression(expression.whenTrue)
+            && isGuaranteedThrowExpression(expression.whenFalse);
+        }
+        return false;
+      };
+      const isGuaranteedThrowStatement = (statement: ts.Statement): boolean => {
+        if (ts.isExpressionStatement(statement)) return isGuaranteedThrowExpression(statement.expression);
+        if (ts.isReturnStatement(statement) && statement.expression) return isGuaranteedThrowExpression(statement.expression);
+        if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1) {
+          const initializer = statement.declarationList.declarations[0]!.initializer;
+          return initializer !== undefined && isGuaranteedThrowExpression(initializer);
+        }
+        return false;
       };
       const switchIsExhaustive = (statement: ts.SwitchStatement): boolean => {
         if (statement.caseBlock.clauses.some(ts.isDefaultClause)) return true;
@@ -1565,9 +1588,10 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (activates(statement) && !next.active) { next.active = true; next.pending = true; }
         if (reassigns(statement) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
         if (consumes(statement) && next.active) next.pending = false;
-        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement) || isNeverReturningThrowCall(statement)) {
+        const guaranteedThrow = isGuaranteedThrowStatement(statement);
+        if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement) || guaranteedThrow) {
           next.terminated = true;
-          next.completion = ts.isReturnStatement(statement) ? "return" : "throw";
+          next.completion = ts.isReturnStatement(statement) && !guaranteedThrow ? "return" : "throw";
         }
         return [next];
       };

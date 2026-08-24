@@ -39,10 +39,18 @@ const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
 const explicitCatchOwnershipSource = `
   declare function task(): Promise<number>
   /* uneffect: effect Throw<Error> */ declare function fail(): never
+  declare const flag: boolean
 ${Array.from({ length: 64 }, (_, index) => `
   async function caught${index}() {
     const pending = task()
-    try { ${index % 2 === 0 ? `throw new Error("route-${index}")` : "fail()"} } catch { await pending }
+    try { ${[
+      `throw new Error("route-${index}")`,
+      "fail()",
+      "return fail()",
+      "void fail()",
+      "(void 0, fail())",
+      "flag ? fail() : fail()",
+    ][index % 6]} } catch { await pending }
   }
 `).join("\n")}`;
 const promiseAdapterSource = readFileSync(new URL("../examples/dogfood/promise-adapter.ts", import.meta.url), "utf8");
@@ -222,7 +230,7 @@ describe("typed-array static verification", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", initializedTelemetryDeliverySource);
   }, { time: 500, iterations: 5 });
 
-  bench("route 64 proven throw completions through Promise ownership catches", () => {
+  bench("route 64 structured throw completions through Promise ownership catches", () => {
     analyzeAsyncSafetyInProgram(explicitCatchProgram, explicitCatchSource);
   }, { time: 500, iterations: 20 });
 

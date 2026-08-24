@@ -360,13 +360,19 @@ the state before the `try`. `finally` runs for normal and abrupt completion,
 including early return, and preserves a pending return or throw unless the
 `finally` block overrides it.
 
-A direct call used as its own expression statement is also a guaranteed throw
-edge when TypeScript proves its return type is `never` and its resolved
-declaration explicitly carries `Throw<E>`. Both conditions are required:
+A resolved call is also a guaranteed throw edge when TypeScript proves its
+return type is `never` and its declaration explicitly carries `Throw<E>`.
+Both conditions are required:
 `never` alone also describes process termination and divergence, while
-`Throw<E>` alone permits normal return. Parenthesized, compound, dynamically
-dispatched, and otherwise nested calls remain outside this guaranteed-edge
-fragment.
+`Throw<E>` alone permits normal return. The structured expression fragment
+preserves this completion through `return`, a single variable initializer,
+parentheses, `as`/type assertions, `satisfies`, non-null, `await`, and `void`;
+through the right side of a comma expression; and through a ternary only when
+both branches are guaranteed throws. This matters for `return fail()`: the
+call throws before a return can complete, so the edge enters `catch` rather
+than bypassing it as a return. Logical operators, multiple declarators,
+call-argument nesting, and unresolved dynamic dispatch remain outside this
+guaranteed-edge fragment.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
 execute their body at least once. Loop bodies are iterated to a finite abstract
 state closure. Unlabeled and labeled `break`/`continue` propagate through nested

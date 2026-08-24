@@ -832,10 +832,10 @@ effect comparison. It reuses one TypeScript Program and therefore does not
 measure parsing or program construction; unreviewed Web IDL properties still
 fall outside this claim.
 
-The warm-program Promise ownership benchmark for 64 proven throw completions
-routed through catches measured 6.0417 ms mean over 83 samples (0.75% relative
-margin of error). Half are explicit `throw` statements and half are direct
-calls resolved as both `never` and `Throw<E>`. It includes TypeChecker-backed
-Promise discovery and the structured ownership fixed point, but reuses one
-parsed Program. It does not measure program construction or general
-expression-level exception edges.
+The warm-program Promise ownership benchmark for 64 structured throw
+completions routed through catches measured 6.4122 ms mean over 78 samples
+(0.63% relative margin of error). It rotates through explicit throws, direct
+calls resolved as both `never` and `Throw<E>`, return, void, comma-tail, and
+all-throw ternary forms. It includes TypeChecker-backed Promise discovery and
+the structured ownership fixed point, but reuses one parsed Program. It does
+not measure program construction or general expression-level exception edges.

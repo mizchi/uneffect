@@ -238,7 +238,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         }
         async function caughtNeverCall() {
           let pending: Promise<never>
-          try { pending = Promise.reject(new ParseError()); fail() }
+          try { pending = Promise.reject(new ParseError()); return fail() }
           catch { await pending }
         }
       `,

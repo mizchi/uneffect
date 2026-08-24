@@ -9,7 +9,7 @@ export async function auditInvalidRequest(message: string): Promise<void> {
   let delivery: Promise<void>;
   try {
     delivery = sendAuditEvent(message);
-    fatal(`invalid request: ${message}`);
+    return fatal(`invalid request: ${message}`);
   } catch {
     await delivery;
   }

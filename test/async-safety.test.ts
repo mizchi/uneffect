@@ -452,6 +452,56 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("preserves guaranteed throw completion through return, wrappers, comma, and ternary expressions", () => {
+    const result = analyzeAsyncSafety("throw-expression-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: effect Throw<Error> */ declare function fail(): never
+      declare function maybeFail(): void
+      async function returned() {
+        const pending = task()
+        try { return fail() } catch { await pending }
+      }
+      async function wrapped() {
+        const pending = task()
+        try { (fail()) } catch { await pending }
+      }
+      async function voided() {
+        const pending = task()
+        try { void fail() } catch { await pending }
+      }
+      async function awaited() {
+        const pending = task()
+        try { await fail() } catch { await pending }
+      }
+      async function initialized() {
+        const pending = task()
+        try { const impossible = fail(); void impossible } catch { await pending }
+      }
+      async function comma() {
+        let pending: Promise<number>
+        try { (pending = task(), fail()) } catch { await pending }
+      }
+      async function bothBranches(flag: boolean) {
+        const pending = task()
+        try { flag ? fail() : fail() } catch { await pending }
+      }
+      async function oneBranch(flag: boolean) {
+        const pending = task()
+        try { flag ? fail() : maybeFail() } catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "returned", status: "observed" },
+      { owner: "wrapped", status: "observed" },
+      { owner: "voided", status: "observed" },
+      { owner: "awaited", status: "observed" },
+      { owner: "initialized", status: "observed" },
+      { owner: "comma", status: "observed" },
+      { owner: "bothBranches", status: "observed" },
+      { owner: "oneBranch", status: "floating" },
+    ]);
+  });
+
   it("dogfoods audit delivery before a typed fatal throw", () => {
     const fileName = "examples/dogfood/audit-before-fatal.ts";
     const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
