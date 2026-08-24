@@ -148,6 +148,13 @@ boundary. Reviewed client/scroll/offset metric properties produce
 `LayoutRead`. Other Web IDL properties remain unclassified; a dynamic key on a
 DOM receiver falls back to `Dom<All, Scope>`.
 
+`Element.outerHTML` separates its regions. Serialization reads node,
+attribute, and text state from the Element subtree. Replacement parses in and
+writes the `element.parentNode` topology region, mutates both that parent region
+and the replaced Element identity, and retains `InvokeUserCode`. A detached
+Element still receives this may-effect upper bound; the current frontend does
+not prove parent presence to erase an impossible write path.
+
 `Element.attributes` is a reviewed live-view result. Calls on its
 `NamedNodeMap`, such as `getNamedItem`, `setNamedItem`, and `removeNamedItem`,
 are projected back to the originating Element region for direct access and

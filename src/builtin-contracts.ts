@@ -56,7 +56,9 @@ export interface DomPropertyBuiltinOperation {
   readOperations: readonly DomOperation[];
   writeOperations: readonly DomOperation[];
   resultRegion?: "receiver";
+  writeRegion?: "parentNode";
   mutatesReceiverOnWrite?: boolean;
+  mutatesWriteRegionOnWrite?: boolean;
   invokesUserCodeOnWrite?: boolean;
 }
 
@@ -360,6 +362,15 @@ function domPropertyBuiltinContracts(): BuiltinContract[] {
       mutatesReceiverOnWrite: true,
       invokesUserCodeOnWrite: true,
     }]),
+    ["Element#outerHTML", {
+      kind: "dom-property",
+      readOperations: ["NodeRead", "AttributeRead", "TextRead"],
+      writeOperations: ["Parse", "NodeWrite"],
+      writeRegion: "parentNode",
+      mutatesReceiverOnWrite: true,
+      mutatesWriteRegionOnWrite: true,
+      invokesUserCodeOnWrite: true,
+    }],
     ...[
       "Element#clientHeight", "Element#clientLeft", "Element#clientTop", "Element#clientWidth",
       "Element#scrollHeight", "Element#scrollWidth", "HTMLElement#offsetHeight", "HTMLElement#offsetWidth",

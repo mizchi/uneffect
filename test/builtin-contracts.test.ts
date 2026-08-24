@@ -33,6 +33,7 @@ describe("builtin semantic overlays", () => {
       expect.objectContaining({ symbol: { module: "lib.dom", export: "NamedNodeMap#setNamedItem" }, operation: expect.objectContaining({ kind: "dom", operations: ["AttributeWrite"], mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#innerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"], mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true }) }),
       expect.objectContaining({ symbol: { module: "lib.dom", export: "HTMLElement#offsetWidth" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["LayoutRead"], writeOperations: [] }) }),
+      expect.objectContaining({ symbol: { module: "lib.dom", export: "Element#outerHTML" }, operation: expect.objectContaining({ kind: "dom-property", readOperations: ["NodeRead", "AttributeRead", "TextRead"], writeOperations: ["Parse", "NodeWrite"], writeRegion: "parentNode", mutatesReceiverOnWrite: true, mutatesWriteRegionOnWrite: true, invokesUserCodeOnWrite: true }) }),
     ]));
   });
 

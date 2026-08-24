@@ -45,7 +45,7 @@ same property is proved for arbitrary TypeScript.
   clone/normalize/adjacent-content operations, plus reviewed
   attribute-collection and tree-topology reads,
   direct/immutable-alias `NamedNodeMap` origin projection,
-  markup serialization/parsing, layout metrics, `Node.textContent`,
+  receiver- and parent-scoped markup serialization/parsing, layout metrics, `Node.textContent`,
   `Node.nodeValue`, `CharacterData.data`, and
   `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
   remain open.

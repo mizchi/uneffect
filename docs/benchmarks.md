@@ -826,18 +826,19 @@ control and remains unproved; this run does not support dynamically computed
 keys or general structural object typing.
 
 The warm TypeChecker benchmark for 64 categorized DOM contracts measured
-60.6119 ms mean over 20 samples (3.86% relative margin of error). Each contract
+29.7828 ms mean over 20 samples (1.50% relative margin of error). Each contract
 combines reflected Web IDL property access, attribute collection and method
 reads/writes, tree-topology property and method reads, CharacterData property
 and range-method reads/writes, compound clone/normalize operations, live-view
-origin projection, `innerHTML` read/write, and layout metrics. Property fallback
-lookup is indexed by member name rather than scanning the complete contract
-registry, but the expanded annotation parsing and effect comparison dominate
-this end-to-end workload; no speedup is claimed from that refactor. The
-benchmark reuses one TypeScript Program and therefore does not measure parsing
-or program construction. It is an observation, not a regression budget.
-Parent-mutating `outerHTML`, reassigned/escaping live views, and unreviewed Web
-IDL members still fall outside this claim.
+origin projection, receiver-scoped `innerHTML`, parent-scoped `outerHTML`, and
+layout metrics. Property fallback lookup is indexed by member name rather than
+scanning the complete contract registry. A preceding local run of the smaller
+pre-`outerHTML` workload measured 60.6119 ms, so the observed reduction cannot
+be attributed to the index or treated as a stable speedup. The benchmark reuses
+one TypeScript Program and therefore does not measure parsing or program
+construction. It is an observation, not a regression budget. Parent-presence
+refinement, reassigned/escaping live views, and unreviewed Web IDL members still
+fall outside this claim.
 
 The warm-program Promise ownership benchmark for 64 structured throw
 completions routed through catches measured 8.0718 ms mean over 186 samples

@@ -24,8 +24,8 @@ const fixtures: Record<AdoptionFixtureName, AdoptionFixture> = {
   "browser-app": { expectedDiagnostics: [], files: { "src/app.ts": `
     function byId(id: string) { return document.getElementById(id) }
     function text(value: unknown) { return String(value) }
-    /* uneffect: effect Dom<Parse, typeof target> | Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
-    function render(target: HTMLElement, value: string) { target.innerHTML = ""; target.insertAdjacentText("beforeend", value); target.normalize() }
+    /* uneffect: effect Dom<Parse, typeof target> | Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Dom<Parse, typeof target.parentNode> | Dom<NodeWrite, typeof target.parentNode> | Mutate<typeof target.parentNode> | Mutate<typeof target> | InvokeUserCode */
+    function render(target: HTMLElement, value: string, replaceShell = false) { if (replaceShell) target.outerHTML = '<main id="app"></main>'; else { target.innerHTML = ""; target.insertAdjacentText("beforeend", value); target.normalize() } }
     /* uneffect: effect Dom<AttributeRead, typeof target> | Dom<AttributeWrite, typeof target> | Dom<NodeRead, typeof target> | Dom<LayoutRead, typeof target> | Dom<TextRead, typeof label> | Mutate<typeof target> | InvokeUserCode */
     function snapshotAndMarkReady(target: HTMLElement, label: CharacterData) { const attrs = target.attributes; const busy = attrs.getNamedItem("aria-busy"); const snapshot = [attrs.length, target.children.length, target.clientWidth, label.substringData(0, 5)]; if (busy) attrs.removeNamedItem("aria-busy"); target.toggleAttribute("data-ready", true); return snapshot }
     function listen(target: HTMLElement, run: () => void) { target.addEventListener("click", run) }

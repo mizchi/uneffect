@@ -81,6 +81,7 @@ function mutationRegion(expression: ts.Expression): string {
 function mutateEffect(expression: ts.Expression): Effect {
   return { kind: "mutate", region: mutationRegion(expression) };
 }
+function mutateRegionEffect(region: string): Effect { return { kind: "mutate", region }; }
 
 function localBindings(scope: ts.FunctionLikeDeclaration): Set<string> {
   const names = new Set<string>();
@@ -229,12 +230,16 @@ function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementA
   const resolved = adapter.resolveProperty(access);
   if (!resolved) return undefined;
   const mode = domPropertyAccessMode(access);
-  const operations = [
-    ...(mode.read ? resolved.operation.readOperations : []),
-    ...(mode.write ? resolved.operation.writeOperations : []),
+  const receiverRegion = access.expression.getText();
+  const writeRegion = resolved.operation.writeRegion === "parentNode"
+    ? `${receiverRegion}.parentNode`
+    : receiverRegion;
+  const effects = [
+    ...(mode.read ? resolved.operation.readOperations.map((operation) => capability(`Dom<${operation}, typeof ${receiverRegion}>`)) : []),
+    ...(mode.write ? resolved.operation.writeOperations.map((operation) => capability(`Dom<${operation}, typeof ${writeRegion}>`)) : []),
   ];
-  const effects = operations.map((operation) => capability(`Dom<${operation}, typeof ${access.expression.getText()}>`));
   if (mode.write && resolved.operation.mutatesReceiverOnWrite) effects.push(mutateEffect(access.expression));
+  if (mode.write && resolved.operation.mutatesWriteRegionOnWrite) effects.push(mutateRegionEffect(writeRegion));
   if (mode.write && resolved.operation.invokesUserCodeOnWrite) effects.push(capability("InvokeUserCode"));
   return effects;
 }

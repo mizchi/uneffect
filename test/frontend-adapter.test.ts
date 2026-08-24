@@ -218,6 +218,26 @@ describe("TypeChecker symbol adapter", () => {
     expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
   });
 
+  it("scopes outerHTML replacement to the parent topology region", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-outer-html-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> */
+      function readOuter(element: Element) { return element.outerHTML }
+      /* uneffect: effect Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
+      function replaceOuter(element: Element) { element.outerHTML = "<section>ready</section>" }
+      /* uneffect: effect Dom<NodeRead, typeof element> | Dom<AttributeRead, typeof element> | Dom<TextRead, typeof element> | Dom<Parse, typeof element.parentNode> | Dom<NodeWrite, typeof element.parentNode> | Mutate<typeof element.parentNode> | Mutate<typeof element> | InvokeUserCode */
+      function appendOuter(element: Element) { element.outerHTML += "<section>ready</section>" }
+      interface LocalOuter { outerHTML: string; parentNode: object }
+      /* uneffect: effect Mutate<typeof value> */
+      function local(value: LocalOuter) { value.outerHTML = "local" }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
   it("distinguishes DOM text and Web IDL property reads from writes", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");
