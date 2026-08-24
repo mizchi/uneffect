@@ -116,6 +116,10 @@ same property is proved for arbitrary TypeScript.
   that replaces the generation before continuing. A possible throw before the
   `await`, or replacement followed by a possible throw, restores conservative
   catch entry, so general exception-heavy loop joins remain unsupported.
+- The same catch-entry proof joins nested `if`/`else` paths when the condition
+  is a primitive identifier (or supported static primitive expression) and
+  both branches must reach the tracked `await`. A missing `else`, one
+  unobserved branch, or a call/property condition remains a non-proof.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

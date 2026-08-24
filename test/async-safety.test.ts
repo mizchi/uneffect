@@ -287,12 +287,19 @@ describe("async error and explicit resource safety", () => {
   it("joins an observed Promise generation through a loop-local catch and continue", () => {
     const result = analyzeAsyncSafety("loop-try-catch-promises.ts", `
       declare const retry: boolean
+      declare const usePrimary: boolean
       declare function task(): Promise<number>
       declare function recordAttempt(value: number): void
       async function observedAfterRetry() {
         let pending = task()
         while (retry) {
-          try { const attempt = 1; void attempt; const value = await pending; recordAttempt(value); break }
+          try {
+            const attempt = 1
+            void attempt
+            if (usePrimary) { const value = await pending; recordAttempt(value) }
+            else { await pending }
+            break
+          }
           catch { pending = task(); continue }
         }
         await pending
@@ -321,17 +328,44 @@ describe("async error and explicit resource safety", () => {
         }
         await pending
       }
+      async function oneBranchUnobserved() {
+        let pending = task()
+        while (retry) {
+          try {
+            if (usePrimary) await pending
+            else recordAttempt(0)
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      declare function chooseBranch(): boolean
+      async function riskyBranchCondition() {
+        let pending = task()
+        while (retry) {
+          try {
+            if (chooseBranch()) await pending
+            else await pending
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
     `);
     expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "observedAfterRetry", status: "observed" },
       { owner: "lostAfterRetry", status: "floating" },
       { owner: "riskBeforeObservation", status: "floating" },
       { owner: "riskAfterReplacement", status: "floating" },
+      { owner: "oneBranchUnobserved", status: "floating" },
+      { owner: "riskyBranchCondition", status: "floating" },
     ]);
     expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
       expect.objectContaining({ functionName: "lostAfterRetry" }),
       expect.objectContaining({ functionName: "riskBeforeObservation" }),
       expect.objectContaining({ functionName: "riskAfterReplacement" }),
+      expect.objectContaining({ functionName: "oneBranchUnobserved" }),
+      expect.objectContaining({ functionName: "riskyBranchCondition" }),
     ]);
   });
 

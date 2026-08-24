@@ -1566,21 +1566,48 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (ts.isVoidExpression(expression)) return staticPrimitive(expression.expression, new Map()) !== undefined;
         return staticPrimitive(expression, new Map()) !== undefined;
       };
+      const nonThrowingPrimitiveExpression = (original: ts.Expression): boolean => {
+        let expression = original;
+        while (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+          || ts.isTypeAssertionExpression(expression) || ts.isNonNullExpression(expression)) expression = expression.expression;
+        if (staticPrimitive(expression, new Map()) !== undefined) return true;
+        if (ts.isPrefixUnaryExpression(expression) && expression.operator === ts.SyntaxKind.ExclamationToken) {
+          return nonThrowingPrimitiveExpression(expression.operand);
+        }
+        if (!ts.isIdentifier(expression)) return false;
+        const type = checker.getTypeAtLocation(expression);
+        const members = type.isUnion() ? type.types : [type];
+        const primitive = ts.TypeFlags.BooleanLike | ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike
+          | ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined;
+        return members.length > 0 && members.every((member) =>
+          (member.flags & primitive) !== 0
+          && (member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.TypeParameter)) === 0);
+      };
+      const statementGuaranteesObservationBeforeCatch = (statement: ts.Statement): boolean => {
+        if (ts.isBlock(statement)) return statementsGuaranteeObservationBeforeCatch(statement.statements);
+        if (directGroupAwait(statement)) return true;
+        if (!ts.isIfStatement(statement) || !statement.elseStatement
+          || !nonThrowingPrimitiveExpression(statement.expression)) return false;
+        return statementGuaranteesObservationBeforeCatch(statement.thenStatement)
+          && statementGuaranteesObservationBeforeCatch(statement.elseStatement);
+      };
+      const statementsGuaranteeObservationBeforeCatch = (statements: readonly ts.Statement[]): boolean => {
+        for (let index = 0; index < statements.length; index++) {
+          const statement = statements[index]!;
+          if (nonThrowingPrimitiveStatement(statement)) continue;
+          if (!statementGuaranteesObservationBeforeCatch(statement)) return false;
+          return !statements.slice(index + 1).some(reassigns);
+        }
+        return false;
+      };
       const preciseAwaitCatchEntries = (block: ts.Block, state: PathState): PathState[] | undefined => {
-        const awaitIndex = block.statements.findIndex(directGroupAwait);
-        if (awaitIndex < 0) return undefined;
-        const prefix = block.statements.slice(0, awaitIndex);
-        const awaited = block.statements[awaitIndex]!;
-        const rest = block.statements.slice(awaitIndex + 1);
-        if (!prefix.every(nonThrowingPrimitiveStatement)) return undefined;
+        if (!statementsGuaranteeObservationBeforeCatch(block.statements)) return undefined;
         // This restricted shape has no operation before the await that can
         // enter catch. Every rejection edge at or after the await therefore
         // owns the Promise exactly like the fulfillment edge. A later
         // reassignment remains unsupported because it could install a new
         // Promise before a subsequent statement throws.
-        if (rest.some(reassigns)) return undefined;
-        const beforeAwait = prefix.reduce((current, statement) => executeNodeEffects(statement, current), state);
-        const observed = executeNodeEffects(awaited, beforeAwait);
+        const observed = executeNodeEffects(block, state);
         return [{ ...observed, terminated: false, completion: undefined, abrupt: undefined, label: undefined }];
       };
       const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;

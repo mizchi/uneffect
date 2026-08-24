@@ -555,6 +555,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Prune loop entry/exit edges for finite literal and immutable-const truthiness, including conditionless `for (;;)` and one-shot `do...while (false)` execution.
       - [x] Route guaranteed `never` + `Throw<E>` completions from loop conditions, `for` initializers/incrementors, and `for...in`/`for...of` source expressions into the enclosing structured catch.
       - [x] Preserve Promise observation across a loop-local catch/retry join with a statically primitive non-throwing prefix, a direct tracked `await`, and a suffix that does not replace the tracked generation; retain conservative entries for earlier throw risks or later reassignment.
+      - [x] Join nested `if`/`else` catch-entry paths when a primitive non-throwing condition and both branches must observe the tracked Promise before any throw risk; keep one-sided observation and call/property conditions conservative.
       - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.

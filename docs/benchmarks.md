@@ -889,9 +889,9 @@ regression budget and does not measure program construction, nullable-union
 selection, shadowed identifiers, or general expression-level exception edges.
 
 On 2026-08-25, cold analysis of 64 functions using a loop-local retry with a
-primitive local prefix, variable-initializer `await`, post-await call, and
-`catch { pending = task(); continue }` measured 147.46 ms mean over 50 samples
-(1.05% relative margin of error). The
+primitive local prefix, primitive-condition `if`/`else` branches that both
+await, a post-await call, and `catch { pending = task(); continue }` measured
+157.11 ms mean over 50 samples (1.22% relative margin of error). The
 benchmark includes TypeScript Program construction on every sample and the
 Promise ownership loop fixed point. It is an observation rather than a
 regression budget. It does not cover a possibly throwing operation before the

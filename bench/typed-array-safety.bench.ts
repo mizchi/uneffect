@@ -63,7 +63,12 @@ const loopCatchOwnershipSource = Array.from({ length: 64 }, (_, index) => `
   async function retry${index}(retry: boolean) {
     let pending = task()
     while (retry) {
-      try { const attempt = ${index}; void attempt; const value = await pending; recordAttempt(value); break }
+      try {
+        const attempt = ${index}; void attempt
+        if (retry) { const value = await pending; recordAttempt(value) }
+        else { await pending }
+        break
+      }
       catch { pending = task(); continue }
     }
     await pending
