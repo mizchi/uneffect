@@ -26,11 +26,11 @@ const fixtures: Record<AdoptionFixtureName, AdoptionFixture> = {
     function text(value: unknown) { return String(value) }
     /* uneffect: effect Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
     function render(target: HTMLElement, value: string) { target.textContent = value }
-    /* uneffect: effect Dom<AttributeRead, typeof target> | Dom<NodeRead, typeof target> | Dom<TextRead, typeof label> */
-    function snapshot(target: HTMLElement, label: CharacterData) { return [target.attributes.length, target.children.length, label.data] }
+    /* uneffect: effect Dom<AttributeRead, typeof target> | Dom<AttributeWrite, typeof target> | Dom<NodeRead, typeof target> | Dom<TextRead, typeof label> | Mutate<typeof target> | InvokeUserCode */
+    function snapshotAndMarkReady(target: HTMLElement, label: CharacterData) { const snapshot = [target.getAttributeNames(), target.children.length, label.substringData(0, 5)]; target.removeAttribute("aria-busy"); target.toggleAttribute("data-ready", true); return snapshot }
     function listen(target: HTMLElement, run: () => void) { target.addEventListener("click", run) }
     function now() { return performance.now() }
-    export function mount() { const target = byId("app"); if (target) { render(target, text(now())); snapshot(target, document.createTextNode("ready")); listen(target, () => render(target, "clicked")) } }
+    export function mount() { const target = byId("app"); if (target) { render(target, text(now())); snapshotAndMarkReady(target, document.createTextNode("ready")); listen(target, () => render(target, "clicked")) } }
   ` } },
   "worker-app": { expectedDiagnostics: [], files: { "src/worker.ts": `
     function allocate(size: number) { return new ArrayBuffer(size) }

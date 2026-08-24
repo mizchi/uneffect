@@ -118,7 +118,18 @@ Proof-grade DOM scopes are symbol/identity regions such as `typeof root` or buil
 Dom<Query<".item">, typeof root>
 ```
 
-The TypeChecker adapter now recognizes selected DOM calls by their declaring `lib.dom.d.ts` interface symbol (including mixins such as `ParentNode` and `ChildNode`). Calls produce `Dom<Operation, typeof receiver>`. `NodeWrite` operations additionally mutate the receiver and transferred child regions; contracts that may synchronously invoke callbacks or custom-element reactions emit `InvokeUserCode`. Literal selector arguments are retained as `{ kind: "css-selector" }` query refinements but never used to authorize a different receiver.
+The TypeChecker adapter recognizes selected DOM calls by their declaring
+`lib.dom.d.ts` interface symbol (including mixins such as `ParentNode` and
+`ChildNode`). The reviewed set includes Element attribute inspection and
+mutation, Node topology inspection and insertion/replacement, and
+CharacterData range reads and writes. Calls produce
+`Dom<Operation, typeof receiver>`. `NodeWrite` operations additionally mutate
+the receiver and transferred or detached child regions. Attribute writes and
+tree writes may synchronously run custom-element reactions, so their contracts
+also emit `InvokeUserCode`. CharacterData writes mutate their receiver but do
+not claim synchronous callback invocation. Literal selector arguments are
+retained as `{ kind: "css-selector" }` query refinements but never used to
+authorize a different receiver.
 
 The operation vocabulary includes text and Web IDL property reads/writes, but
 the current executable overlay does not yet infer ordinary property getter and

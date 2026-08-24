@@ -41,7 +41,8 @@ same property is proved for arbitrary TypeScript.
   and layout operations from creation, listeners, dispatch, and parsing.
   Authority is based on receiver identity regions; selectors are refinements
   rather than security boundaries. The executable overlay infers a reviewed
-  call subset plus reviewed attribute-collection and tree-topology reads,
+  call subset including reviewed attribute/tree/text methods, plus reviewed
+  attribute-collection and tree-topology reads,
   `Node.textContent`, `Node.nodeValue`, `CharacterData.data`, and
   `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
   remain open.

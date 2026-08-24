@@ -263,18 +263,42 @@ function domBuiltinContracts(): BuiltinContract[] {
     ["ParentNode#querySelectorAll", { kind: "dom", operation: "NodeRead", queryArgument: 0 }],
     ["Document#getElementById", { kind: "dom", operation: "NodeRead" }],
     ["Element#getAttribute", { kind: "dom", operation: "AttributeRead" }],
+    ...[
+      "Element#getAttributeNS", "Element#getAttributeNames", "Element#getAttributeNode",
+      "Element#getAttributeNodeNS", "Element#hasAttribute", "Element#hasAttributeNS", "Element#hasAttributes",
+    ].map((key): [string, DomBuiltinOperation] => [key, { kind: "dom", operation: "AttributeRead" }]),
+    ...[
+      "Node#compareDocumentPosition", "Node#contains", "Node#getRootNode", "Node#hasChildNodes",
+      "Node#isEqualNode", "Node#isSameNode",
+    ].map((key): [string, DomBuiltinOperation] => [key, { kind: "dom", operation: "NodeRead" }]),
+    ["CharacterData#substringData", { kind: "dom", operation: "TextRead" }],
     ["Element#matches", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
     ["Element#closest", { kind: "dom", operation: "NodeRead", invokesUserCode: true, queryArgument: 0 }],
     ["Element#getBoundingClientRect", { kind: "dom", operation: "LayoutRead" }],
     ["Document#createElement", { kind: "dom", operation: "Create" }],
     ["Document#createTextNode", { kind: "dom", operation: "Create" }],
     ["Element#setAttribute", { kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ...[
+      "Element#removeAttribute", "Element#removeAttributeNS", "Element#setAttributeNS", "Element#toggleAttribute",
+    ].map((key): [string, DomBuiltinOperation] => [key, {
+      kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, invokesUserCode: true,
+    }]),
+    ...["Element#removeAttributeNode", "Element#setAttributeNode", "Element#setAttributeNodeNS"]
+      .map((key): [string, DomBuiltinOperation] => [key, {
+        kind: "dom", operation: "AttributeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true,
+      }]),
     ["Node#appendChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
     ["Node#removeChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0], invokesUserCode: true }],
+    ["Node#insertBefore", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }],
+    ["Node#replaceChild", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, mutatesArguments: [0, 1], invokesUserCode: true }],
     ["ParentNode#replaceChildren", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
     ["ParentNode#append", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
     ["ParentNode#prepend", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
     ["ChildNode#remove", { kind: "dom", operation: "NodeWrite", mutatesReceiver: true, invokesUserCode: true }],
+    ...["CharacterData#appendData", "CharacterData#deleteData", "CharacterData#insertData", "CharacterData#replaceData"]
+      .map((key): [string, DomBuiltinOperation] => [key, {
+        kind: "dom", operation: "TextWrite", mutatesReceiver: true,
+      }]),
     ["EventTarget#addEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true, invokesUserCode: true }],
     ["EventTarget#removeEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true }],
     ["EventTarget#dispatchEvent", { kind: "dom", operation: "Dispatch", invokesUserCode: true }],

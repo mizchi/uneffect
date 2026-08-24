@@ -116,10 +116,11 @@ const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerO
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
 const domPropertySourceName = "/bench/dom-properties.ts";
 const domPropertySourceText = Array.from({ length: 64 }, (_, index) => `
-  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<NodeRead, typeof element> | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
+  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> | Dom<AttributeRead, typeof element> | Dom<AttributeWrite, typeof element> | Dom<NodeRead, typeof element> | Mutate<typeof element> | InvokeUserCode | Dom<TextRead, typeof data> | Dom<TextWrite, typeof data> | Mutate<typeof data> */
   function update${index}(input: HTMLInputElement, element: Element, data: CharacterData) {
-    input.value += "${index}"; data.data += input["value"]
-    return [element.attributes, element.children, data.data]
+    input.value += "${index}"; data.data += input["value"]; data.replaceData(0, 0, "")
+    element.toggleAttribute("data-active", element.hasAttribute("data-active"))
+    return [element.attributes, element.children, element.contains(element.firstChild), data.substringData(0, 1)]
   }
 `).join("\n");
 const domCompilerOptions: ts.CompilerOptions = { ...compilerOptions, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] };
@@ -154,7 +155,7 @@ describe("refinement receiver identity", () => {
 });
 
 describe("DOM property effect inference", () => {
-  bench("analyze 64 warm categorized property contracts", () => {
+  bench("analyze 64 warm categorized DOM contracts", () => {
     analyzeEffectsInProgram(domPropertyProgram, domPropertySource);
   }, { time: 500, iterations: 20 });
 });

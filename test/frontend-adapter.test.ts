@@ -129,6 +129,31 @@ describe("TypeChecker symbol adapter", () => {
     })).toContainEqual(expect.objectContaining({ library: "lib.dom.d.ts", actual: expect.any(String) }));
   });
 
+  it("classifies reviewed attribute, topology, and character-data methods", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-categories-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<AttributeRead, typeof element> */
+      function inspectAttributes(element: Element) { return [element.hasAttribute("role"), element.getAttributeNames()] }
+      /* uneffect: effect Dom<AttributeWrite, typeof element> | Mutate<typeof element> | InvokeUserCode */
+      function updateAttributes(element: Element) { element.removeAttribute("hidden"); element.toggleAttribute("open") }
+      /* uneffect: effect Dom<NodeRead, typeof node> */
+      function inspectTopology(node: Node, other: Node) { return node.contains(other) && node.compareDocumentPosition(other) !== 0 }
+      /* uneffect: effect Dom<NodeWrite, typeof root> | Mutate<typeof root> | Mutate<typeof child> | Mutate<typeof before> | InvokeUserCode */
+      function insert(root: Node, child: Node, before: Node) { return root.insertBefore(child, before) }
+      /* uneffect: effect Dom<TextRead, typeof data> */
+      function readRange(data: CharacterData) { return data.substringData(0, 1) }
+      /* uneffect: effect Dom<TextWrite, typeof data> | Mutate<typeof data> */
+      function replaceRange(data: CharacterData) { data.replaceData(0, 1, "x") }
+      interface LocalElement { hasAttribute(name: string): boolean; toggleAttribute(name: string): boolean }
+      function localMethods(element: LocalElement) { return element.hasAttribute("x") || element.toggleAttribute("x") }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
   it("distinguishes DOM text and Web IDL property reads from writes", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
     const fileName = join(directory, "input.ts");
