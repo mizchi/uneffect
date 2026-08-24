@@ -389,6 +389,38 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("lets a direct void return in finally override normal completion", () => {
+    const source = `/* uneffect:
+      state worked: int
+      state released: int
+      state observed: int
+      init worked = 0
+      init released = 0
+      init observed = 0
+      action execute: worked' = worked + 1, released' = released + 1
+    */
+      interface Runtime { worked: number; released: number; observed: number }
+      /* uneffect: refinement resource@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement resource@1 action execute */
+      export function execute(runtime: Runtime) {
+        try {
+          runtime.worked++
+        } finally {
+          runtime.released++
+          return
+        }
+        runtime.observed++
+      }
+    `;
+    expect(validateRefinementActionBodies("finally-return-override.ts", source, "resource", parseSpec("finally-return-override.ts", source).temporal)).toEqual([]);
+
+    const valueReturn = source.replace("          return\n", "          return runtime.released\n");
+    expect(validateRefinementActionBodies("finally-value-override.ts", valueReturn, "resource", parseSpec("finally-value-override.ts", valueReturn).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "execute" }),
+    ]);
+  });
+
   it("joins a branch-local void return with the continuing path", () => {
     const source = `/* uneffect:
       state value: int

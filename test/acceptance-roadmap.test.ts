@@ -504,6 +504,32 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("finally-return.ts", source, "resource", temporal)).toEqual([]);
   });
 
+  it("allows finally to override normal completion with a void return", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state worked: int
+      state released: int
+      state observed: int
+      init worked = 0
+      init released = 0
+      init observed = 0
+      action execute: worked' = worked + 1, released' = released + 1
+    */
+      interface Runtime { worked: number; released: number; observed: number }
+      /* uneffect: refinement resource@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement resource@1 action execute */
+      export function execute(runtime: Runtime) {
+        try { runtime.worked++ }
+        finally { runtime.released++; return }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("finally-return-override.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("finally-return-override.ts", source, "resource", temporal)).toEqual([]);
+  });
+
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

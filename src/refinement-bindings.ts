@@ -950,6 +950,15 @@ function validateRefinementActionBodiesInSource(
           )) return undefined;
         }
         if (!statement.finallyBlock) continue;
+        const finallyStatements = [...statement.finallyBlock.statements];
+        const finallyTerminal = finallyStatements.at(-1);
+        if (finallyTerminal && directVoidReturn(finallyTerminal)) {
+          if (!collect(
+            ts.factory.createBlock(finallyStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+            updates, new Map(localValues), activeCalls, false,
+          )) return undefined;
+          return updates;
+        }
         if (!collect(
           statement.finallyBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, false,

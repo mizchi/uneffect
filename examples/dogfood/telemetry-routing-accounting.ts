@@ -79,7 +79,15 @@ export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void {
 }
 
 /* uneffect: refinement telemetryRouting@1 action drop */
-export function dropTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("dropped"); }
+export function dropTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    runtime.dropped += 1;
+  } finally {
+    runtime.attempted += 1;
+    return;
+  }
+  runtime.postProcessed += 1;
+}
 
 /* uneffect: refinement telemetryRouting@1 action buffer */
 export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }

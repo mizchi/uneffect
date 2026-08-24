@@ -111,6 +111,12 @@ samples (0.56% RME). This includes separate return and normal abstract states,
 cleanup on both, post-try execution on only the normal state, and their final
 conditional join.
 
+Changing the telemetry drop path so a direct void return in `finally`
+suppresses an otherwise reachable post-processing write measured 1.0851 ms
+mean over 461 samples (0.52% RME). Removing the overriding return produces an
+`action-update-mismatch` for the newly reachable write and is excluded from
+the timed path.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

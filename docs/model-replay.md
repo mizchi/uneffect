@@ -154,7 +154,10 @@ executes `finally` on every path; statements after the try execute only on the
 normally continuing path before both states are joined. This is the first
 resource-cleanup completion rule, not general disposal proof. Value returns,
 nested abrupt completion not represented by these joins, and return/throw
-overrides originating in `finally` remain fail-closed.
+overrides originating in `finally` remain fail-closed, except for a direct
+terminal void return. That restricted override applies preceding finally
+updates and suppresses every statement after the try. Value-bearing returns,
+conditional returns in finally, and throws from finally are still rejected.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.
