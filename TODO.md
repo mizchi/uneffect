@@ -124,7 +124,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Detect jointly inconsistent initial constraints.
   - [x] Detect action guards that are unsatisfiable over all typed states.
   - [x] Detect exact duplicates and properties implied by an earlier property.
-  - [ ] Detect actions unreachable from the transition system's initial states.
+  - [x] Detect actions unreachable from the transition system's initial states within explicit bounded, finite-state-complete, inductive, or proven-strengthening proof modes; retain general infinite-state cases as explicitly bounded/inconclusive results.
     - [x] Report depth-labelled bounded unreachability by unrolling init and complete stuttering transitions in Z3.
     - [x] Upgrade bounded-unreachable actions to an unbounded result when `!guard` is established at init and preserved by one-step induction across every transition.
     - [x] Accept explicitly selected temporal properties as strengthening invariants, but only after Z3 proves initialization and one-step preservation; combine multiple proven properties when required.
@@ -211,7 +211,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Simplify a same-key entry-array filter-then-push upsert sequence to temporal `Map.put` while retaining different-key removals.
           - [x] Refine exact builtin entry-array `find(entry => entry[0] === key)![1]` reads to guarded temporal `Map.get(key)` without treating `!` as proof evidence.
           - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters.
-  - [ ] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress.
+  - [x] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress for the documented bounded, finite-state, inductive, and reachable-lasso fragments.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
     - [x] Find the shortest bounded reachable state where actions are enabled but every enabled action stutters.

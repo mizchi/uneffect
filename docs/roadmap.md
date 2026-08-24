@@ -7,13 +7,17 @@ date commitment.
 
 ## Phase 1 — Make proof boundaries dependable
 
-1. [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
-   must distinguish bounded evidence, inductive proof, and inconclusive results.
-2. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
+1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point.
-3. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
+2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
+
+[Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
+is complete for the documented bounded, finite-state-complete, inductive,
+strengthened, and reachable-lasso proof modes. General infinite-state
+reachability is intentionally reported as bounded/inconclusive unless a proof
+rule applies; absence of a bounded witness is never promoted to a proof.
 
 These are the highest-priority soundness gaps because they determine whether a
 local result survives composition with real application control flow.
