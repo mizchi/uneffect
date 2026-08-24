@@ -476,6 +476,64 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("binds numeric literal payloads across switch fallthrough and default", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state mode: int
+      init failed = 0
+      init mode = 0
+      action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; mode: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          switch (runtime.mode) {
+            case 0:
+            case 1: throw 1
+            default: throw 0
+          }
+        } catch (error) {
+          if (error > 0) runtime.failed++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("literal-switch-payload.ts", source, "accounting", parseSpec("literal-switch-payload.ts", source).temporal)).toEqual([]);
+
+    for (const unsupported of ['"failed"', "null"]) {
+      const untrackedPayload = source.replace("default: throw 0", `default: throw ${unsupported}`);
+      expect(validateRefinementActionBodies("untracked-literal-switch-payload.ts", untrackedPayload, "accounting", parseSpec("untracked-literal-switch-payload.ts", untrackedPayload).temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+      );
+    }
+  });
+
+  it("binds boolean literal payloads across conditional throws", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state shouldFail: bool
+      init failed = 0
+      init shouldFail = false
+      action reject: failed' = shouldFail ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; shouldFail: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          if (runtime.shouldFail) throw true
+          throw false
+        } catch (error) {
+          if (error) runtime.failed++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("boolean-literal-payload.ts", source, "accounting", parseSpec("boolean-literal-payload.ts", source).temporal)).toEqual([]);
+  });
+
   it("propagates a nested conditional throw to the enclosing catch path", () => {
     const source = `/* uneffect:
       state delivered: int

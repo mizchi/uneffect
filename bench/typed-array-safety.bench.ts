@@ -998,4 +998,31 @@ describe("typed-array static verification", () => {
     `;
     validateRefinementActionBodies("switch-caught-payload-bench.ts", source, "accounting", parseSpec("switch-caught-payload-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("bind literal throw payloads through switch fallthrough", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state mode: int
+      init failed = 0
+      init mode = 0
+      action reject: failed' = (mode === 0 ? 1 : mode === 1 ? 1 : 0) > 0 ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; mode: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          switch (runtime.mode) {
+            case 0:
+            case 1: throw 1
+            default: throw 0
+          }
+        } catch (error) {
+          if (error > 0) runtime.failed++
+        }
+      }
+    `;
+    validateRefinementActionBodies("literal-switch-payload-bench.ts", source, "accounting", parseSpec("literal-switch-payload-bench.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

@@ -791,7 +791,7 @@ function validateRefinementActionBodiesInSource(
     if (!trueValue || !falseValue) return undefined;
     return sameRefinementExpression(trueValue, falseValue)
       ? trueValue
-      : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
+      : joinCompletionPredicate(condition, trueValue, falseValue);
   };
   const sequenceThrowValue = (
     prior: ActionCompletion,
@@ -874,11 +874,9 @@ function validateRefinementActionBodiesInSource(
     const asBlock = (statement: ts.Statement | undefined): ts.Block => !statement
       ? ts.factory.createBlock([], true)
       : ts.isBlock(statement) ? statement : ts.factory.createBlock([statement], true);
-    const isPureThrownValue = (expression: ts.Expression): boolean => {
+    const isUntrackedPrimitiveThrownValue = (expression: ts.Expression): boolean => {
       const value = unwrap(expression);
-      return ts.isStringLiteral(value) || ts.isNumericLiteral(value)
-        || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
-        || value.kind === ts.SyntaxKind.NullKeyword;
+      return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
     };
     const mergeConditionalUpdates = (
       condition: TemporalExpression,
@@ -944,7 +942,7 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isThrowStatement(statement)) {
         if (!allowTerminalThrow || statementIndex !== body.statements.length - 1) return undefined;
-        if (!isPureThrownValue(statement.expression)) {
+        if (!isUntrackedPrimitiveThrownValue(statement.expression)) {
           const thrown = normalizeRefinementExpression(
             statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
           );
@@ -1180,6 +1178,14 @@ function validateRefinementActionBodiesInSource(
           throwWhen = orCompletionPredicates(throwWhen, andCompletionPredicates(
             branch.condition, completionPredicate(branch.completion, "throw"),
           ));
+        }
+        if (isBooleanCompletionPredicate(completionPredicate(defaultCompletion, "return"), true)
+          && branches.every((branch) => isBooleanCompletionPredicate(completionPredicate(branch.completion, "return"), true))) {
+          returnWhen = { kind: "boolean", value: true };
+        }
+        if (isBooleanCompletionPredicate(completionPredicate(defaultCompletion, "throw"), true)
+          && branches.every((branch) => isBooleanCompletionPredicate(completionPredicate(branch.completion, "throw"), true))) {
+          throwWhen = { kind: "boolean", value: true };
         }
         let selectedCompletion = defaultCompletion;
         for (let index = branches.length - 1; index >= 0; index--) {

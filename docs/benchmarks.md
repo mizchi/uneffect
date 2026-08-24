@@ -802,3 +802,10 @@ tracked integer payloads selected by scalar switch cases, the normal no-match
 path, completion-payload joining, and catch-local predicate use. The benchmark
 does not establish behavior for string/object payloads or dynamic case labels;
 those remain fail-closed.
+
+The dedicated `bind literal throw payloads through switch fallthrough`
+benchmark measured 0.1815 ms mean over 2,755 samples (0.58% relative margin of
+error). It covers normalized integer literal payloads, an empty case falling
+through to a throwing case, a throwing default path, all-path throw completion
+simplification, and catch-local numeric comparison. String and null payloads
+remain negative controls because the scalar temporal IR cannot represent them.

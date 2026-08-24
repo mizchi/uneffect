@@ -575,6 +575,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("switch-caught-payload.ts", source, "accounting", temporal)).toEqual([]);
   });
 
+  it("uses boolean literal throw payloads in catch control flow", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state failed: int
+      state shouldFail: bool
+      init failed = 0
+      init shouldFail = false
+      action reject: failed' = shouldFail ? failed + 1 : failed
+    */
+      interface Runtime { failed: number; shouldFail: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          if (runtime.shouldFail) throw true
+          throw false
+        } catch (error) {
+          if (error) runtime.failed++
+        }
+      }
+    `;
+    const temporal = (parseSpec("boolean-literal-payload.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("boolean-literal-payload.ts", source, "accounting", temporal)).toEqual([]);
+  });
+
   it("routes a nested conditional throw through the enclosing catch path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
