@@ -4,7 +4,7 @@ import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import type { CheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
-import { analyzeReactSemantics } from "./react-semantics.js";
+import { analyzeReactProgram } from "./react-semantics.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -47,6 +47,7 @@ export function createCheckHost(): ts.CompilerHost {
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = ts.createProgram([...fileNames], compilerOptions, options.host);
   const effects = analyzeProgramEffects(program, { mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true });
+  const react = analyzeReactProgram(program);
   const diagnostics: CheckerDiagnostic[] = [...effects.diagnostics];
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
   for (const fileName of fileNames) {
@@ -54,10 +55,12 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     sources.set(fileName, text);
     const contracts = await verifyContractObligations(fileName, text);
     diagnostics.push(...contracts.diagnostics);
-    diagnostics.push(...analyzeReactSemantics(fileName, text).diagnostics);
     artifacts.push(...contracts.artifacts);
     const sourceFile = program.getSourceFile(fileName);
-    if (sourceFile) diagnostics.push(...analyzeAsyncSafetyInProgram(program, sourceFile).diagnostics);
+    if (sourceFile) {
+      diagnostics.push(...(react.get(sourceFile.fileName)?.diagnostics ?? []));
+      diagnostics.push(...analyzeAsyncSafetyInProgram(program, sourceFile).diagnostics);
+    }
   }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
   return { diagnostics, sources, artifacts, summaries: effects.summaries, errors, warnings: diagnostics.length - errors };

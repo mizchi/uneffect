@@ -42,8 +42,8 @@ describe("Uneffect annotation marker", () => {
   });
 
   it("recognizes gradual React semantic roles", () => {
-    const source = `/* uneffect: react component */\n/* uneffect: react acquire Subscription */`;
-    expect(extractAnnotations(source, "react")).toEqual(["component", "acquire Subscription"]);
+    const source = `/* uneffect: react component */\n/* uneffect: react hook */\n/* uneffect: react acquire Subscription */`;
+    expect(extractAnnotations(source, "react")).toEqual(["component", "hook", "acquire Subscription"]);
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 

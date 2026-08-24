@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactSemantics } from "../src/react-semantics.js";
+import { analyzeReactSemantics, analyzeReactSemanticsInProgram } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -106,6 +107,128 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("composes an annotated custom Hook into the component phases", () => {
+    const result = analyzeReactSemantics("custom-hook.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react hook */
+      function useAudit() {
+        useEffect(() => { console.log("committed") }, [])
+      }
+      /* uneffect: react component */
+      function Dashboard({ enabled }: { enabled: boolean }) {
+        useAudit()
+        if (enabled) useAudit()
+        return null
+      }
+    `);
+
+    expect(result.components[0]!.phases).toContainEqual({ phase: "passive-effect", effects: ["Console"] });
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "Dashboard", kind: "conditional-hook", hook: "useAudit" }),
+    ]);
+  });
+
+  it("composes a custom Hook through a TypeScript-resolved import alias", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-program-"));
+    const hooksFile = join(directory, "hooks.tsx"), appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(hooksFile, `
+        import { useLayoutEffect } from "react"
+        /* uneffect: react hook */
+        export function useDocumentTitle() {
+          useLayoutEffect(() => { document.title = "ready" }, [])
+        }
+      `);
+      writeFileSync(appFile, `
+        import { useDocumentTitle as useTitle } from "./hooks.js"
+        /* uneffect: react component */
+        export function App({ active }: { active: boolean }) {
+          if (active) useTitle()
+          return null
+        }
+      `);
+      const program = ts.createProgram([hooksFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "layout-effect", effects: ["DomWrite"] });
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ component: "App", kind: "conditional-hook", hook: "useTitle" }),
+      ]);
+      const checked = await checkFiles([hooksFile, appFile]);
+      expect(checked.diagnostics.filter((diagnostic) => "component" in diagnostic)).toContainEqual(
+        expect.objectContaining({ component: "App", kind: "conditional-hook", hook: "useTitle" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("checks an annotated custom Hook as a replayable render boundary", () => {
+    const result = analyzeReactSemantics("broken-hook.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react hook */
+      function useBroken(options: { stamp: number; enabled: boolean }) {
+        options.stamp = Date.now()
+        if (options.enabled) useEffect(() => {}, [])
+      }
+    `);
+    expect(result.diagnostics.map(({ functionName, kind }) => ({ functionName, kind }))).toEqual([
+      { functionName: "useBroken", kind: "immutable-input-mutation" },
+      { functionName: "useBroken", kind: "non-idempotent-render" },
+      { functionName: "useBroken", kind: "conditional-hook" },
+    ]);
+  });
+
+  it("fails closed for unresolved and directly recursive custom Hooks", () => {
+    const result = analyzeReactSemantics("unknown-hooks.tsx", `
+      declare function useOpaque(): void
+      /* uneffect: react hook */
+      function useRecursive() { useRecursive() }
+      /* uneffect: react component */
+      function App() { useOpaque(); return null }
+    `);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "useRecursive", kind: "recursive-hook", hook: "useRecursive" }),
+      expect.objectContaining({ functionName: "App", kind: "unknown-hook-summary", hook: "useOpaque" }),
+    ]));
+  });
+
+  it("recognizes other named React Hooks without treating them as unresolved custom Hooks", () => {
+    const result = analyzeReactSemantics("state.tsx", `
+      import { useState as state } from "react"
+      /* uneffect: react component */
+      function Counter({ extra }: { extra: boolean }) {
+        state(0)
+        if (extra) state(1)
+        return null
+      }
+    `);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ functionName: "Counter", kind: "conditional-hook", hook: "state" }),
+    ]);
+  });
+
+  it("executes reviewed lazy and memo callbacks in the replayable render phase", () => {
+    const result = analyzeReactSemantics("render-hooks.tsx", `
+      import { useMemo, useState, useCallback } from "react"
+      /* uneffect: react component */
+      function Values() {
+        useMemo(() => { console.log("memo"); return Date.now() }, [])
+        useState(() => Math.random())
+        useCallback(() => console.log("event only"), [])
+        return null
+      }
+    `);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "render-effect", effect: "Console" }),
+      expect.objectContaining({ kind: "non-idempotent-render", operation: "Date.now" }),
+      expect.objectContaining({ kind: "non-idempotent-render", operation: "Math.random" }),
+    ]));
+    expect(result.diagnostics).toHaveLength(3);
+  });
+
   it("marks effects without cleanup as replay-sensitive when they acquire capabilities", () => {
     const result = analyzeReactSemantics("replay.tsx", `
       import { useEffect } from "react"
@@ -202,5 +325,36 @@ describe("React Function Component semantics", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it("dogfoods a telemetry dashboard with state, memo, event, and subscription phases", () => {
+    const fileName = "examples/dogfood/react-telemetry-dashboard.tsx";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeReactSemantics(fileName, source);
+    expect(result.diagnostics).toEqual([]);
+    expect(result.components).toContainEqual(expect.objectContaining({
+      name: "TelemetryDashboard",
+      phases: expect.arrayContaining([
+        expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
+        expect.objectContaining({ phase: "passive-effect", effects: ["Acquire<TelemetrySubscription>"] }),
+        expect.objectContaining({ phase: "cleanup", effects: ["Release<TelemetrySubscription>"] }),
+      ]),
+    }));
+
+    const leaking = analyzeReactSemantics(fileName, source.replace(
+      "return () => unsubscribeFromTelemetry(service);",
+      "return undefined;",
+    ));
+    expect(leaking.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "useTelemetrySubscription", kind: "missing-effect-cleanup", effect: "TelemetrySubscription",
+    }));
+
+    const mutating = analyzeReactSemantics(fileName, source.replace(
+      "const [showFailures, setShowFailures] = useState(false);",
+      "props.service = \"all\";\n  const [showFailures, setShowFailures] = useState(false);",
+    ));
+    expect(mutating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "TelemetryDashboard", kind: "immutable-input-mutation",
+    }));
   });
 });

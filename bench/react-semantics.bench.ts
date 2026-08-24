@@ -1,14 +1,11 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactSemantics } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
   export function Item${index}(props: { label: string; active: boolean }) {
-    useEffect(() => {
-      subscribe()
-      return () => unsubscribe()
-    }, [props.label])
+    useCatalogSubscription(props.label)
     return <button onClick={() => fetch("/items/${index}")}>{props.label}</button>
   }
 `).join("\n");
@@ -20,8 +17,21 @@ const source = `
   declare function subscribe(): void
   /* uneffect: react release Subscription */
   declare function unsubscribe(): void
+  /* uneffect: react hook */
+  function useCatalogSubscription(label: string) {
+    useEffect(() => {
+      subscribe()
+      return () => unsubscribe()
+    }, [label])
+  }
   ${components}
 `;
+const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
+const host = ts.createCompilerHost(compilerOptions), originalGetSourceFile = host.getSourceFile.bind(host);
+host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName === "catalog.tsx"
+  ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TSX)
+  : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+const program = ts.createProgram(["catalog.tsx"], compilerOptions, host);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -30,5 +40,9 @@ describe("React semantic analysis", () => {
 
   bench("TypeScript TSX parse baseline", () => {
     ts.createSourceFile("catalog.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  }, { time: 500, iterations: 20 });
+
+  bench("classify one reused TypeScript Program", () => {
+    analyzeReactProgram(program);
   }, { time: 500, iterations: 20 });
 });

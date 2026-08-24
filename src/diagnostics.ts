@@ -40,7 +40,9 @@ const hints: Readonly<Record<string, string>> = {
   "react/immutable-input-mutation": "create a new value instead of mutating the component's props snapshot",
   "react/conditional-hook": "call Hooks unconditionally at the component top level and move the condition inside the Hook",
   "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect: react release Capability */ boundary",
-  "react/invalid-react-annotation": "use exactly `react component`, `react acquire Capability`, or `react release Capability`",
+  "react/invalid-react-annotation": "use exactly `react component`, `react hook`, `react acquire Capability`, or `react release Capability`",
+  "react/unknown-hook-summary": "annotate the resolved custom Hook with `/* uneffect: react hook */`, or keep the component outside the checked boundary",
+  "react/recursive-hook": "remove recursive Hook calls; React Hook order requires a finite, stable call sequence",
 };
 
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }

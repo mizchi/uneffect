@@ -8,12 +8,17 @@ not transform the component or import React at runtime.
 ## Opting in
 
 Annotate a function declaration, function expression, or variable-bound arrow
-function explicitly:
+function explicitly. Custom Hooks use the parallel `react hook` role:
 
 ```tsx
 /* uneffect: react component */
 export function Counter(props: { label: string }) {
   return <button>{props.label}</button>
+}
+
+/* uneffect: react hook */
+export function useCounterTelemetry() {
+  // Hook body and nested built-in Effects receive phase semantics.
 }
 ```
 
@@ -39,7 +44,10 @@ commit is outside the component function. Direct writes through `document` or
 
 Named imports of `useEffect` and `useLayoutEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
-function is not treated as a Hook boundary.
+function is not treated as a built-in Hook boundary. Annotated custom Hooks
+compose their render, Effect, and cleanup summaries into callers. The
+Program-backed checker follows TypeScript-resolved named imports and aliases
+across files and computes the Hook summary fixed point once for the Program.
 
 ## Render obligations
 
@@ -52,9 +60,18 @@ The tested fragment reports:
 - member assignment through an identifier parameter such as `props.title =`;
 - recognized Hooks called below a condition, loop, switch arm, short-circuit
   expression, or nested function.
+- annotated custom Hook arguments are checked as immutable snapshots, and
+  their direct render effects and non-idempotent operations are diagnosed at
+  the Hook boundary;
+- named React Hooks participate in stable-order checks. Inline `useMemo` and
+  lazy `useState` callbacks, plus the third `useReducer` initializer argument,
+  execute in the replayable render phase; a `useCallback` callback is retained
+  rather than executed and is not charged to render;
+- unresolved `useX` calls and direct custom-Hook recursion fail closed instead
+  of producing a pure summary.
 
 Malformed React payloads are errors. The accepted initial forms are exactly
-`react component`, `react acquire Capability`, and
+`react component`, `react hook`, `react acquire Capability`, and
 `react release Capability`; misspellings and missing or excess fields are not
 silently ignored.
 
@@ -95,16 +112,20 @@ capability-effect declaration.
 
 ## Public result
 
-`analyzeReactSemantics(fileName, source)` returns opted-in component summaries,
-phase-local effect sets, and diagnostics. `uneffect check` includes the same
-diagnostics. The analysis is metadata-only and adds no runtime dependency.
+`analyzeReactSemantics(fileName, source)` returns opted-in component and custom
+Hook summaries, phase-local effect sets, and diagnostics.
+`analyzeReactProgram(program)` and `analyzeReactSemanticsInProgram` add
+TypeScript-resolved cross-file composition. `uneffect check` computes the
+Program result once and includes the same diagnostics. The analysis is
+metadata-only and adds no runtime dependency.
 
 ## Current limits
 
 This is a tested initial fragment, not a complete React semantics:
 
-- component and Hook recognition is source-local; re-exported/custom Hooks and
-  namespace/default React imports are not resolved yet;
+- named imports of annotated custom Hooks are resolved, but barrel re-exports,
+  namespace/default imports, indirect recursion, and dynamically selected Hook
+  calls are not resolved yet;
 - event extraction covers inline JSX function callbacks, not referenced
   handlers or callbacks passed through component props;
 - props mutation currently covers member writes rooted at an identifier
@@ -120,3 +141,12 @@ This is a tested initial fragment, not a complete React semantics:
 
 Unsupported behavior must not be interpreted as verified purity. The phase
 summary only claims coverage for the constructs listed above.
+
+## Dogfood
+
+`examples/dogfood/react-telemetry-dashboard.tsx` combines `useState`, a pure
+`useMemo` calculation, a custom subscription Hook, matching cleanup, and an
+inline Fetch event. Its regression test removes cleanup and mutates props as
+independent negative controls. This demonstrates that the initial constraints
+are load-bearing, but it is one controlled fixture rather than an ecosystem
+false-positive measurement.

@@ -72,12 +72,16 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function subscribe(): void
       /* uneffect: react release Subscription */
       declare function unsubscribe(): void
-      /* uneffect: react component */
-      export function Feed({ topic }: { topic: string }) {
+      /* uneffect: react hook */
+      function useSubscription(topic: string) {
         useEffect(() => {
           subscribe()
           return () => unsubscribe()
         }, [topic])
+      }
+      /* uneffect: react component */
+      export function Feed({ topic }: { topic: string }) {
+        useSubscription(topic)
         return <button onClick={() => fetch(\`/topics/\${topic}\`)} />
       }
       function Legacy() { console.log("not opted in"); return null }
