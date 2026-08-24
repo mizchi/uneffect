@@ -390,6 +390,53 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("routes guaranteed loop-test throws into the enclosing catch", () => {
+    const result = analyzeAsyncSafety("throwing-loop-tests.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: effect Throw<Error> */
+      declare function failCondition(): never
+      declare function terminateOrDiverge(): never
+      async function throwingWhile() {
+        const pending = task()
+        try { while (failCondition()) {} }
+        catch { await pending }
+      }
+      async function throwingFor() {
+        const pending = task()
+        try { for (; failCondition();) {} }
+        catch { await pending }
+      }
+      async function throwingDoTest() {
+        const pending = task()
+        try { do console.log("once"); while (failCondition()) }
+        catch { await pending }
+      }
+      async function throwingInitializer() {
+        const pending = task()
+        try { for (let value = failCondition(); false;) console.log(value) }
+        catch { await pending }
+      }
+      async function throwingIterable() {
+        const pending = task()
+        try { for (const value of failCondition()) console.log(value) }
+        catch { await pending }
+      }
+      async function unannotatedNever() {
+        const pending = task()
+        try { while (terminateOrDiverge()) {} }
+        catch { await pending }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "throwingWhile", status: "observed" },
+      { owner: "throwingFor", status: "observed" },
+      { owner: "throwingDoTest", status: "observed" },
+      { owner: "throwingInitializer", status: "observed" },
+      { owner: "throwingIterable", status: "observed" },
+      { owner: "unannotatedNever", status: "floating" },
+    ]);
+  });
+
   it("tracks rejection ownership from deferred Promise assignments and aliases", () => {
     const result = analyzeAsyncSafety("deferred-promises.ts", `
       declare const enabled: boolean

@@ -394,6 +394,12 @@ Boolean, number, and string literals and cycle-safe immutable `const` aliases
 use JavaScript truthiness to prune impossible loop entry or exit edges. A
 conditionless `for (;;)` is therefore always-entered, while `do...while
 (false)` executes exactly one body iteration in the ownership closure.
+The same loop-header order carries guaranteed synchronous throw completion.
+A condition, `for` initializer or incrementor, or `for...in`/`for...of` source
+expression whose resolved declaration proves both `never` and `Throw<E>` has no
+normal successor and enters the nearest structured `catch` with its current
+Promise ownership state. An unannotated `never` call remains unknown because it
+may terminate or diverge instead of throwing.
 Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
 awaited. Initial assignment to an uninitialized `let` is activation rather than

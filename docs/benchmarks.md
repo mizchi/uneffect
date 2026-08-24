@@ -475,14 +475,15 @@ Promise ownership analysis of the telemetry delivery dogfood fixture now
 includes deferred `let` initialization, exhaustive literal-union `switch`
 paths, an early-return `try`/`finally` cleanup path, a loop-condition ownership
 handoff evaluated before the zero-iteration exit, and an always-entered
-`while (true)` delivery path. On 2026-08-25, a paired five-sample Vitest 4.1.11
-run measured 247.02 ms mean (4.62% relative margin of error) for the full
-fixture and 255.14 ms (28.16%) for the otherwise identical direct-`const`
-baseline. The overlapping noisy samples provide no evidence of measurable
-finite-feasibility, loop-header, or assignment-tracking overhead. Both public
-convenience calls construct a fresh TypeScript Program;
-their absolute times are cold standalone costs, not incremental compiler-plugin
-latency or a regression budget.
+`while (true)` delivery path. It also routes a guaranteed `Throw<Error>` loop
+condition into telemetry recovery. The benchmark now requires 20 iterations
+per case after a five-sample run produced 66.06% RME. On 2026-08-25, the
+20-sample Vitest 4.1.11 run measured 166.41 ms mean (8.14% RME) for the full
+fixture and 149.48 ms (5.59%) for the otherwise identical direct-`const`
+baseline. The full mean was about 11% higher, but the uncertainty intervals
+overlap and both cases construct fresh TypeScript Programs, so this is recorded
+as a cold-cost observation rather than a stable regression or incremental
+compiler-plugin latency budget.
 
 Symbol-linked Promise assimilation for the legacy adapter dogfood fixture,
 including one direct hostile thenable, measured 130.61 ms mean over five cold

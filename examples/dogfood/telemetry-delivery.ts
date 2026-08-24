@@ -1,6 +1,8 @@
 declare function sendTelemetryBatch(): Promise<void>;
 /* uneffect: consumes_rejection 0 */
 declare function keepSendingWhileOnline(delivery: Promise<void>): boolean;
+/* uneffect: effect Throw<Error> */
+declare function failTelemetryGate(): never;
 
 export async function deliverTelemetry(mode: "required" | "best-effort"): Promise<void> {
   let delivery: Promise<void>;
@@ -34,5 +36,14 @@ export async function deliverTelemetryAtLeastOnce(): Promise<void> {
   while (true) {
     await delivery;
     break;
+  }
+}
+
+export async function recoverFromTelemetryGateFailure(): Promise<void> {
+  const delivery = sendTelemetryBatch();
+  try {
+    while (failTelemetryGate()) {}
+  } catch {
+    await delivery;
   }
 }

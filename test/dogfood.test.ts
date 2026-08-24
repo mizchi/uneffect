@@ -889,6 +889,7 @@ describe("Uneffect dogfood", () => {
       { owner: "flushTelemetryBeforeExit", status: "observed" },
       { owner: "handOffTelemetryUntilOffline", status: "transferred" },
       { owner: "deliverTelemetryAtLeastOnce", status: "observed" },
+      { owner: "recoverFromTelemetryGateFailure", status: "observed" },
     ]);
 
     const broken = analyzeAsyncSafety(fileName, source.replace(
@@ -917,6 +918,16 @@ describe("Uneffect dogfood", () => {
     ));
     expect(brokenAtLeastOnce.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "deliverTelemetryAtLeastOnce",
+      kind: "floating-promise",
+      message: expect.stringContaining("delivery"),
+    }));
+
+    const brokenGate = analyzeAsyncSafety(fileName, source.replace(
+      "/* uneffect: effect Throw<Error> */",
+      "/* throw contract removed */",
+    ));
+    expect(brokenGate.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "recoverFromTelemetryGateFailure",
       kind: "floating-promise",
       message: expect.stringContaining("delivery"),
     }));

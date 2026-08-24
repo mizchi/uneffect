@@ -1556,16 +1556,33 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         if (consumes(node) && next.active) next.pending = false;
         return next;
       };
-      const executeLoopTest = (statement: ts.IterationStatement, state: PathState): { state: PathState; outcome?: boolean } => {
+      const headerNodeGuaranteedThrow = (node: ts.Node): boolean => {
+        if (ts.isExpression(node)) return isGuaranteedThrowExpression(node);
+        if (ts.isVariableDeclarationList(node)) return node.declarations.some((declaration) =>
+          declaration.initializer !== undefined && isGuaranteedThrowExpression(declaration.initializer));
+        return false;
+      };
+      const executeHeaderNode = (node: ts.Node, state: PathState): PathState => {
+        const next = executeNodeEffects(node, state);
+        return headerNodeGuaranteedThrow(node)
+          ? { ...next, terminated: true, completion: "throw" }
+          : next;
+      };
+      const executeLoopTest = (statement: ts.IterationStatement, state: PathState): { state: PathState; outcome?: boolean | "throw" } => {
         const expression = ts.isWhileStatement(statement) || ts.isDoStatement(statement)
           ? statement.expression
           : ts.isForStatement(statement)
             ? statement.condition
             : undefined;
         if (!expression) return { state, outcome: ts.isForStatement(statement) ? true : undefined };
+        const next = executeNodeEffects(expression, state);
+        if (isGuaranteedThrowExpression(expression)) return {
+          state: { ...next, terminated: true, completion: "throw" },
+          outcome: "throw",
+        };
         const value = staticPrimitive(expression, new Map())?.value;
         return {
-          state: executeNodeEffects(expression, state),
+          state: next,
           outcome: value === undefined ? undefined : Boolean(value),
         };
       };
@@ -1573,7 +1590,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const firstTest = atLeastOnce ? undefined : executeLoopTest(statement, state);
         const first = firstTest?.state ?? state;
         const exits: PathState[] = firstTest?.outcome === true || atLeastOnce ? [] : [{ ...first }];
-        let frontier: PathState[] = firstTest?.outcome === false ? [] : [{ ...first }], visited = new Set<string>();
+        let frontier: PathState[] = firstTest?.outcome === false || firstTest?.outcome === "throw" ? [] : [{ ...first }], visited = new Set<string>();
         while (frontier.length) {
           const nextFrontier: PathState[] = [];
           for (const entry of frontier) {
@@ -1584,20 +1601,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               if (next.abrupt === "continue" && matching) {
                 const resumed = { ...next, abrupt: undefined, label: undefined };
                 const advanced = ts.isForStatement(statement) && statement.incrementor
-                  ? executeNodeEffects(statement.incrementor, resumed)
+                  ? executeHeaderNode(statement.incrementor, resumed)
                   : resumed;
+                if (advanced.terminated) { exits.push(advanced); continue; }
                 const tested = executeLoopTest(statement, advanced);
                 if (tested.outcome !== true) exits.push(tested.state);
-                if (tested.outcome !== false) nextFrontier.push(tested.state);
+                if (tested.outcome !== false && tested.outcome !== "throw") nextFrontier.push(tested.state);
                 continue;
               }
               if (next.abrupt || next.terminated) { exits.push(next); continue; }
               const advanced = ts.isForStatement(statement) && statement.incrementor
-                ? executeNodeEffects(statement.incrementor, next)
+                ? executeHeaderNode(statement.incrementor, next)
                 : next;
+              if (advanced.terminated) { exits.push(advanced); continue; }
               const tested = executeLoopTest(statement, advanced);
               if (tested.outcome !== true) exits.push(tested.state);
-              if (tested.outcome !== false) nextFrontier.push(tested.state);
+              if (tested.outcome !== false && tested.outcome !== "throw") nextFrontier.push(tested.state);
             }
           }
           frontier = uniqueStates(nextFrontier);
@@ -1649,11 +1668,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             : completions;
         }
         if (ts.isForStatement(statement)) {
-          const initialized = statement.initializer ? executeNodeEffects(statement.initializer, state) : state;
+          const initialized = statement.initializer ? executeHeaderNode(statement.initializer, state) : state;
+          if (initialized.terminated) return [initialized];
           return executeLoop(statement, initialized, false, loopLabel);
         }
         if (ts.isForInStatement(statement) || ts.isForOfStatement(statement)) {
-          const initialized = executeNodeEffects(statement.expression, state);
+          const initialized = executeHeaderNode(statement.expression, state);
+          if (initialized.terminated) return [initialized];
           return executeLoop(statement, initialized, false, loopLabel);
         }
         if (ts.isWhileStatement(statement)) return executeLoop(statement, state, false, loopLabel);

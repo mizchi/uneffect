@@ -237,11 +237,11 @@ describe("typed-array static verification", () => {
 
   bench("check telemetry Promise ownership across switch and finally", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", telemetryDeliverySource);
-  }, { time: 500, iterations: 5 });
+  }, { time: 500, iterations: 20 });
 
   bench("check initialized telemetry Promise ownership baseline", () => {
     analyzeAsyncSafety("telemetry-delivery.ts", initializedTelemetryDeliverySource);
-  }, { time: 500, iterations: 5 });
+  }, { time: 500, iterations: 20 });
 
   bench("route 64 structured throw completions through Promise ownership catches", () => {
     analyzeAsyncSafetyInProgram(explicitCatchProgram, explicitCatchSource);
