@@ -162,7 +162,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Split a top-level conditional primitive `throw` into exceptional and normal try paths, apply catch only to the exceptional path, join their symbolic state, and then sequence `finally` and trailing statements.
       - [x] Unwind a direct or top-level conditional void `return` through `finally`, applying post-try statements only to the normally continuing path before the symbolic join.
       - [x] Let a direct terminal void `return` in `finally` override a normally completed or already joined try/catch path and suppress all post-try statements.
-      - [x] Separate symbolic state from a `normal | return | mixed(returnWhen)` action completion lattice and propagate nested branch returns through enclosing conditional joins.
+      - [x] Separate symbolic state from an explicit action completion lattice and propagate nested branch returns through enclosing conditional joins.
+      - [x] Generalize the same completion lattice to homogeneous `throw` paths, propagate nested throw predicates through conditionals, and execute catch only on the exceptional state before `finally`.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

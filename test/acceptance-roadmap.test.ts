@@ -472,6 +472,43 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("conditional-throw.ts", source, "delivery", temporal)).toEqual([]);
   });
 
+  it("routes a nested conditional throw through the enclosing catch path", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state delivered: int
+      state failed: int
+      state settled: int
+      state outer: bool
+      state inner: bool
+      init delivered = 0
+      init failed = 0
+      init settled = 0
+      init outer = false
+      init inner = false
+      action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1
+    */
+      interface Runtime { delivered: number; failed: number; settled: number; outer: boolean; inner: boolean }
+      /* uneffect: refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement delivery@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        try {
+          if (runtime.outer) {
+            if (runtime.inner) throw "delivery failed"
+            runtime.delivered++
+          }
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    const temporal = (parseSpec("nested-throw.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("nested-throw.ts", source, "delivery", temporal)).toEqual([]);
+  });
+
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

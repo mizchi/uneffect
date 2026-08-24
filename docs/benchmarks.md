@@ -123,6 +123,12 @@ measured 1.2336 ms mean over 406 samples (0.60% RME). The nested path composes
 two branch predicates, applies continuation updates only to non-returned paths,
 and rejects removal of the inner return through a model-update mismatch.
 
+Generalizing the lattice to homogeneous throw completions and adding a nested
+telemetry rejection handled by catch measured 1.4012 ms mean over 357 samples
+(0.49% RME). Catch updates are conditional on the composed throw predicate;
+removing the only explicit throw leaves an unproven catch path and is rejected
+as `unsupported-action-body`.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

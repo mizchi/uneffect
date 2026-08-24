@@ -160,13 +160,15 @@ updates and suppresses every statement after the try. Value-bearing returns,
 conditional returns in finally, and throws from finally are still rejected.
 
 Action collection now keeps symbolic state separate from an explicit
-`normal | return | mixed(returnWhen)` completion. A mixed completion records
-the pre-state predicate for paths that have already returned. Enclosing
-conditionals apply their remaining statements only to the complementary normal
-paths, then join the state and return predicate again. This supports nested
-early-return branches without flattening them into one syntax-specific guard.
-Throw, break, continue, and labeled completions are not yet members of this
-lattice, so it is a foundation for the general CFG rather than its completion.
+`normal | return | throw | mixed(abrupt, when)` completion. A mixed completion
+records one abrupt kind and the pre-state predicate for paths that have already
+completed that way. Enclosing conditionals apply their remaining statements
+only to the complementary normal paths, then join state and completion again.
+This supports nested early-return and nested-throw branches without flattening
+them into syntax-specific guards. A surrounding catch applies its updates only
+to the `throw` predicate before common `finally` processing. Joins containing
+both return and throw remain unsupported rather than losing either completion;
+break, continue, labels, and general loops are also not yet represented.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

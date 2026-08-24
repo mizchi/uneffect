@@ -17,6 +17,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
   action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
+  action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -103,6 +104,17 @@ export function rejectTelemetry(runtime: TelemetryRoutingAccounting): void {
     runtime.dropped += 1;
   } finally {
     runtime.auditArmed = true;
+  }
+}
+
+/* uneffect: refinement telemetryRouting@1 action nestedReject */
+export function nestedRejectTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    if (runtime.auditArmed) {
+      if (runtime.attempted > 0) throw "nested telemetry rejection";
+    }
+  } catch {
+    runtime.postProcessed += 1;
   }
 }
 

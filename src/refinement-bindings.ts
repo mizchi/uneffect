@@ -727,7 +727,8 @@ function validateRefinementActionBodiesInSource(
     return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
-  type ActionCompletion = "normal" | "return" | { kind: "mixed"; returnWhen: TemporalExpression };
+  type AbruptCompletion = "return" | "throw";
+  type ActionCompletion = "normal" | AbruptCompletion | { kind: "mixed"; abrupt: AbruptCompletion; when: TemporalExpression };
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -737,6 +738,7 @@ function validateRefinementActionBodiesInSource(
     localValues: Map<string, TemporalExpression> = new Map(),
     activeCalls: ReadonlySet<string> = new Set(),
     allowTerminalReturn = true,
+    allowTerminalThrow = false,
   ): ActionCompletion | undefined => {
     const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
@@ -798,12 +800,6 @@ function validateRefinementActionBodiesInSource(
         || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
         || value.kind === ts.SyntaxKind.NullKeyword;
     };
-    const directPureThrow = (statement: ts.Statement): ts.ThrowStatement | undefined => {
-      if (ts.isThrowStatement(statement) && isPureThrownValue(statement.expression)) return statement;
-      if (!ts.isBlock(statement) || statement.statements.length !== 1) return undefined;
-      const only = statement.statements[0]!;
-      return ts.isThrowStatement(only) && isPureThrownValue(only.expression) ? only : undefined;
-    };
     const directVoidReturn = (statement: ts.Statement): ts.ReturnStatement | undefined => {
       if (ts.isReturnStatement(statement) && !statement.expression) return statement;
       if (!ts.isBlock(statement) || statement.statements.length !== 1) return undefined;
@@ -835,6 +831,10 @@ function validateRefinementActionBodiesInSource(
       if (terminalReturn && (!allowTerminalReturn || statementIndex !== body.statements.length - 1)) return undefined;
       if (terminalReturn && !statement.expression) return "return";
       if (terminalReturn && !ts.isCallExpression(statement.expression!)) return undefined;
+      if (ts.isThrowStatement(statement)) {
+        if (!allowTerminalThrow || statementIndex !== body.statements.length - 1 || !isPureThrownValue(statement.expression)) return undefined;
+        return "throw";
+      }
       if (ts.isForStatement(statement)) {
         const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
           && (statement.initializer.flags & ts.NodeFlags.Let) !== 0
@@ -859,47 +859,23 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isTryStatement(statement)) {
         if (statement.catchClause) {
-          const tryStatements = [...statement.tryBlock.statements];
-          const abrupt = tryStatements.at(-1);
-          if (abrupt && directPureThrow(abrupt)) {
-            if (!collect(
-              ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
-              updates, new Map(localValues), activeCalls, false,
-            )) return undefined;
-            if (!collect(
-              statement.catchClause.block, receiver, runtimeClass, substitutions,
-              updates, new Map(localValues), activeCalls, false,
-            )) return undefined;
-          } else {
-            const throwIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
-              && !candidate.elseStatement && directPureThrow(candidate.thenStatement) !== undefined);
-            if (throwIndex < 0 || tryStatements.slice(throwIndex + 1).some((candidate) => ts.isIfStatement(candidate)
-              && !candidate.elseStatement && directPureThrow(candidate.thenStatement) !== undefined)) return undefined;
-            const conditionalThrow = tryStatements[throwIndex] as ts.IfStatement;
-            const tryLocals = new Map(localValues);
-            if (!collect(
-              ts.factory.createBlock(tryStatements.slice(0, throwIndex), true), receiver, runtimeClass, substitutions,
-              updates, tryLocals, activeCalls, false,
-            )) return undefined;
-            const normalizedCondition = normalizeRefinementExpression(
-              conditionalThrow.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), tryLocals,
-            );
-            if (!normalizedCondition) return undefined;
-            const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
-            const before = new Map(updates);
-            const thrownUpdates = new Map(before);
-            const thrown = collect(
-              statement.catchClause.block, receiver, runtimeClass, substitutions,
-              thrownUpdates, new Map(localValues), activeCalls, false,
-            );
-            const normalUpdates = new Map(before);
-            const normal = collect(
-              ts.factory.createBlock(tryStatements.slice(throwIndex + 1), true), receiver, runtimeClass, substitutions,
-              normalUpdates, new Map(tryLocals), activeCalls, false,
-            );
-            if (!thrown || !normal) return undefined;
-            mergeConditionalUpdates(condition, thrownUpdates, normalUpdates, before);
-          }
+          const tryCompletion = collect(
+            statement.tryBlock, receiver, runtimeClass, substitutions,
+            updates, new Map(localValues), activeCalls, false, true,
+          );
+          if (!tryCompletion || tryCompletion === "normal" || tryCompletion === "return"
+            || typeof tryCompletion !== "string" && tryCompletion.abrupt !== "throw") return undefined;
+          const beforeCatch = new Map(updates);
+          const caughtUpdates = new Map(updates);
+          const catchCompletion = collect(
+            statement.catchClause.block, receiver, runtimeClass, substitutions,
+            caughtUpdates, new Map(localValues), activeCalls, false, false,
+          );
+          if (catchCompletion !== "normal") return undefined;
+          if (tryCompletion === "throw") {
+            updates.clear();
+            for (const [name, value] of caughtUpdates) updates.set(name, value);
+          } else mergeConditionalUpdates(tryCompletion.when, caughtUpdates, beforeCatch, beforeCatch);
         } else {
           const tryStatements = [...statement.tryBlock.statements];
           const returnIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
@@ -980,36 +956,38 @@ function validateRefinementActionBodiesInSource(
         const falseBlock = asBlock(statement.elseStatement);
         const trueUpdates = new Map(before);
         const falseUpdates = new Map(before);
-        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn);
-        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow);
         if (!whenTrue || !whenFalse) return undefined;
-        const hasBranchReturn = whenTrue !== "normal" || whenFalse !== "normal";
-        if (hasBranchReturn) {
+        const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
+        if (hasAbruptBranch) {
           const continuation = ts.factory.createBlock(body.statements.slice(statementIndex + 1), true);
           const applyContinuation = (
             completion: ActionCompletion,
             branchUpdates: Map<string, TemporalExpression>,
           ): ActionCompletion | undefined => {
-            if (completion === "return") return completion;
+            if (completion === "return" || completion === "throw") return completion;
             if (completion === "normal") return collect(
               continuation, receiver, runtimeClass, substitutions,
-              branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn,
+              branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
             );
             const beforeContinuation = new Map(branchUpdates);
             const continuingUpdates = new Map(branchUpdates);
             const continued = collect(
               continuation, receiver, runtimeClass, substitutions,
-              continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn,
+              continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
             );
             if (!continued) return undefined;
-            mergeConditionalUpdates(completion.returnWhen, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
-            if (continued === "return") return "return";
+            mergeConditionalUpdates(completion.when, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
+            if (continued === "return" || continued === "throw") return continued === completion.abrupt ? continued : undefined;
             if (continued === "normal") return completion;
+            if (continued.abrupt !== completion.abrupt) return undefined;
             return {
               kind: "mixed",
-              returnWhen: {
-                kind: "binary", operator: "or", left: completion.returnWhen,
-                right: { kind: "binary", operator: "and", left: { kind: "unary", operator: "not", operand: completion.returnWhen }, right: continued.returnWhen },
+              abrupt: completion.abrupt,
+              when: {
+                kind: "binary", operator: "or", left: completion.when,
+                right: { kind: "binary", operator: "and", left: { kind: "unary", operator: "not", operand: completion.when }, right: continued.when },
               },
             };
           };
@@ -1018,19 +996,23 @@ function validateRefinementActionBodiesInSource(
           if (!whenTrue || !whenFalse) return undefined;
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
-        if (hasBranchReturn) {
-          if (whenTrue === "return" && whenFalse === "return") return "return";
-          const trueReturn = whenTrue === "return"
-            ? { kind: "boolean", value: true } as TemporalExpression
-            : whenTrue === "normal" ? { kind: "boolean", value: false } as TemporalExpression : whenTrue.returnWhen;
-          const falseReturn = whenFalse === "return"
-            ? { kind: "boolean", value: true } as TemporalExpression
-            : whenFalse === "normal" ? { kind: "boolean", value: false } as TemporalExpression : whenFalse.returnWhen;
+        if (hasAbruptBranch) {
+          const trueAbrupt = whenTrue === "normal" ? undefined : typeof whenTrue === "string" ? whenTrue : whenTrue.abrupt;
+          const falseAbrupt = whenFalse === "normal" ? undefined : typeof whenFalse === "string" ? whenFalse : whenFalse.abrupt;
+          if (trueAbrupt && falseAbrupt && trueAbrupt !== falseAbrupt) return undefined;
+          const abrupt = trueAbrupt ?? falseAbrupt!;
+          if (whenTrue === abrupt && whenFalse === abrupt) return abrupt;
+          const abruptWhen = (completion: ActionCompletion): TemporalExpression => completion === "normal"
+            ? { kind: "boolean", value: false }
+            : typeof completion === "string" ? { kind: "boolean", value: true } : completion.when;
+          const trueWhen = abruptWhen(whenTrue);
+          const falseWhen = abruptWhen(whenFalse);
           return {
             kind: "mixed",
-            returnWhen: whenTrue === "return" && whenFalse === "normal" ? condition
-              : whenTrue === "normal" && whenFalse === "return" ? { kind: "unary", operator: "not", operand: condition }
-              : { kind: "conditional", condition, whenTrue: trueReturn, whenFalse: falseReturn },
+            abrupt,
+            when: whenTrue === abrupt && whenFalse === "normal" ? condition
+              : whenTrue === "normal" && whenFalse === abrupt ? { kind: "unary", operator: "not", operand: condition }
+              : { kind: "conditional", condition, whenTrue: trueWhen, whenFalse: falseWhen },
           };
         }
         continue;

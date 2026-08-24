@@ -346,10 +346,44 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementActionBodies("conditional-throw.ts", source, "delivery", parseSpec("conditional-throw.ts", source).temporal)).toEqual([]);
 
-    const nestedThrow = source.replace('if (runtime.shouldFail) throw "delivery failed"', 'if (runtime.shouldFail) { if (runtime.attempted > 0) throw "delivery failed" }');
-    expect(validateRefinementActionBodies("nested-throw.ts", nestedThrow, "delivery", parseSpec("nested-throw.ts", nestedThrow).temporal)).toEqual([
+    const effectfulNestedThrow = source.replace('throw "delivery failed"', "throw makeError(runtime)");
+    expect(validateRefinementActionBodies("effectful-nested-throw.ts", effectfulNestedThrow, "delivery", parseSpec("effectful-nested-throw.ts", effectfulNestedThrow).temporal)).toEqual([
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
     ]);
+  });
+
+  it("propagates a nested conditional throw to the enclosing catch path", () => {
+    const source = `/* uneffect:
+      state delivered: int
+      state failed: int
+      state settled: int
+      state outer: bool
+      state inner: bool
+      init delivered = 0
+      init failed = 0
+      init settled = 0
+      init outer = false
+      init inner = false
+      action deliver: delivered' = outer ? inner ? delivered : delivered + 1 : delivered, failed' = (outer ? inner : false) ? failed + 1 : failed, settled' = settled + 1
+    */
+      interface Runtime { delivered: number; failed: number; settled: number; outer: boolean; inner: boolean }
+      /* uneffect: refinement delivery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement delivery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement delivery@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        try {
+          if (runtime.outer) {
+            if (runtime.inner) throw "delivery failed"
+            runtime.delivered++
+          }
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("nested-throw.ts", source, "delivery", parseSpec("nested-throw.ts", source).temporal)).toEqual([]);
   });
 
   it("runs finally on an early-return path without running statements after try", () => {
