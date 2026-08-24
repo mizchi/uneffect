@@ -25,16 +25,17 @@ classification.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
-workload, the analyzer measured 16.81 ms mean (3.17% RME, 30 samples), while
-the parse-only baseline measured 2.30 ms (1.46% RME, 218 samples). The combined
-parse-and-analysis path was therefore about 7.32 times the parse-only cost for
-this synthetic cold call, or roughly 0.131 ms per annotated component. This
+workload, with per-call lifecycle instance association enabled, the analyzer
+measured 18.03 ms mean (1.32% RME, 28 samples), while the parse-only baseline
+measured 2.23 ms (0.84% RME, 225 samples). The combined parse-and-analysis path
+was therefore about 8.08 times the parse-only cost for this synthetic cold
+call, or roughly 0.141 ms per annotated component. This
 implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-19.01 ms mean (2.88% RME, 27 samples). It performs two source walks to establish
+20.29 ms mean (0.82% RME, 25 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk. Source-level React import facts and
 boundary-level immutable-region facts are cached by AST identity; before those

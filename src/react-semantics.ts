@@ -29,11 +29,11 @@ export interface ReactPhaseSummary {
 export type ReactEffectTransition = "setup" | "cleanup";
 export type ReactCommitPhase = "passive-effect" | "layout-effect" | "ref-callback";
 export interface ReactReplayEffect {
+  instance: string;
   phase: ReactCommitPhase;
   transitions: ReactEffectTransition[];
   setupEffects: string[];
-  /** Conservative union until per-call Effect instances are preserved through custom Hook summaries. */
-  possibleCleanupEffects: string[];
+  cleanupEffects: string[];
 }
 export interface ReactReplayScenario {
   renderInvocations: number;
@@ -100,24 +100,42 @@ interface LifecycleSummary {
 }
 interface CustomHookSummary {
   phases: Map<ReactPhase, Set<string>>;
+  instances: CommitInstanceSummary[];
   leaked: Array<{ phase: HookKind; capabilities: string[] }>;
   lifecycleIssues: Array<LifecycleIssue & { phase: HookKind }>;
 }
 
-function replayModel(phases: ReadonlyMap<ReactPhase, ReadonlySet<string>>): ReactReplayModel {
-  const cleanup = [...(phases.get("cleanup") ?? [])];
-  const effects = (["layout-effect", "passive-effect", "ref-callback"] as const)
-    .filter((phase) => phases.has(phase))
-    .map((phase) => ({ phase, setupEffects: [...(phases.get(phase) ?? [])], possibleCleanupEffects: cleanup }));
+interface CommitInstanceSummary {
+  instance: string;
+  phase: ReactCommitPhase;
+  setupEffects: string[];
+  cleanupEffects: string[];
+}
+
+function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayModel {
   return {
     production: {
       renderInvocations: 1,
-      effects: effects.map((effect) => ({ ...effect, transitions: ["setup"] })),
+      effects: instances.map((effect) => ({ ...effect, transitions: ["setup"] })),
     },
     strictModeDevelopment: {
       renderInvocations: 2,
-      effects: effects.map((effect) => ({ ...effect, transitions: ["setup", "cleanup", "setup"] })),
+      effects: instances.map((effect) => ({ ...effect, transitions: ["setup", "cleanup", "setup"] })),
     },
+  };
+}
+
+function commitInstance(
+  phase: ReactCommitPhase,
+  node: ts.Node,
+  setupEffects: readonly string[],
+  cleanupEffects: readonly string[],
+): CommitInstanceSummary {
+  return {
+    instance: `${phase}@${node.getStart(node.getSourceFile())}`,
+    phase,
+    setupEffects: [...new Set(setupEffects)],
+    cleanupEffects: [...new Set(cleanupEffects)],
   };
 }
 
@@ -760,10 +778,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
   const summarizeCustomHook = (hookName: string, stack = new Set<string>()): CustomHookSummary => {
     const cached = customHookCache.get(hookName);
     if (cached) return cached;
-    const phases = new Map<ReactPhase, Set<string>>([["render", new Set()]]), leaked: CustomHookSummary["leaked"] = [];
+    const phases = new Map<ReactPhase, Set<string>>([["render", new Set()]]), instances: CommitInstanceSummary[] = [];
+    const leaked: CustomHookSummary["leaked"] = [];
     const lifecycleIssues: CustomHookSummary["lifecycleIssues"] = [];
     const hook = customHooks.get(hookName);
-    if (!hook || stack.has(hookName)) return { phases, leaked, lifecycleIssues };
+    if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues };
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
       const target = phases.get(phase) ?? new Set<string>();
@@ -782,20 +801,31 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           }
           const callback = node.arguments[0];
           if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-            add(builtinPhase, directEffects(callback.body, declared));
+            const setupEffects = directEffects(callback.body, declared);
+            add(builtinPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            if (cleanup) add("cleanup", directEffects(cleanup.body, declared));
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared) : [];
+            if (cleanup) add("cleanup", cleanupEffects);
             const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
-            add(builtinPhase, lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
-            add("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+            const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
+            const released = lifecycle.released.map((capability) => `Release<${capability}>`);
+            add(builtinPhase, acquired);
+            add("cleanup", released);
+            instances.push(commitInstance(builtinPhase, node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
             if (lifecycle.missing.length > 0) leaked.push({ phase: builtinPhase, capabilities: lifecycle.missing });
             lifecycleIssues.push(...lifecycle.issues.map((issue) => ({ ...issue, phase: builtinPhase })));
-          } else add(builtinPhase, []);
+          } else {
+            add(builtinPhase, []);
+            instances.push(commitInstance(builtinPhase, node, [], []));
+          }
           return;
         }
-        if (called && customHooks.has(called)) {
+        if (called && (customHooks.has(called) || externalHooks.has(called))) {
           const child = summarizeCustomHook(called, nextStack);
           for (const [phase, effects] of child.phases) add(phase, [...effects]);
+          instances.push(...child.instances.map((instance) => ({
+            ...instance, instance: `${called}@${node.getStart(source)}/${instance.instance}`,
+          })));
           leaked.push(...child.leaked);
           lifecycleIssues.push(...child.lifecycleIssues);
           return;
@@ -808,7 +838,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       ts.forEachChild(node, visit);
     };
     visit(hook.body);
-    const summary = { phases, leaked, lifecycleIssues };
+    const summary = { phases, instances, leaked, lifecycleIssues };
     customHookCache.set(hookName, summary);
     return summary;
   };
@@ -884,6 +914,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
   for (const component of candidates) {
     if (!extractAnnotations(leadingText(source, component), "react").some((value) => value.trim() === "component")) continue;
     const name = componentName(component), phaseEffects = new Map<ReactPhase, Set<string>>([["render", new Set()]]);
+    const instances: CommitInstanceSummary[] = [];
     const addPhase = (phase: ReactPhase, effects: readonly string[] = []): void => {
       const target = phaseEffects.get(phase) ?? new Set<string>();
       for (const effect of effects) target.add(effect);
@@ -900,12 +931,17 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         const callback = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
         if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-          addPhase("ref-callback", directEffects(callback.body, declared));
+          const setupEffects = directEffects(callback.body, declared);
+          addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
-          if (cleanup) addPhase("cleanup", directEffects(cleanup.body, declared));
+          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared) : [];
+          if (cleanup) addPhase("cleanup", cleanupEffects);
           const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
-          addPhase("ref-callback", lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
-          addPhase("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+          const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
+          const released = lifecycle.released.map((capability) => `Release<${capability}>`);
+          addPhase("ref-callback", acquired);
+          addPhase("cleanup", released);
+          instances.push(commitInstance("ref-callback", node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
           if (lifecycle.missing.length > 0) report(node, {
             kind: "missing-effect-cleanup", phase: "ref-callback", effect: lifecycle.missing.join(" | "),
             message: `callback ref acquires ${lifecycle.missing.join(", ")} without a matching returned cleanup release`,
@@ -937,6 +973,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             addPhase(phase, [...effects]);
             if (phase === "render") for (const effect of effects) report(node, { kind: "render-effect", phase, effect, message: `${effect} is observable during render through ${called}` });
           }
+          instances.push(...customHook.instances.map((instance) => ({
+            ...instance, instance: `${called}@${node.getStart(source)}/${instance.instance}`,
+          })));
           for (const leak of customHook.leaked) report(node, {
             kind: "missing-effect-cleanup", phase: leak.phase, effect: leak.capabilities.join(" | "),
             message: `${called} acquires ${leak.capabilities.join(", ")} without a matching cleanup release`,
@@ -957,13 +996,17 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           }
           const callback = node.arguments[0];
           if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-            const effects = directEffects(callback.body, declared);
-            addPhase(hookPhase, effects);
+            const setupEffects = directEffects(callback.body, declared);
+            addPhase(hookPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            if (cleanup) addPhase("cleanup", directEffects(cleanup.body, declared));
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared) : [];
+            if (cleanup) addPhase("cleanup", cleanupEffects);
             const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
-            addPhase(hookPhase, lifecycle.acquired.map((capability) => `Acquire<${capability}>`));
-            addPhase("cleanup", lifecycle.released.map((capability) => `Release<${capability}>`));
+            const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
+            const released = lifecycle.released.map((capability) => `Release<${capability}>`);
+            addPhase(hookPhase, acquired);
+            addPhase("cleanup", released);
+            instances.push(commitInstance(hookPhase, node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
             if (lifecycle.missing.length > 0) report(node, {
               kind: "missing-effect-cleanup", phase: hookPhase,
               effect: lifecycle.missing.join(" | "), message: `Effect acquires ${lifecycle.missing.join(", ")} without a matching cleanup release`,
@@ -971,7 +1014,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             for (const issue of lifecycle.issues) report(issue.node, {
               kind: issue.kind, phase: hookPhase, effect: issue.capability, message: issue.detail,
             });
-          } else addPhase(hookPhase);
+          } else {
+            addPhase(hookPhase);
+            instances.push(commitInstance(hookPhase, node, [], []));
+          }
           return;
         }
         if (looksLikeHook(called)) {
@@ -1009,7 +1055,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     components.push({
       name, span: { start: component.getStart(source), end: component.getEnd() },
       phases: [...phaseEffects].map(([phase, effects]) => ({ phase, effects: [...effects] })),
-      replay: replayModel(phaseEffects),
+      replay: replayModel(instances),
     });
   }
   const publicHooks = [...customHooks.keys()].map((name): ReactHookSummary => {
@@ -1017,7 +1063,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     return {
       name, span: { start: node.getStart(source), end: node.getEnd() },
       phases: [...summary.phases].map(([phase, effects]) => ({ phase, effects: [...effects] })),
-      replay: replayModel(summary.phases),
+      replay: replayModel(summary.instances),
     };
   });
   return { result: { components, hooks: publicHooks, diagnostics }, hookSummaries: customHookCache, hookNodes: customHooks };
@@ -1146,6 +1192,7 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
     const fingerprint = (values: ReadonlyMap<string, CustomHookSummary>): string => JSON.stringify([...values].map(([key, summary]) => [
       key,
       [...summary.phases].map(([phase, effects]) => [phase, [...effects].sort()]),
+      summary.instances,
       summary.leaked,
       summary.lifecycleIssues.map(({ kind, capability, phase, detail }) => ({ kind, capability, phase, detail })),
     ]).sort(([left], [right]) => String(left).localeCompare(String(right))));

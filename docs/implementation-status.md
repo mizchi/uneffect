@@ -171,7 +171,8 @@ same property is proved for arbitrary TypeScript.
 - Component and custom-Hook summaries expose production and development Strict
   Mode initial-mount replay projections. These model render multiplicity and
   Effect/callback-ref setup/cleanup cycles without claiming total host
-  scheduling order.
+  scheduling order. Source-derived instance paths preserve each setup's own
+  cleanup effects through repeated and transitive custom-Hook calls.
 - Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common

@@ -105,10 +105,10 @@ describe("React Function Component semantics", () => {
       { phase: "ref-callback", effects: ["Console", "Acquire<Observer>"] },
       { phase: "cleanup", effects: ["Console", "Release<Observer>"] },
     ]));
-    expect(result.components[0]!.replay.production.effects).toContainEqual({
+    expect(result.components[0]!.replay.production.effects).toContainEqual(expect.objectContaining({
       phase: "ref-callback", transitions: ["setup"], setupEffects: ["Console", "Acquire<Observer>"],
-      possibleCleanupEffects: ["Console", "Release<Observer>"],
-    });
+      cleanupEffects: ["Console", "Release<Observer>"],
+    }));
     expect(result.components[0]!.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
       phase: "ref-callback", transitions: ["setup", "cleanup", "setup"],
     }));
@@ -254,6 +254,13 @@ describe("React Function Component semantics", () => {
     `);
 
     expect(result.components[0]!.phases).toContainEqual({ phase: "passive-effect", effects: ["Console"] });
+    expect(result.hooks[0]!.replay.production.effects).toEqual([
+      expect.objectContaining({ instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", setupEffects: ["Console"], cleanupEffects: [] }),
+    ]);
+    expect(result.components[0]!.replay.production.effects).toEqual([
+      expect.objectContaining({ instance: expect.stringMatching(/^useAudit@\d+\/passive-effect@/), setupEffects: ["Console"], cleanupEffects: [] }),
+      expect.objectContaining({ instance: expect.stringMatching(/^useAudit@\d+\/passive-effect@/), setupEffects: ["Console"], cleanupEffects: [] }),
+    ]);
     expect(result.diagnostics).toEqual([
       expect.objectContaining({ component: "Dashboard", kind: "conditional-hook", hook: "useAudit" }),
     ]);
@@ -336,6 +343,42 @@ describe("React Function Component semantics", () => {
         { phase: "passive-effect", effects: expect.arrayContaining(["Console", "Fetch"]) },
         { phase: "layout-effect", effects: ["DomWrite"] },
       ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves lifecycle instances through transitive cross-module custom Hooks", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-transitive-"));
+    const innerFile = join(directory, "inner.tsx"), outerFile = join(directory, "outer.tsx"), appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(innerFile, `
+        import { useEffect } from "react"
+        /* uneffect: react hook */
+        export function useInner() { useEffect(() => { console.log("inner"); return () => console.log("cleanup") }, []) }
+      `);
+      writeFileSync(outerFile, `
+        import { useInner } from "./inner.js"
+        /* uneffect: react hook */
+        export function useOuter() { useInner() }
+      `);
+      writeFileSync(appFile, `
+        import { useOuter } from "./outer.js"
+        /* uneffect: react component */
+        export function App() { useOuter(); return null }
+      `);
+      const program = ts.createProgram([innerFile, outerFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.components[0]!.phases).toContainEqual({ phase: "passive-effect", effects: ["Console"] });
+      expect(result.components[0]!.replay.production.effects).toEqual([
+        expect.objectContaining({
+          instance: expect.stringMatching(/^useOuter@\d+\/useInner@\d+\/passive-effect@/),
+          phase: "passive-effect", setupEffects: ["Console"], cleanupEffects: ["Console"],
+        }),
+      ]);
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -725,18 +768,54 @@ describe("React Function Component semantics", () => {
       production: {
         renderInvocations: 1,
         effects: [
-          { phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
-          { phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
       strictModeDevelopment: {
         renderInvocations: 2,
         effects: [
-          { phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
-          { phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], possibleCleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
     });
+  });
+
+  it("keeps cleanup effects associated with their individual commit instances", () => {
+    const result = analyzeReactSemantics("precise-replay.tsx", `
+      import { useEffect, useLayoutEffect } from "react"
+      declare namespace JSX { interface IntrinsicElements { main: { ref?: unknown } } }
+      /* uneffect: react acquire Layout result */
+      declare function mountLayout(): object
+      /* uneffect: react release Layout parameter 0 */
+      declare function unmountLayout(value: object): void
+      /* uneffect: react acquire Subscription result */
+      declare function subscribe(): object
+      /* uneffect: react release Subscription parameter 0 */
+      declare function unsubscribe(value: object): void
+      /* uneffect: react acquire Host result */
+      declare function attach(node: Element | null): object
+      /* uneffect: react release Host parameter 0 */
+      declare function detach(value: object): void
+      /* uneffect: react component */
+      function App() {
+        useLayoutEffect(() => { const value = mountLayout(); return () => unmountLayout(value) }, [])
+        useEffect(() => { const value = subscribe(); return () => unsubscribe(value) }, [])
+        return <main ref={(node) => { const value = attach(node); return () => detach(value) }} />
+      }
+    `);
+
+    expect(result.components[0]!.replay.production.effects).toEqual([
+      expect.objectContaining({ phase: "layout-effect", setupEffects: ["Acquire<Layout>"], cleanupEffects: ["Release<Layout>"] }),
+      expect.objectContaining({ phase: "passive-effect", setupEffects: ["Acquire<Subscription>"], cleanupEffects: ["Release<Subscription>"] }),
+      expect.objectContaining({ phase: "ref-callback", setupEffects: ["Acquire<Host>"], cleanupEffects: ["Release<Host>"] }),
+    ]);
+    expect(result.components[0]!.replay.production.effects.map((effect) => effect.instance)).toEqual([
+      expect.stringMatching(/^layout-effect@/),
+      expect.stringMatching(/^passive-effect@/),
+      expect.stringMatching(/^ref-callback@/),
+    ]);
   });
 
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
@@ -791,6 +870,13 @@ describe("React Function Component semantics", () => {
         expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),
         expect.objectContaining({ phase: "cleanup", effects: expect.arrayContaining(["Release<TelemetrySubscription>", "Release<TelemetryViewport>"]) }),
       ]),
+    }));
+    const replay = result.components.find(({ name }) => name === "TelemetryDashboard")!.replay.production.effects;
+    expect(replay.find(({ phase }) => phase === "passive-effect")).toEqual(expect.objectContaining({
+      cleanupEffects: ["Release<TelemetrySubscription>"],
+    }));
+    expect(replay.find(({ phase }) => phase === "ref-callback")).toEqual(expect.objectContaining({
+      cleanupEffects: ["Release<TelemetryViewport>"],
     }));
 
     const leaking = analyzeReactSemantics(fileName, source.replace(

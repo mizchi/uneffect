@@ -201,18 +201,22 @@ Every component and custom-Hook summary exposes a zero-runtime `replay` model.
 The production initial-mount scenario has one render invocation and one setup
 transition for each present layout/passive/ref-callback phase. The development
 Strict Mode scenario has two render invocations and models each present Effect
-or inline callback-ref phase as `setup, cleanup, setup`. Setup effects and a
-conservative union of possible cleanup effects remain visible in the model.
+or inline callback-ref instance as `setup, cleanup, setup`. Every replay entry
+has a source-derived `instance` path and preserves that setup's own
+`cleanupEffects`. Custom-Hook composition prefixes the nested instance with
+each caller site, so repeated Hook calls remain distinct.
 
 This is deliberately a lifecycle projection, not a claim about total ordering
-between all layout and passive Effect instances, browser tasks, Suspense, or
-concurrent commits. Production cleanup occurs on a later dependency change or
-unmount and therefore is not placed into the initial-mount transition list.
+between all layout, passive, and callback-ref instances, browser tasks,
+Suspense, or concurrent commits. Production cleanup occurs on a later
+dependency change or unmount and therefore is not placed into the initial-mount
+transition list.
 
 ## Public result
 
 `analyzeReactSemantics(fileName, source)` returns opted-in component and custom
-Hook summaries, phase-local effect sets, and diagnostics.
+Hook summaries, phase-local effect sets, per-instance replay entries, and
+diagnostics.
 `analyzeReactProgram(program)` and `analyzeReactSemanticsInProgram` add
 TypeScript-resolved cross-file composition. `uneffect check` computes the
 Program result once and includes the same diagnostics. The analysis is
