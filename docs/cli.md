@@ -15,12 +15,22 @@ TypeScript is a peer dependency: the analyzer reads your program through the
 same compiler you build with, so the project chooses the version. Node.js 24 or
 newer is required.
 
+`@informalsystems/quint` is an optional peer dependency. The model commands
+generate Quint source with nothing installed; add the package only to run what
+they generate, and its own `quint` binary comes with it:
+
+```sh
+npm install --save-dev @informalsystems/quint
+npx uneffect spec quint src/protocol.ts > protocol.qnt
+npx quint run protocol.qnt
+```
+
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
 | `check <file.ts> [...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. |
-| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands. |
+| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `z3` and `java` commands. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact, as JSON. |
@@ -50,7 +60,14 @@ ok       z3-solver        4.16.0, probe query answered in 380 ms
 missing  z3 (command)     not found on PATH
            needed by: `instrument --verify-ownership` and evidence-backed assertion elision
            fix: install the Z3 command line (apt-get install z3, brew install z3, or a release from github.com/Z3Prover/z3); `check` does not need it
+warn     @informalsystems/quint  not installed
+           needed by: running the models `spec quint`, `resource-model`, and `async-model` generate
+           fix: npm install --save-dev @informalsystems/quint, an optional peer; it brings its own `quint` binary, and generating the models needs nothing
 ```
+
+Packages are resolved from the project being checked first, then from this
+installation, because a peer dependency belongs to the project and only the
+project's copy is the one a run uses.
 
 Every check names the commands it blocks and how to satisfy it. Unmet
 requirements exit 1; missing optional tools are warnings and exit 0. `--json`

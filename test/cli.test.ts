@@ -83,7 +83,7 @@ describe("uneffect command line", () => {
     const io = capture();
     const status = await runCli(["doctor", "--skip-solver-probe"], io);
     expect([exitCode.success, exitCode.failed]).toContain(status);
-    for (const name of ["node", "typescript", "@types/node", "z3 (command)", "quint (command)"]) expect(io.stdout).toContain(name);
+    for (const name of ["node", "typescript", "@types/node", "z3 (command)", "@informalsystems/quint"]) expect(io.stdout).toContain(name);
     expect(io.stdout).toMatch(/\d+ check\(s\)/u);
     const json = capture();
     expect(await runCli(["doctor", "--json", "--skip-solver-probe"], json)).toBe(status);

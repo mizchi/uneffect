@@ -62,10 +62,18 @@ npx uneffect check src/*.ts
 
 TypeScript は peer dependency です（解析対象と同じコンパイラを使うため、バージョンは利用側が決めます）。Node.js 24 以降が必要です。
 
+`@informalsystems/quint` は optional peer dependency です。モデルの生成だけなら不要で、生成した `.qnt` を実行したいときに入れます（`quint` バイナリもパッケージに同梱されています）。
+
+```sh
+npm install --save-dev @informalsystems/quint
+npx uneffect spec quint src/protocol.ts > protocol.qnt
+npx quint run protocol.qnt
+```
+
 | コマンド | 用途 |
 | --- | --- |
 | `check <file.ts> [...]` | effect / 契約 / async safety の診断。既定コマンドなので `uneffect <file.ts>` でも走ります |
-| `doctor` | 実行前提（Node、peer の TypeScript、`@types/node`、Z3 の WASM、任意の `z3` / `quint` / `java`）の確認 |
+| `doctor` | 実行前提（Node、peer の TypeScript、`@types/node`、Z3 の WASM、optional peer の Quint、任意の `z3` / `java`）の確認 |
 | `spec <backend> <file.ts> [function]` | 仕様 IR と各バックエンド向けプログラム（`ir` `lint` `z3` `quint` `compose` `async-quint` `web-loop-quint` `node-loop-quint` `promise-quint`） |
 | `instrument <file.ts>` | 契約・所有権のランタイムアサーションを挿入したソース |
 | `evidence <file.ts>` | effect の evidence artifact（JSON） |

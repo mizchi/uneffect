@@ -51,7 +51,13 @@
     "node": ">=24"
   },
   "peerDependencies": {
+    "@informalsystems/quint": ">=0.32.0",
     "typescript": ">=6.0.0-dev.20260820"
+  },
+  "peerDependenciesMeta": {
+    "@informalsystems/quint": {
+      "optional": true
+    }
   },
   "dependencies": {
     "effect": "^3.22.1",

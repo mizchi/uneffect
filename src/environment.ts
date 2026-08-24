@@ -45,14 +45,22 @@ function displayPath(path: string): string {
   return inside.startsWith("..") ? path : inside;
 }
 
-/** Resolve a dependency the way the analyzer will at runtime, not the way the project might. */
+const projectRequire = createRequire(join(process.cwd(), "package.json"));
+
+/**
+ * Resolve a package from the project being checked first, then from this installation.
+ * A peer dependency belongs to the project, and only the project's copy is the one a run uses.
+ */
 function resolvePackage(request: string): { version?: string; path?: string } {
-  try {
-    const manifestPath = require_.resolve(`${request}/package.json`);
-    return { path: displayPath(dirname(manifestPath)), version: (require_(manifestPath) as { version?: string }).version };
-  } catch {
-    return {};
+  for (const resolver of [projectRequire, require_]) {
+    try {
+      const manifestPath = resolver.resolve(`${request}/package.json`);
+      return { path: displayPath(dirname(manifestPath)), version: (resolver(manifestPath) as { version?: string }).version };
+    } catch {
+      continue;
+    }
   }
+  return {};
 }
 
 /** First meaningful line of a `--version` banner, past launcher noise such as `Picked up JAVA_TOOL_OPTIONS`. */
@@ -151,14 +159,15 @@ function z3CommandCheck(): EnvironmentCheck {
   };
 }
 
-function quintCheck(): EnvironmentCheck {
-  const version = commandVersion("quint", ["--version"]);
+function quintCheck(manifest: PackageManifest): EnvironmentCheck {
+  const quint = resolvePackage("@informalsystems/quint");
+  const required = manifest.peerDependencies?.["@informalsystems/quint"];
   return {
-    name: "quint (command)",
-    status: version ? "ok" : "warning",
-    detail: version ?? "not found on PATH",
+    name: "@informalsystems/quint",
+    status: quint.version ? "ok" : "warning",
+    detail: quint.version ? `${quint.version}${quint.path ? ` at ${quint.path}` : ""}${required ? ` (optional peer: ${required})` : ""}` : "not installed",
     requiredBy: "running the models `spec quint`, `resource-model`, and `async-model` generate",
-    remedy: version ? undefined : "install @informalsystems/quint to simulate or verify the generated models; generating them needs nothing",
+    remedy: quint.version ? undefined : "npm install --save-dev @informalsystems/quint, an optional peer; it brings its own `quint` binary, and generating the models needs nothing",
   };
 }
 
@@ -183,7 +192,7 @@ export async function runEnvironmentChecks(options: EnvironmentCheckOptions = {}
   const manifest = await readPackageManifest();
   const checks = [nodeCheck(manifest), typescriptCheck(manifest), nodeTypesCheck()];
   if (!options.skipSolverProbe) checks.push(await solverCheck());
-  checks.push(z3CommandCheck(), quintCheck(), javaCheck());
+  checks.push(z3CommandCheck(), quintCheck(manifest), javaCheck());
   return checks;
 }
 
