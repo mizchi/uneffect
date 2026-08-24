@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedTestNames, ciTestTiers, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciIsolatedTestFiles, ciIsolatedTestNames, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -68,6 +68,26 @@ describe("CI test tier manifest", () => {
       const declared = [...source.matchAll(/^  it\("([^"]+)"/gm)].map((match) => match[1]);
       expect(selected, file).toEqual(declared);
     }
+  });
+
+  it("discovers named tests for whole-file process isolation", () => {
+    expect(ciIsolatedTestFiles).toContain("test/dogfood.test.ts");
+    expect(parseVitestListNames("test/dogfood.test.ts", [
+      "test/dogfood.test.ts > Uneffect dogfood > first proof",
+      "test/dogfood.test.ts > Uneffect dogfood > nested > second proof",
+      "test/other.test.ts > Other > ignored",
+      "",
+    ].join("\n"))).toEqual([
+      "first proof",
+      "second proof",
+    ]);
+    expect(() => parseVitestListNames("test/dogfood.test.ts", [
+      "test/dogfood.test.ts > First suite > duplicate",
+      "test/dogfood.test.ts > Second suite > duplicate",
+    ].join("\n"))).toThrow(/duplicate isolated test title/);
+    expect(didVitestRunExactlyOneTest("Tests  1 passed | 45 skipped (46)")).toBe(true);
+    expect(didVitestRunExactlyOneTest("Tests  46 skipped (46)")).toBe(false);
+    expect(didVitestRunExactlyOneTest("Tests  2 passed | 44 skipped (46)")).toBe(false);
   });
 
   it("retries only known transient Z3 WASM process failures", () => {

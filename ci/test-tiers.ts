@@ -67,6 +67,22 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
   ],
 };
 
+export const ciIsolatedTestFiles: readonly string[] = ["test/dogfood.test.ts"];
+
+export function parseVitestListNames(file: string, output: string): readonly string[] {
+  const prefix = `${file} > `;
+  const names = output.split(/\r?\n/)
+    .filter((line) => line.startsWith(prefix))
+    .map((line) => line.slice(line.lastIndexOf(" > ") + 3));
+  const duplicate = names.find((name, index) => names.indexOf(name) !== index);
+  if (duplicate) throw new Error(`duplicate isolated test title in ${file}: ${duplicate}`);
+  return names;
+}
+
+export function didVitestRunExactlyOneTest(output: string): boolean {
+  return /Tests\s+1 passed(?:\s+\|\s+\d+ skipped)?/.test(output);
+}
+
 export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readonly string[]): readonly string[] | undefined {
   if (!tier) return undefined;
   const hasExplicitTestFile = argv.some((argument) => argument.endsWith(".test.ts"));

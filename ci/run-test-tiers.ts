@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { ciIsolatedTestNames, ciTestTiers, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
+import { ciIsolatedTestFiles, ciIsolatedTestNames, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
@@ -10,9 +10,25 @@ const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
 for (const tier of tiers) {
   const files: readonly (string | undefined)[] = tier === "fast" ? [undefined] : ciTestTiers[tier];
   for (const file of files) {
-    const testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
+    let testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
+    if (file && ciIsolatedTestFiles.includes(file)) {
+      const listed = spawnSync(pnpm, ["vitest", "list", file], {
+        cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, encoding: "utf8",
+      });
+      if (listed.error) throw listed.error;
+      if (listed.status !== 0) {
+        if (listed.stdout) process.stdout.write(listed.stdout);
+        if (listed.stderr) process.stderr.write(listed.stderr);
+        process.exit(listed.status ?? 1);
+      }
+      testNames = parseVitestListNames(file, listed.stdout);
+      if (testNames.length === 0) throw new Error(`no tests discovered for isolated file: ${file}`);
+    }
     for (const testName of testNames) {
-      const args = ["vitest", "run", ...(file ? [file] : []), ...(testName ? ["-t", testName] : [])];
+      const testPattern = testName && file && ciIsolatedTestFiles.includes(file)
+        ? testName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+        : testName;
+      const args = ["vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : [])];
       const runIsolated = () => spawnSync(pnpm, args, {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier },
         encoding: "utf8", maxBuffer: 20 * 1024 * 1024,
@@ -39,6 +55,9 @@ for (const tier of tiers) {
       }
       if (result.error) throw result.error;
       if (result.status !== 0) process.exit(result.status ?? 1);
+      if (testName && file && ciIsolatedTestFiles.includes(file) && !didVitestRunExactlyOneTest(result.stdout ?? "")) {
+        throw new Error(`isolated selector did not execute exactly one test: ${file} -t ${testName}`);
+      }
     }
   }
 }
