@@ -1547,20 +1547,40 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         }));
       };
       const directGroupAwait = (statement: ts.Statement): boolean => {
-        if (!ts.isExpressionStatement(statement)) return false;
-        let expression = statement.expression;
+        let expression: ts.Expression | undefined;
+        if (ts.isExpressionStatement(statement)) expression = statement.expression;
+        else if (ts.isVariableStatement(statement) && statement.declarationList.declarations.length === 1) {
+          expression = statement.declarationList.declarations[0]!.initializer;
+        }
+        if (!expression) return false;
         while (ts.isParenthesizedExpression(expression)) expression = expression.expression;
         return ts.isAwaitExpression(expression) && referencesGroup(expression.expression);
       };
+      const nonThrowingPrimitiveStatement = (statement: ts.Statement): boolean => {
+        if (ts.isEmptyStatement(statement)) return true;
+        if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.every((declaration) =>
+          ts.isIdentifier(declaration.name)
+          && (declaration.initializer === undefined || staticPrimitive(declaration.initializer, new Map()) !== undefined));
+        if (!ts.isExpressionStatement(statement)) return false;
+        const expression = statement.expression;
+        if (ts.isVoidExpression(expression)) return staticPrimitive(expression.expression, new Map()) !== undefined;
+        return staticPrimitive(expression, new Map()) !== undefined;
+      };
       const preciseAwaitCatchEntries = (block: ts.Block, state: PathState): PathState[] | undefined => {
-        const [first, ...rest] = block.statements;
-        if (!first || !directGroupAwait(first)) return undefined;
+        const awaitIndex = block.statements.findIndex(directGroupAwait);
+        if (awaitIndex < 0) return undefined;
+        const prefix = block.statements.slice(0, awaitIndex);
+        const awaited = block.statements[awaitIndex]!;
+        const rest = block.statements.slice(awaitIndex + 1);
+        if (!prefix.every(nonThrowingPrimitiveStatement)) return undefined;
         // This restricted shape has no operation before the await that can
-        // enter catch, and its suffix cannot throw. The rejection edge owns
-        // the Promise exactly like the fulfillment edge; break/continue only
-        // runs after fulfillment and therefore is not retained on catch.
-        if (!rest.every((statement) => ts.isBreakStatement(statement) || ts.isContinueStatement(statement))) return undefined;
-        const observed = executeNodeEffects(first, state);
+        // enter catch. Every rejection edge at or after the await therefore
+        // owns the Promise exactly like the fulfillment edge. A later
+        // reassignment remains unsupported because it could install a new
+        // Promise before a subsequent statement throws.
+        if (rest.some(reassigns)) return undefined;
+        const beforeAwait = prefix.reduce((current, statement) => executeNodeEffects(statement, current), state);
+        const observed = executeNodeEffects(awaited, beforeAwait);
         return [{ ...observed, terminated: false, completion: undefined, abrupt: undefined, label: undefined }];
       };
       const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;

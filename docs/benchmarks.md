@@ -888,11 +888,13 @@ but reuses one parsed Program. It is recorded as an observation rather than a
 regression budget and does not measure program construction, nullable-union
 selection, shadowed identifiers, or general expression-level exception edges.
 
-On 2026-08-25, cold analysis of 64 functions using the restricted loop-local
-`try { await pending; break } catch { pending = task(); continue }` retry shape
-measured 139.79 ms mean over 50 samples (1.58% relative margin of error). The
+On 2026-08-25, cold analysis of 64 functions using a loop-local retry with a
+primitive local prefix, variable-initializer `await`, post-await call, and
+`catch { pending = task(); continue }` measured 147.46 ms mean over 50 samples
+(1.05% relative margin of error). The
 benchmark includes TypeScript Program construction on every sample and the
 Promise ownership loop fixed point. It is an observation rather than a
-regression budget. It does not cover an operation before the tracked `await`,
-arbitrary statements after it, irreducible loops, or dynamically dispatched
-exception edges; those shapes retain the conservative catch entry.
+regression budget. It does not cover a possibly throwing operation before the
+tracked `await`, replacement of the tracked generation before a later throw,
+irreducible loops, or dynamically dispatched exception edges; those shapes
+retain the conservative catch entry.

@@ -288,10 +288,11 @@ describe("async error and explicit resource safety", () => {
     const result = analyzeAsyncSafety("loop-try-catch-promises.ts", `
       declare const retry: boolean
       declare function task(): Promise<number>
+      declare function recordAttempt(value: number): void
       async function observedAfterRetry() {
         let pending = task()
         while (retry) {
-          try { await pending; break }
+          try { const attempt = 1; void attempt; const value = await pending; recordAttempt(value); break }
           catch { pending = task(); continue }
         }
         await pending
@@ -312,15 +313,25 @@ describe("async error and explicit resource safety", () => {
         }
         await pending
       }
+      async function riskAfterReplacement() {
+        let pending = task()
+        while (retry) {
+          try { await pending; pending = task(); recordAttempt(1); break }
+          catch { pending = task(); continue }
+        }
+        await pending
+      }
     `);
     expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "observedAfterRetry", status: "observed" },
       { owner: "lostAfterRetry", status: "floating" },
       { owner: "riskBeforeObservation", status: "floating" },
+      { owner: "riskAfterReplacement", status: "floating" },
     ]);
     expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
       expect.objectContaining({ functionName: "lostAfterRetry" }),
       expect.objectContaining({ functionName: "riskBeforeObservation" }),
+      expect.objectContaining({ functionName: "riskAfterReplacement" }),
     ]);
   });
 

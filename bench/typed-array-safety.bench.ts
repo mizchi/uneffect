@@ -63,7 +63,7 @@ const loopCatchOwnershipSource = Array.from({ length: 64 }, (_, index) => `
   async function retry${index}(retry: boolean) {
     let pending = task()
     while (retry) {
-      try { await pending; break }
+      try { const attempt = ${index}; void attempt; const value = await pending; recordAttempt(value); break }
       catch { pending = task(); continue }
     }
     await pending
@@ -258,7 +258,7 @@ describe("typed-array static verification", () => {
   }, { time: 1_500, iterations: 50 });
 
   bench("join 64 loop-local awaited catch retries", () => {
-    analyzeAsyncSafety("loop-catch-ownership.ts", `declare function task(): Promise<number>\n${loopCatchOwnershipSource}`);
+    analyzeAsyncSafety("loop-catch-ownership.ts", `declare function task(): Promise<number>\ndeclare function recordAttempt(value: number): void\n${loopCatchOwnershipSource}`);
   }, { time: 1_500, iterations: 50 });
 
   bench("link Promise adapter assimilation by symbol", () => {

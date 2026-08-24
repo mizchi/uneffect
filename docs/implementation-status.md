@@ -111,10 +111,11 @@ same property is proved for arbitrary TypeScript.
   right side; nullable unions and shadowed identifiers remain unknown.
   Arbitrary expressions still retain a conservative possible-throw catch entry.
 - Promise ownership loop closure preserves a directly awaited generation across
-  the restricted `try { await pending; break } catch { pending = task();
-  continue }` retry shape and a following observation. An operation before the
-  `await` restores the conservative catch entry, so general exception-heavy
-  loop joins remain unsupported rather than being declared safe.
+  a retry `try` with statically primitive local preparation, a direct expression
+  or variable-initializer `await`, non-reassigning post-await work, and a catch
+  that replaces the generation before continuing. A possible throw before the
+  `await`, or replacement followed by a possible throw, restores conservative
+  catch entry, so general exception-heavy loop joins remain unsupported.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

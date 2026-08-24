@@ -116,11 +116,15 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const result = analyzeAsyncSafety("src/retry.ts", `
       declare const retry: boolean
       declare function task(): Promise<number>
+      declare function recordAttempt(value: number): void
       export async function observedAfterRetry() {
         let pending = task()
         while (retry) {
           try {
-            await pending
+            const attempt = 1
+            void attempt
+            const value = await pending
+            recordAttempt(value)
             break
           } catch {
             pending = task()
