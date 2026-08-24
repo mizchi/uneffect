@@ -60,13 +60,15 @@ ${Array.from({ length: 64 }, (_, index) => `
   }
 `).join("\n")}`;
 const loopCatchOwnershipSource = Array.from({ length: 64 }, (_, index) => `
-  async function retry${index}(retry: boolean) {
+  async function retry${index}(retry: boolean, mode: "primary" | "backup") {
     let pending = task()
     while (retry) {
       try {
         const attempt = ${index}; void attempt
-        if (retry) { const value = await pending; recordAttempt(value) }
-        else { await pending }
+        switch (mode) {
+          case "primary":
+          case "backup": { const value = await pending; recordAttempt(value); break }
+        }
         break
       }
       catch { pending = task(); continue }

@@ -120,6 +120,10 @@ same property is proved for arbitrary TypeScript.
   is a primitive identifier (or supported static primitive expression) and
   both branches must reach the tracked `await`. A missing `else`, one
   unobserved branch, or a call/property condition remains a non-proof.
+- Exhaustive finite-literal-union or default-covered `switch` statements use
+  per-clause entry paths through unlabeled-break fallthrough. Every possible
+  entry must observe before risk; call/property discriminants, effectful case
+  labels, or one unobserved entry retain the conservative catch state.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
   and selected exactly-once lifetime obligations.
 - Web and Node event-loop models cover the implemented ordering fragments for

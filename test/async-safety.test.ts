@@ -351,6 +351,60 @@ describe("async error and explicit resource safety", () => {
         }
         await pending
       }
+      declare const mode: "primary" | "backup"
+      async function observedSwitchRetry() {
+        let pending = task()
+        while (retry) {
+          try {
+            switch (mode) {
+              case "primary": { const value = await pending; recordAttempt(value); break }
+              case "backup": await pending; break
+            }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function unobservedSwitchCase() {
+        let pending = task()
+        while (retry) {
+          try {
+            switch (mode) {
+              case "primary": await pending; break
+              case "backup": mayThrowBeforeAwait(); break
+            }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      async function observedFallthroughSwitch() {
+        let pending = task()
+        while (retry) {
+          try {
+            switch (mode) {
+              case "primary":
+              case "backup": await pending; break
+            }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
+      declare function selectMode(): "primary" | "backup"
+      async function riskySwitchDiscriminant() {
+        let pending = task()
+        while (retry) {
+          try {
+            switch (selectMode()) {
+              case "primary": await pending; break
+              case "backup": await pending; break
+            }
+            break
+          } catch { pending = task(); continue }
+        }
+        await pending
+      }
     `);
     expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "observedAfterRetry", status: "observed" },
@@ -359,6 +413,10 @@ describe("async error and explicit resource safety", () => {
       { owner: "riskAfterReplacement", status: "floating" },
       { owner: "oneBranchUnobserved", status: "floating" },
       { owner: "riskyBranchCondition", status: "floating" },
+      { owner: "observedSwitchRetry", status: "observed" },
+      { owner: "unobservedSwitchCase", status: "floating" },
+      { owner: "observedFallthroughSwitch", status: "observed" },
+      { owner: "riskySwitchDiscriminant", status: "floating" },
     ]);
     expect(result.diagnostics.filter(({ kind }) => kind === "floating-promise")).toEqual([
       expect.objectContaining({ functionName: "lostAfterRetry" }),
@@ -366,6 +424,8 @@ describe("async error and explicit resource safety", () => {
       expect.objectContaining({ functionName: "riskAfterReplacement" }),
       expect.objectContaining({ functionName: "oneBranchUnobserved" }),
       expect.objectContaining({ functionName: "riskyBranchCondition" }),
+      expect.objectContaining({ functionName: "unobservedSwitchCase" }),
+      expect.objectContaining({ functionName: "riskySwitchDiscriminant" }),
     ]);
   });
 

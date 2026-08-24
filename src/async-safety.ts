@@ -1586,6 +1586,22 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       const statementGuaranteesObservationBeforeCatch = (statement: ts.Statement): boolean => {
         if (ts.isBlock(statement)) return statementsGuaranteeObservationBeforeCatch(statement.statements);
         if (directGroupAwait(statement)) return true;
+        if (ts.isSwitchStatement(statement)) {
+          if (!nonThrowingPrimitiveExpression(statement.expression) || !switchIsExhaustive(statement)
+            || statement.caseBlock.clauses.some((clause) =>
+              ts.isCaseClause(clause) && !nonThrowingPrimitiveExpression(clause.expression))) return false;
+          const entryStatements = (entry: number): ts.Statement[] => {
+            const path: ts.Statement[] = [];
+            for (const clause of statement.caseBlock.clauses.slice(entry)) for (const child of clause.statements) {
+              if (ts.isBreakStatement(child) && !child.label) return path;
+              path.push(child);
+              if (ts.isReturnStatement(child) || ts.isThrowStatement(child)) return path;
+            }
+            return path;
+          };
+          return statement.caseBlock.clauses.every((_, index) =>
+            statementsGuaranteeObservationBeforeCatch(entryStatements(index)));
+        }
         if (!ts.isIfStatement(statement) || !statement.elseStatement
           || !nonThrowingPrimitiveExpression(statement.expression)) return false;
         return statementGuaranteesObservationBeforeCatch(statement.thenStatement)

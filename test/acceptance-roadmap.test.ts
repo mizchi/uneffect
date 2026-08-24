@@ -115,7 +115,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeAsyncSafety = futureApi("analyzeAsyncSafety");
     const result = analyzeAsyncSafety("src/retry.ts", `
       declare const retry: boolean
-      declare const usePrimary: boolean
+      declare const mode: "primary" | "backup"
       declare function task(): Promise<number>
       declare function recordAttempt(value: number): void
       export async function observedAfterRetry() {
@@ -124,11 +124,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           try {
             const attempt = 1
             void attempt
-            if (usePrimary) {
-              const value = await pending
-              recordAttempt(value)
-            } else {
-              await pending
+            switch (mode) {
+              case "primary":
+              case "backup":
+                {
+                  const value = await pending
+                  recordAttempt(value)
+                }
+                break
             }
             break
           } catch {
