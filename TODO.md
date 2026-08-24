@@ -24,6 +24,7 @@ Open-work mapping:
   - [x] Project reviewed `NamedNodeMap` reads/writes through direct `Element.attributes` access and immutable const aliases; reassigned and escaping live views remain collection-scoped.
   - [x] Infer compound `innerHTML` serialization/parsing effects and reviewed client/scroll/offset layout reads.
   - [x] Separate `outerHTML` serialization on the receiver from parse/topology writes and mutation on `receiver.parentNode`; parent-presence refinement remains conservative.
+- complete React function component lifecycle semantics: [#16](https://github.com/mizchi/uneffect/issues/16)
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -37,6 +38,7 @@ documentation are all updated.
 - [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands, each naming what it blocks and how to satisfy it.
 - [x] Drop the native Z3 installation from the toolchain: run ownership evidence on the `z3-solver` WASM build like contract verification already did, and keep it that way with a manifest test.
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
+- [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

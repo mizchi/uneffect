@@ -4,6 +4,7 @@ import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import type { CheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
+import { analyzeReactSemantics } from "./react-semantics.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -53,6 +54,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     sources.set(fileName, text);
     const contracts = await verifyContractObligations(fileName, text);
     diagnostics.push(...contracts.diagnostics);
+    diagnostics.push(...analyzeReactSemantics(fileName, text).diagnostics);
     artifacts.push(...contracts.artifacts);
     const sourceFile = program.getSourceFile(fileName);
     if (sourceFile) diagnostics.push(...analyzeAsyncSafetyInProgram(program, sourceFile).diagnostics);

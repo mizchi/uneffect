@@ -17,6 +17,7 @@ export const ciTestTiers = {
     "test/numeric-types.test.ts",
     "test/project-optimizer.test.ts",
     "test/quicksort.test.ts",
+    "test/react-semantics.test.ts",
     "test/refinement-bindings.test.ts",
     "test/static-evaluation.test.ts",
     "test/temporal-expressions.test.ts",

@@ -63,6 +63,50 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.emittedFiles["src/plain.js"]).not.toContain("uneffect");
   });
 
+  it("separates replayable React render from event, Effect, and cleanup capabilities", () => {
+    const analyzeReact = futureApi("analyzeReactSemantics");
+    const result = analyzeReact("src/feed.tsx", `
+      import { useEffect } from "react"
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect: react acquire Subscription */
+      declare function subscribe(): void
+      /* uneffect: react release Subscription */
+      declare function unsubscribe(): void
+      /* uneffect: react component */
+      export function Feed({ topic }: { topic: string }) {
+        useEffect(() => {
+          subscribe()
+          return () => unsubscribe()
+        }, [topic])
+        return <button onClick={() => fetch(\`/topics/\${topic}\`)} />
+      }
+      function Legacy() { console.log("not opted in"); return null }
+    `) as { diagnostics: unknown[]; components: Array<{ name: string; phases: Array<{ phase: string; effects: string[] }> }> };
+    expect(result.diagnostics).toEqual([]);
+    expect(result.components.map((component) => component.name)).toEqual(["Feed"]);
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "render", effects: [] }),
+      expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
+      expect.objectContaining({ phase: "passive-effect" }),
+      expect.objectContaining({ phase: "cleanup" }),
+    ]));
+
+    const broken = analyzeReact("src/feed.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react acquire Subscription */
+      declare function subscribe(): void
+      /* uneffect: react component */
+      export function Feed(props: { topic: string }) {
+        props.topic = String(Date.now())
+        useEffect(() => { subscribe() }, [])
+        return null
+      }
+    `) as { diagnostics: Array<{ kind: string }> };
+    expect(broken.diagnostics.map((diagnostic) => diagnostic.kind).sort()).toEqual([
+      "immutable-input-mutation", "missing-effect-cleanup", "non-idempotent-render",
+    ]);
+  });
+
   it("checks scoped builtin and user-defined capability sets transitively and warns about unused upper bounds", async () => {
     const analyzeProject = futureApi("analyzeUneffectProject");
     const result = await analyzeProject({

@@ -41,6 +41,12 @@ describe("Uneffect annotation marker", () => {
     expect(validateUneffectAnnotations(source)).toEqual([]);
   });
 
+  it("recognizes gradual React semantic roles", () => {
+    const source = `/* uneffect: react component */\n/* uneffect: react acquire Subscription */`;
+    expect(extractAnnotations(source, "react")).toEqual(["component", "acquire Subscription"]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
   it("recognizes explicit Promise rejection ownership transfer", () => {
     const source = "/* uneffect: consumes_rejection 0, 2 */";
     expect(extractAnnotations(source, "consumes_rejection")).toEqual(["0, 2"]);

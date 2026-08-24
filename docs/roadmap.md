@@ -45,6 +45,9 @@ local result survives composition with real application control flow.
    conflating Web IDL properties with attributes or node topology.
 4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
    evaluates certificates and narrows the trusted computing base.
+5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
+   extends the initial phase checker through symbol-resolved custom Hooks,
+   resource identity, replay, and concurrent/server boundaries.
 
 ## Phase 4 — Consume proofs without widening their claims
 

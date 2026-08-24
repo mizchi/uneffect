@@ -131,13 +131,17 @@ Read [Gradual annotations](./docs/gradual-annotations.md),
 [Deno-compatible permissions](./docs/deno-permissions.md) for the grammar and
 scope lattice.
 
+Opt-in React function components can additionally separate replayable render
+from event, layout/passive Effect, and cleanup phases. See
+[React function component semantics](./docs/react-semantics.md).
+
 ## CLI
 
 The package publishes one binary, `uneffect`, with subcommands:
 
 | Command | Purpose |
 | --- | --- |
-| `check <file.ts> [...]` | Check effects, contracts, and async safety. This is the default command. |
+| `check <file.ts> [...]` | Check effects, contracts, async safety, and opted-in React TSX semantics. This is the default command. |
 | `doctor` | Check Node, TypeScript, Z3 WASM, and optional model-runner prerequisites. |
 | `spec <backend> <file.ts> [function]` | Emit neutral IR or a Z3/Quint/composed model. |
 | `instrument <file.ts>` | Emit source with optional contract or ownership assertions. |

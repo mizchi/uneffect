@@ -118,6 +118,24 @@ same property is proved for arbitrary TypeScript.
 - Real-time annotations use logical clocks, guards, deadlines, and bounded
   exploration. They are opt-in and are not assumed for ordinary programs.
 
+## React function components
+
+- `/* uneffect: react component */` opts function declarations and
+  variable-bound function expressions/arrows into a TSX-specific semantic
+  check without changing runtime output.
+- The initial phase projection distinguishes replayable render, inline JSX
+  event callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
+  cleanup functions. Aliased named imports from `react` are recognized.
+- The tested fragment rejects direct render capabilities, selected
+  non-idempotent host reads, member mutation rooted at an identifier props
+  parameter, and control-flow-dependent built-in Effect Hook calls.
+- `react acquire Capability` and `react release Capability` contracts require
+  setup acquisition to have a matching returned cleanup release. This is
+  capability-level matching, not yet resource-identity or exactly-once proof.
+- Custom Hooks, dependency completeness, stale closures, refs/state/context
+  aliases, Suspense/concurrent lifecycle modeling, server components, and
+  Quint/Z3 projection remain unsupported rather than implicitly verified.
+
 ## Validators, generators, and numeric memory safety
 
 - Registered custom validators can attach proof-backed specializations. The

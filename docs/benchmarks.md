@@ -11,6 +11,22 @@ scalar constant folding, a SHA-256-sized readonly U32 table, and repeated table
 reads. Results are local-machine observations, not portable pass/fail budgets.
 Compare results on the same machine and runtime before and after a change.
 
+## React function component phase classification
+
+`bench/react-semantics.bench.ts` constructs one TSX module containing 128
+opted-in components. Every component has a passive Effect with a matching
+acquire/release cleanup and an inline JSX event handler. The paired baseline
+parses the same source with the TypeScript TSX parser but performs no Uneffect
+classification.
+
+On 2026-08-25 with Vitest 4.1.11, the analyzer measured 11.53 ms mean
+(8.66% RME, 44 samples), while the parse-only baseline measured 2.78 ms
+(2.68% RME, 181 samples). The combined parse-and-analysis path was therefore
+about 4.15 times the parse-only cost for this synthetic cold call, or roughly
+0.09 ms per annotated component. This implementation reparses the supplied
+source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
+number is a regression baseline rather than a compiler-plugin latency claim.
+
 The scaled-affine strengthening dogfood initially measured 3,412.12 ms for one
 sample because every candidate obligation constructed a fresh Z3 Context.
 Reusing one Context per reachability-lint invocation while retaining an

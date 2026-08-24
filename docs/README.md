@@ -18,6 +18,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Async pattern models](./async-pattern-models.md): timers, event-loop ordering, and Promise combinator semantics.
 - [Promise state model](./promise-state-model.md): executors and `then`/`catch`/`finally` reaction chains.
 - [Async safety](./async-safety.md): floating Promise diagnostics and `using`/`await using` disposal models.
+- [React function component semantics](./react-semantics.md): replayable render, event/Effect phases, immutable inputs, and cleanup contracts.
 - [Specification backends](./specification-backends.md): capability, invariant, and temporal categories; shared IR; Z3 and Quint generation.
 - [Evidence and optimization](./evidence-and-optimization.md): evidence states, reproducible artifacts, and proof-gated rewrite schemas.
 - [Typed array bounds](./typed-arrays.md): bounded allocation, u8 writes, and optional runtime refinements.

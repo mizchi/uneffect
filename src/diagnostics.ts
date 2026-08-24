@@ -3,11 +3,12 @@ import { formatEffect } from "./capabilities.js";
 import type { CheckResult } from "./check.js";
 import type { ContractDiagnostic } from "./contracts.js";
 import type { EffectDiagnostic } from "./effects.js";
+import type { ReactSemanticDiagnostic } from "./react-semantics.js";
 
 export type DiagnosticSeverity = "error" | "warning";
 /** One explanation line under a diagnostic: `because`, `counterexample`, `evaluation`, `hint`, ... */
 export interface DiagnosticNote { label: string; detail: string }
-export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic;
+export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic;
 
 export interface ReportedDiagnostic {
   code: string;
@@ -34,6 +35,12 @@ const hints: Readonly<Record<string, string>> = {
   "async/invalid-resource-contract": "fix the resource directive so its parameter indices and boolean guards match the declaration",
   "async/disposed-resource-use": "keep the use inside the disposal scope, or extend the scope to cover the alias",
   "async/disposed-resource-escape": "stop the resource from escaping its disposal scope, or hand the caller an owned resource instead",
+  "react/render-effect": "move the operation into an event handler or an Effect setup, leaving render replay-safe",
+  "react/non-idempotent-render": "derive the value from props/state/context, or read it outside render in an event or Effect",
+  "react/immutable-input-mutation": "create a new value instead of mutating the component's props snapshot",
+  "react/conditional-hook": "call Hooks unconditionally at the component top level and move the condition inside the Hook",
+  "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect: react release Capability */ boundary",
+  "react/invalid-react-annotation": "use exactly `react component`, `react acquire Capability`, or `react release Capability`",
 };
 
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }
@@ -43,6 +50,7 @@ function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {
 }
 
 function codeOf(diagnostic: CheckerDiagnostic): string {
+  if ("component" in diagnostic) return `react/${diagnostic.kind}`;
   if ("effect" in diagnostic) return `effect/${diagnostic.kind}`;
   if ("clause" in diagnostic) return diagnostic.clause === "unsupported" ? "contract/unsupported" : `contract/${diagnostic.clause}`;
   return `async/${diagnostic.kind}`;
