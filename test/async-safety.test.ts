@@ -284,6 +284,71 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("executes for initializers and incrementors in Promise ownership fixed points", () => {
+    const result = analyzeAsyncSafety("for-flow-promises.ts", `
+      declare const flag: boolean
+      declare function task(): Promise<number>
+      async function initializerCanSkip() {
+        for (let pending = task(); flag;) await pending
+      }
+      async function initializerObservedAfterLoop() {
+        let pending: Promise<number>
+        for (pending = task(); flag;) console.log("tick")
+        await pending
+      }
+      async function incrementorCanLose() {
+        let pending = task()
+        for (; flag; pending = task()) await pending
+      }
+      async function incrementorObservedAfterLoop() {
+        let pending = task()
+        for (; flag; pending = task()) await pending
+        await pending
+      }
+      async function continueRunsIncrementor() {
+        let pending = task()
+        for (; flag; pending = task()) {
+          await pending
+          continue
+        }
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "initializerCanSkip", status: "floating" },
+      { owner: "initializerObservedAfterLoop", status: "observed" },
+      { owner: "incrementorCanLose", status: "floating" },
+      { owner: "incrementorObservedAfterLoop", status: "observed" },
+      { owner: "continueRunsIncrementor", status: "floating" },
+    ]);
+  });
+
+  it("executes loop conditions and iterable expressions before loop exits", () => {
+    const result = analyzeAsyncSafety("loop-header-promises.ts", `
+      declare function task(): Promise<number>
+      /* uneffect: consumes_rejection 0 */
+      declare function consumeAndTest(value: Promise<number>): boolean
+      /* uneffect: consumes_rejection 0 */
+      declare function consumeAndValues(value: Promise<number>): readonly number[]
+      async function whileCondition() {
+        const pending = task()
+        while (consumeAndTest(pending)) break
+      }
+      async function forCondition() {
+        const pending = task()
+        for (; consumeAndTest(pending);) break
+      }
+      async function iterableExpression() {
+        const pending = task()
+        for (const value of consumeAndValues(pending)) console.log(value)
+      }
+    `);
+    expect(result.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
+      { owner: "whileCondition", status: "transferred" },
+      { owner: "forCondition", status: "transferred" },
+      { owner: "iterableExpression", status: "transferred" },
+    ]);
+  });
+
   it("tracks rejection ownership from deferred Promise assignments and aliases", () => {
     const result = analyzeAsyncSafety("deferred-promises.ts", `
       declare const enabled: boolean

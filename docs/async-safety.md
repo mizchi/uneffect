@@ -382,10 +382,15 @@ primitive does not enter the right operand. Nullable unions, shadowed
 declarators, call-argument nesting, and unresolved dynamic dispatch remain
 outside this guaranteed-edge fragment.
 `while` and `for` loops retain their zero-iteration path, while `do` loops
-execute their body at least once. Loop bodies are iterated to a finite abstract
-state closure. Unlabeled and labeled `break`/`continue` propagate through nested
-blocks and loops, so statements skipped by an abrupt edge cannot falsely count
-as Promise observations. Reassigning an unresolved Promise records the
+execute their body at least once. The ownership closure follows loop-header
+evaluation order: `for` initializers run once, conditions run before a possible
+zero-iteration exit and after each completed iteration, `for...in`/`for...of`
+source expressions run once, and `for` incrementors run after normal body
+completion and a matching `continue`, but not after `break`. Loop bodies and
+headers are iterated to a finite abstract-state closure. Unlabeled and labeled
+`break`/`continue` propagate through nested blocks and loops, so statements
+skipped by an abrupt edge cannot falsely count as Promise observations.
+Reassigning an unresolved Promise records the
 previous ownership obligation as lost, even when the replacement value is later
 awaited. Initial assignment to an uninitialized `let` is activation rather than
 reassignment; assigning the same Promise to another local creates an alias and

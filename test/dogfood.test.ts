@@ -887,6 +887,7 @@ describe("Uneffect dogfood", () => {
     expect(verified.promiseBindings.map(({ owner, status }) => ({ owner, status }))).toEqual([
       { owner: "deliverTelemetry", status: "observed" },
       { owner: "flushTelemetryBeforeExit", status: "observed" },
+      { owner: "handOffTelemetryUntilOffline", status: "transferred" },
     ]);
 
     const broken = analyzeAsyncSafety(fileName, source.replace(
@@ -895,6 +896,16 @@ describe("Uneffect dogfood", () => {
     ));
     expect(broken.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "deliverTelemetry",
+      kind: "floating-promise",
+      message: expect.stringContaining("delivery"),
+    }));
+
+    const brokenHeader = analyzeAsyncSafety(fileName, source.replace(
+      "/* uneffect: consumes_rejection 0 */",
+      "/* ownership contract removed */",
+    ));
+    expect(brokenHeader.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "handOffTelemetryUntilOffline",
       kind: "floating-promise",
       message: expect.stringContaining("delivery"),
     }));

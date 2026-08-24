@@ -1,4 +1,6 @@
 declare function sendTelemetryBatch(): Promise<void>;
+/* uneffect: consumes_rejection 0 */
+declare function keepSendingWhileOnline(delivery: Promise<void>): boolean;
 
 export async function deliverTelemetry(mode: "required" | "best-effort"): Promise<void> {
   let delivery: Promise<void>;
@@ -20,4 +22,9 @@ export async function flushTelemetryBeforeExit(skipWork: boolean): Promise<void>
   } finally {
     await delivery;
   }
+}
+
+export async function handOffTelemetryUntilOffline(): Promise<void> {
+  const delivery = sendTelemetryBatch();
+  while (keepSendingWhileOnline(delivery)) break;
 }

@@ -1429,7 +1429,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(node);
         return consumed;
       };
-      const activates = (statement: ts.Statement): boolean => {
+      const activates = (statement: ts.Node): boolean => {
         let active = false;
         const scan = (node: ts.Node): void => {
           if (active || (node !== statement && ts.isFunctionLike(node))) return;
@@ -1442,7 +1442,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         scan(statement);
         return active;
       };
-      const reassigns = (statement: ts.Statement): boolean => {
+      const reassigns = (statement: ts.Node): boolean => {
         let reassigned = false;
         const scan = (node: ts.Node): void => {
           if (reassigned || (node !== statement && ts.isFunctionLike(node))) return;
@@ -1548,9 +1548,23 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       };
       const stateKey = (state: PathState): string => `${Number(state.active)}${Number(state.pending)}${Number(state.lost)}${Number(state.terminated)}:${state.completion ?? ""}:${state.abrupt ?? ""}:${state.label ?? ""}`;
       const uniqueStates = (states: PathState[]): PathState[] => [...new Map(states.map((state) => [stateKey(state), state])).values()];
+      const executeNodeEffects = (node: ts.Node, state: PathState): PathState => {
+        const next = { ...state };
+        const wasActive = next.active;
+        if (activates(node) && !next.active) { next.active = true; next.pending = true; }
+        if (reassigns(node) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
+        if (consumes(node) && next.active) next.pending = false;
+        return next;
+      };
+      const executeLoopTest = (statement: ts.IterationStatement, state: PathState): PathState => {
+        if (ts.isWhileStatement(statement) || ts.isDoStatement(statement)) return executeNodeEffects(statement.expression, state);
+        if (ts.isForStatement(statement) && statement.condition) return executeNodeEffects(statement.condition, state);
+        return state;
+      };
       const executeLoop = (statement: ts.IterationStatement, state: PathState, atLeastOnce: boolean, loopLabel?: string): PathState[] => {
-        const exits: PathState[] = atLeastOnce ? [] : [{ ...state }];
-        let frontier: PathState[] = [{ ...state }], visited = new Set<string>();
+        const first = atLeastOnce ? state : executeLoopTest(statement, state);
+        const exits: PathState[] = atLeastOnce ? [] : [{ ...first }];
+        let frontier: PathState[] = [{ ...first }], visited = new Set<string>();
         while (frontier.length) {
           const nextFrontier: PathState[] = [];
           for (const entry of frontier) {
@@ -1559,11 +1573,19 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
               const matching = next.label === undefined || next.label === loopLabel;
               if (next.abrupt === "break" && matching) { exits.push({ ...next, abrupt: undefined, label: undefined }); continue; }
               if (next.abrupt === "continue" && matching) {
-                const continued = { ...next, abrupt: undefined, label: undefined };
+                const resumed = { ...next, abrupt: undefined, label: undefined };
+                const advanced = ts.isForStatement(statement) && statement.incrementor
+                  ? executeNodeEffects(statement.incrementor, resumed)
+                  : resumed;
+                const continued = executeLoopTest(statement, advanced);
                 exits.push(continued); nextFrontier.push(continued); continue;
               }
               if (next.abrupt || next.terminated) { exits.push(next); continue; }
-              exits.push(next); nextFrontier.push(next);
+              const advanced = ts.isForStatement(statement) && statement.incrementor
+                ? executeNodeEffects(statement.incrementor, next)
+                : next;
+              const tested = executeLoopTest(statement, advanced);
+              exits.push(tested); nextFrontier.push(tested);
             }
           }
           frontier = uniqueStates(nextFrontier);
@@ -1614,14 +1636,18 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
             ? completions.flatMap((completion) => executeFinally(statement.finallyBlock!, completion))
             : completions;
         }
-        if (ts.isWhileStatement(statement) || ts.isForStatement(statement) || ts.isForInStatement(statement) || ts.isForOfStatement(statement)) return executeLoop(statement, state, false, loopLabel);
+        if (ts.isForStatement(statement)) {
+          const initialized = statement.initializer ? executeNodeEffects(statement.initializer, state) : state;
+          return executeLoop(statement, initialized, false, loopLabel);
+        }
+        if (ts.isForInStatement(statement) || ts.isForOfStatement(statement)) {
+          const initialized = executeNodeEffects(statement.expression, state);
+          return executeLoop(statement, initialized, false, loopLabel);
+        }
+        if (ts.isWhileStatement(statement)) return executeLoop(statement, state, false, loopLabel);
         if (ts.isDoStatement(statement)) return executeLoop(statement, state, true, loopLabel);
         if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) return [{ ...state, abrupt: ts.isBreakStatement(statement) ? "break" : "continue", label: statement.label?.text }];
-        const next = { ...state };
-        const wasActive = next.active;
-        if (activates(statement) && !next.active) { next.active = true; next.pending = true; }
-        if (reassigns(statement) && wasActive) { if (next.pending) next.lost = true; next.pending = true; }
-        if (consumes(statement) && next.active) next.pending = false;
+        const next = executeNodeEffects(statement, state);
         const guaranteedThrow = isGuaranteedThrowStatement(statement);
         if (ts.isReturnStatement(statement) || ts.isThrowStatement(statement) || guaranteedThrow) {
           next.terminated = true;

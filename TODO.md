@@ -544,6 +544,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Select static string/number/boolean `switch` entries with ordered case evaluation, default selection, and fallthrough until return or unlabeled break; dynamic labels and discriminants remain unknown.
       - [x] Fold boolean-only `&&` and `||` predicates in left-to-right short-circuit order; non-boolean truthiness and dynamic residual operands remain unknown.
       - [x] Select a static ternary Proxy-factory branch through the shared primitive evaluator; dynamic conditions still require both expression branches to prove Proxy provenance.
+      - [x] Execute `for` initializers, loop conditions, `for...in`/`for...of` source expressions, and `for` incrementors in Promise-ownership loop closures, including zero-iteration and `continue` paths.
       - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow.
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
