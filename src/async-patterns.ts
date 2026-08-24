@@ -1244,6 +1244,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         scanCapture(expression.body);
       }
     };
+    const definitelyExecutedWithin = (node: ts.Node, boundary: ts.Node): boolean => {
+      for (let current = node.parent; current && current !== boundary; current = current.parent) {
+        if (ts.isIfStatement(current) || ts.isConditionalExpression(current) || ts.isSwitchStatement(current)
+          || ts.isCaseClause(current) || ts.isDefaultClause(current) || ts.isForStatement(current)
+          || ts.isForInStatement(current) || ts.isForOfStatement(current) || ts.isWhileStatement(current)
+          || ts.isDoStatement(current) || ts.isTryStatement(current) || ts.isCatchClause(current)
+          || (ts.isBinaryExpression(current) && [ts.SyntaxKind.AmpersandAmpersandToken,
+            ts.SyntaxKind.BarBarToken, ts.SyntaxKind.QuestionQuestionToken].includes(current.operatorToken.kind))) return false;
+      }
+      return true;
+    };
     const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
       const callbacks = resolveCallbacks(callbackExpression);
       if (callbacks.length > 1) timers[parent]!.callbackAlternatives = callbacks.map((callback) => functionName(callback));
@@ -1286,7 +1297,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
                 ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
               const compatibleClose = closesSource !== undefined
                 && timers[closesSource]?.handleFamily === operation.closesReceiverFamily;
-              if (!callbackNode && compatibleClose) (timers[parent]!.closesSources ??= []).push(closesSource);
+              const definiteClose = compatibleClose && definitelyExecutedWithin(node, callback.body!);
+              if (!callbackNode && definiteClose) (timers[parent]!.closesSources ??= []).push(closesSource);
               if (callbackNode) {
                 const child = timers.length;
                 const childSource = node.getSourceFile();
@@ -1295,7 +1307,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
                   recursive: false, repeats: operation.repeats ?? false,
                   queue: operation.queue, enqueuedBy: parent,
                   externallyReady: operation.queue === "poll" || operation.queue === "close",
-                  ...(compatibleClose ? { closesSource } : {}),
+                  ...(definiteClose ? { closesSource } : {}),
                   ...(callbacks.length > 1 ? { parentAlternative } : {}),
                   span: { start: node.getStart(childSource), end: node.getEnd() },
                 });
@@ -1414,6 +1426,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ? node.expression.expression : undefined;
           const closesSource = operation.closesReceiverFamily && receiver && ts.isIdentifier(receiver)
             ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
+          const definiteClose = closesSource !== undefined && definitelyExecutedWithin(node, ownerBody);
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
@@ -1425,7 +1438,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             handle: operation.resultHandleFamily ? declaration : undefined,
             handleKind: operation.resultHandleFamily ? "object" : undefined,
             handleFamily: operation.resultHandleFamily,
-            ...(closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
+            ...(definiteClose && timers[closesSource]?.handleFamily === operation.closesReceiverFamily ? { closesSource } : {}),
             externallyReady: operation.queue === "poll" || operation.queue === "close",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
@@ -1436,7 +1449,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             ? node.expression.expression : undefined;
           const closesSource = receiver && ts.isIdentifier(receiver)
             ? handleTargets.get(resolveHandle(receiver.text)) : undefined;
-          if (closesSource !== undefined && timers[closesSource]?.handleFamily === operation.closesReceiverFamily) {
+          if (closesSource !== undefined && definitelyExecutedWithin(node, ownerBody)
+            && timers[closesSource]?.handleFamily === operation.closesReceiverFamily) {
             timers[closesSource]!.initiallyCancelled = true;
           }
         } else if (operation?.kind === "abort-timeout") {

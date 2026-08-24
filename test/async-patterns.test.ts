@@ -2581,6 +2581,43 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("does not prove a server source closed across conditional control flow", () => {
+    const model = analyzeAsyncPatterns("node-http-conditional-close.ts", `
+      import { createServer } from "node:http"
+      function serve(stop: boolean) {
+        const server = createServer((_request, _response) => {
+          if (stop) server.close()
+        })
+      }
+    `);
+    expect(model.timers[0]).toMatchObject({ handle: "server", handleFamily: "server" });
+    expect(model.timers[0]?.closesSources).toBeUndefined();
+    const quint = generateNodeEventLoopQuint("node_http_conditional_close", model);
+    expect(quint).not.toContain("callback_0_source_open");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
+  it("keeps conditional callback-bearing close registration conservative", () => {
+    const model = analyzeAsyncPatterns("node-http-conditional-close-callback.ts", `
+      import { createServer } from "node:http"
+      function serve(stop: boolean) {
+        const server = createServer((_request, _response) => {
+          if (stop) server.close(() => queueMicrotask(() => undefined))
+        })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { handle: "server", handleFamily: "server" },
+      { queue: "close", enqueuedBy: 0 },
+      { queue: "microtask", enqueuedBy: 1 },
+    ]);
+    expect(model.timers[1]?.closesSource).toBeUndefined();
+    const quint = generateNodeEventLoopQuint("node_http_conditional_close_callback", model);
+    expect(quint).not.toContain("callback_0_source_open");
+    expect(quint).toContain("var callback_1_registered: int");
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models node:fs watchers as repeating externally completed poll work", () => {
     const model = analyzeAsyncPatterns("node-fs-watch.ts", `
       import { watch as watchFs } from "node:fs"

@@ -652,6 +652,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Count one-shot close registrations created by repeating request listeners, compose their close-phase microtasks, and dogfood a request-triggered shutdown while documenting the conservative post-close arrival gap.
       - [x] Link callback-bearing `Server.close` calls to the matching immutable `createServer` result, prohibit later request arrivals after nested close registration, and initialize directly closed sources as closed.
       - [x] Apply the same source closure when `Server.close()` omits its optional callback, both inside a request listener and before the modeled loop starts.
+      - [x] Refuse to prove source closure for conditional/loop-contained `Server.close` calls while conservatively retaining possible callback work.
       - [x] Track TypeChecker-resolved `node:child_process` execution as Deno-compatible `Run`: keep shell-based `exec`/`execSync` and `fork` broad, narrow literal `execFile`/`execFileSync`/`spawn`/`spawnSync`, model only completion callbacks as poll work, and dogfood a scoped Git adapter.
       - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
       - [x] Resolve an immediately consumed, preceding-statement `const` alias of a conditional abort-source array while rejecting intervening mutation.

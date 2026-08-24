@@ -186,6 +186,11 @@ made while a request listener runs disables later external completions in the
 same action; a close made directly before the modeled loop starts initializes
 the source as closed. Mutable/interprocedural server aliases and lifecycle
 events registered through EventEmitter APIs remain open.
+Conditional and loop-contained close calls are not promoted to definite source
+closure. Their callback work remains a conservative possible registration, but
+the request source stays open in the abstraction until path-correlated server
+lifecycle state is implemented; this avoids proving shutdown from a branch
+that may not execute.
 
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
