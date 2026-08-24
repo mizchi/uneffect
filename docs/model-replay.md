@@ -140,9 +140,11 @@ remain normal. A value-bearing non-call return is accepted only when its
 expression normalizes in the pure refinement-expression fragment. The returned
 value is intentionally not compared because a temporal action describes state
 updates, not a TypeScript function result. A thrown state-backed expression is
-likewise normalized and resolved for purity, but its payload is not retained.
-Effectful or unresolved return calls, catch-payload-dependent flow, effectful
-thrown expressions, and nested or labeled switch transfers remain unsupported.
+likewise normalized and resolved for purity. Scalar `int`/`bool` payloads are
+retained across direct and conditional `if` completion and may bind an immutable
+catch local. Switch payload joins, untracked/string/object payloads, effectful
+or unresolved return calls, effectful thrown expressions, and nested or labeled
+switch transfers remain unsupported.
 The checker also sequences a mandatory `finally` block after a normally
 completing `try` update. Its first exception-aware fragment recognizes a direct
 terminal supported pure `throw` in the try block, routes the accumulated state
@@ -153,8 +155,9 @@ A top-level conditional supported pure throw in the try block also
 splits exceptional and normal paths: only the exceptional path executes catch,
 the normal path executes the remaining try statements, both states are joined,
 and `finally` plus statements after the try run on the join. Catch-value-
-dependent code, implicit exceptions, nested or nonterminal throws, rethrows,
-and abrupt completion during unwinding remain fail-closed. The telemetry
+dependent code outside the tracked scalar payload fragment, implicit
+exceptions, nested or nonterminal throws, and abrupt completion during
+unwinding remain fail-closed. The telemetry
 accounting dogfood selects delivered or dropped accounting through this join
 and finalizes its audit state in `finally`.
 Outside a `try`, a direct branch-final `return` is a supported completion:
@@ -186,8 +189,8 @@ pure rethrow; those predicates are composed under the original `throwWhen`,
 and every resulting path still crosses a common finally. Pure non-call value
 returns use the same predicates but do not establish a contract for the
 returned result. Effectful or unresolved return calls, effectful rethrow
-expressions, catch-value-dependent control, abrupt completion originating in
-finally beyond the supported conditional return/pure-throw fragment,
+expressions, non-scalar or untracked catch-value-dependent control,
+abrupt completion originating in finally beyond the supported conditional return/pure-throw fragment,
 break, continue, labels, and general loops are still not represented. A finally
 completion overrides a retained try/catch completion on
 the paths where finally returns or throws; where finally is normal, the prior

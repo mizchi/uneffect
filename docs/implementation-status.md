@@ -73,9 +73,12 @@ same property is proved for arbitrary TypeScript.
   Conditional returns and supported pure throws from finally override prior
   completion on exactly their paths. A value-bearing non-call return is
   accepted only when its expression normalizes in the pure refinement fragment;
-  its result is not compared with the temporal action. Effectful or unresolved
-  return calls, catch-payload-dependent flow, effectful rethrows, other abrupt finally forms, labels, and
-  arbitrary exception-aware CFGs remain unsupported. The opt-in Z3 validator proves equivalent boolean guards and
+  its result is not compared with the temporal action. Scalar `int`/`bool`
+  throw payloads are retained through direct and conditional `if` completion
+  and can bind immutable catch-local predicates. Effectful or unresolved return
+  calls, untracked/string/object throw payloads, switch payload joins, other
+  abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
+  unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,
   and outcomes. They deliberately do not claim to be independently checkable

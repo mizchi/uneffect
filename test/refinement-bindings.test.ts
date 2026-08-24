@@ -404,6 +404,43 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("binds a conditional scalar throw payload in catch control flow", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state failed: int
+      state settled: int
+      state code: int
+      state shouldFail: bool
+      init attempted = 0
+      init failed = 0
+      init settled = 0
+      init code = 0
+      init shouldFail = false
+      action reject: attempted' = attempted + 1, failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed, settled' = settled + 1
+    */
+      interface Runtime { attempted: number; failed: number; settled: number; code: number; shouldFail: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          if (runtime.shouldFail) throw runtime.code
+        } catch (error) {
+          if (error > 0) runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("caught-payload.ts", source, "accounting", parseSpec("caught-payload.ts", source).temporal)).toEqual([]);
+
+    const untrackedPayload = source.replace("throw runtime.code", 'throw "failed"');
+    expect(validateRefinementActionBodies("untracked-caught-payload.ts", untrackedPayload, "accounting", parseSpec("untracked-caught-payload.ts", untrackedPayload).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    );
+  });
+
   it("propagates a nested conditional throw to the enclosing catch path", () => {
     const source = `/* uneffect:
       state delivered: int

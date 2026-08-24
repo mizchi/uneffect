@@ -111,10 +111,10 @@ export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { run
 export function rejectTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.attempted += 1;
-    if (runtime.auditArmed) throw "telemetry delivery rejected";
+    if (runtime.auditArmed) throw runtime.auditArmed;
     runtime.delivered += 1;
-  } catch {
-    runtime.dropped += 1;
+  } catch (armed) {
+    if (armed) runtime.dropped += 1;
   } finally {
     runtime.auditArmed = true;
   }

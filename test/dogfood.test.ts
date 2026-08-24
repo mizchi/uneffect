@@ -456,8 +456,12 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingEarlyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "nestedPostProcess", target: "postProcessed" }),
     );
-    const effectfulThrow = source.replace('throw "telemetry delivery rejected";', "throw makeTelemetryError(runtime);");
+    const effectfulThrow = source.replace("throw runtime.auditArmed;", "throw makeTelemetryError(runtime);");
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    );
+    const untrackedThrowPayload = source.replace("throw runtime.auditArmed;", 'throw "telemetry delivery rejected";');
+    expect(await validateRefinementActionBodiesWithZ3(fileName, untrackedThrowPayload, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
     );
     const invertedFailurePath = source.replace("if (runtime.auditArmed) throw", "if (!runtime.auditArmed) throw");

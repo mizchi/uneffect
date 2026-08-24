@@ -946,4 +946,26 @@ describe("typed-array static verification", () => {
     `;
     validateRefinementActionBodies("switch-completion-bench.ts", source, "routing", parseSpec("switch-completion-bench.ts", source).temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("bind a conditional scalar throw payload", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state code: int
+      state shouldFail: bool
+      init failed = 0
+      init code = 0
+      init shouldFail = false
+      action reject: failed' = shouldFail ? code > 0 ? failed + 1 : failed : failed
+    */
+      interface Runtime { failed: number; code: number; shouldFail: boolean }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try { if (runtime.shouldFail) throw runtime.code }
+        catch (error) { if (error > 0) runtime.failed++ }
+      }
+    `;
+    validateRefinementActionBodies("caught-payload-bench.ts", source, "accounting", parseSpec("caught-payload-bench.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

@@ -789,3 +789,9 @@ With the throw branch changed from a primitive literal to a state-backed pure
 expression, the same benchmark measured 0.3619 ms mean over 1,382 samples
 (0.67% relative margin of error). This local run shows no regression signal;
 the difference from the previous run is not treated as an optimization claim.
+
+The dedicated `bind a conditional scalar throw payload` benchmark measured
+0.1903 ms mean over 2,628 samples (2.44% relative margin of error). It covers a
+conditional integer throw, completion-payload propagation, immutable catch
+binding, and a catch-local predicate update; it does not cover switch payload
+joins or non-scalar thrown values.
