@@ -158,6 +158,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Join a direct branch-local void `return` with the continuing `if` path, applying trailing statements only to paths that continue and preserving updates made before the branch; reject value returns and abrupt completion inside `try`.
       - [x] Route a direct terminal primitive `throw` through a catch body and then an optional mandatory `finally`; reject effectful throw expressions, catch-value-dependent flow, and nonterminal/nested throws.
       - [x] Split a top-level conditional primitive `throw` into exceptional and normal try paths, apply catch only to the exceptional path, join their symbolic state, and then sequence `finally` and trailing statements.
+      - [x] Unwind a direct or top-level conditional void `return` through `finally`, applying post-try statements only to the normally continuing path before the symbolic join.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

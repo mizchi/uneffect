@@ -270,9 +270,7 @@ describe("annotated refinement bindings", () => {
     ]);
 
     const abrupt = source.replace("runtime.phase = 1;", "runtime.phase = 1; return;");
-    expect(validateRefinementActionBodies("abrupt-finally.ts", abrupt, "accounting", parseSpec("abrupt-finally.ts", abrupt).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "account" }),
-    ]);
+    expect(validateRefinementActionBodies("return-finally.ts", abrupt, "accounting", parseSpec("return-finally.ts", abrupt).temporal)).toEqual([]);
   });
 
   it("routes a direct terminal throw through catch and mandatory finally updates", () => {
@@ -351,6 +349,43 @@ describe("annotated refinement bindings", () => {
     const nestedThrow = source.replace('if (runtime.shouldFail) throw "delivery failed"', 'if (runtime.shouldFail) { if (runtime.attempted > 0) throw "delivery failed" }');
     expect(validateRefinementActionBodies("nested-throw.ts", nestedThrow, "delivery", parseSpec("nested-throw.ts", nestedThrow).temporal)).toEqual([
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
+    ]);
+  });
+
+  it("runs finally on an early-return path without running statements after try", () => {
+    const source = `/* uneffect:
+      state started: int
+      state worked: int
+      state released: int
+      state observed: int
+      state cancelled: bool
+      init started = 0
+      init worked = 0
+      init released = 0
+      init observed = 0
+      init cancelled = false
+      action execute: started' = started + 1, worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1
+    */
+      interface Runtime { started: number; worked: number; released: number; observed: number; cancelled: boolean }
+      /* uneffect: refinement resource@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement resource@1 action execute */
+      export function execute(runtime: Runtime) {
+        try {
+          runtime.started++
+          if (runtime.cancelled) return
+          runtime.worked++
+        } finally {
+          runtime.released++
+        }
+        runtime.observed++
+      }
+    `;
+    expect(validateRefinementActionBodies("finally-return.ts", source, "resource", parseSpec("finally-return.ts", source).temporal)).toEqual([]);
+
+    const valueReturn = source.replace("if (runtime.cancelled) return", "if (runtime.cancelled) return runtime.worked");
+    expect(validateRefinementActionBodies("finally-value-return.ts", valueReturn, "resource", parseSpec("finally-value-return.ts", valueReturn).temporal)).toEqual([
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "execute" }),
     ]);
   });
 

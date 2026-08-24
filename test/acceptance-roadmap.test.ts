@@ -472,6 +472,38 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("conditional-throw.ts", source, "delivery", temporal)).toEqual([]);
   });
 
+  it("executes finally but suppresses post-try work on an early-return path", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state worked: int
+      state released: int
+      state observed: int
+      state cancelled: bool
+      init worked = 0
+      init released = 0
+      init observed = 0
+      init cancelled = false
+      action execute: worked' = cancelled ? worked : worked + 1, released' = released + 1, observed' = cancelled ? observed : observed + 1
+    */
+      interface Runtime { worked: number; released: number; observed: number; cancelled: boolean }
+      /* uneffect: refinement resource@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement resource@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement resource@1 action execute */
+      export function execute(runtime: Runtime) {
+        try {
+          if (runtime.cancelled) return
+          runtime.worked++
+        } finally {
+          runtime.released++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("finally-return.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("finally-return.ts", source, "resource", temporal)).toEqual([]);
+  });
+
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

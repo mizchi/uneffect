@@ -441,6 +441,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyUpdate, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "attempted" }),
     );
+    const missingFinallyReturn = source.replace("if (runtime.auditArmed) return;", "void runtime.auditArmed;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyReturn, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
+    );
     const missingEarlyReturn = source.replace("if (runtime.attempted <= 0) return;", "void runtime.attempted;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingEarlyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "armAudit" }),

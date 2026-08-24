@@ -149,8 +149,12 @@ and finalizes its audit state in `finally`.
 Outside a `try`, a direct branch-final void `return` is a supported completion:
 the returned path keeps its updates while only the continuing path executes
 the statements following the `if`. Updates made before the branch are retained
-on both paths. Value returns, nested abrupt completion not represented by this
-join, and returns that would require `finally` unwinding remain fail-closed.
+on both paths. A direct or top-level conditional void return inside `try` also
+executes `finally` on every path; statements after the try execute only on the
+normally continuing path before both states are joined. This is the first
+resource-cleanup completion rule, not general disposal proof. Value returns,
+nested abrupt completion not represented by these joins, and return/throw
+overrides originating in `finally` remain fail-closed.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

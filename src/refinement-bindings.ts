@@ -803,6 +803,12 @@ function validateRefinementActionBodiesInSource(
       const only = statement.statements[0]!;
       return ts.isThrowStatement(only) && isPureThrownValue(only.expression) ? only : undefined;
     };
+    const directVoidReturn = (statement: ts.Statement): ts.ReturnStatement | undefined => {
+      if (ts.isReturnStatement(statement) && !statement.expression) return statement;
+      if (!ts.isBlock(statement) || statement.statements.length !== 1) return undefined;
+      const only = statement.statements[0]!;
+      return ts.isReturnStatement(only) && !only.expression ? only : undefined;
+    };
     const mergeConditionalUpdates = (
       condition: TemporalExpression,
       whenTrue: ReadonlyMap<string, TemporalExpression>,
@@ -890,10 +896,59 @@ function validateRefinementActionBodiesInSource(
             if (!thrown || !normal) return undefined;
             mergeConditionalUpdates(condition, thrown, normal, before);
           }
-        } else if (!collect(
-          statement.tryBlock, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, false,
-        )) return undefined;
+        } else {
+          const tryStatements = [...statement.tryBlock.statements];
+          const returnIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
+            && !candidate.elseStatement && directVoidReturn(candidate.thenStatement) !== undefined);
+          if (returnIndex >= 0) {
+            if (!statement.finallyBlock || tryStatements.slice(returnIndex + 1).some((candidate) => ts.isIfStatement(candidate)
+              && !candidate.elseStatement && directVoidReturn(candidate.thenStatement) !== undefined)) return undefined;
+            const conditionalReturn = tryStatements[returnIndex] as ts.IfStatement;
+            const tryLocals = new Map(localValues);
+            if (!collect(
+              ts.factory.createBlock(tryStatements.slice(0, returnIndex), true), receiver, runtimeClass, substitutions,
+              updates, tryLocals, activeCalls, false,
+            )) return undefined;
+            const normalizedCondition = normalizeRefinementExpression(
+              conditionalReturn.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), tryLocals,
+            );
+            if (!normalizedCondition) return undefined;
+            const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
+            const before = new Map(updates);
+            const returned = collect(
+              statement.finallyBlock, receiver, runtimeClass, substitutions,
+              new Map(before), new Map(localValues), activeCalls, false,
+            );
+            const normal = collect(
+              ts.factory.createBlock(tryStatements.slice(returnIndex + 1), true), receiver, runtimeClass, substitutions,
+              new Map(before), new Map(tryLocals), activeCalls, false,
+            );
+            if (!returned || !normal || !collect(
+              statement.finallyBlock, receiver, runtimeClass, substitutions,
+              normal, new Map(localValues), activeCalls, false,
+            ) || !collect(
+              ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
+              normal, new Map(localValues), activeCalls, false,
+            )) return undefined;
+            mergeConditionalUpdates(condition, returned, normal, before);
+            return updates;
+          }
+          const terminal = tryStatements.at(-1);
+          if (terminal && directVoidReturn(terminal)) {
+            if (!statement.finallyBlock || !collect(
+              ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+              updates, new Map(localValues), activeCalls, false,
+            ) || !collect(
+              statement.finallyBlock, receiver, runtimeClass, substitutions,
+              updates, new Map(localValues), activeCalls, false,
+            )) return undefined;
+            return updates;
+          }
+          if (!collect(
+            statement.tryBlock, receiver, runtimeClass, substitutions,
+            updates, new Map(localValues), activeCalls, false,
+          )) return undefined;
+        }
         if (!statement.finallyBlock) continue;
         if (!collect(
           statement.finallyBlock, receiver, runtimeClass, substitutions,

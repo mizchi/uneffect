@@ -5,13 +5,15 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   state dropped: int
   state buffered: int
   state attempted: int
+  state postProcessed: int
   state auditArmed: bool
   init delivered = 0
   init dropped = 0
   init buffered = 0
   init attempted = 0
+  init postProcessed = 0
   init auditArmed = false
-  action deliver: delivered' = delivered + 1, attempted' = attempted + 1
+  action deliver: delivered' = delivered + 1, attempted' = attempted + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
   action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
@@ -28,6 +30,7 @@ export interface TelemetryRoutingState {
   dropped: number;
   buffered: number;
   attempted: number;
+  postProcessed: number;
   auditArmed: boolean;
 }
 
@@ -36,6 +39,7 @@ export class TelemetryRoutingAccounting {
   dropped = 0;
   buffered = 0;
   attempted = 0;
+  postProcessed = 0;
   auditArmed = false;
 
   record(outcome: TelemetryOutcome): void {
@@ -54,8 +58,8 @@ export function createTelemetryRouting(initial: TelemetryRoutingState): Telemetr
 }
 
 function snapshotTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
-  const { delivered, dropped, buffered, attempted, auditArmed } = runtime;
-  return { delivered, dropped, buffered, attempted, auditArmed };
+  const { delivered, dropped, buffered, attempted, postProcessed, auditArmed } = runtime;
+  return { delivered, dropped, buffered, attempted, postProcessed, auditArmed };
 }
 
 /* uneffect: refinement telemetryRouting@1 observe */
@@ -67,9 +71,11 @@ export function observeTelemetryRouting(runtime: TelemetryRoutingAccounting): Te
 export function deliverTelemetry(runtime: TelemetryRoutingAccounting): void {
   try {
     runtime.delivered += 1;
+    if (runtime.auditArmed) return;
   } finally {
     runtime.attempted += 1;
   }
+  runtime.postProcessed += 1;
 }
 
 /* uneffect: refinement telemetryRouting@1 action drop */

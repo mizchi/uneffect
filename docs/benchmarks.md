@@ -105,6 +105,12 @@ joins both under the pre-throw condition, and applies `finally` to the joined
 state. Inverting the implementation condition is a solver-checked negative
 control outside the timed benchmark.
 
+Adding an early-return delivery path that must still increment accounting in
+`finally` but must skip post-processing measured 1.0559 ms mean over 474
+samples (0.56% RME). This includes separate return and normal abstract states,
+cleanup on both, post-try execution on only the normal state, and their final
+conditional join.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
