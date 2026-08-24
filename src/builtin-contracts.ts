@@ -51,8 +51,15 @@ export interface DomBuiltinOperation {
   invokesUserCode?: boolean;
   queryArgument?: number;
 }
+export interface DomPropertyBuiltinOperation {
+  kind: "dom-property";
+  readOperations: readonly DomOperation[];
+  writeOperations: readonly DomOperation[];
+  mutatesReceiverOnWrite?: boolean;
+  invokesUserCodeOnWrite?: boolean;
+}
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
@@ -246,6 +253,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       ...trusted({ symbol: { module: "lib.es", export: name }, operation: { kind: "mutation" } }),
     })),
     ...domBuiltinContracts(),
+    ...domPropertyBuiltinContracts(),
   ],
 };
 
@@ -271,6 +279,24 @@ function domBuiltinContracts(): BuiltinContract[] {
     ["EventTarget#removeEventListener", { kind: "dom", operation: "Listen", mutatesReceiver: true }],
     ["EventTarget#dispatchEvent", { kind: "dom", operation: "Dispatch", invokesUserCode: true }],
     ["DOMParser#parseFromString", { kind: "dom", operation: "Parse" }],
+  ];
+  return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
+}
+
+function domPropertyBuiltinContracts(): BuiltinContract[] {
+  const entries: Array<[string, DomPropertyBuiltinOperation]> = [
+    ["Node#textContent", {
+      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite", "NodeWrite"],
+      mutatesReceiverOnWrite: true, invokesUserCodeOnWrite: true,
+    }],
+    ["Node#nodeValue", {
+      kind: "dom-property", readOperations: ["TextRead"], writeOperations: ["TextWrite"],
+      mutatesReceiverOnWrite: true,
+    }],
+    ["HTMLInputElement#value", {
+      kind: "dom-property", readOperations: ["PropertyRead"], writeOperations: ["PropertyWrite"],
+      mutatesReceiverOnWrite: true,
+    }],
   ];
   return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
 }

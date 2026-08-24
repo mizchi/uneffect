@@ -40,8 +40,10 @@ same property is proved for arbitrary TypeScript.
 - DOM contracts distinguish attribute, node-topology, text, Web IDL property,
   and layout operations from creation, listeners, dispatch, and parsing.
   Authority is based on receiver identity regions; selectors are refinements
-  rather than security boundaries. The executable overlay currently infers the
-  reviewed call subset; ordinary property getter/setter syntax remains open.
+  rather than security boundaries. The executable overlay infers a reviewed
+  call subset plus `Node.textContent`, `Node.nodeValue`, and
+  `HTMLInputElement.value` reads and writes. Other ordinary Web IDL properties
+  remain open.
 - Transferable values are modeled as ownership transitions with invalidation
   and use-after-transfer diagnostics.
 

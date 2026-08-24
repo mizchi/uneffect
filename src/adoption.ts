@@ -24,6 +24,7 @@ const fixtures: Record<AdoptionFixtureName, AdoptionFixture> = {
   "browser-app": { expectedDiagnostics: [], files: { "src/app.ts": `
     function byId(id: string) { return document.getElementById(id) }
     function text(value: unknown) { return String(value) }
+    /* uneffect: effect Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
     function render(target: HTMLElement, value: string) { target.textContent = value }
     function listen(target: HTMLElement, run: () => void) { target.addEventListener("click", run) }
     function now() { return performance.now() }

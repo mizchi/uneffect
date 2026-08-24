@@ -87,7 +87,7 @@ function find(root: Element) {
   return root.querySelector(".item")
 }
 
-/* uneffect: effect Dom<PropertyWrite, typeof input> */
+/* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
 function clear(input: HTMLInputElement) {
   input.value = ""
 }
@@ -97,6 +97,14 @@ function mount(root: Element, child: Node) {
   root.appendChild(child)
 }
 ```
+
+The executable overlay currently resolves `Node.textContent`, `Node.nodeValue`,
+and `HTMLInputElement.value` by TypeScript symbol identity. Dot access and a
+literal bracket key have the same effect. Unknown or union computed keys on a
+DOM `Node` conservatively require `Dom<All, typeof receiver>`. A
+`textContent` write also has `NodeWrite` because it replaces child nodes, and
+can invoke user code through host or proxy behavior. A same-named property on
+a user-defined interface does not acquire a DOM effect.
 
 ### Scope policy
 

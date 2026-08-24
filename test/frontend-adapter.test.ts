@@ -5,8 +5,9 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements } from "../src/frontend-adapter.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
-import { analyzeEffectsInProgram } from "../src/effects.js";
+import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
+import { analyzeUneffectProject } from "../src/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
   it("applies tmpdir refinement through aliased and namespace symbol identity only", () => {
@@ -126,6 +127,50 @@ describe("TypeChecker symbol adapter", () => {
       ...builtinContractRegistry,
       declarations: [{ ...builtinContractRegistry.declarations[0]!, sha256: "stale" }],
     })).toContainEqual(expect.objectContaining({ library: "lib.dom.d.ts", actual: expect.any(String) }));
+  });
+
+  it("distinguishes DOM text and Web IDL property reads from writes", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-dom-property-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      /* uneffect: effect Dom<TextRead, typeof node> */
+      function readText(node: Node) { return node.textContent }
+      /* uneffect: effect Dom<TextWrite, typeof node> | Dom<NodeWrite, typeof node> | Mutate<typeof node> | InvokeUserCode */
+      function replaceText(node: Node) { node.textContent = "updated" }
+      /* uneffect: effect Dom<TextWrite, typeof node> | Mutate<typeof node> */
+      function writeNodeValue(node: Node) { node.nodeValue = "updated" }
+      /* uneffect: effect Dom<PropertyRead, typeof input> */
+      function readValue(input: HTMLInputElement) { return input.value }
+      /* uneffect: effect Dom<PropertyRead, typeof input> */
+      function readLiteralValue(input: HTMLInputElement) { return input["value"] }
+      /* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      function writeValue(input: HTMLInputElement) { input.value = "updated" }
+      /* uneffect: effect Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      function writeLiteralValue(input: HTMLInputElement) { input["value"] = "updated" }
+      /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+      function appendValue(input: HTMLInputElement) { input.value += "!" }
+      /* uneffect: effect Dom<All, typeof input> */
+      function dynamicRead(input: HTMLInputElement, key: "value" | "checked") { return input[key] }
+      /* uneffect: effect Dom<All, typeof input> | Mutate<typeof input> */
+      function dynamicWrite(input: HTMLInputElement, key: "value" | "checked") { input[key] = undefined as never }
+      /* uneffect: effect Dom<PropertyWrite, typeof proxy> | InvokeUserCode */
+      function proxyWrite(input: HTMLInputElement) { const proxy = new Proxy(input, {}); proxy.value = "proxied" }
+      interface LocalInput { value: string }
+      /* uneffect: effect Mutate<typeof input> */
+      function localWrite(input: LocalInput) { input.value = "local" }
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(analyzeEffectsInProgram(program, source)).toEqual([]);
+    expect(analyzeProgramEffects(program).diagnostics).toEqual([]);
+  });
+
+  it("preserves DOM property symbols in virtual project analysis", () => {
+    const result = analyzeUneffectProject({ mode: "strict", files: { "src/app.ts": `
+      /* uneffect: effect Dom<TextWrite, typeof target> | Dom<NodeWrite, typeof target> | Mutate<typeof target> | InvokeUserCode */
+      export function render(target: HTMLElement) { target.textContent = "ready" }
+    ` } });
+    expect(result.diagnostics).toEqual([]);
   });
 
   it("marks accessors, proxies, computed-key coercion, and value coercion as user-code invocation", () => {

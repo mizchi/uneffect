@@ -824,3 +824,10 @@ object-literal payloads, branch-selected integer and boolean fields, and
 catch-local control flow. A field missing from either branch is a negative
 control and remains unproved; this run does not support dynamically computed
 keys or general structural object typing.
+
+The warm TypeChecker benchmark for 64 reviewed DOM property contracts measured
+2.9817 ms mean over 168 samples (0.95% relative margin of error). It covers dot
+and literal-bracket reads, compound writes, symbol/owner-type resolution, and
+effect comparison. It reuses one TypeScript Program and therefore does not
+measure parsing or program construction; unreviewed Web IDL properties still
+fall outside this claim.

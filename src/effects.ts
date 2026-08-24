@@ -208,6 +208,44 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
   return [];
 }
 
+function domPropertyAccessMode(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): { read: boolean; write: boolean } {
+  const parent = access.parent;
+  if (ts.isBinaryExpression(parent) && parent.left === access && isAssignmentOperator(parent.operatorToken.kind)) {
+    return parent.operatorToken.kind === ts.SyntaxKind.EqualsToken
+      ? { read: false, write: true }
+      : { read: true, write: true };
+  }
+  if ((ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
+    && parent.operand === access
+    && (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken)) {
+    return { read: true, write: true };
+  }
+  return { read: true, write: false };
+}
+
+function effectsForDomProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression, adapter: FrontendSymbolAdapter): Effect[] | undefined {
+  const resolved = adapter.resolveProperty(access);
+  if (!resolved) return undefined;
+  const mode = domPropertyAccessMode(access);
+  const operations = [
+    ...(mode.read ? resolved.operation.readOperations : []),
+    ...(mode.write ? resolved.operation.writeOperations : []),
+  ];
+  const effects = operations.map((operation) => capability(`Dom<${operation}, typeof ${access.expression.getText()}>`));
+  if (mode.write && resolved.operation.mutatesReceiverOnWrite) effects.push(mutateEffect(access.expression));
+  if (mode.write && resolved.operation.invokesUserCodeOnWrite) effects.push(capability("InvokeUserCode"));
+  return effects;
+}
+
+function effectsForDynamicDomProperty(access: ts.ElementAccessExpression, adapter: FrontendSymbolAdapter): Effect[] {
+  if (adapter.resolveProperty(access)) return [];
+  if (!adapter.isDomReceiver(access.expression)) return [];
+  const mode = domPropertyAccessMode(access);
+  const effects: Effect[] = [capability(`Dom<All, typeof ${access.expression.getText()}>`)];
+  if (mode.write) effects.push(mutateEffect(access.expression));
+  return effects;
+}
+
 function fetchMethod(call: ts.CallExpression): string | undefined {
   const init = call.arguments[1];
   if (!init) return "GET";
@@ -425,6 +463,12 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
           addEffect(info.direct, capability("Env"));
         }
       }
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
+        if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+      }
+      if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
+        if (observableMutation(effect, info.locals)) addEffect(info.direct, effect);
+      }
       if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
         && processEnvAccess(node.left) === undefined) { const effect = mutateEffect(node.left); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
       if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) { const effect = mutateEffect(node.operand); if (observableMutation(effect, info.locals)) addEffect(info.direct, effect); }
@@ -594,6 +638,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         }
       }
       if (adapter.mayInvokeUserCode(child)) observe(capability("InvokeUserCode"), child);
+      if (ts.isPropertyAccessExpression(child) || ts.isElementAccessExpression(child)) for (const effect of effectsForDomProperty(child, adapter) ?? []) {
+        if (observableMutation(effect, locals)) observe(effect, child);
+      }
+      if (ts.isElementAccessExpression(child)) for (const effect of effectsForDynamicDomProperty(child, adapter)) {
+        if (observableMutation(effect, locals)) observe(effect, child);
+      }
       if (ts.isBinaryExpression(child) && isAssignmentOperator(child.operatorToken.kind) && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
       if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
       if (ts.isCallExpression(child)) for (const effect of primitiveEffects(child, adapter)) if (observableMutation(effect, locals)) observe(effect, child);

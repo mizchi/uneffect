@@ -10,9 +10,16 @@ export interface ResolvedCallSite {
   operation?: BuiltinOperation;
   queryRefinement?: { kind: "css-selector"; selector: string };
 }
+export interface ResolvedPropertySite {
+  symbol: BuiltinSymbolKey;
+  span: SourceSpan;
+  operation: Extract<BuiltinOperation, { kind: "dom-property" }>;
+}
 
 export interface FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined;
+  resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined;
+  isDomReceiver(expression: ts.Expression): boolean;
   mayInvokeUserCode(node: ts.Node): boolean;
   ownershipKind(expression: ts.Expression): "detached" | "transferred" | "locked" | "shared";
   thrownErrorType(expression: ts.Expression): string;
@@ -30,6 +37,8 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   readonly #globalContracts: Map<string, BuiltinContract>;
   readonly #memberContracts: Map<string, BuiltinContract>;
   readonly #errorType?: ts.Type;
+  readonly #nodeType?: ts.Type;
+  readonly #domOwnerTypes = new Map<string, ts.Type>();
 
   constructor(program: ts.Program, registry: BuiltinContractRegistry = builtinContractRegistry) {
     this.#checker = program.getTypeChecker();
@@ -40,6 +49,17 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     const errorDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Error");
     const errorSymbol = errorDeclaration ? this.#checker.getSymbolAtLocation(errorDeclaration.name) : undefined;
     this.#errorType = errorSymbol ? this.#checker.getDeclaredTypeOfSymbol(errorSymbol) : undefined;
+    const nodeDeclaration = program.getSourceFiles().flatMap((source) => [...source.statements]).find((node): node is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(node) && node.name.text === "Node" && node.getSourceFile().fileName.endsWith("lib.dom.d.ts"));
+    const nodeSymbol = nodeDeclaration ? this.#checker.getSymbolAtLocation(nodeDeclaration.name) : undefined;
+    this.#nodeType = nodeSymbol ? this.#checker.getDeclaredTypeOfSymbol(nodeSymbol) : undefined;
+    for (const source of program.getSourceFiles()) {
+      if (!source.fileName.endsWith("lib.dom.d.ts")) continue;
+      for (const statement of source.statements) {
+        if (!ts.isInterfaceDeclaration(statement) || !statement.name) continue;
+        const symbol = this.#checker.getSymbolAtLocation(statement.name);
+        if (symbol) this.#domOwnerTypes.set(statement.name.text, this.#checker.getDeclaredTypeOfSymbol(symbol));
+      }
+    }
     const modules = new Map<string, BuiltinContract[]>();
     for (const contract of registry.contracts) {
       const values = modules.get(contract.symbol.module) ?? [];
@@ -76,17 +96,32 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     }
   }
 
+  #resolveSymbolContract(symbol: ts.Symbol): BuiltinContract | undefined {
+    let contract = this.#contracts.get(symbol);
+    if (!contract) for (const declaration of symbol.declarations ?? []) {
+      contract = this.#declarationContracts.get(declaration);
+      if (contract) break;
+    }
+    if (!contract) for (const declaration of symbol.declarations ?? []) {
+      const parent = declaration.parent;
+      if ((ts.isInterfaceDeclaration(parent) || ts.isClassDeclaration(parent)) && parent.name) {
+        contract = this.#memberContracts.get(`${parent.name.text}#${symbol.name}`);
+        if (contract) break;
+      }
+    }
+    return contract;
+  }
+
+  #resolveMemberContract(lookup: ts.Node): BuiltinContract | undefined {
+    const symbol = targetSymbol(this.#checker, lookup);
+    return symbol ? this.#resolveSymbolContract(symbol) : undefined;
+  }
+
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined {
     const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
     const symbol = targetSymbol(this.#checker, lookup);
     if (!symbol) return undefined;
-    let contract = this.#contracts.get(symbol);
-    if (!contract) {
-      for (const declaration of symbol.declarations ?? []) {
-        contract = this.#declarationContracts.get(declaration);
-        if (contract) break;
-      }
-    }
+    let contract = this.#resolveMemberContract(lookup);
     if (!contract) {
       const path = ts.isIdentifier(call.expression) ? call.expression.text
         : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
@@ -96,15 +131,6 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const rootSymbol = root ? targetSymbol(this.#checker, root) : undefined;
       const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       if (path && isLibraryGlobal) contract = this.#globalContracts.get(path);
-    }
-    if (!contract) {
-      for (const declaration of symbol.declarations ?? []) {
-        const parent = declaration.parent;
-        if ((ts.isInterfaceDeclaration(parent) || ts.isClassDeclaration(parent)) && parent.name) {
-          contract = this.#memberContracts.get(`${parent.name.text}#${symbol.name}`);
-          if (contract) break;
-        }
-      }
     }
     if (!contract) return undefined;
     return {
@@ -118,6 +144,48 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         ? { kind: "css-selector", selector: (call.arguments[contract.operation.queryArgument] as ts.StringLiteralLike).text }
         : undefined,
     };
+  }
+
+  resolveProperty(access: ts.PropertyAccessExpression | ts.ElementAccessExpression): ResolvedPropertySite | undefined {
+    const literalName = ts.isElementAccessExpression(access) && access.argumentExpression
+      ? ts.isStringLiteralLike(access.argumentExpression) || ts.isNumericLiteral(access.argumentExpression)
+        ? access.argumentExpression.text
+        : undefined
+      : undefined;
+    const symbol = ts.isPropertyAccessExpression(access)
+      ? targetSymbol(this.#checker, access.name)
+      : literalName === undefined
+        ? undefined
+        : this.#checker.getPropertyOfType(this.#checker.getTypeAtLocation(access.expression), literalName);
+    let contract = symbol ? this.#resolveSymbolContract(symbol) : undefined;
+    const propertyName = ts.isPropertyAccessExpression(access) ? access.name.text : literalName;
+    if (!contract && propertyName !== undefined) {
+      const receiverType = this.#checker.getTypeAtLocation(access.expression);
+      if ((receiverType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0) {
+        for (const [key, candidate] of this.#memberContracts) {
+          const separator = key.indexOf("#");
+          if (separator < 0 || key.slice(separator + 1) !== propertyName || candidate.operation?.kind !== "dom-property") continue;
+          const ownerType = this.#domOwnerTypes.get(key.slice(0, separator));
+          if (ownerType && this.#checker.isTypeAssignableTo(receiverType, ownerType)) {
+            contract = candidate;
+            break;
+          }
+        }
+      }
+    }
+    if (contract?.operation?.kind !== "dom-property") return undefined;
+    return {
+      symbol: contract.symbol,
+      span: { start: access.getStart(), end: access.getEnd() },
+      operation: contract.operation,
+    };
+  }
+
+  isDomReceiver(expression: ts.Expression): boolean {
+    if (!this.#nodeType) return false;
+    const type = this.#checker.getTypeAtLocation(expression);
+    return (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) === 0
+      && this.#checker.isTypeAssignableTo(type, this.#nodeType);
   }
 
   mayInvokeUserCode(node: ts.Node): boolean {

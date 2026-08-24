@@ -13,6 +13,7 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
+import { analyzeEffectsInProgram } from "../src/effects.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -90,6 +91,21 @@ compilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNe
   : defaultGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
 const typedIntegerProgram = ts.createProgram([typedIntegerSourceName], compilerOptions, compilerHost);
 const typedIntegerSource = typedIntegerProgram.getSourceFile(typedIntegerSourceName)!;
+const domPropertySourceName = "/bench/dom-properties.ts";
+const domPropertySourceText = Array.from({ length: 64 }, (_, index) => `
+  /* uneffect: effect Dom<PropertyRead, typeof input> | Dom<PropertyWrite, typeof input> | Mutate<typeof input> */
+  function update${index}(input: HTMLInputElement) { input.value += "${index}"; return input["value"] }
+`).join("\n");
+const domCompilerOptions: ts.CompilerOptions = { ...compilerOptions, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"] };
+const domCompilerHost = ts.createCompilerHost(domCompilerOptions);
+const defaultDomGetSourceFile = domCompilerHost.getSourceFile.bind(domCompilerHost);
+domCompilerHost.fileExists = (fileName) => fileName === domPropertySourceName || ts.sys.fileExists(fileName);
+domCompilerHost.readFile = (fileName) => fileName === domPropertySourceName ? domPropertySourceText : ts.sys.readFile(fileName);
+domCompilerHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) => fileName === domPropertySourceName
+  ? ts.createSourceFile(fileName, domPropertySourceText, languageVersion, true)
+  : defaultDomGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+const domPropertyProgram = ts.createProgram([domPropertySourceName], domCompilerOptions, domCompilerHost);
+const domPropertySource = domPropertyProgram.getSourceFile(domPropertySourceName)!;
 
 describe("refinement receiver identity", () => {
   bench("syntax-only Node Lease collection actions", () => {
@@ -98,6 +114,12 @@ describe("refinement receiver identity", () => {
 
   bench("warm TypeChecker Node Lease collection actions", () => {
     validateRefinementActionBodiesInProgram(leaseAuthorityProgram, leaseAuthorityFile, "leaseAuthority", leaseAuthoritySpec);
+  }, { time: 500, iterations: 20 });
+});
+
+describe("DOM property effect inference", () => {
+  bench("analyze 64 warm property read/write contracts", () => {
+    analyzeEffectsInProgram(domPropertyProgram, domPropertySource);
   }, { time: 500, iterations: 20 });
 });
 
