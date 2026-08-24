@@ -152,8 +152,11 @@ same property is proved for arbitrary TypeScript.
 - Local and cross-module custom-Hook call cycles are diagnosed on each
   participating edge, including indirect recursion.
 - The tested fragment rejects direct render capabilities, selected
-  non-idempotent host reads, member mutation rooted at an identifier props
-  parameter, and control-flow-dependent built-in Effect Hook calls.
+  non-idempotent host reads, and control-flow-dependent built-in Effect Hook
+  calls. It also treats identifier/destructured props, direct `useState` /
+  `useReducer` snapshots, direct `useContext` results, and transitive local
+  `const` aliases as immutable render regions for assignment, update, and
+  delete writes.
 - Other named React Hooks receive stable-order checks. Reviewed inline
   `useMemo`, lazy `useState`, and `useReducer` initializer callbacks are
   executed in render summaries, while retained `useCallback` bodies are not.
@@ -170,7 +173,8 @@ same property is proved for arbitrary TypeScript.
   checker understands member-path coverage, block/function shadowing, common
   stable React return positions, and rejects opaque/dynamic/unstable evidence.
 - Dynamic/higher-order Hook calls, symbol-resolved dependency callback aliases,
-  custom stability contracts, refs/state/context flow,
+  custom stability contracts, general/reassigned state-context aliases, refs,
+  interprocedural region flow,
   Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

@@ -60,7 +60,10 @@ The tested fragment reports:
   executed directly during render;
 - `Date.now`, `Math.random`, `crypto.randomUUID`, and `performance.now`, whose
   results are not idempotent for fixed props, state, and context;
-- member assignment through an identifier parameter such as `props.title =`;
+- assignment, update, or deletion through an immutable render snapshot. The
+  tested region sources are identifier or destructured props, the value
+  position of directly imported `useState`/`useReducer`, directly imported
+  `useContext` results, and transitive local `const` aliases;
 - recognized Hooks called below a condition, loop, switch arm, short-circuit
   expression, or nested function.
 - annotated custom Hook arguments are checked as immutable snapshots, and
@@ -212,9 +215,11 @@ This is a tested initial fragment, not a complete React semantics:
   selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
 - event extraction covers inline JSX function callbacks, not referenced
   handlers or callbacks passed through component props;
-- props mutation currently covers member writes rooted at an identifier
-  parameter; destructured props, state snapshots, context values, refs, aliases,
-  and mutations performed by callees need flow-sensitive regions;
+- immutable snapshot tracking is local and syntactic. It covers destructured
+  props, direct named-import state/context Hook results, and transitive `const`
+  aliases. Reassigned bindings, mutation through calls, properties stored in
+  containers, refs, and interprocedural region flow need a flow-sensitive
+  ownership analysis;
 - dependency completeness is checked for the documented inline lexical
   fragment; referenced callbacks, custom stability contracts, module mutation,
   and TypeScript-symbol-level aliasing remain unsupported;

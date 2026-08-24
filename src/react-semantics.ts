@@ -349,15 +349,7 @@ function bindingNames(name: ts.BindingName): string[] {
 function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bindings: Set<string>; stable: Set<string> } {
   const bindings = new Set(boundary.parameters.flatMap((parameter) => bindingNames(parameter.name)));
   const stable = new Set<string>();
-  const reactImports = new Map<string, string>();
-  for (const statement of source.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
-      || statement.moduleSpecifier.text !== "react" || !statement.importClause?.namedBindings
-      || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
-    for (const element of statement.importClause.namedBindings.elements) {
-      reactImports.set(element.name.text, element.propertyName?.text ?? element.name.text);
-    }
-  }
+  const reactImports = reactImportNames(source);
   const visit = (node: ts.Node): void => {
     if (node !== boundary.body && ts.isFunctionLike(node)) {
       if (ts.isFunctionDeclaration(node) && node.name) bindings.add(node.name.text);
@@ -557,10 +549,101 @@ function isConditionalWithin(node: ts.Node, boundary: ComponentNode): boolean {
   return false;
 }
 
-function isPropsMutation(node: ts.BinaryExpression, parameters: ReadonlySet<string>): boolean {
-  if (node.operatorToken.kind < ts.SyntaxKind.FirstAssignment || node.operatorToken.kind > ts.SyntaxKind.LastAssignment) return false;
-  const root = /^[A-Za-z_$][\w$]*/u.exec(node.left.getText())?.[0];
-  return root !== undefined && parameters.has(root) && node.left.getText() !== root;
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current)
+    || ts.isTypeAssertionExpression(current) || ts.isNonNullExpression(current)
+    || ts.isSatisfiesExpression(current)) current = current.expression;
+  return current;
+}
+
+function expressionRoot(expression: ts.Expression): string | undefined {
+  let current = unwrapExpression(expression);
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) current = unwrapExpression(current.expression);
+  return ts.isIdentifier(current) ? current.text : undefined;
+}
+
+const reactImportNameCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, string>>();
+
+function reactImportNames(source: ts.SourceFile): ReadonlyMap<string, string> {
+  const cached = reactImportNameCache.get(source);
+  if (cached) return cached;
+  const imports = new Map<string, string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "react" || !statement.importClause?.namedBindings
+      || !ts.isNamedImports(statement.importClause.namedBindings)) continue;
+    for (const element of statement.importClause.namedBindings.elements) {
+      imports.set(element.name.text, element.propertyName?.text ?? element.name.text);
+    }
+  }
+  reactImportNameCache.set(source, imports);
+  return imports;
+}
+
+/** Immutable render snapshots are distinct from stable identities such as setters and refs. */
+const immutableSnapshotCache = new WeakMap<ComponentNode, ReadonlySet<string>>();
+
+function immutableSnapshotBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  const cached = immutableSnapshotCache.get(boundary);
+  if (cached) return cached;
+  const immutable = new Set(boundary.parameters.flatMap((parameter) => bindingNames(parameter.name)));
+  const imports = reactImportNames(source);
+  const declarations: ts.VariableDeclaration[] = [];
+  const collect = (node: ts.Node): void => {
+    if (node !== boundary.body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node)) declarations.push(node);
+    ts.forEachChild(node, collect);
+  };
+  collect(boundary.body);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const declaration of declarations) {
+      if (!ts.isVariableDeclarationList(declaration.parent)
+        || (declaration.parent.flags & ts.NodeFlags.Const) === 0) continue;
+      const names = bindingNames(declaration.name);
+      const initializer = declaration.initializer && unwrapExpression(declaration.initializer);
+      if (!initializer) continue;
+      let snapshot = false;
+      if (ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)) {
+        const imported = imports.get(initializer.expression.text);
+        if (imported === "useContext") snapshot = true;
+        if ((imported === "useState" || imported === "useReducer") && ts.isArrayBindingPattern(declaration.name)) {
+          const value = declaration.name.elements[0];
+          if (value && !ts.isOmittedExpression(value)) for (const name of bindingNames(value.name)) {
+            if (!immutable.has(name)) { immutable.add(name); changed = true; }
+          }
+          continue;
+        }
+      }
+      const root = expressionRoot(initializer);
+      if (root && immutable.has(root)) snapshot = true;
+      if (snapshot) for (const name of names) if (!immutable.has(name)) {
+        immutable.add(name);
+        changed = true;
+      }
+    }
+  }
+  immutableSnapshotCache.set(boundary, immutable);
+  return immutable;
+}
+
+function mutationTarget(node: ts.Node): ts.Expression | undefined {
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+    && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) return node.left;
+  if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+    && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) return node.operand;
+  if (ts.isDeleteExpression(node)) return node.expression;
+  return undefined;
+}
+
+function isImmutableSnapshotMutation(node: ts.Node, immutable: ReadonlySet<string>): node is ts.Node {
+  const target = mutationTarget(node);
+  if (!target || ts.isIdentifier(unwrapExpression(target))) return false;
+  const root = expressionRoot(target);
+  return root !== undefined && immutable.has(root);
 }
 
 interface InternalReactAnalysis {
@@ -686,7 +769,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, ...diagnostic,
       });
     };
-    const parameters = new Set(hook.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []));
+    const immutableSnapshots = immutableSnapshotBindings(hook, source);
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -720,9 +803,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           kind: "render-effect", phase: "render", effect, message: `${effect} is observable during custom Hook render`,
         });
       }
-      if (ts.isBinaryExpression(node) && isPropsMutation(node, parameters)) reportHook(node, {
-        kind: "immutable-input-mutation", phase: "render", operation: node.left.getText(source),
-        message: "React Hook arguments are immutable render snapshots",
+      if (isImmutableSnapshotMutation(node, immutableSnapshots)) reportHook(node, {
+        kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
+        message: "React Hook inputs, state, and context are immutable render snapshots",
       });
       if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
@@ -752,7 +835,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const report = (node: ts.Node, diagnostic: Omit<ReactSemanticDiagnostic, "fileName" | "component" | "functionName" | "severity" | "line">): void => {
       diagnostics.push({ fileName, component: name, functionName: name, severity: "error", line: source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1, ...diagnostic });
     };
-    const parameters = new Set(component.parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []));
+    const immutableSnapshots = immutableSnapshotBindings(component, source);
     const visitRender = (node: ts.Node): void => {
       if (node !== component.body && ts.isFunctionLike(node)) return;
       if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("on") && node.initializer && ts.isJsxExpression(node.initializer)) {
@@ -820,8 +903,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           report(node, { kind: "render-effect", phase: "render", effect, message: `${effect} is observable during render` });
         }
       }
-      if (ts.isBinaryExpression(node) && isPropsMutation(node, parameters)) report(node, {
-        kind: "immutable-input-mutation", phase: "render", operation: node.left.getText(source), message: "React component inputs are immutable render snapshots",
+      if (isImmutableSnapshotMutation(node, immutableSnapshots)) report(node, {
+        kind: "immutable-input-mutation", phase: "render", operation: mutationTarget(node)!.getText(source),
+        message: "React component inputs, state, and context are immutable render snapshots",
       });
       if (ts.isBinaryExpression(node) && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
         && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment

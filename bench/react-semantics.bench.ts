@@ -5,14 +5,19 @@ import { analyzeReactProgram, analyzeReactSemantics } from "../src/react-semanti
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
   export function Item${index}(props: { label: string; active: boolean }) {
+    const propsSnapshot = props
+    const [selection] = useState({ active: propsSnapshot.active })
+    const selectionSnapshot = selection
+    const preferences = useContext(PreferencesContext) as { dense: boolean }
     useCatalogSubscription(props.label)
-    return <button onClick={() => fetch("/items/${index}")}>{props.label}</button>
+    return <button onClick={() => fetch("/items/${index}")}>{props.label}{selectionSnapshot.active && preferences.dense}</button>
   }
 `).join("\n");
 
 const source = `
-  import { useEffect } from "react"
+  import { useContext, useEffect, useState } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; children?: unknown } } }
+  declare const PreferencesContext: object
   interface Subscription { readonly label: string }
   /* uneffect: react acquire Subscription result */
   declare function subscribe(label: string): Subscription

@@ -96,18 +96,26 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     ]));
 
     const broken = analyzeReact("src/feed.tsx", `
-      import { useEffect } from "react"
+      import { useContext, useEffect, useState } from "react"
+      declare const ThemeContext: object
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
       /* uneffect: react component */
-      export function Feed(props: { topic: string }) {
-        props.topic = String(Date.now())
+      export function Feed({ topic, config }: { topic: string; config: { enabled: boolean } }) {
+        const configAlias = config
+        const [snapshot] = useState({ count: 0 })
+        const theme = useContext(ThemeContext) as { mode: string }
+        configAlias.enabled = false
+        snapshot.count++
+        theme.mode = "dark"
+        topic = String(Date.now())
         useEffect(() => { subscribe() }, [])
         return null
       }
     `) as { diagnostics: Array<{ kind: string }> };
     expect(broken.diagnostics.map((diagnostic) => diagnostic.kind).sort()).toEqual([
-      "immutable-input-mutation", "missing-effect-cleanup", "non-idempotent-render",
+      "immutable-input-mutation", "immutable-input-mutation", "immutable-input-mutation",
+      "missing-effect-cleanup", "non-idempotent-render",
     ]);
   });
 

@@ -92,6 +92,64 @@ describe("React Function Component semantics", () => {
     ]));
   });
 
+  it("tracks immutable props, state, and context snapshots through local aliases", () => {
+    const result = analyzeReactSemantics("immutable-regions.tsx", `
+      import { useContext as context, useReducer as reducer, useRef, useState as state } from "react"
+      declare const ThemeContext: object
+      interface Model { value: number }
+      interface Props { profile: { name: string }; model: Model }
+      /* uneffect: react component */
+      function Editor({ profile, model }: Props) {
+        const modelAlias = model
+        let rebound = model
+        rebound = { value: 3 }
+        const [snapshot, setSnapshot] = state<Model>({ value: 0 })
+        const snapshotAlias = snapshot
+        const [reduced] = reducer((current: Model) => current, { value: 0 })
+        const theme = context(ThemeContext) as { mode: string }
+        const themeAlias = theme
+        const ref = useRef<Model>({ value: 0 })
+        profile.name = "render"
+        modelAlias.value++
+        snapshot.value = 1
+        delete snapshotAlias.value
+        reduced.value -= 1
+        themeAlias.mode = "dark"
+        rebound.value++
+        setSnapshot({ value: 2 })
+        return <button onClick={() => { ref.current.value++ }} />
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "profile.name" }),
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "modelAlias.value" }),
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "snapshot.value" }),
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "snapshotAlias.value" }),
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "reduced.value" }),
+      expect.objectContaining({ kind: "immutable-input-mutation", operation: "themeAlias.mode" }),
+    ]);
+  });
+
+  it("applies immutable snapshot regions inside annotated custom Hooks", () => {
+    const result = analyzeReactSemantics("hook-regions.tsx", `
+      import { useContext } from "react"
+      declare const ModelContext: object
+      /* uneffect: react hook */
+      function useBrokenModel(input: { value: number }) {
+        const inputAlias = input
+        const context = useContext(ModelContext) as { value: number }
+        inputAlias.value = 1
+        context.value++
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "useBrokenModel", kind: "immutable-input-mutation", operation: "inputAlias.value" }),
+      expect.objectContaining({ component: "useBrokenModel", kind: "immutable-input-mutation", operation: "context.value" }),
+    ]);
+  });
+
   it("reports Hooks whose call order depends on control flow", () => {
     const result = analyzeReactSemantics("hooks.tsx", `
       import { useEffect } from "react"
