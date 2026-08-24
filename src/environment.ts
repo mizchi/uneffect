@@ -134,7 +134,7 @@ async function solverCheck(): Promise<EnvironmentCheck> {
     const milliseconds = Number((process.hrtime.bigint() - started) / 1_000_000n);
     const version = resolvePackage("z3-solver").version;
     if (answer !== "sat") {
-      return { name: "z3-solver", status: "error", detail: `probe query answered ${answer}`, requiredBy: "contract verification in `check`", remedy: "reinstall z3-solver; the bundled WASM build did not answer a trivial query" };
+      return { name: "z3-solver", status: "error", detail: `probe query answered ${answer}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`", remedy: "reinstall z3-solver; the bundled WASM build did not answer a trivial query" };
     }
     return { name: "z3-solver", status: "ok", detail: `${version ?? "installed"}, probe query answered in ${milliseconds} ms`, requiredBy: "contract verification in `check`" };
   } catch (cause) {
@@ -142,21 +142,10 @@ async function solverCheck(): Promise<EnvironmentCheck> {
       name: "z3-solver",
       status: "error",
       detail: cause instanceof Error ? cause.message : String(cause),
-      requiredBy: "contract verification in `check`",
+      requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`",
       remedy: "reinstall dependencies so the z3-solver WASM build loads; without it `check` cannot verify requires/ensures/invariant",
     };
   }
-}
-
-function z3CommandCheck(): EnvironmentCheck {
-  const version = commandVersion("z3", ["-version"]);
-  return {
-    name: "z3 (command)",
-    status: version ? "ok" : "warning",
-    detail: version ?? "not found on PATH",
-    requiredBy: "`instrument --verify-ownership` and evidence-backed assertion elision",
-    remedy: version ? undefined : "install the Z3 command line (apt-get install z3, brew install z3, or a release from github.com/Z3Prover/z3); `check` does not need it",
-  };
 }
 
 function quintCheck(manifest: PackageManifest): EnvironmentCheck {
@@ -192,7 +181,7 @@ export async function runEnvironmentChecks(options: EnvironmentCheckOptions = {}
   const manifest = await readPackageManifest();
   const checks = [nodeCheck(manifest), typescriptCheck(manifest), nodeTypesCheck()];
   if (!options.skipSolverProbe) checks.push(await solverCheck());
-  checks.push(z3CommandCheck(), quintCheck(manifest), javaCheck());
+  checks.push(quintCheck(manifest), javaCheck());
   return checks;
 }
 

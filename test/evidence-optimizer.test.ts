@@ -47,11 +47,11 @@ describe("evidence and optimizer obligations", () => {
     expect(evaluatePropertyMangle({ ...safe, closedWorld: false }).allowed).toBe(false);
   });
 
-  it("binds ownership proof evidence to the obligation, verifier program, and Z3 version", () => {
+  it("binds ownership proof evidence to the obligation, verifier program, and Z3 version", async () => {
     const obligation: OwnershipGuardObligation = { owner: "run", callee: "consume", ownership: "promise", parameter: 1, assumptions: ["enabled && active"], goal: "enabled && active", status: "verified", evidence: "finite-propositional", span: { start: 10, end: 20 } };
-    const artifact = verifyOwnershipObligationWithZ3(obligation);
+    const artifact = await verifyOwnershipObligationWithZ3(obligation);
     expect(artifact).toMatchObject({ schema: "ownership-evidence/v1", backend: "z3", result: "verified", evidence: "verified", exitCode: 0 });
-    expect(artifact.backendVersion).toMatch(/^Z3 version/);
+    expect(artifact.backendVersion).toMatch(/^Z3 \d+\./u);
     expect(artifact.obligationHash).toMatch(/^[a-f0-9]{64}$/);
     expect(artifact.verifierProgramHash).toMatch(/^[a-f0-9]{64}$/);
     expect(validateOwnershipEvidence(artifact, obligation)).toBe(true);

@@ -1,8 +1,8 @@
 import ts from "typescript";
 import type { DiagnosticNote } from "./diagnostics.js";
-import { init } from "z3-solver";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
 import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type InvariantObligation } from "./invariant-ir.js";
+import { createZ3Context } from "./z3.js";
 
 export interface VerificationArtifact {
   obligationId: string;
@@ -75,8 +75,7 @@ export async function verifyContractObligations(fileName: string, text: string):
   }
 
   if (obligations.length === 0) return { diagnostics: [], artifacts: [] };
-  const { Context } = await init();
-  const ctx: any = new Context(`uneffect_${Date.now()}_${Math.random()}`);
+  const ctx = await createZ3Context("contracts");
   const diagnostics: ContractDiagnostic[] = [];
   const artifacts: VerificationArtifact[] = [];
   for (const obligation of obligations) {

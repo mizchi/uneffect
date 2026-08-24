@@ -24,9 +24,19 @@ describe("CI test tier manifest", () => {
   it("does not place direct verifier subprocesses in a tier lacking that verifier", () => {
     for (const [tier, files] of Object.entries(ciTestTiers)) for (const file of files) {
       const source = readFileSync(join(process.cwd(), file), "utf8");
-      if (/spawnSync\(\s*["']z3["']/.test(source)) expect(["z3", "integration"], `${file} directly executes Z3`).toContain(tier);
       if (/spawnSync\(\s*["']pnpm["'][\s\S]*?["']quint["']/.test(source)) expect(["quint", "integration"], `${file} directly executes Quint`).toContain(tier);
     }
+  });
+
+  it("keeps Z3 a WASM dependency by never executing a native z3 binary", () => {
+    const executesZ3 = Object.values(ciTestTiers).flat()
+      .filter((file) => /spawnSync\(\s*["']z3["']/.test(readFileSync(join(process.cwd(), file), "utf8")));
+    expect(executesZ3, "use createZ3Context from src/z3.ts; the toolchain ships the z3-solver WASM build").toEqual([]);
+    const sources = readdirSync(join(process.cwd(), "src")).filter((name) => name.endsWith(".ts"));
+    const nativeZ3 = sources.filter((name) => /spawnSync\(\s*["']z3["']/.test(readFileSync(join(process.cwd(), "src", name), "utf8")));
+    expect(nativeZ3, "the published toolchain must not require a native Z3 installation").toEqual([]);
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).not.toContain("install --yes z3");
   });
 
   it("keeps solver-heavy test files serial to bound Z3 WASM memory", () => {

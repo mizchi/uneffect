@@ -36,7 +36,7 @@ describe("runtime assertion instrumenter", () => {
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
   });
 
-  it("inserts unresolved ownership checks and elides them only with matching verifier evidence", () => {
+  it("inserts unresolved ownership checks and elides them only with matching verifier evidence", async () => {
     const names = Array.from({ length: 13 }, (_, index) => `b${index}`);
     const guard = names.join(" && "), parameters = names.map((name) => `${name}: boolean`).join(", ");
     const arguments_ = names.join(", ");
@@ -56,13 +56,13 @@ describe("runtime assertion instrumenter", () => {
     expect(instrumented.assertions[0]?.obligation).toMatchObject({ owner: "run", status: "unresolved" });
     expect(instrumented.code).toContain("uneffectAssertOwnership(");
     expect(optimizeOwnershipAssertions(instrumented, []).code).toBe(instrumented.code);
-    const artifact = verifyOwnershipObligationWithZ3(instrumented.assertions[0]!.obligation);
+    const artifact = await verifyOwnershipObligationWithZ3(instrumented.assertions[0]!.obligation);
     expect(artifact.result).toBe("verified");
     const optimized = optimizeOwnershipAssertions(instrumented, [artifact]);
     expect(optimized.code).not.toContain(instrumented.assertions[0]!.assertion);
     expect(optimized.code).not.toContain("function uneffectAssertOwnership");
     expect(optimized.code).toContain("consume(");
-    const verifiedBuild = buildVerifiedOwnership("ownership.ts", source);
+    const verifiedBuild = await buildVerifiedOwnership("ownership.ts", source);
     expect(verifiedBuild.artifacts).toHaveLength(1);
     expect(verifiedBuild.artifacts[0]).toMatchObject({ backend: "z3", result: "verified", evidence: "verified" });
     expect(verifiedBuild.unresolved).toEqual([]);
@@ -70,7 +70,7 @@ describe("runtime assertion instrumenter", () => {
     expect(verifiedBuild.code).toContain("consume(");
   });
 
-  it("persists and reuses matching ownership evidence while reporting stale entries", () => {
+  it("persists and reuses matching ownership evidence while reporting stale entries", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cache-test-"));
     const evidencePath = join(directory, "ownership.json");
     const source = (last: string) => `
@@ -83,14 +83,14 @@ describe("runtime assertion instrumenter", () => {
       }
     `;
     try {
-      const first = buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
+      const first = await buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
       expect(first.cache).toMatchObject({ reused: 0, verified: 1, stale: [] });
       expect(JSON.parse(readFileSync(evidencePath, "utf8"))).toMatchObject({ schema: "ownership-evidence-cache/v1", entries: [expect.any(Object)] });
 
-      const second = buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
+      const second = await buildVerifiedOwnershipCached("ownership.ts", source("b12"), evidencePath);
       expect(second.cache).toMatchObject({ reused: 1, verified: 0, stale: [] });
 
-      const changed = buildVerifiedOwnershipCached("ownership.ts", source("!b12"), evidencePath);
+      const changed = await buildVerifiedOwnershipCached("ownership.ts", source("!b12"), evidencePath);
       expect(changed.cache.reused).toBe(0);
       expect(changed.cache.stale).toHaveLength(1);
       expect(changed.unresolved).toHaveLength(1);

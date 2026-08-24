@@ -83,12 +83,12 @@ describe("uneffect command line", () => {
     const io = capture();
     const status = await runCli(["doctor", "--skip-solver-probe"], io);
     expect([exitCode.success, exitCode.failed]).toContain(status);
-    for (const name of ["node", "typescript", "@types/node", "z3 (command)", "@informalsystems/quint"]) expect(io.stdout).toContain(name);
+    for (const name of ["node", "typescript", "@types/node", "@informalsystems/quint"]) expect(io.stdout).toContain(name);
     expect(io.stdout).toMatch(/\d+ check\(s\)/u);
     const json = capture();
     expect(await runCli(["doctor", "--json", "--skip-solver-probe"], json)).toBe(status);
     const report = JSON.parse(json.stdout) as { checks: Array<{ name: string; status: string; requiredBy: string; remedy?: string }>; errors: number; warnings: number };
-    expect(report.checks.length).toBeGreaterThanOrEqual(6);
+    expect(report.checks.length).toBeGreaterThanOrEqual(5);
     expect(report.errors).toBe(report.checks.filter((check) => check.status === "error").length);
     for (const check of report.checks) {
       expect(check.requiredBy.length).toBeGreaterThan(0);

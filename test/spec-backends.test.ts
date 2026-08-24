@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createZ3Context } from "../src/z3.js";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
@@ -610,13 +611,14 @@ describe("spec IR and generated verifier programs", () => {
       .toThrow(/broken\.ts:1:\d+: empty member/);
   });
 
-  it("generates an SMT-LIB proof obligation accepted as unsat by Z3", () => {
+  it("generates an SMT-LIB proof obligation accepted as unsat by Z3", async () => {
     const fn = parseSpec("input.ts", source).invariants[0]!;
     const smt = generateSmtLib(fn);
     expect(smt).toContain("(assert (= result (+ x 1)))");
-    const result = spawnSync("z3", ["-in"], { input: smt, encoding: "utf8" });
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe("unsat");
+    const context = await createZ3Context("spec_backends_test");
+    const solver = new context.Solver();
+    solver.fromString(smt);
+    expect(String(await solver.check())).toBe("unsat");
   });
 
   it("generates a Quint transition system that preserves its invariant", () => {

@@ -25,8 +25,8 @@ export const instrumentCommand: CliCommand = {
     if (evidencePath !== undefined && evidencePath.length === 0) throw new CliUsageError("--ownership-evidence needs a cache file path");
     const fileName = resolve(singleFileArgument(positionals, "instrument"));
     const text = await readFile(fileName, "utf8");
-    const cached = verifyOwnership && evidencePath ? buildVerifiedOwnershipCached(fileName, text, resolve(evidencePath)) : undefined;
-    const verified = cached ?? (verifyOwnership ? buildVerifiedOwnership(fileName, text) : undefined);
+    const cached = verifyOwnership && evidencePath ? await buildVerifiedOwnershipCached(fileName, text, resolve(evidencePath)) : undefined;
+    const verified = cached ?? (verifyOwnership ? await buildVerifiedOwnership(fileName, text) : undefined);
     const result = verified ?? (ownership ? instrumentOwnershipAssertions(fileName, text) : instrumentRuntimeAssertions(fileName, text));
     for (const diagnostic of result.diagnostics) io.err(`${diagnostic.fileName}:${diagnostic.line}: error: ${diagnostic.message}\n`);
     if (result.diagnostics.length > 0) return exitCode.failed;

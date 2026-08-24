@@ -30,7 +30,7 @@ npx quint run protocol.qnt
 | Command | Purpose |
 | --- | --- |
 | `check <file.ts> [...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. |
-| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `z3` and `java` commands. |
+| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact, as JSON. |
@@ -46,24 +46,28 @@ synthesis options listed by its own `--help`.
 
 ## Checking the prerequisites
 
-The toolchain has real requirements — Node 24, a TypeScript peer, a working Z3
-WASM build, and, for some flows, the `z3` command — and most of them fail late
-and confusingly if they are missing. `uneffect doctor` checks all of them before
-you depend on a run:
+The toolchain has real requirements — Node 24, a TypeScript peer, and a working
+Z3 WASM build — and most of them fail late and confusingly if they are missing.
+`uneffect doctor` checks all of them before you depend on a run:
 
 ```
 $ uneffect doctor
-ok       node             v24.4.0 (engines: >=24)
-ok       typescript       6.0.3 at node_modules/typescript (peer: >=6.0.0-dev.20260820)
-ok       @types/node      24.13.3 at node_modules/@types/node
-ok       z3-solver        4.16.0, probe query answered in 380 ms
-missing  z3 (command)     not found on PATH
-           needed by: `instrument --verify-ownership` and evidence-backed assertion elision
-           fix: install the Z3 command line (apt-get install z3, brew install z3, or a release from github.com/Z3Prover/z3); `check` does not need it
+ok       node                    v24.4.0 (engines: >=24)
+ok       typescript              6.0.3 at node_modules/typescript (peer: >=6.0.0-dev.20260820)
+ok       @types/node             24.13.3 at node_modules/@types/node
+ok       z3-solver               4.16.0, probe query answered in 380 ms
 warn     @informalsystems/quint  not installed
            needed by: running the models `spec quint`, `resource-model`, and `async-model` generate
            fix: npm install --save-dev @informalsystems/quint, an optional peer; it brings its own `quint` binary, and generating the models needs nothing
+warn     java (command)          not found on PATH
+           needed by: exhaustive Quint verification through Apalache/TLC
+           fix: install a JDK 21 or newer only if you run `quint verify`; simulation and every uneffect command work without it
 ```
+
+Nothing in the list is a native install: every solver the toolchain runs itself
+is the `z3-solver` WASM build, so `check`, `instrument --verify-ownership`, and
+the evidence artifacts need no Z3 binary on the machine. The two optional
+entries are for running what the model commands generate, not for producing it.
 
 Packages are resolved from the project being checked first, then from this
 installation, because a peer dependency belongs to the project and only the

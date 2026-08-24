@@ -55,8 +55,6 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - *install-just
       - run: pnpm install --frozen-lockfile
-      - name: Install Z3 CLI
-        run: sudo apt-get update && sudo apt-get install --yes z3
       - run: just formal-z3
 
   quint-simulation:
@@ -95,8 +93,6 @@ jobs:
       - *install-just
       - run: pnpm install --frozen-lockfile
       - *install-quint-evaluator
-      - name: Install Z3 CLI
-        run: sudo apt-get update && sudo apt-get install --yes z3
       - name: Warm Quint evaluator cache without worker races
         run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-integration
