@@ -913,4 +913,37 @@ describe("typed-array static verification", () => {
     `;
     validateRefinementActionBodies("switch-routing.ts", source, "routing", parseSpec("switch-routing.ts", source).temporal);
   }, { time: 500, iterations: 20 });
+
+  bench("join switch return and throw completions", () => {
+    const source = `/* uneffect:
+      state routed: int
+      state failed: int
+      state settled: int
+      state observed: int
+      state mode: int
+      init routed = 0
+      init failed = 0
+      init settled = 0
+      init observed = 0
+      init mode = 0
+      action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1
+    */
+      interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        try {
+          switch (runtime.mode) {
+            case 0: runtime.routed++; return
+            case 1: runtime.routed += 2; throw "failed"
+            default: runtime.routed += 3; break
+          }
+        } catch { runtime.failed++ }
+        finally { runtime.settled++ }
+        runtime.observed++
+      }
+    `;
+    validateRefinementActionBodies("switch-completion-bench.ts", source, "routing", parseSpec("switch-completion-bench.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
 });

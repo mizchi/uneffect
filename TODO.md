@@ -174,6 +174,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Apply post-try statements only to the normally continuing path after catch discharges a heterogeneous throw completion, preserving the return path across the join.
       - [x] Compose catch-local conditional void returns and primitive rethrows with prior try completion, common finally, and normal-only post-try continuation.
       - [x] Give conditional void return and primitive throw completions originating in `finally` precedence over retained try/catch completion, while preserving prior completion where finally is normal.
+      - [x] Compose direct switch-case void returns and primitive throws through the action completion lattice, enclosing catch/finally, and normal-only continuation; keep value returns and effectful throws fail-closed.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

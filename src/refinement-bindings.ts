@@ -862,6 +862,33 @@ function validateRefinementActionBodiesInSource(
         if (!sameRefinementExpression(merged, initial)) target.set(name, merged);
       }
     };
+    const applyContinuation = (
+      completion: ActionCompletion,
+      branchUpdates: Map<string, TemporalExpression>,
+      continuation: ts.Block,
+    ): ActionCompletion | undefined => {
+      if (completion === "return" || completion === "throw") return completion;
+      if (completion === "normal") return collect(
+        continuation, receiver, runtimeClass, substitutions,
+        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+      );
+      const beforeContinuation = new Map(branchUpdates);
+      const continuingUpdates = new Map(branchUpdates);
+      const continued = collect(
+        continuation, receiver, runtimeClass, substitutions,
+        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+      );
+      if (!continued) return undefined;
+      const priorReturn = completionPredicate(completion, "return");
+      const priorThrow = completionPredicate(completion, "throw");
+      const priorAbrupt = orCompletionPredicates(priorReturn, priorThrow);
+      const normalWhen = notCompletionPredicate(priorAbrupt);
+      mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
+      return makeCompletion(
+        orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(continued, "return"))),
+        orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
+      );
+    };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
@@ -1029,34 +1056,8 @@ function validateRefinementActionBodiesInSource(
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
         if (hasAbruptBranch) {
           const continuation = ts.factory.createBlock(body.statements.slice(statementIndex + 1), true);
-          const applyContinuation = (
-            completion: ActionCompletion,
-            branchUpdates: Map<string, TemporalExpression>,
-          ): ActionCompletion | undefined => {
-            if (completion === "return" || completion === "throw") return completion;
-            if (completion === "normal") return collect(
-              continuation, receiver, runtimeClass, substitutions,
-              branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
-            );
-            const beforeContinuation = new Map(branchUpdates);
-            const continuingUpdates = new Map(branchUpdates);
-            const continued = collect(
-              continuation, receiver, runtimeClass, substitutions,
-              continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
-            );
-            if (!continued) return undefined;
-            const priorReturn = completionPredicate(completion, "return");
-            const priorThrow = completionPredicate(completion, "throw");
-            const priorAbrupt = orCompletionPredicates(priorReturn, priorThrow);
-            const normalWhen = notCompletionPredicate(priorAbrupt);
-            mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
-            return makeCompletion(
-              orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(continued, "return"))),
-              orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
-            );
-          };
-          whenTrue = applyContinuation(whenTrue, trueUpdates);
-          whenFalse = applyContinuation(whenFalse, falseUpdates);
+          whenTrue = applyContinuation(whenTrue, trueUpdates, continuation);
+          whenFalse = applyContinuation(whenFalse, falseUpdates, continuation);
           if (!whenTrue || !whenFalse) return undefined;
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
@@ -1090,8 +1091,13 @@ function validateRefinementActionBodiesInSource(
         }
         if (clauses.filter(ts.isDefaultClause).length > 1) return undefined;
         const before = new Map(updates);
-        const branches: Array<{ condition: TemporalExpression; updates: Map<string, TemporalExpression> }> = [];
+        const branches: Array<{
+          condition: TemporalExpression;
+          updates: Map<string, TemporalExpression>;
+          completion: ActionCompletion;
+        }> = [];
         let defaultUpdates: Map<string, TemporalExpression> | undefined;
+        let defaultCompletion: ActionCompletion = "normal";
         let caseIndex = 0;
         for (let entry = 0; entry < clauses.length; entry++) {
           const clause = clauses[entry]!;
@@ -1100,22 +1106,29 @@ function validateRefinementActionBodiesInSource(
           let stopped = false;
           for (let clauseIndex = entry; clauseIndex < clauses.length && !stopped; clauseIndex++) {
             const statements = [...clauses[clauseIndex]!.statements];
-            const breakIndex = statements.findIndex(ts.isBreakStatement);
-            if (breakIndex >= 0) {
-              const abrupt = statements[breakIndex] as ts.BreakStatement;
-              if (abrupt.label || breakIndex !== statements.length - 1) return undefined;
-              pathStatements.push(...statements.slice(0, breakIndex));
+            const abruptIndex = statements.findIndex((candidate) => ts.isBreakStatement(candidate)
+              || ts.isReturnStatement(candidate) || ts.isThrowStatement(candidate));
+            if (abruptIndex >= 0) {
+              const abrupt = statements[abruptIndex]!;
+              if (abruptIndex !== statements.length - 1) return undefined;
+              if (ts.isBreakStatement(abrupt)) {
+                if (abrupt.label) return undefined;
+                pathStatements.push(...statements.slice(0, abruptIndex));
+              } else pathStatements.push(...statements);
               stopped = true;
             } else pathStatements.push(...statements);
           }
           const branchUpdates = new Map(before);
           const branch = collect(
             ts.factory.createBlock(pathStatements, true), receiver, runtimeClass, substitutions,
-            branchUpdates, new Map(localValues), activeCalls, false,
+            branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
           );
           if (!branch) return undefined;
-          if (condition) branches.push({ condition, updates: branchUpdates });
-          else defaultUpdates = branchUpdates;
+          if (condition) branches.push({ condition, updates: branchUpdates, completion: branch });
+          else {
+            defaultUpdates = branchUpdates;
+            defaultCompletion = branch;
+          }
         }
         updates.clear();
         for (const name of stateNames) {
@@ -1129,6 +1142,29 @@ function validateRefinementActionBodiesInSource(
             };
           }
           if (!sameRefinementExpression(merged, { kind: "name", name })) updates.set(name, merged);
+        }
+        let caseMatched: TemporalExpression = { kind: "boolean", value: false };
+        for (const branch of branches) caseMatched = orCompletionPredicates(caseMatched, branch.condition);
+        const defaultSelected = notCompletionPredicate(caseMatched);
+        let returnWhen = andCompletionPredicates(
+          defaultSelected, completionPredicate(defaultCompletion, "return"),
+        );
+        let throwWhen = andCompletionPredicates(
+          defaultSelected, completionPredicate(defaultCompletion, "throw"),
+        );
+        for (const branch of branches) {
+          returnWhen = orCompletionPredicates(returnWhen, andCompletionPredicates(
+            branch.condition, completionPredicate(branch.completion, "return"),
+          ));
+          throwWhen = orCompletionPredicates(throwWhen, andCompletionPredicates(
+            branch.condition, completionPredicate(branch.completion, "throw"),
+          ));
+        }
+        const switchCompletion = makeCompletion(returnWhen, throwWhen);
+        if (switchCompletion !== "normal") {
+          return applyContinuation(
+            switchCompletion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+          );
         }
         continue;
       }

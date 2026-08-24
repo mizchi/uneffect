@@ -26,6 +26,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action recoverOrStop: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action recoverOrRethrow: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action finalizeRecovery: recovered' = recovered + 1, postProcessed' = (auditArmed ? postProcessed + 1 : attempted < 0 ? postProcessed : postProcessed + 1), finalized' = (auditArmed || attempted < 0) ? finalized : finalized + 1
+  action routeRecovery: recovered' = attempted === 0 ? recovered + 1 : attempted === 1 ? recovered + 2 : recovered + 3, dropped' = attempted === 1 ? dropped + 1 : dropped, attempted' = attempted === 1 ? attempted + 1 : attempted, finalized' = finalized + 1, postProcessed' = attempted === 0 ? postProcessed : postProcessed + 1
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -185,6 +186,29 @@ export function finalizeTelemetryRecovery(runtime: TelemetryRoutingAccounting): 
     runtime.postProcessed += 1;
   }
   runtime.finalized += 1;
+}
+
+/* uneffect: refinement telemetryRouting@1 action routeRecovery */
+export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
+  try {
+    switch (runtime.attempted) {
+      case 0:
+        runtime.recovered += 1;
+        return;
+      case 1:
+        runtime.recovered += 2;
+        throw "telemetry recovery failed";
+      default:
+        runtime.recovered += 3;
+        break;
+    }
+  } catch {
+    runtime.dropped += 1;
+    runtime.attempted += 1;
+  } finally {
+    runtime.finalized += 1;
+  }
+  runtime.postProcessed += 1;
 }
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */

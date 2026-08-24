@@ -131,8 +131,13 @@ scalar control-flow fragment includes `if`/`else`, bounded literal `for` loops,
 and literal `switch` labels with JavaScript entry order, fallthrough, unlabeled
 `break`, and `default`. A switch becomes conditional temporal expressions over
 the discriminant evaluated before any clause update. Dynamic or duplicate
-labels, labeled breaks, and unsupported abrupt completion fail closed as
-`unsupported-action-body`; they are never accepted by replay evidence alone.
+labels and labeled breaks fail closed as `unsupported-action-body`; they are
+never accepted by replay evidence alone. Direct case-terminal void returns and
+primitive-literal throws also join through the same completion lattice. An
+enclosing catch consumes only the selected throw entries, finally runs on every
+selected entry, and statements after the switch run only for entries that
+remain normal. Value returns, effectful thrown expressions, and nested or
+labeled switch transfers remain unsupported.
 The checker also sequences a mandatory `finally` block after a normally
 completing `try` update. Its first exception-aware fragment recognizes a direct
 terminal primitive `throw` in the try block, routes the accumulated state

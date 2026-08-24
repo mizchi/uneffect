@@ -771,3 +771,10 @@ measured 2.2709 ms mean over 221 samples (0.60% relative margin of error).
 These remain syntax-path timings; Z3 scalar-update equivalence is invoked only
 for mismatches through the explicit `WithZ3` validator and needs a separate
 solver-cost baseline if its use grows.
+
+After composing direct switch-case return and throw entries through catch,
+finally, and the normal-only continuation, the dedicated
+`join switch return and throw completions` benchmark measured 0.3485 ms mean
+over 1,435 samples (0.43% relative margin of error). This is a syntax-path
+baseline for a three-entry switch and must not be extrapolated to arbitrary CFG
+or case counts.

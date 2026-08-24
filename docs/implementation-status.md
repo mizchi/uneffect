@@ -63,7 +63,8 @@ same property is proved for arbitrary TypeScript.
 - Refinement checks connect selected adjacent TypeScript implementations to
   their temporal actions and invariant predicates. Supported forms include
   scalar and nested-record updates, selected native Set/Map operations,
-  conditionals, bounded literal loops, and acyclic symbol-resolved helpers. The
+  conditionals, scalar switch fallthrough and direct return/throw entries,
+  bounded literal loops, and acyclic symbol-resolved helpers. The
   action-control subset keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
   their shared boundary. Post-try statements run only on the remaining normal

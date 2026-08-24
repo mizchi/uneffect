@@ -503,6 +503,18 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulFinallyThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "finalizeRecovery" }),
     );
+    const missingSwitchReturn = source.replace("        runtime.recovered += 1;\n        return;", "        runtime.recovered += 1;\n        break;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingSwitchReturn, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "routeRecovery", target: "postProcessed" }),
+    );
+    const missingSwitchThrow = source.replace('        throw "telemetry recovery failed";', "        break;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
+    );
+    const effectfulSwitchThrow = source.replace('throw "telemetry recovery failed";', 'throw new Error("telemetry recovery failed")');
+    expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

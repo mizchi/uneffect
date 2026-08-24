@@ -241,6 +241,52 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("switch-without-default.ts", withoutDefault, "counter", parseSpec("switch-without-default.ts", withoutDefault).temporal)).toEqual([]);
   });
 
+  it("propagates switch return and throw paths through catch and finally", () => {
+    const source = `/* uneffect:
+      state routed: int
+      state failed: int
+      state settled: int
+      state observed: int
+      state mode: int
+      init routed = 0
+      init failed = 0
+      init settled = 0
+      init observed = 0
+      init mode = 0
+      action route: routed' = mode === 0 ? routed + 1 : mode === 1 ? routed + 2 : routed + 3, failed' = mode === 1 ? failed + 1 : failed, settled' = settled + 1, observed' = mode === 0 ? observed : observed + 1
+    */
+      interface Runtime { routed: number; failed: number; settled: number; observed: number; mode: number }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        try {
+          switch (runtime.mode) {
+            case 0: runtime.routed++; return
+            case 1: runtime.routed += 2; throw "failed"
+            default: runtime.routed += 3; break
+          }
+        } catch {
+          runtime.failed++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    expect(validateRefinementActionBodies("switch-completion.ts", source, "routing", parseSpec("switch-completion.ts", source).temporal)).toEqual([]);
+
+    const valueReturn = source.replace("runtime.routed++; return", "runtime.routed++; return runtime.routed");
+    expect(validateRefinementActionBodies("switch-value-return.ts", valueReturn, "routing", parseSpec("switch-value-return.ts", valueReturn).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    );
+
+    const effectfulThrow = source.replace('throw "failed"', 'throw new Error("failed")');
+    expect(validateRefinementActionBodies("switch-effectful-throw.ts", effectfulThrow, "routing", parseSpec("switch-effectful-throw.ts", effectfulThrow).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    );
+  });
+
   it("composes mandatory finally updates after a normally completing try block", () => {
     const source = `/* uneffect:
       state attempted: int
