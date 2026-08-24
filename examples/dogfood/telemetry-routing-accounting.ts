@@ -21,6 +21,8 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
   action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed
   action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed, recovered' = auditArmed ? recovered : recovered + 1
+  action recoverOrStop: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
+  action recoverOrRethrow: recovered' = auditArmed ? recovered : recovered + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -137,6 +139,32 @@ export function returnOrRejectTelemetry(runtime: TelemetryRoutingAccounting): vo
     // Both abrupt paths cross the same cleanup boundary.
   }
   runtime.recovered += 1;
+}
+
+/* uneffect: refinement telemetryRouting@1 action recoverOrStop */
+export function recoverOrStopTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    throw "telemetry recovery required";
+  } catch {
+    if (runtime.auditArmed) return;
+    runtime.recovered += 1;
+  } finally {
+    // Recovery termination still crosses the cleanup boundary.
+  }
+  runtime.postProcessed += 1;
+}
+
+/* uneffect: refinement telemetryRouting@1 action recoverOrRethrow */
+export function recoverOrRethrowTelemetry(runtime: TelemetryRoutingAccounting): void {
+  try {
+    throw "telemetry recovery required";
+  } catch {
+    if (runtime.auditArmed) throw "telemetry recovery rejected";
+    runtime.recovered += 1;
+  } finally {
+    // A rethrow also crosses the cleanup boundary.
+  }
+  runtime.postProcessed += 1;
 }
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */

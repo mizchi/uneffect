@@ -900,16 +900,19 @@ function validateRefinementActionBodiesInSource(
           const caughtUpdates = new Map(updates);
           const catchCompletion = collect(
             statement.catchClause.block, receiver, runtimeClass, substitutions,
-            caughtUpdates, new Map(localValues), activeCalls, false, false,
+            caughtUpdates, new Map(localValues), activeCalls, true, true,
           );
-          if (catchCompletion !== "normal") return undefined;
+          if (!catchCompletion) return undefined;
           if (tryCompletion === "throw") {
             updates.clear();
             for (const [name, value] of caughtUpdates) updates.set(name, value);
           } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
           residualCompletion = makeCompletion(
-            completionPredicate(tryCompletion, "return"),
-            { kind: "boolean", value: false },
+            orCompletionPredicates(
+              completionPredicate(tryCompletion, "return"),
+              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "return")),
+            ),
+            andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "throw")),
           );
         } else {
           const tryStatements = [...statement.tryBlock.statements];

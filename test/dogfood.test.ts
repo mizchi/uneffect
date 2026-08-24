@@ -476,6 +476,21 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingCaughtContinuation, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "returnOrReject", target: "recovered" }),
     );
+    const missingCatchReturn = source.replace(
+      "export function recoverOrStopTelemetry(runtime: TelemetryRoutingAccounting): void {\n  try {\n    throw \"telemetry recovery required\";\n  } catch {\n    if (runtime.auditArmed) return;",
+      "export function recoverOrStopTelemetry(runtime: TelemetryRoutingAccounting): void {\n  try {\n    throw \"telemetry recovery required\";\n  } catch {\n    // missing catch return",
+    );
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingCatchReturn, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "recoverOrStop", target: "recovered" }),
+    );
+    const missingCatchRethrow = source.replace('    if (runtime.auditArmed) throw "telemetry recovery rejected";', "    // missing catch rethrow");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingCatchRethrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "recoverOrRethrow", target: "recovered" }),
+    );
+    const effectfulCatchRethrow = source.replace('throw "telemetry recovery rejected";', 'throw new Error("telemetry recovery rejected");');
+    expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulCatchRethrow, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "recoverOrRethrow" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

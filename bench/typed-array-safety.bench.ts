@@ -835,6 +835,35 @@ describe("typed-array static verification", () => {
     validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal);
   }, { time: 500, iterations: 20 });
 
+  bench("join catch return and rethrow completions", () => {
+    const source = `/* uneffect:
+      state caught: int
+      state observed: int
+      state stop: bool
+      init caught = 0
+      init observed = 0
+      init stop = false
+      action returnPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1
+      action throwPath: caught' = stop ? caught : caught + 1, observed' = stop ? observed : observed + 1
+    */
+      interface Runtime { caught: number; observed: number; stop: boolean }
+      /* uneffect: refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement recovery@1 action returnPath */
+      export function returnPath(runtime: Runtime) {
+        try { throw "failed" } catch { if (runtime.stop) return; runtime.caught++ }
+        runtime.observed++
+      }
+      /* uneffect: refinement recovery@1 action throwPath */
+      export function throwPath(runtime: Runtime) {
+        try { throw "failed" } catch { if (runtime.stop) throw "again"; runtime.caught++ }
+        runtime.observed++
+      }
+    `;
+    const temporal = parseSpec("catch-completion-bench.ts", source).temporal;
+    validateRefinementActionBodies("catch-completion-bench.ts", source, "recovery", temporal);
+  }, { time: 500, iterations: 20 });
+
   bench("compose a 16-case switch refinement with fallthrough", () => {
     const cases = Array.from({ length: 16 }, (_, index) => `case ${index}: runtime.value += 1;${index % 4 === 3 ? " break;" : ""}`).join("\n");
     const expression = Array.from({ length: 16 }, (_, index) => `mode === ${index} ? value ${Array.from({ length: 4 - index % 4 }, () => "+ 1").join(" ")} : `).join("") + "value";

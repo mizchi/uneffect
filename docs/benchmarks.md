@@ -754,3 +754,11 @@ of error). This is a roughly 10% change in a simultaneously expanded fixture,
 so it is recorded as a regression signal rather than attributed solely to the
 new completion join. A stable isolated completion benchmark is still needed
 before setting a performance gate.
+
+After adding two telemetry recovery actions for catch-local return and rethrow,
+the expanded fixture measured 1.9109 ms mean over 262 samples (0.59% relative
+margin of error). To separate fixture growth from the control-flow operation,
+the dedicated `join catch return and rethrow completions` benchmark validates
+only two minimal actions and measured 0.2252 ms mean over 2,221 samples (0.38%
+relative margin of error). This establishes a repeatable local baseline; it is
+not yet a CI performance threshold.

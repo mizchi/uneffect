@@ -170,9 +170,12 @@ to `throwWhen`, discharges that predicate after a normally completing catch,
 and retains `returnWhen` across common `finally`. Statements after that try run
 only on paths that still complete normally (including a throw path discharged
 by catch), then their state and completion are joined with the retained return
-path. Catch return or rethrow, abrupt completion originating in finally beyond
-a direct terminal void return, break, continue, labels, and general loops are
-still not represented.
+path. A catch may itself end paths with a conditional void return or a primitive
+literal rethrow; those predicates are composed under the original `throwWhen`,
+and every resulting path still crosses a common finally. Value returns,
+effectful rethrow expressions, catch-value-dependent control, abrupt completion
+originating in finally beyond a direct terminal void return, break, continue,
+labels, and general loops are still not represented.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

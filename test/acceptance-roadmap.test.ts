@@ -578,6 +578,72 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("heterogeneous-continuation.ts", source, "completion", temporal)).toEqual([]);
   });
 
+  it("propagates a catch-local return through finally and the post-try join", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state caught: int
+      state settled: int
+      state observed: int
+      state stop: bool
+      init caught = 0
+      init settled = 0
+      init observed = 0
+      init stop = false
+      action recover: caught' = stop ? caught : caught + 1, settled' = settled + 1, observed' = stop ? observed : observed + 1
+    */
+      interface Runtime { caught: number; settled: number; observed: number; stop: boolean }
+      /* uneffect: refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement recovery@1 action recover */
+      export function recover(runtime: Runtime) {
+        try { throw "failed" }
+        catch {
+          if (runtime.stop) return
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("catch-return.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("catch-return.ts", source, "recovery", temporal)).toEqual([]);
+  });
+
+  it("propagates a catch-local rethrow through finally without post-try work", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state caught: int
+      state settled: int
+      state observed: int
+      state rethrow: bool
+      init caught = 0
+      init settled = 0
+      init observed = 0
+      init rethrow = false
+      action recover: caught' = rethrow ? caught : caught + 1, settled' = settled + 1, observed' = rethrow ? observed : observed + 1
+    */
+      interface Runtime { caught: number; settled: number; observed: number; rethrow: boolean }
+      /* uneffect: refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement recovery@1 action recover */
+      export function recover(runtime: Runtime) {
+        try { throw "failed" }
+        catch {
+          if (runtime.rethrow) throw "failed again"
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("catch-rethrow.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("catch-rethrow.ts", source, "recovery", temporal)).toEqual([]);
+  });
+
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
