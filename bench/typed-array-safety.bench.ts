@@ -936,7 +936,7 @@ describe("typed-array static verification", () => {
         try {
           switch (runtime.mode) {
             case 0: runtime.routed++; return runtime.routed
-            case 1: runtime.routed += 2; throw "failed"
+            case 1: runtime.routed += 2; throw runtime.routed
             default: runtime.routed += 3; break
           }
         } catch { runtime.failed++ }

@@ -197,7 +197,7 @@ export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): num
         return runtime.recovered;
       case 1:
         runtime.recovered += 2;
-        throw "telemetry recovery failed";
+        throw runtime.recovered;
       default:
         runtime.recovered += 3;
         break;

@@ -511,11 +511,11 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulSwitchReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
     );
-    const missingSwitchThrow = source.replace('        throw "telemetry recovery failed";', "        break;");
+    const missingSwitchThrow = source.replace("        throw runtime.recovered;", "        break;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
     );
-    const effectfulSwitchThrow = source.replace('throw "telemetry recovery failed";', 'throw new Error("telemetry recovery failed")');
+    const effectfulSwitchThrow = source.replace("throw runtime.recovered;", 'throw new Error("telemetry recovery failed")');
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
     );

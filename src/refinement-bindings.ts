@@ -899,7 +899,16 @@ function validateRefinementActionBodiesInSource(
         return "return";
       }
       if (ts.isThrowStatement(statement)) {
-        if (!allowTerminalThrow || statementIndex !== body.statements.length - 1 || !isPureThrownValue(statement.expression)) return undefined;
+        if (!allowTerminalThrow || statementIndex !== body.statements.length - 1) return undefined;
+        if (!isPureThrownValue(statement.expression)) {
+          const thrown = normalizeRefinementExpression(
+            statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+          );
+          if (!thrown) return undefined;
+          // Catch payloads are outside this fragment, but evaluating the thrown
+          // expression must still be representable and free of hidden effects.
+          void expandLocalSnapshots(resolveCurrentState(thrown));
+        }
         return "throw";
       }
       if (ts.isForStatement(statement)) {

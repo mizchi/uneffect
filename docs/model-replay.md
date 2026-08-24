@@ -133,21 +133,23 @@ and literal `switch` labels with JavaScript entry order, fallthrough, unlabeled
 the discriminant evaluated before any clause update. Dynamic or duplicate
 labels and labeled breaks fail closed as `unsupported-action-body`; they are
 never accepted by replay evidence alone. Direct case-terminal returns and
-primitive-literal throws also join through the same completion lattice. An
+supported pure throws also join through the same completion lattice. An
 enclosing catch consumes only the selected throw entries, finally runs on every
 selected entry, and statements after the switch run only for entries that
 remain normal. A value-bearing non-call return is accepted only when its
 expression normalizes in the pure refinement-expression fragment. The returned
 value is intentionally not compared because a temporal action describes state
-updates, not a TypeScript function result. Effectful or unresolved return calls,
-effectful thrown expressions, and nested or labeled switch transfers remain
-unsupported.
+updates, not a TypeScript function result. A thrown state-backed expression is
+likewise normalized and resolved for purity, but its payload is not retained.
+Effectful or unresolved return calls, catch-payload-dependent flow, effectful
+thrown expressions, and nested or labeled switch transfers remain unsupported.
 The checker also sequences a mandatory `finally` block after a normally
 completing `try` update. Its first exception-aware fragment recognizes a direct
-terminal primitive `throw` in the try block, routes the accumulated state
+terminal supported pure `throw` in the try block, routes the accumulated state
 through the catch body, and then applies an optional `finally`. The thrown
-expression must be a primitive literal so evaluating it cannot hide another
-effect. A top-level `if (condition) throw <primitive>` in the try block also
+expression must be either a primitive literal or normalizable in the pure
+refinement-expression fragment, so evaluating it cannot hide another effect.
+A top-level conditional supported pure throw in the try block also
 splits exceptional and normal paths: only the exceptional path executes catch,
 the normal path executes the remaining try statements, both states are joined,
 and `finally` plus statements after the try run on the join. Catch-value-
@@ -164,7 +166,7 @@ normally continuing path before both states are joined. This is the first
 resource-cleanup completion rule, not general disposal proof. Supported pure
 value returns follow the same completion path as void returns after their
 expression has been validated. Nested abrupt completion not represented by
-these joins remains fail-closed. A return or primitive throw originating in
+these joins remains fail-closed. A return or supported pure throw originating in
 `finally` overrides prior completion on its selected paths, applies preceding
 finally updates, and suppresses statements after the try where it is abrupt.
 
@@ -179,13 +181,13 @@ to `throwWhen`, discharges that predicate after a normally completing catch,
 and retains `returnWhen` across common `finally`. Statements after that try run
 only on paths that still complete normally (including a throw path discharged
 by catch), then their state and completion are joined with the retained return
-path. A catch may itself end paths with a conditional return or a primitive
-literal rethrow; those predicates are composed under the original `throwWhen`,
+path. A catch may itself end paths with a conditional return or a supported
+pure rethrow; those predicates are composed under the original `throwWhen`,
 and every resulting path still crosses a common finally. Pure non-call value
 returns use the same predicates but do not establish a contract for the
 returned result. Effectful or unresolved return calls, effectful rethrow
 expressions, catch-value-dependent control, abrupt completion originating in
-finally beyond the supported conditional return/primitive-throw fragment,
+finally beyond the supported conditional return/pure-throw fragment,
 break, continue, labels, and general loops are still not represented. A finally
 completion overrides a retained try/catch completion on
 the paths where finally returns or throws; where finally is normal, the prior

@@ -349,6 +349,9 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementActionBodies("caught-throw.ts", source, "accounting", parseSpec("caught-throw.ts", source).temporal)).toEqual([]);
 
+    const stateBackedThrow = source.replace('throw "delivery failed"', "throw runtime.attempted");
+    expect(validateRefinementActionBodies("state-backed-throw.ts", stateBackedThrow, "accounting", parseSpec("state-backed-throw.ts", stateBackedThrow).temporal)).toEqual([]);
+
     const readsCaughtValue = source.replace("catch {", "catch (error) {").replace("runtime.failed++", "if (error) runtime.failed++");
     expect(validateRefinementActionBodies("caught-value.ts", readsCaughtValue, "accounting", parseSpec("caught-value.ts", readsCaughtValue).temporal)).toEqual([
       expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),

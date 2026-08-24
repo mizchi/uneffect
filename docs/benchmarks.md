@@ -784,3 +784,8 @@ After extending the completion lattice to validate pure value-bearing returns,
 1,071 samples (2.74% relative margin of error). The returned expression is
 normalized and checked for supported purity, but its result is not compared
 with the temporal action's state transition.
+
+With the throw branch changed from a primitive literal to a state-backed pure
+expression, the same benchmark measured 0.3619 ms mean over 1,382 samples
+(0.67% relative margin of error). This local run shows no regression signal;
+the difference from the previous run is not treated as an optimization claim.

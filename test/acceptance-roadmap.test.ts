@@ -476,6 +476,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     `;
     const temporal = (parseSpec("caught-throw.ts", source) as { temporal: unknown }).temporal;
     expect(validateActions("caught-throw.ts", source, "accounting", temporal)).toEqual([]);
+    const stateBackedThrow = source.replace('throw "delivery failed"', "throw runtime.attempted");
+    expect(validateActions("state-backed-throw.ts", stateBackedThrow, "accounting", temporal)).toEqual([]);
+    const effectfulThrow = source.replace('throw "delivery failed"', "throw makeFailure(runtime)");
+    expect(validateActions("effectful-throw.ts", effectfulThrow, "accounting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    );
   });
 
   it("joins a conditional failure with the normal path through catch and finally", () => {
