@@ -191,6 +191,16 @@ argument is callable (or conservatively `any`/`unknown`); callback-omitting
 `(url, options)` calls do not invent a response event. Response-stream events,
 redirects, agents, DNS-to-socket refinement, and request error events remain
 separate modeling gaps.
+
+`node:child_process` follows the Deno `Run` authority domain. Literal programs
+passed to `execFile`, `execFileSync`, `spawn`, and `spawnSync` narrow to
+`Run<"program">`. Shell-based `exec`/`execSync` remain broad `Run`, because the
+shell command string is not a sound executable boundary; `fork` is also broad
+because the actual executable is the current Node runtime rather than its
+module argument. Callable `exec`/`execFile` completion handlers create poll
+work. `spawn` and `fork` return long-lived event emitters and therefore do not
+invent a single completion callback; their exit/error/stream events remain an
+explicit temporal-model gap.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

@@ -20,11 +20,12 @@ export interface FsBuiltinOperation {
 }
 
 export interface StaticEffectBuiltinOperation { kind: "effect"; effect: string }
+export interface ScopedEffectBuiltinOperation { kind: "scoped-effect"; effect: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "run-program" }
 export interface MutationBuiltinOperation { kind: "mutation" }
 export interface CloneBuiltinOperation { kind: "clone"; valueArgument: number; transferArgument: number }
 export interface FetchBuiltinOperation { kind: "fetch" }
 export interface TimerBuiltinOperation { kind: "timer"; callbackArgument: number; delayArgument?: number; repeats: boolean; queue: "timer" | "microtask" | "animation-frame" | "next-tick" | "check" }
-export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "poll" | "close"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request"; effectDefaultPort?: number }
+export interface DeferredCallbackBuiltinOperation { kind: "deferred-callback"; callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean; queue: "poll" | "close"; effect?: string; effectScopeArgument?: number; effectScopeKind?: "literal" | "net-connect" | "http-request" | "run-program"; effectDefaultPort?: number }
 export interface TimerClearBuiltinOperation { kind: "timer-clear"; handleArgument: number; family: "timeout" | "immediate" | "animation-frame" }
 export interface AbortTimeoutBuiltinOperation { kind: "abort-timeout"; delayArgument: number }
 export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgument: number }
@@ -43,7 +44,7 @@ export interface DomBuiltinOperation {
   queryArgument?: number;
 }
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
@@ -152,6 +153,22 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
         effectScopeKind: "http-request", effectDefaultPort: module === "node:https" ? 443 : 80,
       },
     }))),
+    trusted({ symbol: { module: "node:child_process", export: "exec" }, operation: {
+      kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+      callbackMustBeCallable: true, queue: "poll", effect: "Run",
+    } }),
+    trusted({ symbol: { module: "node:child_process", export: "execFile" }, operation: {
+      kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+      callbackMustBeCallable: true, queue: "poll", effect: "Run", effectScopeArgument: 0,
+      effectScopeKind: "run-program",
+    } }),
+    ...["execFileSync", "spawn", "spawnSync"].map((name): BuiltinContract => trusted({
+      symbol: { module: "node:child_process", export: name },
+      operation: { kind: "scoped-effect", effect: "Run", effectScopeArgument: 0, effectScopeKind: "run-program" },
+    })),
+    ...["execSync", "fork"].map((name): BuiltinContract => trusted({
+      symbol: { module: "node:child_process", export: name }, operation: { kind: "scoped-effect", effect: "Run" },
+    })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
       ...trusted({ symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" } }),

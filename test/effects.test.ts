@@ -191,6 +191,18 @@ describe("effect checker", () => {
     expect(analyzeEffects("node-http-effects.ts", source)).toEqual([]);
   });
 
+  it("tracks Deno-compatible Run authority across child_process APIs", () => {
+    const source = `
+      import { exec, execFile as runFile, execSync, execFileSync, spawn, spawnSync, fork } from "node:child_process";
+      /* uneffect: effect Run */ function shell() { exec("git status", () => undefined); execSync("git status") }
+      /* uneffect: effect Run<"git"> */ function files() { runFile("git", ["status"], () => undefined); execFileSync("git", ["status"]); spawn("git"); spawnSync("git") }
+      /* uneffect: effect Run */ function module() { fork("worker.js") }
+      function execFile(_file: string, callback: () => void) { callback() }
+      function local() { execFile("git", () => undefined) }
+    `;
+    expect(analyzeEffects("node-child-process-effects.ts", source)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

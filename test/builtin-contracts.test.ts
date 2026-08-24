@@ -100,4 +100,14 @@ describe("builtin semantic overlays", () => {
       }));
     }
   });
+
+  it("registers child_process authority without confusing process lifetime with completion callbacks", () => {
+    expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: { module: "node:child_process", export: "exec" }, operation: expect.objectContaining({ kind: "deferred-callback", queue: "poll", effect: "Run" }) }),
+      expect.objectContaining({ symbol: { module: "node:child_process", export: "execFile" }, operation: expect.objectContaining({ kind: "deferred-callback", queue: "poll", effect: "Run", effectScopeKind: "run-program" }) }),
+      ...["execSync", "execFileSync", "spawn", "spawnSync", "fork"].map((name) => expect.objectContaining({
+        symbol: { module: "node:child_process", export: name }, operation: expect.objectContaining({ kind: "scoped-effect", effect: "Run" }),
+      })),
+    ]));
+  });
 });

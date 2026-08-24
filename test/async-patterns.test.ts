@@ -2520,6 +2520,25 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("models child_process completion callbacks but not callback-omitting or spawn calls", () => {
+    const model = analyzeAsyncPatterns("node-child-process.ts", `
+      import { exec, execFile, spawn } from "node:child_process"
+      function run() {
+        exec("true")
+        exec("true", () => queueMicrotask(() => undefined))
+        execFile("git", ["status"])
+        execFile("git", ["status"], () => queueMicrotask(() => undefined))
+        spawn("git", ["status"])
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 2 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"

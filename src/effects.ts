@@ -146,6 +146,11 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
     }
     return [capability(literalScope ? `${resolved.operation.effect}<${JSON.stringify(literalScope)}>` : resolved.operation.effect)];
   }
+  if (resolved?.operation?.kind === "scoped-effect") {
+    const scope = resolved.operation.effectScopeArgument === undefined ? undefined : call.arguments[resolved.operation.effectScopeArgument];
+    const literal = scope && ts.isStringLiteralLike(scope) ? scope.text : undefined;
+    return [capability(literal ? `${resolved.operation.effect}<${JSON.stringify(literal)}>` : resolved.operation.effect)];
+  }
   if (resolved?.operation?.kind === "scheduler-post-task" || resolved?.operation?.kind === "scheduler-yield") return [capability("Timer")];
   if (resolved?.operation?.kind === "promise-combinator") {
     const staticallySafeArray = (expression: ts.Expression): boolean => {

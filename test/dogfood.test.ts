@@ -1194,6 +1194,25 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks a scoped child-process authority and completion boundary", () => {
+    const fileName = "examples/dogfood/node-git-status.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_git_status", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
+
+    const shellExecution = source.replaceAll("execFile", "exec");
+    expect(analyzeEffects(fileName, shellExecution)).toContainEqual(expect.objectContaining({
+      functionName: "readGitStatus", kind: "missing", effect: "Run",
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");
