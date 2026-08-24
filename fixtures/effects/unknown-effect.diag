@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/unknown-effect.ts
+$ uneffect check --evidence fixtures/effects/unknown-effect.ts
 # A misspelled effect constrains nothing, so the real Console effect is still missing.
 
 warning effect/unknown fixtures/effects/unknown-effect.ts:3 in report

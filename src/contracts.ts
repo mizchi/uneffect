@@ -74,6 +74,7 @@ export async function verifyContractObligations(fileName: string, text: string):
     return { artifacts: [artifact], diagnostics: [{ fileName, functionName: owner.functionName, clause: "unsupported", line: owner.line, message: `${owner.functionName} has no verified contract: ${message}`, notes, artifact }] };
   }
 
+  if (obligations.length === 0) return { diagnostics: [], artifacts: [] };
   const { Context } = await init();
   const ctx: any = new Context(`uneffect_${Date.now()}_${Math.random()}`);
   const diagnostics: ContractDiagnostic[] = [];

@@ -24,6 +24,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 - [Custom validators](./custom-validators.md): proof-backed domain validators, call-cardinality specialization, and Generator composition.
 - [Model refinement replay](./model-replay.md): normalized counterexample traces and explicit TypeScript implementation adapters.
 - [Native integration](./native-integration.md): Corsa interchange, program call graphs, published contracts, and CI tiers.
+- [Command line](./cli.md): the single `uneffect` binary, its subcommands, streams, and exit codes.
 - [Diagnostics and fixtures](./diagnostics.md): diagnostic format, the `fixtures/` corpus, and the message-quality rubric.
 - [Continuous integration](./ci.md): test-tier coverage, pinned tools, and solver/runtime isolation.
 - [Effect TS comparison](./effect-ts-comparison.md): different goals and a repeatable comparison protocol.

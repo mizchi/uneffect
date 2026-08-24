@@ -398,11 +398,11 @@ Run source-level lint, including Z3-backed semantic checks:
 ```sh
 just spec-lint examples/spec.ts
 # Direct CLI form when selected temporal properties are proof hints:
-pnpm uneffect-spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
-pnpm uneffect-spec lint examples/spec.ts --discover-strengthening
-pnpm uneffect-spec lint examples/spec.ts --synthesize-strengthening
-pnpm uneffect-spec lint examples/spec.ts --synthesize-relational-strengthening
-pnpm uneffect-spec lint examples/spec.ts --synthesize-collection-strengthening
+pnpm uneffect spec lint examples/spec.ts --strengthening=phaseRange,ownerValid
+pnpm uneffect spec lint examples/spec.ts --discover-strengthening
+pnpm uneffect spec lint examples/spec.ts --synthesize-strengthening
+pnpm uneffect spec lint examples/spec.ts --synthesize-relational-strengthening
+pnpm uneffect spec lint examples/spec.ts --synthesize-collection-strengthening
 ```
 
 The command emits JSON and exits with status 1 when it finds a diagnostic. In
@@ -502,7 +502,7 @@ The CLI intentionally emits verifier source instead of hiding it. Generated mode
 | Z3-backed temporal semantic lint | Implemented for global validity/contradiction, init consistency, globally impossible guards, and duplicate/subsumed safety properties |
 | Bounded temporal reachability lint | Implemented with depth-labelled Z3 unrolling, definitive initial deadlock, shortest bounded later-deadlock, all-enabled-actions-stutter witnesses promoted to infinite stutter cycles, frozen-state property vacuity, and initial state-progress checks; general unbounded reachability remains open |
 | Branch and loop lowering through shared IR | Implemented for restricted assignments, `if`, and `while` |
-| Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect-evidence` JSON CLI |
+| Counterexample/evidence artifacts | Implemented with machine-readable APIs and `uneffect evidence` JSON CLI |
 | Quint safety-model generation | Implemented prototype and executed with Quint |
 | Temporal liveness/fairness generation | Implemented and Quint-typechecked for eventuality, response, recurrence, stabilization, and weak/strong action fairness |
 | Transfer ownership state model | Implemented in TypeScript/Rust with positive and broken Quint controls |

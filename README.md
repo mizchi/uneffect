@@ -51,6 +51,30 @@ error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decre
 
 `requires` / `ensures` / `invariant` は整数論理式です。Z3 で反例が存在しないことを確認します。現状の契約検査は整数、四則演算、比較、論理演算、単純な変数宣言・代入・return、および単純代入だけの while に限定されています。
 
+## CLI
+
+公開しているバイナリは `uneffect` 1 本で、機能はサブコマンドです。`uneffect --help` と `uneffect <command> --help` が入口になります。
+
+```sh
+npm install --save-dev @mizchi/uneffect typescript
+npx uneffect check src/*.ts
+```
+
+TypeScript は peer dependency です（解析対象と同じコンパイラを使うため、バージョンは利用側が決めます）。Node.js 24 以降が必要です。
+
+| コマンド | 用途 |
+| --- | --- |
+| `check <file.ts> [...]` | effect / 契約 / async safety の診断。既定コマンドなので `uneffect <file.ts>` でも走ります |
+| `spec <backend> <file.ts> [function]` | 仕様 IR と各バックエンド向けプログラム（`ir` `lint` `z3` `quint` `compose` `async-quint` `web-loop-quint` `node-loop-quint` `promise-quint`） |
+| `instrument <file.ts>` | 契約・所有権のランタイムアサーションを挿入したソース |
+| `evidence <file.ts>` | effect の evidence artifact（JSON） |
+| `resource-model <file.ts>` | resource safety の Quint モデル |
+| `async-model <file.ts> <function>` | Promise / 例外 / リソースを統合した Quint モデル |
+
+生成物は stdout、診断は stderr に出ます。終了コードは 0 =問題なし、1 =検査対象に問題あり、2 =コマンドラインが不正です。オプションは厳密に検査するので、`--stict` のような打ち間違いは黙って無視されず usage エラーになります。詳細は [CLI ドキュメント](./docs/cli.md) を参照してください。
+
+開発時は just を使います。
+
 ```sh
 just install
 just check

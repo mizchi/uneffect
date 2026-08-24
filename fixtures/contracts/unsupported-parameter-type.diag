@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/contracts/unsupported-parameter-type.ts
+$ uneffect check --evidence fixtures/contracts/unsupported-parameter-type.ts
 # Contracts are integer logic only: a string parameter has no domain to lower into.
 
 error contract/unsupported fixtures/contracts/unsupported-parameter-type.ts:3 in length

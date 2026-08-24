@@ -49,14 +49,14 @@ export async function listFixtures(root = process.cwd()): Promise<Fixture[]> {
 
 /**
  * Run the CLI checkers over one fixture and render its report. The report is exactly what
- * `uneffect --evidence <file>` prints, with repository-relative paths, so a `.diag` file always
+ * `uneffect check --evidence <file>` prints, with repository-relative paths, so a `.diag` file always
  * matches what a reader would see.
  */
 export async function runFixture(fixture: Fixture, options: CheckOptions & { root?: string } = {}): Promise<FixtureRun> {
   const root = options.root ?? process.cwd();
   const result = await checkFiles([join(root, fixture.path)], options);
   const body = formatDiagnostics(result.diagnostics, { cwd: root, sources: result.sources });
-  return { ...fixture, diagnostics: result.diagnostics, report: `$ uneffect --evidence ${fixture.path}\n# ${fixture.summary}\n\n${body}${formatCheckEvidence(result)}` };
+  return { ...fixture, diagnostics: result.diagnostics, report: `$ uneffect check --evidence ${fixture.path}\n# ${fixture.summary}\n\n${body}${formatCheckEvidence(result)}` };
 }
 
 export async function runFixtures(root = process.cwd()): Promise<FixtureRun[]> {

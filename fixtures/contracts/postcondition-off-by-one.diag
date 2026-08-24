@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/contracts/postcondition-off-by-one.ts
+$ uneffect check --evidence fixtures/contracts/postcondition-off-by-one.ts
 # The postcondition is false for one input; the report replays that input through the body.
 
 error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decrement

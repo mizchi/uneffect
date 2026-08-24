@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/transitive-console.ts
+$ uneffect check --evidence fixtures/effects/transitive-console.ts
 # Effects propagate through calls: `summarize` inherits Console from `report` and must declare it.
 
 error effect/missing fixtures/effects/transitive-console.ts:7 in summarize

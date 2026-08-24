@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/throw-effect.ts
+$ uneffect check --evidence fixtures/effects/throw-effect.ts
 # Throwing is an effect: an uncaught throw needs Throw<TypeError> in the declaration.
 
 error effect/missing fixtures/effects/throw-effect.ts:3 in parsePort

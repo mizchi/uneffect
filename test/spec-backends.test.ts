@@ -1131,17 +1131,18 @@ describe("spec IR and generated verifier programs", () => {
   });
 
   it("exposes the affine coefficient bound through the CLI", () => {
-    const expanded = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const expanded = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=3"], {
       encoding: "utf8", timeout: 30_000,
     });
     expect(expanded.stdout).toContain("<synth:3 * accepted === byteBudget>");
-    const invalid = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const invalid = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=9"], {
       encoding: "utf8", timeout: 30_000,
     });
     expect(invalid.status).not.toBe(0);
-    expect(invalid.stderr).toContain("relational-max-coefficient must be between 1 and 8");
+    expect(invalid.status).toBe(2);
+    expect(invalid.stderr).toContain("--relational-max-coefficient must be an integer between 1 and 8");
   });
 
   it("synthesizes three-variable conservation equalities", async () => {

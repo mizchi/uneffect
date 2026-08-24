@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/missing-console.ts
+$ uneffect check --evidence fixtures/effects/missing-console.ts
 # An effectful call with no declaration: the report names the operation that produced the effect.
 
 error effect/missing fixtures/effects/missing-console.ts:2 in report

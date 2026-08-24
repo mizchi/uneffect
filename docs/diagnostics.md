@@ -57,7 +57,7 @@ each next to the checker output it produces:
 
 ```
 fixtures/contracts/postcondition-off-by-one.ts   # the input
-fixtures/contracts/postcondition-off-by-one.diag # the output of `uneffect --evidence <file>`
+fixtures/contracts/postcondition-off-by-one.diag # the output of `uneffect check --evidence <file>`
 ```
 
 Every fixture starts with a `//` line stating what it demonstrates, and that
@@ -67,7 +67,7 @@ function with its evidence state — so a fixture that reports no diagnostics st
 shows what was checked:
 
 ```
-$ uneffect --evidence fixtures/contracts/verified-increment.ts
+$ uneffect check --evidence fixtures/contracts/verified-increment.ts
 # A Hoare triple Z3 proves: for every x >= 0 the returned value is greater than x.
 
 no diagnostics

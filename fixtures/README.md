@@ -1,7 +1,7 @@
 # Fixtures
 
 Each fixture is a small TypeScript file next to the checker output it produces:
-`<name>.ts` is the input, `<name>.diag` is the result of `uneffect --evidence <name>.ts`.
+`<name>.ts` is the input, `<name>.diag` is the result of `uneffect check --evidence <name>.ts`.
 The first `//` line of every source states what the pair demonstrates, and the
 report repeats it, so the two files can be read side by side without running
 anything.

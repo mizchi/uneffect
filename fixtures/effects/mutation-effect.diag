@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/mutation-effect.ts
+$ uneffect check --evidence fixtures/effects/mutation-effect.ts
 # Writing through a binding that outlives the call is a Mutate effect over that region.
 
 error effect/missing fixtures/effects/mutation-effect.ts:4 in record

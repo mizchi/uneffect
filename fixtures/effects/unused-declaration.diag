@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/unused-declaration.ts
+$ uneffect check --evidence fixtures/effects/unused-declaration.ts
 # A declaration is an upper bound: declaring more than the body needs is a warning, not an error.
 
 warning effect/unused fixtures/effects/unused-declaration.ts:3 in report

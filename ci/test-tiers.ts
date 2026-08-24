@@ -5,6 +5,7 @@ export const ciTestTiers = {
     "test/call-graph.test.ts",
     "test/capabilities.test.ts",
     "test/ci-tiers.test.ts",
+    "test/cli.test.ts",
     "test/clock-conformance.test.ts",
     "test/deno-permissions.test.ts",
     "test/diagnostics.test.ts",

@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/contracts/loop-invariant-not-established.ts
+$ uneffect check --evidence fixtures/contracts/loop-invariant-not-established.ts
 # The invariant is already false the first time the loop is reached.
 
 error contract/invariant fixtures/contracts/loop-invariant-not-established.ts:7 in count

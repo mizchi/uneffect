@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/declared-console.ts
+$ uneffect check --evidence fixtures/effects/declared-console.ts
 # A declared effect that matches what the function really does: the checker stays silent.
 
 no diagnostics

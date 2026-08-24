@@ -1,12 +1,35 @@
 {
   "name": "@mizchi/uneffect",
   "version": "0.0.0-alpha.0",
+  "description": "Static effect, contract, and async-safety checking for existing TypeScript, driven by /* uneffect: ... */ comments.",
+  "keywords": [
+    "typescript",
+    "effects",
+    "static-analysis",
+    "verification",
+    "hoare-logic",
+    "z3",
+    "quint",
+    "cli"
+  ],
+  "homepage": "https://github.com/mizchi/uneffect#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mizchi/uneffect.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mizchi/uneffect/issues"
+  },
+  "author": "mizchi",
   "type": "module",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
     }
+  },
+  "bin": {
+    "uneffect": "dist/src/cli.js"
   },
   "files": [
     "dist/src",
@@ -16,14 +39,8 @@
   "publishConfig": {
     "access": "public"
   },
-  "bin": {
-    "uneffect": "dist/src/cli.js",
-    "uneffect-instrument": "dist/src/instrument-cli.js",
-    "uneffect-spec": "dist/src/spec-cli.js",
-    "uneffect-evidence": "dist/src/evidence-cli.js"
-  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.json",
     "test": "tsx ci/run-test-tiers.ts",
     "bench": "vitest bench --run",
     "check": "tsc -p tsconfig.json --noEmit && tsx ci/run-test-tiers.ts",
@@ -32,9 +49,11 @@
   "engines": {
     "node": ">=24"
   },
+  "peerDependencies": {
+    "typescript": ">=6.0.0-dev.20260820"
+  },
   "dependencies": {
     "effect": "^3.22.1",
-    "typescript": "^6.0.0-dev.20260820",
     "valibot": "^1.4.2",
     "z3-solver": "^4.15.4"
   },
@@ -42,6 +61,7 @@
     "@informalsystems/quint": "^0.32.0",
     "@types/node": "^24.0.0",
     "tsx": "^4.20.5",
+    "typescript": "^6.0.0-dev.20260820",
     "vitest": "^4.1.11"
   },
   "packageManager": "pnpm@10.15.0"

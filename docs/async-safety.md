@@ -338,7 +338,7 @@ artifact lets a verified build remove the generated assertion and, once unused,
 its helper. The `consumeWhenActive` call itself is never removed by this proof.
 
 `buildVerifiedOwnership` composes analysis, instrumentation, Z3 execution, and
-safe elision. `uneffect-instrument --verify-ownership file.ts` exposes the same
+safe elision. `uneffect instrument --verify-ownership file.ts` exposes the same
 pipeline; `--ownership` stops before verification for runtime-checked builds.
 
 `void` is an explicit escape hatch, not proof that rejection is operationally
