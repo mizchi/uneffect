@@ -23,3 +23,9 @@ export function partitionRoute(partition: Nat): Nat {
 export function signedPartitionRoute(partition: Int): Int {
   return partition;
 }
+
+/* uneffect: requires replicas >= 4 */
+/* uneffect: ensures result >= 4 */
+export function supportedReplicaCount(replicas: 1 | 4 | 9): number {
+  return replicas;
+}

@@ -84,7 +84,15 @@ equalities between scalar parameters, such as
 the relation graph and runs valid correlated tuples before Cartesian samples.
 The opt-in asynchronous Z3 generator also enumerates a caller-bounded number of
 models for nonlinear scalar refinements, bounded U8/U32 arrays, and closed
-record type literals whose required fields use scalar machine domains. For arrays,
+record type literals whose required fields use scalar machine domains.
+Numeric literal unions are lowered to an integer with an exact finite-membership
+constraint, so refinement solving selects only union members satisfying
+`requires`; string, boolean, and mixed literal unions remain on the ordinary
+finite generator path rather than being misrepresented as integers. For arrays,
+Integer `/` and `%` use JavaScript's truncation-toward-zero quotient and
+dividend-signed remainder rather than SMT-LIB Euclidean `div`/`mod` semantics.
+The integer refinement fragment adds a nonzero-divisor obligation; JavaScript
+`NaN`/`Infinity` behavior is outside these integer helper domains.
 the supported fragment includes `.length`, literal-index element reads, and
 dynamic scalar indices over the finite modeled capacity. Dynamic reads lower
 to finite SMT selection and add in-bounds generation constraints; the emitted

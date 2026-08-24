@@ -106,6 +106,16 @@ function scalarAccepts(domain: PropertyBoundaryKind, value: PropertyLiteral): bo
   return true;
 }
 
+function numericLiteralUnion(domain: PropertyTestDomain): number[] | undefined {
+  if (typeof domain === "string" || domain.kind !== "union") return undefined;
+  const values: number[] = [];
+  for (const member of domain.members) {
+    if (typeof member === "string" || typeof member.value !== "number" || !Number.isSafeInteger(member.value)) return undefined;
+    values.push(member.value);
+  }
+  return [...new Set(values)];
+}
+
 function domainAccepts(domain: PropertyTestDomain, value: PropertyValue): boolean {
   if (typeof domain === "string") return (typeof value === "string" || typeof value === "number" || typeof value === "boolean") && scalarAccepts(domain, value);
   if (domain.kind === "bounded-array") return Array.isArray(value) && value.length <= domain.maximum
@@ -751,11 +761,17 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
     if (presence && [ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken].includes(node.operatorToken.kind)) return `(not ${presence})`;
     if (presence && [ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken].includes(node.operatorToken.kind)) return presence;
     const operator = new Map<ts.SyntaxKind, string>([
-      [ts.SyntaxKind.PlusToken, "+"], [ts.SyntaxKind.MinusToken, "-"], [ts.SyntaxKind.AsteriskToken, "*"], [ts.SyntaxKind.SlashToken, "div"], [ts.SyntaxKind.PercentToken, "mod"],
+      [ts.SyntaxKind.PlusToken, "+"], [ts.SyntaxKind.MinusToken, "-"], [ts.SyntaxKind.AsteriskToken, "*"],
       [ts.SyntaxKind.LessThanToken, "<"], [ts.SyntaxKind.LessThanEqualsToken, "<="], [ts.SyntaxKind.GreaterThanToken, ">"], [ts.SyntaxKind.GreaterThanEqualsToken, ">="],
       [ts.SyntaxKind.EqualsEqualsToken, "="], [ts.SyntaxKind.EqualsEqualsEqualsToken, "="], [ts.SyntaxKind.AmpersandAmpersandToken, "and"], [ts.SyntaxKind.BarBarToken, "or"],
     ]).get(node.operatorToken.kind);
     const left = structuredPropertyToSmt(node.left, arrays, records, sets, maps), right = structuredPropertyToSmt(node.right, arrays, records, sets, maps);
+    if (node.operatorToken.kind === ts.SyntaxKind.SlashToken || node.operatorToken.kind === ts.SyntaxKind.PercentToken) {
+      const absolute = (value: string): string => `(ite (< ${value} 0) (- ${value}) ${value})`;
+      const magnitude = `(div ${absolute(left)} ${absolute(right)})`;
+      const quotient = `(ite (= (< ${left} 0) (< ${right} 0)) ${magnitude} (- ${magnitude}))`;
+      return node.operatorToken.kind === ts.SyntaxKind.SlashToken ? quotient : `(- ${left} (* ${quotient} ${right}))`;
+    }
     if (node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsToken || node.operatorToken.kind === ts.SyntaxKind.ExclamationEqualsEqualsToken) return `(not (= ${left} ${right}))`;
     if (operator) return `(${operator} ${left} ${right})`;
   }
@@ -765,6 +781,10 @@ function structuredPropertyToSmt(node: ts.Expression, arrays: ReadonlyMap<string
 function structuredAccessBounds(node: ts.Expression, arrays: ReadonlyMap<string, Z3ArrayLayout>, records: ReadonlyMap<string, Z3RecordLayout>, sets: ReadonlyMap<string, Z3SetLayout>, maps: ReadonlyMap<string, Z3MapLayout>): string[] {
   const bounds: string[] = [];
   const visit = (current: ts.Node): void => {
+    if (ts.isBinaryExpression(current) && [ts.SyntaxKind.SlashToken, ts.SyntaxKind.PercentToken].includes(current.operatorToken.kind)) {
+      const divisor = structuredPropertyToSmt(current.right, arrays, records, sets, maps);
+      bounds.push(`(not (= ${divisor} 0))`);
+    }
     if (ts.isElementAccessExpression(current) && ts.isIdentifier(current.expression) && current.argumentExpression
       && !ts.isNumericLiteral(current.argumentExpression) && arrays.has(current.expression.text)) {
       const index = structuredPropertyToSmt(current.argumentExpression, arrays, records, sets, maps);
@@ -800,7 +820,8 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       if (requires.length === 0) continue;
       const names = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : "");
       const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
-      if (names.some((name) => !name) || domains.some((domain) => !domain || typeof domain === "object" && domain.kind === "union")) continue;
+      if (names.some((name) => !name) || domains.some((domain) => !domain
+        || typeof domain === "object" && domain.kind === "union" && numericLiteralUnion(domain) === undefined)) continue;
       const requirementExpressions = requires.map(propertyExpression);
       const layouts = new Map<string, Z3ArrayLayout>();
       const records = new Map<string, Z3RecordLayout>();
@@ -846,6 +867,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const declarations = names.flatMap((name, index) => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [`(declare-const ${name} Int)`];
+        if (domain.kind === "union") return [`(declare-const ${name} Int)`];
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           return [`(declare-const ${name}__length Int)`, ...Array.from({ length: layout.maximum }, (_, at) => `(declare-const ${name}__${at} Int)` )];
@@ -867,6 +889,10 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
         ...names.flatMap((name, index) => {
           const domain = domains[index]!;
           if (typeof domain === "string") return scalarDomainConstraint(name, domain);
+          if (domain.kind === "union") {
+            const values = numericLiteralUnion(domain)!;
+            return [values.length === 1 ? `(= ${name} ${values[0]})` : `(or ${values.map((value) => `(= ${name} ${value})`).join(" ")})`];
+          }
           if (domain.kind === "bounded-array") {
             const layout = layouts.get(name)!;
             const upper = layout.element === "U8" ? 255 : 4_294_967_295;
@@ -902,6 +928,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const sizeTerms = names.flatMap((name, index): string[] => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [absolute(name)];
+        if (domain.kind === "union") return [absolute(name)];
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           return [`${name}__length`, ...Array.from({ length: layout.maximum }, (_, at) => absolute(`${name}__${at}`))];
@@ -923,6 +950,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const decodeTuple = (model: any): Array<PropertyValue | undefined> => names.map((name, index): PropertyValue | undefined => {
         const domain = domains[index]!;
         if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
+        if (domain.kind === "union") return z3Integer(model.eval(context.Int.const(name), true).toString());
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());

@@ -222,6 +222,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
   - [x] Generate `BoundedUint8Array<N>`, `BoundedUint32Array<N>`, scalar/literal union values, and structure-aware array shrinkers.
+  - [x] Enumerate satisfying numeric literal-union members with Z3 instead of relying on runtime precondition filtering, and dogfood a finite deployment-size contract.
+  - [x] Match JavaScript signed remainder and truncating integer division in solver-generated boundaries, excluding zero divisors from the integer refinement fragment.
   - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
     - [x] Seed valid boundary-adjacent values from conjunctive integer comparisons (`>=`, `>`, `<=`, `<`, `===`), including reversed operands.
     - [x] Derive boundary unions from disjunctions and normalize single-variable affine arithmetic.

@@ -469,6 +469,14 @@ describe("typed-array static verification", () => {
     ` }, solverCases: 8 });
   }, { time: 500, iterations: 1 });
 
+  bench("derive numeric literal-union tuples with JavaScript arithmetic", async () => {
+    await generateUneffectPropertyTestsWithZ3({ files: { "src/replicas.ts": `
+      /* uneffect: requires replicas >= 4 && signed === -7 && signed / 3 === -2 && signed % 3 === -1 */
+      /* uneffect: ensures result >= 4 */
+      export function deployment(replicas: 1 | 4 | 9, signed: Int): number { return replicas }
+    ` }, solverCases: 4 });
+  }, { time: 500, iterations: 1 });
+
   bench("jointly shrink 64 correlated property tuples", async () => {
     const refinementTuples = Array.from({ length: 64 }, (_, index) => [64 - index, 65 - index]);
     await checkUneffectProperty({

@@ -508,6 +508,40 @@ describe("property-test generation", () => {
     }));
   });
 
+  it("enumerates satisfying numeric literal-union members with Z3", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "numeric-union.ts": `
+      /* uneffect: requires value * value >= 16 */
+      /* uneffect: ensures result >= 4 */
+      export function magnitude(value: 1 | 4 | 9): number { return value }
+    ` } });
+    expect(result.solverDiagnostics).toEqual([]);
+    expect(result.boundaries[0]?.generatorTuples).toEqual([[4], [9]]);
+  });
+
+  it("uses JavaScript truncation and signed-remainder semantics in Z3 generation", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "signed-arithmetic.ts": `
+      type Int = number
+      /* uneffect: requires value === -7 && value / 3 === -2 && value % 3 === -1 */
+      /* uneffect: ensures result === -7 */
+      export function signed(value: Int): Int { return value }
+    ` } });
+    expect(result.solverDiagnostics).toEqual([]);
+    expect(result.boundaries[0]?.generatorTuples).toEqual([[-7]]);
+  });
+
+  it("does not invent integer division models for a zero divisor", async () => {
+    const result = await generateUneffectPropertyTestsWithZ3({ files: { "zero-divisor.ts": `
+      type Int = number
+      /* uneffect: requires divisor === 0 && value / divisor === 0 */
+      /* uneffect: ensures result === value */
+      export function divide(value: Int, divisor: Int): Int { return value }
+    ` } });
+    expect(result.boundaries[0]?.generatorTuples).toEqual([]);
+    expect(result.solverDiagnostics).toContainEqual(expect.objectContaining({
+      functionName: "divide", status: "unsat",
+    }));
+  });
+
   it("uses refinement candidates before broad scalar edges", async () => {
     const seen: number[] = [];
     const result = await checkUneffectProperty({

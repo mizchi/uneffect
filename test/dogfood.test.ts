@@ -13,7 +13,7 @@ import { verifyTypedArraySafety } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
-import { generateUneffectPropertyTests } from "../src/property-tests.js";
+import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
@@ -327,7 +327,7 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
-  it("derives executable aligned shard boundaries from a realistic contract", () => {
+  it("derives executable aligned shard and finite deployment boundaries from realistic contracts", async () => {
     const fileName = "examples/dogfood/shard-batch.ts";
     const result = generateUneffectPropertyTests({ files: { [fileName]: readFileSync(fileName, "utf8") } });
     expect(result.diagnostics).toEqual([]);
@@ -336,6 +336,9 @@ describe("Uneffect dogfood", () => {
     expect(result.boundaries.find((boundary) => boundary.functionName === "partitionRoute")?.generatorHints).toEqual([[9, 21, 249]]);
     expect(result.boundaries.find((boundary) => boundary.functionName === "signedPartitionRoute")?.generatorHints).toEqual([[-45, -9, -3]]);
     expect(result.generatedFiles["examples/dogfood/shard-batch.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
+    const solved = await generateUneffectPropertyTestsWithZ3({ files: { [fileName]: readFileSync(fileName, "utf8") } });
+    expect(solved.solverDiagnostics).toEqual([]);
+    expect(solved.boundaries.find((boundary) => boundary.functionName === "supportedReplicaCount")?.generatorTuples).toEqual([[4], [9]]);
   });
 
   it("proves that every telemetry attempt has exactly one outcome", async () => {
