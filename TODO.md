@@ -628,7 +628,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Enqueue statically resolved nested `process.nextTick` and `queueMicrotask` jobs when their parent Node callback runs instead of treating them as initially pending.
     - [x] Enqueue nested `setImmediate` registrations dynamically and defer an Immediate created inside any executing callback to the next event-loop iteration.
     - [x] Normalize static Node `setTimeout`/`setInterval` delays to the documented signed-32-bit timer range and integer semantics without changing Web or abort-timeout models.
-    - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for reviewed one-shot `node:fs` completion APIs; watchers, streams, remaining callbacks, and readiness/order details remain open.
+    - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for reviewed one-shot `node:fs` completion APIs; streams, remaining callbacks, and readiness/order details remain open.
+    - [x] Model TypeChecker-resolved `node:fs` `watch`/`watchFile` listeners as repeatable external poll work, propagate listener effects, and dogfood configuration change reporting; watcher closure and nested poll registration remain open.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
     - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks.

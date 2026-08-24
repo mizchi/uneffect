@@ -85,10 +85,13 @@ Reviewed one-shot callback overloads of TypeChecker-resolved `node:fs`
 operations—including file access/stat/read/write/copy and path mutation—retain
 their existing filesystem capability contract and also create an externally
 completed poll job. Completion is nondeterministic; once ready, the callback
-can run only in phase `2` and returns through the ordinary checkpoint. Promise,
-synchronous, watcher, and stream variants do not receive this callback
-projection. Independent poll completions are intentionally not constrained by
-source registration order.
+can run only in phase `2` and returns through the ordinary checkpoint. `watch`
+and `watchFile` use the same authority but are repeating external poll sources,
+and their listener effects propagate into the creating callable. Promise,
+synchronous, and stream variants do not receive this callback projection.
+Watcher `close()`/`unref()` state and poll callbacks registered dynamically by
+a watcher remain open. Independent poll completions are intentionally not
+constrained by source registration order.
 
 A statically resolved nested `setImmediate` is also registered dynamically.
 An Immediate created inside any executing callback receives a next-iteration

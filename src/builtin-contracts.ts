@@ -16,7 +16,10 @@ export interface FsBuiltinOperation {
   writePathArgument?: number;
   mutateArgument?: number;
   callbackArgumentFromEnd?: number;
+  callbackMinimumArguments?: number;
+  callbackMustBeCallable?: boolean;
   callbackQueue?: "poll";
+  callbackRepeats?: boolean;
 }
 
 export interface StaticEffectBuiltinOperation { kind: "effect"; effect: string }
@@ -96,10 +99,14 @@ function fsBuiltinContracts(module: string): BuiltinContract[] {
     "appendFile", "chmod", "chown", "link", "mkdir", "rename", "rm", "rmdir", "symlink", "truncate", "unlink", "utimes", "writeFile",
     "copyFile", "cp", "read", "write",
   ]);
-  const callbackOperation = (name: string): Pick<FsBuiltinOperation, "callbackArgumentFromEnd" | "callbackQueue"> =>
-    module === "node:fs" && completionCallbacks.has(name)
-      ? { callbackArgumentFromEnd: 1, callbackQueue: "poll" }
-      : {};
+  const callbackOperation = (name: string): Pick<FsBuiltinOperation, "callbackArgumentFromEnd" | "callbackMinimumArguments" | "callbackMustBeCallable" | "callbackQueue" | "callbackRepeats"> => {
+    if (module !== "node:fs") return {};
+    if (name === "watch" || name === "watchFile") return {
+      callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+      callbackMustBeCallable: true, callbackQueue: "poll", callbackRepeats: true,
+    };
+    return completionCallbacks.has(name) ? { callbackArgumentFromEnd: 1, callbackQueue: "poll" } : {};
+  };
   for (const name of fsReadNames) contracts.push(trusted({
     symbol: { module, export: name },
     operation: { kind: "fs", read: true, write: name === "open" || name === "openSync", readPathArgument: 0, writePathArgument: 0, ...callbackOperation(name) },

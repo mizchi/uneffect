@@ -11,8 +11,9 @@ Node slice, reviewed one-shot completion APIs in `node:fs` still emit
 `FsRead`/`FsWrite`, while their final callback argument also becomes a
 poll-phase job in the Node temporal model. This includes access/stat,
 file/path read and write, copy, descriptor read/write, and path mutation APIs.
-Sync, `node:fs/promises`, watcher, and stream symbols retain only their
-applicable effect/Promise semantics.
+`watch` and `watchFile` additionally become repeating poll jobs. Sync,
+`node:fs/promises`, and stream symbols retain only their applicable
+effect/Promise semantics.
 
 The program-wide call graph consumes the same resolved contract to classify
 these completion callbacks as deferred. Effects in a callback are therefore

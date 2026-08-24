@@ -2487,6 +2487,23 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("models node:fs watchers as repeating externally completed poll work", () => {
+    const model = analyzeAsyncPatterns("node-fs-watch.ts", `
+      import { watch as watchFs } from "node:fs"
+      function monitor() { watchFs("config.json", () => queueMicrotask(() => undefined)) }
+      function watch(_path: string, callback: () => void) { callback() }
+      watch("config.json", () => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true, repeats: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_fs_watch", model);
+    expect(quint).toMatch(/action complete_poll_0[\s\S]*not\(callback_0_pending\)/);
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_0_pending' = false/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"

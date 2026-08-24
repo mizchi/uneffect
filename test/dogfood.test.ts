@@ -1250,6 +1250,19 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks repeated filesystem watcher effects", () => {
+    const fileName = "examples/dogfood/node-config-watcher.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+
+    expect(analyzeEffects(fileName, source.replace(" | Console", ""))).toContainEqual(expect.objectContaining({
+      functionName: "reportConfigChanges", kind: "missing", effect: "Console",
+    }));
+    expect(analyzeEffects(fileName, source.replace('FsRead<"config.json"> | ', ""))).toContainEqual(expect.objectContaining({
+      functionName: "reportConfigChanges", kind: "missing", effect: 'FsRead<"config.json">',
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

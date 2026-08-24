@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { basename, dirname } from "node:path";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
-import type { DeferredCallbackBuiltinOperation, PromiseCombinator } from "./builtin-contracts.js";
+import type { DeferredCallbackBuiltinOperation, FsBuiltinOperation, PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
@@ -956,9 +956,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const invokedSignalFactories = new Set<ts.FunctionLikeDeclaration>();
   const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
   const inlineAbortCompositionTargets = new Map<ts.CallExpression, AbortTarget>();
-  const deferredCallbackArgument = (
+  const trailingCallbackArgument = (
     call: ts.CallExpression,
-    operation: DeferredCallbackBuiltinOperation,
+    operation: { callbackArgumentFromEnd: number; callbackMinimumArguments?: number; callbackMustBeCallable?: boolean },
   ): ts.Expression | undefined => {
     if (call.arguments.length < (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) return undefined;
     const callback = call.arguments[call.arguments.length - operation.callbackArgumentFromEnd];
@@ -967,6 +967,14 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
     return type.getCallSignatures().length > 0 || Boolean(type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
       ? callback : undefined;
   };
+  const deferredCallbackArgument = (call: ts.CallExpression, operation: DeferredCallbackBuiltinOperation): ts.Expression | undefined =>
+    trailingCallbackArgument(call, operation);
+  const fsCallbackArgument = (call: ts.CallExpression, operation: FsBuiltinOperation): ts.Expression | undefined =>
+    operation.callbackArgumentFromEnd === undefined ? undefined : trailingCallbackArgument(call, {
+      callbackArgumentFromEnd: operation.callbackArgumentFromEnd,
+      callbackMinimumArguments: operation.callbackMinimumArguments,
+      callbackMustBeCallable: operation.callbackMustBeCallable,
+    });
   const collectScheduledCallbacks = (node: ts.Node, owner?: ts.FunctionLikeDeclaration): void => {
     const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
     if (ts.isCallExpression(node)) {
@@ -976,7 +984,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
       } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
-        for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
+        for (const callback of resolveCallbacks(fsCallbackArgument(node, operation))) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
       } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
@@ -1337,15 +1345,15 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
           });
           if (declaration) handleTargets.set(declaration, timerIndex);
           collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue) {
-          const callbackNode = node.arguments[node.arguments.length - operation.callbackArgumentFromEnd];
+        } else if (operation?.kind === "fs" && operation.callbackArgumentFromEnd && operation.callbackQueue && fsCallbackArgument(node, operation)) {
+          const callbackNode = fsCallbackArgument(node, operation)!;
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,
             callback: callbackNode?.getText(source) ?? "<unknown>",
             delay: 0,
             recursive: false,
-            repeats: false,
+            repeats: operation.callbackRepeats ?? false,
             queue: operation.callbackQueue,
             externallyReady: true,
             span: { start: node.getStart(source), end: node.getEnd() },
@@ -1547,7 +1555,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       const operation = parentCall ? adapter.resolveCall(parentCall)?.operation : undefined;
       const scheduledCallback = Boolean(parentCall && (
         ((operation?.kind === "timer" || operation?.kind === "scheduler-post-task") && parentCall.arguments[operation.callbackArgument] === node)
-        || (operation?.kind === "fs" && operation.callbackArgumentFromEnd && parentCall.arguments[parentCall.arguments.length - operation.callbackArgumentFromEnd] === node)
+        || (operation?.kind === "fs" && fsCallbackArgument(parentCall, operation) === node)
       ));
       if (!scheduledCallback && !scheduledCallbacks.has(node as ts.FunctionLikeDeclaration) && !invokedSignalFactories.has(node as ts.FunctionLikeDeclaration)) visitFunction(node as ts.FunctionLikeDeclaration);
     }

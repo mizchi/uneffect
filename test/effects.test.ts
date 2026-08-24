@@ -263,6 +263,19 @@ describe("effect checker", () => {
       .toContainEqual(expect.objectContaining({ functionName: "serve", kind: "missing", effect: "Console" }));
   });
 
+  it("propagates effects from repeating node:fs watcher callbacks", () => {
+    const source = `
+      import { watch as watchFs } from "node:fs"
+      /* uneffect: effect FsRead<"config.json"> | Console */
+      function watchConfig() { watchFs("config.json", () => console.log("changed")) }
+      function watch(_path: string, callback: () => void) { callback() }
+      function local() { watch("config.json", () => console.log("local")) }
+    `;
+    expect(analyzeEffects("node-fs-watch-effects.ts", source)).toEqual([]);
+    expect(analyzeEffects("node-fs-watch-effects.ts", source.replace(" | Console", "")))
+      .toContainEqual(expect.objectContaining({ functionName: "watchConfig", kind: "missing", effect: "Console" }));
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

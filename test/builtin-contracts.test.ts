@@ -47,7 +47,12 @@ describe("builtin semantic overlays", () => {
     }
     expect(lookup("node:fs", "readFileSync")).not.toHaveProperty("callbackQueue");
     expect(lookup("node:fs/promises", "readFile")).not.toHaveProperty("callbackQueue");
-    expect(lookup("node:fs", "watch")).not.toHaveProperty("callbackQueue");
+    for (const name of ["watch", "watchFile"]) {
+      expect(lookup("node:fs", name)).toMatchObject({
+        kind: "fs", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+        callbackMustBeCallable: true, callbackQueue: "poll", callbackRepeats: true,
+      });
+    }
   });
 
   it("registers node:net Server.close as an externally completed close-phase callback", () => {
