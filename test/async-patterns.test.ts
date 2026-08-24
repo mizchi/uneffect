@@ -2523,6 +2523,29 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("counts one-shot poll registrations created by a repeating watcher callback", () => {
+    const model = analyzeAsyncPatterns("node-watch-read.ts", `
+      import { readFile, watch } from "node:fs"
+      function monitor() {
+        watch("config.json", () => {
+          readFile("config.json", () => queueMicrotask(() => undefined))
+        })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", repeats: true, externallyReady: true },
+      { queue: "poll", repeats: false, externallyReady: true, enqueuedBy: 0 },
+      { queue: "microtask", enqueuedBy: 1 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_watch_read", model);
+    expect(quint).toContain("var callback_1_registered: int");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_1_registered' = callback_1_registered \+ 1/);
+    expect(quint).toMatch(/action complete_poll_1[\s\S]*callback_1_registered > 0[\s\S]*callback_1_registered' = callback_1_registered - 1/);
+    expect(quint).not.toMatch(/action complete_poll_1[\s\S]*callback_1_fires == 0[\s\S]*action run_poll_1/);
+    expect(quint).toMatch(/action run_poll_1[\s\S]*callback_2_pending' = true/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models TypeChecker-resolved node:net connection listeners in the poll phase", () => {
     const source = `
       import { createConnection as dial } from "node:net"

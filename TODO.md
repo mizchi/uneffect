@@ -631,6 +631,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve Fs authority and add nondeterministically completed poll-phase callbacks for reviewed one-shot `node:fs` completion APIs; streams, remaining callbacks, and readiness/order details remain open.
     - [x] Model TypeChecker-resolved `node:fs` `watch`/`watchFile` listeners as repeatable external poll work, propagate listener effects, and dogfood configuration change reporting.
     - [x] Give watcher results a distinct handle family and suppress later external arrivals after a direct definite TypeChecker-resolved `FSWatcher#close`; conditional, callback-local, and interprocedural closure remain open.
+    - [x] Register nested one-shot fs/deferred poll callbacks dynamically, retain an integer registration count across repeating parents, and dogfood `watch`-triggered configuration reloads without forcing external completion.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
     - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks.

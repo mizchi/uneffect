@@ -1259,6 +1259,37 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, ...(callbacks.length > 1 ? { parentAlternative } : {}), handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
               collectNestedJobs(callbackNode, child, visited);
               return;
+            } else if (operation?.kind === "fs" && operation.callbackQueue) {
+              const callbackNode = fsCallbackArgument(node, operation);
+              if (callbackNode) {
+                const child = timers.length;
+                const childSource = node.getSourceFile();
+                timers.push({
+                  owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
+                  recursive: false, repeats: operation.callbackRepeats ?? false,
+                  queue: operation.callbackQueue, enqueuedBy: parent, externallyReady: true,
+                  ...(callbacks.length > 1 ? { parentAlternative } : {}),
+                  span: { start: node.getStart(childSource), end: node.getEnd() },
+                });
+                collectNestedJobs(callbackNode, child, visited);
+                return;
+              }
+            } else if (operation?.kind === "deferred-callback") {
+              const callbackNode = deferredCallbackArgument(node, operation);
+              if (callbackNode) {
+                const child = timers.length;
+                const childSource = node.getSourceFile();
+                timers.push({
+                  owner: ownerName, callback: callbackNode.getText(childSource), delay: 0,
+                  recursive: false, repeats: operation.repeats ?? false,
+                  queue: operation.queue, enqueuedBy: parent,
+                  externallyReady: operation.queue === "poll" || operation.queue === "close",
+                  ...(callbacks.length > 1 ? { parentAlternative } : {}),
+                  span: { start: node.getStart(childSource), end: node.getEnd() },
+                });
+                collectNestedJobs(callbackNode, child, visited);
+                return;
+              }
             } else if (operation?.kind === "scheduler-yield") {
               const childSource = node.getSourceFile();
               timers.push({
@@ -1805,6 +1836,10 @@ export function generateNodeEventLoopQuint(
     return timer.queue === "timer" && timer.enqueuedBy !== undefined
       && Boolean(model.timers[timer.enqueuedBy]?.repeats);
   }));
+  const externalRegistrations = new Set(supported.filter((index) => {
+    const timer = model.timers[index]!;
+    return timer.externallyReady && timer.enqueuedBy !== undefined;
+  }));
   const initialReactions = new Set<string>();
   promiseModel?.chains.forEach((chain, chainIndex) => {
     const executor = chain.executor === undefined ? undefined : promiseModel.executors[chain.executor];
@@ -1825,6 +1860,7 @@ export function generateNodeEventLoopQuint(
   supported.forEach((index) => {
     lines.push(`  var callback_${index}_pending: bool`, `  var callback_${index}_due: int`, `  var callback_${index}_fires: int`);
     if (multiInstanceTimers.has(index)) lines.push(`  var callback_${index}_instances: int`, `  var callback_${index}_due_times: List[int]`);
+    if (externalRegistrations.has(index)) lines.push(`  var callback_${index}_registered: int`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => lines.push(`  var promise_reaction_${chainIndex}_${stage}_pending: bool`, `  var promise_reaction_${chainIndex}_${stage}_done: bool`)));
   lines.push("", "  action init = all {", "    clock' = 0,", "    node_phase' = 0,", "    resume_phase' = 1,", `    wrong_checkpoint_order' = ${Boolean(options.allowMicrotaskBeforeNextTick || options.allowMacroBeforeCheckpoint || options.allowEsmNextTickBeforeMicrotask)},`, `    wrong_phase' = ${Boolean(options.allowWrongPhase)},`);
@@ -1833,6 +1869,7 @@ export function generateNodeEventLoopQuint(
     const cancelled = timer.initiallyCancelled || model.cancellations.some((item) => item.timer === index && item.definite);
     lines.push(`    callback_${index}_pending' = ${!cancelled && timer.enqueuedBy === undefined && !timer.externallyReady},`, `    callback_${index}_due' = ${nodeDelay(timer)},`, `    callback_${index}_fires' = 0,`);
     if (multiInstanceTimers.has(index)) lines.push(`    callback_${index}_instances' = 0,`, `    callback_${index}_due_times' = [],`);
+    if (externalRegistrations.has(index)) lines.push(`    callback_${index}_registered' = 0,`);
   });
   promiseModel?.chains.forEach((chain, chainIndex) => chain.links.forEach((_, stage) => {
     lines.push(`    promise_reaction_${chainIndex}_${stage}_pending' = ${initialReactions.has(`${chainIndex}:${stage}`)},`, `    promise_reaction_${chainIndex}_${stage}_done' = false,`);
@@ -1842,6 +1879,7 @@ export function generateNodeEventLoopQuint(
   const variables = ["clock", "node_phase", "resume_phase", "wrong_checkpoint_order", "wrong_phase", ...supported.flatMap((index) => [
     `callback_${index}_pending`, `callback_${index}_due`, `callback_${index}_fires`,
     ...(multiInstanceTimers.has(index) ? [`callback_${index}_instances`, `callback_${index}_due_times`] : []),
+    ...(externalRegistrations.has(index) ? [`callback_${index}_registered`] : []),
   ]), ...reactionVariables];
   const actions: string[] = [];
   const action = (name: string, guards: string[], updates: Map<string, string>): void => {
@@ -1869,15 +1907,32 @@ export function generateNodeEventLoopQuint(
         updates.set(`callback_${child}_due`, `clock + ${nodeDelay(model.timers[child]!)}`);
       }
     });
+    [...polls, ...closes].filter((index) => externalRegistrations.has(index)
+      && model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
+      updates.set(`callback_${child}_registered`, `callback_${child}_registered + 1`);
+    });
   };
   polls.filter((index) => !model.timers[index]!.initiallyCancelled
-    && !model.cancellations.some((item) => item.timer === index && item.definite)).forEach((index) => action(`complete_poll_${index}`, [
-    ...(model.timers[index]!.repeats ? [] : [`callback_${index}_fires == 0`]),
-    `not(callback_${index}_pending)`,
-  ], new Map([[`callback_${index}_pending`, "true"]])));
-  closes.forEach((index) => action(`complete_close_${index}`, [
-    `callback_${index}_fires == 0`, `not(callback_${index}_pending)`,
-  ], new Map([[`callback_${index}_pending`, "true"]])));
+    && !model.cancellations.some((item) => item.timer === index && item.definite)).forEach((index) => {
+    const timer = model.timers[index]!;
+    const updates = new Map<string, string>([[`callback_${index}_pending`, "true"]]);
+    if (externalRegistrations.has(index) && !timer.repeats) updates.set(`callback_${index}_registered`, `callback_${index}_registered - 1`);
+    action(`complete_poll_${index}`, [
+      ...(externalRegistrations.has(index) ? [`callback_${index}_registered > 0`] : []),
+      ...(timer.repeats || externalRegistrations.has(index) ? [] : [`callback_${index}_fires == 0`]),
+      `not(callback_${index}_pending)`,
+    ], updates);
+  });
+  closes.forEach((index) => {
+    const timer = model.timers[index]!;
+    const updates = new Map<string, string>([[`callback_${index}_pending`, "true"]]);
+    if (externalRegistrations.has(index) && !timer.repeats) updates.set(`callback_${index}_registered`, `callback_${index}_registered - 1`);
+    action(`complete_close_${index}`, [
+      ...(externalRegistrations.has(index) ? [`callback_${index}_registered > 0`] : []),
+      ...(timer.repeats || externalRegistrations.has(index) ? [] : [`callback_${index}_fires == 0`]),
+      `not(callback_${index}_pending)`,
+    ], updates);
+  });
   const phaseGuard = (expected: number): string[] => options.allowWrongPhase ? [`node_phase != ${expected}`] : [`node_phase == ${expected}`];
   const phaseViolation = (expected: number): string => `wrong_phase or node_phase != ${expected}`;
   nextTicks.forEach((index, order) => {

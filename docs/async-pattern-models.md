@@ -97,6 +97,14 @@ closure, `unref()` liveness, and poll callbacks registered dynamically by a
 watcher remain open. Independent poll completions are intentionally not
 constrained by source registration order.
 
+One-shot fs and reviewed deferred callbacks registered inside a statically
+resolved callback body are absent initially. The Node model increments a
+per-callsite integer registration count when the parent runs; an external
+completion consumes one registration and makes that callback pending. This
+preserves multiple `readFile` registrations made by repeated watcher events
+without forcing any of them to complete. Nested repeating external sources
+retain their active registration count rather than consuming it per event.
+
 A statically resolved nested `setImmediate` is also registered dynamically.
 An Immediate created inside any executing callback receives a next-iteration
 due time and cannot run in the current iteration, matching Node's documented
