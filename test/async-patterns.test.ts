@@ -2487,6 +2487,22 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("models only the callback overload of TypeChecker-resolved node:crypto randomBytes", () => {
+    const model = analyzeAsyncPatterns("node-random-bytes.ts", `
+      import { randomBytes as secureBytes } from "node:crypto"
+      function create() {
+        secureBytes(16)
+        secureBytes(32, () => queueMicrotask(() => undefined))
+      }
+      function randomBytes(_size: number, callback: () => void) { callback() }
+      randomBytes(1, () => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"

@@ -1156,6 +1156,25 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks a Node cryptographic-token capability and poll-phase boundary", () => {
+    const fileName = "examples/dogfood/node-random-token.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_random_token", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
+
+    const missingRandom = source.replace("effect Random | Timer", "effect Timer");
+    expect(analyzeEffects(fileName, missingRandom)).toContainEqual(expect.objectContaining({
+      functionName: "issueToken", kind: "missing", effect: "Random",
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");

@@ -177,6 +177,11 @@ not treated as a Node event-loop boundary. Literal `node:net` options containing
 both `host` and `port`, and the literal `(port, host, listener)` overload, narrow
 the capability to `Net<"host:port">`; dynamic or partial options retain broad
 `Net` authority.
+
+`node:crypto` `randomBytes` contributes `Random` for both overload families.
+Only calls with the callback argument create externally completed poll work;
+the synchronous overload does not invent an event-loop callback. Nested jobs in
+the callback are enqueued only after that poll completion runs.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

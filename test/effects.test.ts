@@ -164,6 +164,19 @@ describe("effect checker", () => {
     expect(analyzeEffects("node-socket-effects.ts", source)).toEqual([]);
   });
 
+  it("tracks Random for synchronous and callback node:crypto randomBytes overloads", () => {
+    const source = `
+      import { randomBytes as secureBytes } from "node:crypto";
+      /* uneffect: effect Random */
+      function syncToken() { return secureBytes(32) }
+      /* uneffect: effect Random | Console */
+      function asyncToken() { secureBytes(32, (_error, bytes) => console.log(bytes.length)) }
+      function randomBytes(_size: number, callback: () => void) { callback() }
+      function local() { randomBytes(1, () => undefined) }
+    `;
+    expect(analyzeEffects("node-random-bytes-effects.ts", source)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

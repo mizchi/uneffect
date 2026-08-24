@@ -968,7 +968,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
-      } else if (operation?.kind === "deferred-callback") {
+      } else if (operation?.kind === "deferred-callback"
+        && node.arguments.length >= (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) {
         for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
@@ -1340,7 +1341,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "deferred-callback") {
+        } else if (operation?.kind === "deferred-callback"
+          && node.arguments.length >= (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) {
           const callbackNode = node.arguments[node.arguments.length - operation.callbackArgumentFromEnd];
           const timerIndex = timers.length;
           timers.push({

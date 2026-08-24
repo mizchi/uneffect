@@ -80,4 +80,11 @@ describe("builtin semantic overlays", () => {
       operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, queue: "poll", effect: "Net" },
     }));
   });
+
+  it("registers node:crypto randomBytes as Random-capable poll work when a callback is supplied", () => {
+    expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+      symbol: { module: "node:crypto", export: "randomBytes" },
+      operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, queue: "poll", effect: "Random" },
+    }));
+  });
 });
