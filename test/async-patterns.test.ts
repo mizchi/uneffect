@@ -2487,6 +2487,28 @@ describe("builtin async temporal patterns", () => {
     expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
   }, 20_000);
 
+  it("counts close callbacks registered by a repeating Node request listener", () => {
+    const model = analyzeAsyncPatterns("node-http-graceful-close.ts", `
+      import { createServer } from "node:http"
+      function serve() {
+        const server = createServer((_request, _response) => {
+          server.close(() => queueMicrotask(() => undefined))
+        })
+      }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", repeats: true, externallyReady: true },
+      { queue: "close", repeats: false, externallyReady: true, enqueuedBy: 0 },
+      { queue: "microtask", enqueuedBy: 1 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_graceful_close", model);
+    expect(quint).toContain("var callback_1_registered: int");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_1_registered' = callback_1_registered \+ 1/);
+    expect(quint).toMatch(/action complete_close_1[\s\S]*callback_1_registered > 0[\s\S]*callback_1_registered' = callback_1_registered - 1/);
+    expect(quint).toMatch(/action run_close_1[\s\S]*node_phase == 4[\s\S]*callback_2_pending' = true/);
+    expect(run(quint, "nodeEventLoopSafe").status).toBe(0);
+  }, 20_000);
+
   it("models node:fs watchers as repeating externally completed poll work", () => {
     const model = analyzeAsyncPatterns("node-fs-watch.ts", `
       import { watch as watchFs } from "node:fs"

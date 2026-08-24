@@ -1099,12 +1099,20 @@ describe("Uneffect dogfood", () => {
     expect(analyzeEffects(fileName, source)).toEqual([]);
     const model = analyzeAsyncPatterns(fileName, source);
     expect(model.timers).toMatchObject([
-      { queue: "close", externallyReady: true },
-      { queue: "microtask", enqueuedBy: 0 },
+      { queue: "poll", repeats: true, externallyReady: true },
+      { queue: "close", externallyReady: true, enqueuedBy: 0 },
+      { queue: "microtask", enqueuedBy: 1 },
     ]);
     const quint = generateNodeEventLoopQuint("node_server_shutdown", model);
-    expect(quint).toContain("action complete_close_0");
-    expect(quint).toMatch(/action run_close_0[\s\S]*node_phase == 4[\s\S]*callback_1_pending' = true/);
+    expect(quint).toContain("var callback_1_registered: int");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*callback_1_registered' = callback_1_registered \+ 1/);
+    expect(quint).toMatch(/action complete_close_1[\s\S]*callback_1_registered > 0/);
+    expect(quint).toMatch(/action run_close_1[\s\S]*node_phase == 4[\s\S]*callback_2_pending' = true/);
+
+    const missingListenAuthority = source.replace('Net<"127.0.0.1:8081"> | ', "");
+    expect(analyzeEffects(fileName, missingListenAuthority)).toContainEqual(expect.objectContaining({
+      functionName: "startShutdownServer", kind: "missing", effect: 'Net<"127.0.0.1:8081">',
+    }));
   });
 
   it("checks a Node DNS capability and poll-phase boundary", () => {

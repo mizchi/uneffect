@@ -171,6 +171,16 @@ listener are included in the creating function's summary. Listeners added
 later through EventEmitter APIs, stream events, socket readiness, and
 backpressure are still outside this subset.
 
+A one-shot fs, poll, or close callback registered by such a repeating listener
+has an integer registration count. Every listener execution adds one
+registration; each external completion consumes one before the callback enters
+its Node phase. This preserves multiple in-flight registrations instead of
+collapsing a call site to one Boolean. The shutdown-server dogfood exercises a
+request listener that calls `Server.close`, whose callback then schedules a V8
+microtask. The current abstraction conservatively permits another request
+arrival after `close` is requested: linking a concrete server handle's closing
+state back to its request source remains open.
+
 The model preserves reassignment-free local handle aliases and records direct
 identifier, array/object aggregate, property, return, opaque-argument, and
 returned-inline-closure escape, including through immutable local bindings. It
