@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/contracts/unsupported-call.ts
+$ uneffect check --evidence fixtures/contracts/unsupported-call.ts
 # A call inside a contracted body leaves the verified subset: no obligation is generated at all.
 
 error contract/unsupported fixtures/contracts/unsupported-call.ts:11 in announce

@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { createZ3Context } from "../src/z3.js";
 import { generateQuint, generateSmtLib } from "../src/spec-backends.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3, lintSpec, lintSpecWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpec, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
@@ -610,13 +611,14 @@ describe("spec IR and generated verifier programs", () => {
       .toThrow(/broken\.ts:1:\d+: empty member/);
   });
 
-  it("generates an SMT-LIB proof obligation accepted as unsat by Z3", () => {
+  it("generates an SMT-LIB proof obligation accepted as unsat by Z3", async () => {
     const fn = parseSpec("input.ts", source).invariants[0]!;
     const smt = generateSmtLib(fn);
     expect(smt).toContain("(assert (= result (+ x 1)))");
-    const result = spawnSync("z3", ["-in"], { input: smt, encoding: "utf8" });
-    expect(result.status, result.stdout + result.stderr).toBe(0);
-    expect(result.stdout.trim()).toBe("unsat");
+    const context = await createZ3Context("spec_backends_test");
+    const solver = new context.Solver();
+    solver.fromString(smt);
+    expect(String(await solver.check())).toBe("unsat");
   });
 
   it("generates a Quint transition system that preserves its invariant", () => {
@@ -1131,17 +1133,18 @@ describe("spec IR and generated verifier programs", () => {
   });
 
   it("exposes the affine coefficient bound through the CLI", () => {
-    const expanded = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const expanded = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=3"], {
       encoding: "utf8", timeout: 30_000,
     });
     expect(expanded.stdout).toContain("<synth:3 * accepted === byteBudget>");
-    const invalid = spawnSync("pnpm", ["tsx", "src/spec-cli.ts", "lint", "examples/dogfood/telemetry-capacity.ts",
+    const invalid = spawnSync("pnpm", ["tsx", "src/cli.ts", "spec", "lint", "examples/dogfood/telemetry-capacity.ts",
       "--synthesize-relational-strengthening", "--relational-max-coefficient=9"], {
       encoding: "utf8", timeout: 30_000,
     });
     expect(invalid.status).not.toBe(0);
-    expect(invalid.stderr).toContain("relational-max-coefficient must be between 1 and 8");
+    expect(invalid.status).toBe(2);
+    expect(invalid.stderr).toContain("--relational-max-coefficient must be an integer between 1 and 8");
   });
 
   it("synthesizes three-variable conservation equalities", async () => {

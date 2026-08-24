@@ -160,9 +160,10 @@ export function optimizeOwnershipAssertions(result: OwnershipInstrumentResult, a
 }
 
 /** Runs the deterministic ownership instrumentation, Z3 verification, and safe generated-check elision pipeline. */
-export function buildVerifiedOwnership(fileName: string, text: string): VerifiedOwnershipBuildResult {
+export async function buildVerifiedOwnership(fileName: string, text: string): Promise<VerifiedOwnershipBuildResult> {
   const instrumented = instrumentOwnershipAssertions(fileName, text);
-  const artifacts = instrumented.assertions.map((item) => verifyOwnershipObligationWithZ3(item.obligation));
+  const artifacts: OwnershipEvidenceArtifact[] = [];
+  for (const item of instrumented.assertions) artifacts.push(await verifyOwnershipObligationWithZ3(item.obligation));
   const optimized = optimizeOwnershipAssertions(instrumented, artifacts);
   const unresolved = instrumented.assertions
     .filter((item) => !artifacts.some((artifact) => validateOwnershipEvidence(artifact, item.obligation)))
@@ -171,7 +172,7 @@ export function buildVerifiedOwnership(fileName: string, text: string): Verified
 }
 
 /** Reuses only matching proof-grade evidence and atomically persists newly checked obligations. */
-export function buildVerifiedOwnershipCached(fileName: string, text: string, evidencePath: string): CachedVerifiedOwnershipBuildResult {
+export async function buildVerifiedOwnershipCached(fileName: string, text: string, evidencePath: string): Promise<CachedVerifiedOwnershipBuildResult> {
   const instrumented = instrumentOwnershipAssertions(fileName, text);
   const cache = readOwnershipEvidenceCache(evidencePath);
   const artifacts: OwnershipEvidenceArtifact[] = [], stale: OwnershipEvidenceCacheEntry[] = [];
@@ -189,7 +190,7 @@ export function buildVerifiedOwnershipCached(fileName: string, text: string, evi
     if (matching) { artifact = matching.artifact; reused += 1; }
     else {
       stale.push(...candidates.filter((entry) => entry.artifact?.result === "verified" && entry.artifact.evidence === "verified"));
-      artifact = verifyOwnershipObligationWithZ3(assertion.obligation);
+      artifact = await verifyOwnershipObligationWithZ3(assertion.obligation);
       verified += 1;
     }
     artifacts.push(artifact);

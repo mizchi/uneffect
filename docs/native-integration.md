@@ -54,8 +54,8 @@ Function-typed parameters are effect parameters. Direct invocation is inline; kn
 
 ## Published surfaces
 
-The npm package, CLIs, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate are versioned at `0.1.0`. `just package-check` executes npm and Cargo package dry-runs. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
+The contract layers — CLI surface, evidence schema, builtin registry, Corsa JSON schema, optimizer obligations, and Rust crate — are versioned at `0.1.0`, which is what an evidence artifact records as `uneffectVersion`. The npm package itself is published separately (`uneffect --version` reports it) and is still on a `0.0.0-alpha` line. `just package-check` executes npm and Cargo package dry-runs. Runtime implementations may be regenerated, but these contract layers require a version bump when changed incompatibly.
 
 ## CI tiers
 
-The workflow separates unit/build/package checks, Z3 obligations, Quint safety simulations with negative controls, and exhaustive Apalache verification. The exhaustive tier installs Java explicitly; local environments without Java still run every other tier.
+The workflow separates unit/build/package checks, Z3 obligations, Quint safety simulations with negative controls, and exhaustive Apalache verification. The exhaustive tier installs Java explicitly; local environments without Java still run every other tier. No solver the toolchain runs itself is native: Z3 is the `z3-solver` WASM build, and the JVM appears only in the deliberately redundant Apalache and TLC checks described in [formal models](./formal-models.md).

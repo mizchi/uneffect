@@ -28,6 +28,9 @@ documentation are all updated.
 - [x] Isolate every solver-bearing test file in its own Vitest process so a Z3 WASM heap failure cannot poison later suites in the same CI tier.
 - [x] Explain diagnostics instead of reporting solver verdicts: replay contract counterexamples over the invariant IR, trace effects to the operation that produces them, and locate unsupported constructs where they appear.
 - [x] Commit a `fixtures/` corpus that pairs each input with its generated `.diag` report, and score every diagnostic against a committed quality rubric that CI holds at its current level.
+- [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
+- [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands, each naming what it blocks and how to satisfy it.
+- [x] Drop the native Z3 installation from the toolchain: run ownership evidence on the `z3-solver` WASM build like contract verification already did, and keep it that way with a manifest test.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

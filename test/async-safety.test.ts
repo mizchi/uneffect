@@ -4,6 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
+import { createZ3Context } from "../src/z3.js";
+
+/** The generated SMT is checked with the same WASM solver the toolchain ships; no native Z3 is required. */
+async function solve(program: string): Promise<string> {
+  const context = await createZ3Context("async_safety_test");
+  const solver = new context.Solver();
+  solver.fromString(program);
+  return String(await solver.check());
+}
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 
 function run(program: string, maxSteps = 12) {
@@ -119,7 +128,7 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
-  it("discharges conditional ownership only when the call proves its guard", () => {
+  it("discharges conditional ownership only when the call proves its guard", async () => {
     const result = analyzeAsyncSafety("conditional-ownership.ts", `
       declare const flag: boolean
       declare function task(): Promise<void>
@@ -181,8 +190,8 @@ describe("async error and explicit resource safety", () => {
     const unresolved = result.ownershipObligations.find((item) => item.owner === "compositeUnknown")!;
     expect(proven).toMatchObject({ ownership: "promise", parameter: 2, status: "verified", evidence: "finite-propositional" });
     expect(unresolved).toMatchObject({ ownership: "promise", parameter: 2, status: "unresolved", evidence: "unknown" });
-    expect(spawnSync("z3", ["-in"], { input: generateOwnershipObligationSmt(proven), encoding: "utf8" }).stdout.trim()).toBe("unsat");
-    expect(spawnSync("z3", ["-in"], { input: generateOwnershipObligationSmt(unresolved), encoding: "utf8" }).stdout.trim()).toBe("sat");
+    expect(await solve(generateOwnershipObligationSmt(proven))).toBe("unsat");
+    expect(await solve(generateOwnershipObligationSmt(unresolved))).toBe("sat");
     expect(generateOwnershipObligationQuint("ownership_guard", proven)).toContain("val ownershipSafe");
   });
 

@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/async/floating-promise.ts
+$ uneffect check --evidence fixtures/async/floating-promise.ts
 # A Promise whose rejection nobody observes: an unhandled rejection waiting to happen.
 
 error async/floating-promise fixtures/async/floating-promise.ts:7 in run

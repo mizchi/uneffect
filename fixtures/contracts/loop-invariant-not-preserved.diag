@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/contracts/loop-invariant-not-preserved.ts
+$ uneffect check --evidence fixtures/contracts/loop-invariant-not-preserved.ts
 # The invariant holds on entry but one iteration of the body breaks it.
 
 error contract/invariant fixtures/contracts/loop-invariant-not-preserved.ts:7 in countByTwo

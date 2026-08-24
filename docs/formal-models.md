@@ -40,7 +40,34 @@ read at epoch 0
 -> stale epoch-0 fact remains marked valid
 ```
 
-This negative control ensures the invariant is load-bearing. The current command uses Quint simulation, so a successful run is not an exhaustive proof. CI can add Apalache or TLC when a Java-based model-checking environment is available.
+This negative control ensures the invariant is load-bearing. `just formal` uses
+Quint simulation, so a successful run is not an exhaustive proof; the
+`exhaustive` CI tier runs `just formal-exhaustive`, which checks the same model
+with Apalache.
+
+## The JVM boundary
+
+Everything the published toolchain runs itself is JVM-free: models are generated
+in TypeScript, simulation uses Quint's own evaluator, and bounded verification
+runs on the `z3-solver` WASM build — `findTemporalCounterexampleWithZ3` unrolls
+the neutral transition IR and reports `counterexample`, `safe-within-bound`, or
+`unknown`, and the strengthening synthesis in `lintSpecWithZ3` turns an
+invariant inductive without leaving that path. No `uneffect` command requires
+Java, and `uneffect doctor` reports it as optional.
+
+Two places deliberately keep the JVM:
+
+- `just formal-exhaustive` checks `specs/invalidate.qnt` with Apalache.
+- `verifyOwnershipObligationWithQuint` checks an ownership obligation with TLC.
+
+Neither is a fallback for a missing capability. Apalache is itself an SMT-based
+bounded checker over Z3, so it overlaps the Z3 path; what these two add is a
+second implementation of the same claim — an independent encoding for Apalache,
+and explicit-state exhaustive search for TLC, which is complete over a finite
+state space rather than up to a step bound. Ownership evidence therefore has two
+independent backends, and the invalidation model is checked by a verifier that
+shares no code with this repository. That redundancy is the reason to accept a
+Java dependency in those two tiers, and only in those two.
 
 ## Ownership extension
 

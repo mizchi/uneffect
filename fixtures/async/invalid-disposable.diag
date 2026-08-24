@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/async/invalid-disposable.ts
+$ uneffect check --evidence fixtures/async/invalid-disposable.ts
 # `using` requires the disposal protocol; this resource never releases anything.
 
 error async/invalid-disposable fixtures/async/invalid-disposable.ts:7 in withResource

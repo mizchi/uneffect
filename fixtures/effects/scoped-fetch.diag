@@ -1,4 +1,4 @@
-$ uneffect --evidence fixtures/effects/scoped-fetch.ts
+$ uneffect check --evidence fixtures/effects/scoped-fetch.ts
 # A scoped effect is an authority, not a name: the in-scope call verifies, the out-of-scope one does not.
 
 error effect/missing fixtures/effects/scoped-fetch.ts:8 in loadReport
