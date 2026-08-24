@@ -793,5 +793,12 @@ the difference from the previous run is not treated as an optimization claim.
 The dedicated `bind a conditional scalar throw payload` benchmark measured
 0.1903 ms mean over 2,628 samples (2.44% relative margin of error). It covers a
 conditional integer throw, completion-payload propagation, immutable catch
-binding, and a catch-local predicate update; it does not cover switch payload
-joins or non-scalar thrown values.
+binding, and a catch-local predicate update; it does not cover non-scalar thrown
+values.
+
+The dedicated `bind switch-selected scalar throw payloads` benchmark measured
+0.2350 ms mean over 2,128 samples (1.49% relative margin of error). It covers two
+tracked integer payloads selected by scalar switch cases, the normal no-match
+path, completion-payload joining, and catch-local predicate use. The benchmark
+does not establish behavior for string/object payloads or dynamic case labels;
+those remain fail-closed.

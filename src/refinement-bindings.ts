@@ -1181,7 +1181,28 @@ function validateRefinementActionBodiesInSource(
             branch.condition, completionPredicate(branch.completion, "throw"),
           ));
         }
-        const switchCompletion = makeCompletion(returnWhen, throwWhen);
+        let selectedCompletion = defaultCompletion;
+        for (let index = branches.length - 1; index >= 0; index--) {
+          const branch = branches[index]!;
+          selectedCompletion = makeCompletion(
+            joinCompletionPredicate(
+              branch.condition,
+              completionPredicate(branch.completion, "return"),
+              completionPredicate(selectedCompletion, "return"),
+            ),
+            joinCompletionPredicate(
+              branch.condition,
+              completionPredicate(branch.completion, "throw"),
+              completionPredicate(selectedCompletion, "throw"),
+            ),
+            joinThrowValue(branch.condition, branch.completion, selectedCompletion),
+          );
+        }
+        const switchCompletion = makeCompletion(
+          returnWhen,
+          throwWhen,
+          completionThrowValue(selectedCompletion),
+        );
         if (switchCompletion !== "normal") {
           return applyContinuation(
             switchCompletion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),

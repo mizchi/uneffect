@@ -127,7 +127,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 ## P3 — Invariants and Z3
 
 - [x] Lint syntactically constant temporal invariants and actions consisting only of self-assignments.
-- [ ] Detect solver-level tautologies, inconsistent initial states, unreachable actions, vacuous invariants, duplicate/subsumed properties, and invariants preserved only because no progress is possible.
+- [x] Detect solver-level tautologies, inconsistent initial states, unreachable actions, vacuous invariants, duplicate/subsumed properties, and invariants preserved only because no progress is possible.
   - [x] Detect solver-level tautologies and contradictions over all typed states.
   - [x] Detect jointly inconsistent initial constraints.
   - [x] Detect action guards that are unsatisfiable over all typed states.
@@ -178,6 +178,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Accept value-bearing returns whose non-call expression normalizes in the pure refinement-expression fragment across branches, switch, try/catch/finally, and finally override; validate the expression but do not claim return-result refinement, and reject effectful or unresolved calls fail-closed.
       - [x] Accept state-backed and otherwise normalizable pure `throw` expressions through the same completion lattice; the initial slice discarded payloads and kept effectful expressions fail-closed.
       - [x] Retain scalar `int`/`bool` throw payloads across direct and conditional `if` completion joins and bind them as immutable catch locals; reject untracked literal payloads, effectful expressions, and unsupported joins when catch reads the value.
+      - [x] Retain tracked scalar throw payloads across scalar `switch` case selection, bind the selected value in `catch`, and reject any joined throw path whose payload is unavailable.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

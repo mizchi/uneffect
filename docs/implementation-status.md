@@ -74,9 +74,10 @@ same property is proved for arbitrary TypeScript.
   completion on exactly their paths. A value-bearing non-call return is
   accepted only when its expression normalizes in the pure refinement fragment;
   its result is not compared with the temporal action. Scalar `int`/`bool`
-  throw payloads are retained through direct and conditional `if` completion
-  and can bind immutable catch-local predicates. Effectful or unresolved return
-  calls, untracked/string/object throw payloads, switch payload joins, other
+  throw payloads are retained through direct, conditional `if`, and scalar
+  `switch` completion and can bind immutable catch-local predicates. Switch
+  joins require every selected throwing path to carry a tracked payload.
+  Effectful or unresolved return calls, untracked/string/object throw payloads, other
   abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
   unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.

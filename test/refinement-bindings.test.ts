@@ -441,6 +441,41 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("binds scalar throw payloads selected by switch cases", () => {
+    const source = `/* uneffect:
+      state failed: int
+      state code: int
+      state fallbackCode: int
+      state mode: int
+      init failed = 0
+      init code = 0
+      init fallbackCode = 1
+      init mode = 0
+      action reject: failed' = (mode === 1 || mode === 2) ? (mode === 1 ? code : fallbackCode) > 0 ? failed + 1 : failed : failed
+    */
+      interface Runtime { failed: number; code: number; fallbackCode: number; mode: number }
+      /* uneffect: refinement accounting@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement accounting@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement accounting@1 action reject */
+      export function reject(runtime: Runtime) {
+        try {
+          switch (runtime.mode) {
+            case 1: throw runtime.code
+            case 2: throw runtime.fallbackCode
+          }
+        } catch (error) {
+          if (error > 0) runtime.failed++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("switch-caught-payload.ts", source, "accounting", parseSpec("switch-caught-payload.ts", source).temporal)).toEqual([]);
+
+    const ambiguousPayload = source.replace("case 2: throw runtime.fallbackCode", 'case 2: throw "failed"');
+    expect(validateRefinementActionBodies("ambiguous-switch-payload.ts", ambiguousPayload, "accounting", parseSpec("ambiguous-switch-payload.ts", ambiguousPayload).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
+    );
+  });
+
   it("propagates a nested conditional throw to the enclosing catch path", () => {
     const source = `/* uneffect:
       state delivered: int
