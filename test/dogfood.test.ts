@@ -472,6 +472,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingHeterogeneousReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "returnOrReject", target: "postProcessed" }),
     );
+    const missingCaughtContinuation = source.replace("  runtime.recovered += 1;", "  // missing caught-path continuation");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingCaughtContinuation, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "returnOrReject", target: "recovered" }),
+    );
     const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,

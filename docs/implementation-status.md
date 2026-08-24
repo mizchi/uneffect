@@ -64,8 +64,10 @@ same property is proved for arbitrary TypeScript.
   conditionals, bounded literal loops, and acyclic symbol-resolved helpers. The
   action-control subset keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
-  a terminal try boundary. General post-try joins, catch-local return/rethrow,
-  labels, and arbitrary exception-aware CFGs remain unsupported.
+  their shared boundary. Post-try statements run only on the remaining normal
+  paths before joining with a retained return. Catch-local return/rethrow,
+  abrupt finally completion beyond a direct void return, labels, and arbitrary
+  exception-aware CFGs remain unsupported.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,
   and outcomes. They deliberately do not claim to be independently checkable
   proof terms.

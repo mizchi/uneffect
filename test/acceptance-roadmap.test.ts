@@ -542,6 +542,42 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("heterogeneous-completion.ts", source, "completion", temporal)).toEqual([]);
   });
 
+  it("continues only the caught path after a heterogeneous try completion", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state returned: int
+      state caught: int
+      state settled: int
+      state observed: int
+      state chooseReturn: bool
+      init returned = 0
+      init caught = 0
+      init settled = 0
+      init observed = 0
+      init chooseReturn = false
+      action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1
+    */
+      interface Runtime { returned: number; caught: number; settled: number; observed: number; chooseReturn: boolean }
+      /* uneffect: refinement completion@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement completion@1 action finish */
+      export function finish(runtime: Runtime) {
+        try {
+          if (runtime.chooseReturn) { runtime.returned++; return }
+          throw "failed"
+        } catch {
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("heterogeneous-continuation.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("heterogeneous-continuation.ts", source, "completion", temporal)).toEqual([]);
+  });
+
   it("executes finally but suppresses post-try work on an early-return path", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

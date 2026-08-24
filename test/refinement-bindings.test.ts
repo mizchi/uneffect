@@ -416,6 +416,39 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("heterogeneous-completion.ts", source, "completion", parseSpec("heterogeneous-completion.ts", source).temporal)).toEqual([]);
   });
 
+  it("applies post-try updates only to the caught path of a heterogeneous completion", () => {
+    const source = `/* uneffect:
+      state returned: int
+      state caught: int
+      state settled: int
+      state observed: int
+      state chooseReturn: bool
+      init returned = 0
+      init caught = 0
+      init settled = 0
+      init observed = 0
+      init chooseReturn = false
+      action finish: returned' = chooseReturn ? returned + 1 : returned, caught' = !chooseReturn ? caught + 1 : caught, settled' = settled + 1, observed' = chooseReturn ? observed : observed + 1
+    */
+      interface Runtime { returned: number; caught: number; settled: number; observed: number; chooseReturn: boolean }
+      /* uneffect: refinement completion@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement completion@1 action finish */
+      export function finish(runtime: Runtime) {
+        try {
+          if (runtime.chooseReturn) { runtime.returned++; return }
+          throw "failed"
+        } catch {
+          runtime.caught++
+        } finally {
+          runtime.settled++
+        }
+        runtime.observed++
+      }
+    `;
+    expect(validateRefinementActionBodies("heterogeneous-continuation.ts", source, "completion", parseSpec("heterogeneous-continuation.ts", source).temporal)).toEqual([]);
+  });
+
   it("runs finally on an early-return path without running statements after try", () => {
     const source = `/* uneffect:
       state started: int

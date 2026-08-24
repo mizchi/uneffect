@@ -167,10 +167,12 @@ statements only where neither predicate holds, then join state and completion.
 This supports nested early-return and nested-throw branches without flattening
 them into syntax-specific guards. A surrounding catch applies its updates only
 to `throwWhen`, discharges that predicate after a normally completing catch,
-and retains `returnWhen` across common `finally`. This heterogeneous rule is
-currently accepted only when the try statement is terminal; applying post-try
-statements to its remaining normal paths is not generalized yet. Catch return
-or rethrow, break, continue, labels, and general loops are also not represented.
+and retains `returnWhen` across common `finally`. Statements after that try run
+only on paths that still complete normally (including a throw path discharged
+by catch), then their state and completion are joined with the retained return
+path. Catch return or rethrow, abrupt completion originating in finally beyond
+a direct terminal void return, break, continue, labels, and general loops are
+still not represented.
 
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

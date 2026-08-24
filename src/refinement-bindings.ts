@@ -968,27 +968,39 @@ function validateRefinementActionBodiesInSource(
         }
         if (!statement.finallyBlock) {
           if (residualCompletion === "normal") continue;
-          if (statementIndex !== body.statements.length - 1) return undefined;
-          return residualCompletion;
-        }
-        const finallyStatements = [...statement.finallyBlock.statements];
-        const finallyTerminal = finallyStatements.at(-1);
-        if (finallyTerminal && directVoidReturn(finallyTerminal)) {
+        } else {
+          const finallyStatements = [...statement.finallyBlock.statements];
+          const finallyTerminal = finallyStatements.at(-1);
+          if (finallyTerminal && directVoidReturn(finallyTerminal)) {
+            if (!collect(
+              ts.factory.createBlock(finallyStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+              updates, new Map(localValues), activeCalls, false,
+            )) return undefined;
+            return "return";
+          }
           if (!collect(
-            ts.factory.createBlock(finallyStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
+            statement.finallyBlock, receiver, runtimeClass, substitutions,
             updates, new Map(localValues), activeCalls, false,
           )) return undefined;
-          return "return";
+          if (residualCompletion === "normal") continue;
         }
-        if (!collect(
-          statement.finallyBlock, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, false,
-        )) return undefined;
-        if (residualCompletion !== "normal") {
-          if (statementIndex !== body.statements.length - 1) return undefined;
-          return residualCompletion;
-        }
-        continue;
+        const priorReturn = completionPredicate(residualCompletion, "return");
+        const priorThrow = completionPredicate(residualCompletion, "throw");
+        const priorAbrupt = orCompletionPredicates(priorReturn, priorThrow);
+        if (isBooleanCompletionPredicate(priorAbrupt, true)) return residualCompletion;
+        const beforeContinuation = new Map(updates);
+        const continuingUpdates = new Map(updates);
+        const continued = collect(
+          ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
+          continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        );
+        if (!continued) return undefined;
+        const normalWhen = notCompletionPredicate(priorAbrupt);
+        mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation);
+        return makeCompletion(
+          orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(continued, "return"))),
+          orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
+        );
       }
       if (ts.isIfStatement(statement)) {
         const normalizedCondition = normalizeRefinementExpression(statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);

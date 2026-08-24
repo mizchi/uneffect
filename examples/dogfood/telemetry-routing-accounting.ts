@@ -6,19 +6,21 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   state buffered: int
   state attempted: int
   state postProcessed: int
+  state recovered: int
   state auditArmed: bool
   init delivered = 0
   init dropped = 0
   init buffered = 0
   init attempted = 0
   init postProcessed = 0
+  init recovered = 0
   init auditArmed = false
   action deliver: delivered' = delivered + 1, attempted' = attempted + 1, postProcessed' = auditArmed ? postProcessed : postProcessed + 1
   action drop: dropped' = dropped + 1, attempted' = attempted + 1
   action buffer: buffered' = buffered + 1, attempted' = attempted + 1
   action reject: delivered' = auditArmed ? delivered : delivered + 1, dropped' = auditArmed ? dropped + 1 : dropped, attempted' = attempted + 1, auditArmed' = true
   action nestedReject: postProcessed' = (auditArmed ? attempted > 0 : false) ? postProcessed + 1 : postProcessed
-  action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed
+  action returnOrReject: postProcessed' = !auditArmed ? (auditArmed ? postProcessed + 1 : postProcessed) + 2 : auditArmed ? postProcessed + 1 : postProcessed, recovered' = auditArmed ? recovered : recovered + 1
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -34,6 +36,7 @@ export interface TelemetryRoutingState {
   buffered: number;
   attempted: number;
   postProcessed: number;
+  recovered: number;
   auditArmed: boolean;
 }
 
@@ -43,6 +46,7 @@ export class TelemetryRoutingAccounting {
   buffered = 0;
   attempted = 0;
   postProcessed = 0;
+  recovered = 0;
   auditArmed = false;
 
   record(outcome: TelemetryOutcome): void {
@@ -61,8 +65,8 @@ export function createTelemetryRouting(initial: TelemetryRoutingState): Telemetr
 }
 
 function snapshotTelemetryRouting(runtime: TelemetryRoutingAccounting): TelemetryRoutingState {
-  const { delivered, dropped, buffered, attempted, postProcessed, auditArmed } = runtime;
-  return { delivered, dropped, buffered, attempted, postProcessed, auditArmed };
+  const { delivered, dropped, buffered, attempted, postProcessed, recovered, auditArmed } = runtime;
+  return { delivered, dropped, buffered, attempted, postProcessed, recovered, auditArmed };
 }
 
 /* uneffect: refinement telemetryRouting@1 observe */
@@ -132,6 +136,7 @@ export function returnOrRejectTelemetry(runtime: TelemetryRoutingAccounting): vo
   } finally {
     // Both abrupt paths cross the same cleanup boundary.
   }
+  runtime.recovered += 1;
 }
 
 /* uneffect: refinement telemetryRouting@1 action armAudit */

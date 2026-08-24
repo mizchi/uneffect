@@ -742,3 +742,15 @@ and 0.0965 ms for the Program path (which proves it), over 4,294 and 5,183
 samples respectively. These timings compare the actual gradual behaviors, not
 equivalent proof strength; only the Program path establishes the imported
 transition.
+
+## Heterogeneous action completion
+
+On 2026-08-24, after the telemetry refinement dogfood began retaining a return
+path across catch/finally and executing a post-try update only on the caught
+path, `parse and validate complete telemetry scalar refinement` measured
+1.6952 ms mean over 295 samples (1.39% relative margin of error). The preceding
+terminal-try fixture measured 1.5360 ms over 326 samples (0.54% relative margin
+of error). This is a roughly 10% change in a simultaneously expanded fixture,
+so it is recorded as a regression signal rather than attributed solely to the
+new completion join. A stable isolated completion benchmark is still needed
+before setting a performance gate.
