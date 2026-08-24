@@ -87,4 +87,17 @@ describe("builtin semantic overlays", () => {
       operation: { kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2, queue: "poll", effect: "Random" },
     }));
   });
+
+  it("registers Node HTTP response listeners as scoped Net poll work", () => {
+    for (const module of ["node:http", "node:https"]) for (const name of ["request", "get"]) {
+      expect(builtinContractRegistry.contracts).toContainEqual(expect.objectContaining({
+        symbol: { module, export: name },
+        operation: {
+          kind: "deferred-callback", callbackArgumentFromEnd: 1, callbackMinimumArguments: 2,
+          callbackMustBeCallable: true, queue: "poll", effect: "Net", effectScopeArgument: 0,
+          effectScopeKind: "http-request", effectDefaultPort: module === "node:https" ? 443 : 80,
+        },
+      }));
+    }
+  });
 });

@@ -641,6 +641,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Model TypeChecker-resolved `node:net` `connect`/`createConnection` listeners as `Net`-capable externally completed poll callbacks, narrow literal host/port overloads to `Net<"host:port">`, and dogfood the dynamic boundary on a TCP client adapter.
       - [x] Apply the same poll-phase and scoped `Net` semantics to TypeChecker-resolved `node:net` `Socket#connect`, reject same-named lookalikes, and dogfood a reconnect adapter.
       - [x] Model TypeChecker-resolved `node:crypto` `randomBytes` as `Random`, add poll completion only for the callback overload, reject same-named lookalikes, and dogfood asynchronous token generation.
+      - [x] Model TypeChecker-resolved `node:http`/`node:https` `request` and `get` response listeners as poll work, distinguish callback-omitting overloads by callable type, narrow literal URL/options authority, and dogfood an HTTPS health check.
       - [x] Preserve complete source paths for direct conditional arrays passed to `AbortSignal.any`, including path-specific pre-abort state and scheduler guards in the Web Quint profile.
       - [x] Resolve an immediately consumed, preceding-statement `const` alias of a conditional abort-source array while rejecting intervening mutation.
       - [x] Extend conditional abort-source aliases across unrelated statements when symbol-identity analysis proves the `const` array has no intervening reference, while retaining conservative rejection for mutation and escape.

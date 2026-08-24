@@ -177,6 +177,20 @@ describe("effect checker", () => {
     expect(analyzeEffects("node-random-bytes-effects.ts", source)).toEqual([]);
   });
 
+  it("narrows Node HTTP URL and options authorities without matching lookalikes", () => {
+    const source = `
+      import { request as httpRequest } from "node:http";
+      import { get as httpsGet } from "node:https";
+      /* uneffect: effect Net<"api.example.com:80"> */
+      function byUrl() { return httpRequest("http://api.example.com/v1", () => undefined) }
+      /* uneffect: effect Net<"secure.example.com:8443"> */
+      function byOptions() { return httpsGet({ hostname: "secure.example.com", port: 8443 }, () => undefined) }
+      function request(_url: string, callback: () => void) { callback() }
+      function local() { request("http://api.example.com", () => undefined) }
+    `;
+    expect(analyzeEffects("node-http-effects.ts", source)).toEqual([]);
+  });
+
   it("checks an inferred literal fs path against a structured declaration", () => {
     const source = `
       import { readFileSync } from "node:fs";

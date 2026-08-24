@@ -2503,6 +2503,23 @@ describe("builtin async temporal patterns", () => {
     ]);
   });
 
+  it("models only callable Node HTTP response listeners as poll work", () => {
+    const model = analyzeAsyncPatterns("node-http-response.ts", `
+      import { request as send } from "node:http"
+      function load() {
+        send("http://example.com")
+        send("http://example.com", { method: "POST" })
+        send("http://example.com", () => queueMicrotask(() => undefined))
+      }
+      function request(_url: string, callback: () => void) { callback() }
+      request("http://example.com", () => undefined)
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+  });
+
   it("models TypeChecker-resolved node:dns callbacks in the poll phase", () => {
     const source = `
       import { lookup as resolveHost } from "node:dns"

@@ -124,6 +124,26 @@ function primitiveEffects(call: ts.CallExpression, adapter: FrontendSymbolAdapte
         if (host && ts.isStringLiteralLike(host)) literalScope = `${host.text}:${scope.text}`;
       }
     }
+    if (resolved.operation.effectScopeKind === "http-request" && scope) {
+      if (ts.isStringLiteralLike(scope)) {
+        try {
+          const url = new URL(scope.text);
+          const port = url.port || String(resolved.operation.effectDefaultPort ?? (url.protocol === "https:" ? 443 : 80));
+          literalScope = `${url.hostname}:${port}`;
+        } catch { literalScope = undefined; }
+      } else if (ts.isObjectLiteralExpression(scope)) {
+        const value = (name: string): ts.Expression | undefined => {
+          const property = scope.properties.find((candidate) => ts.isPropertyAssignment(candidate)
+            && !ts.isComputedPropertyName(candidate.name) && candidate.name.getText().replace(/^['"]|['"]$/g, "") === name);
+          return property && ts.isPropertyAssignment(property) ? property.initializer : undefined;
+        };
+        const host = value("hostname") ?? value("host"), port = value("port");
+        const hostText = host && ts.isStringLiteralLike(host) ? host.text : undefined;
+        const portText = port && (ts.isStringLiteralLike(port) || ts.isNumericLiteral(port))
+          ? port.text : resolved.operation.effectDefaultPort === undefined ? undefined : String(resolved.operation.effectDefaultPort);
+        if (hostText && portText) literalScope = `${hostText}:${portText}`;
+      }
+    }
     return [capability(literalScope ? `${resolved.operation.effect}<${JSON.stringify(literalScope)}>` : resolved.operation.effect)];
   }
   if (resolved?.operation?.kind === "scheduler-post-task" || resolved?.operation?.kind === "scheduler-yield") return [capability("Timer")];

@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { basename, dirname } from "node:path";
 import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
-import type { PromiseCombinator } from "./builtin-contracts.js";
+import type { DeferredCallbackBuiltinOperation, PromiseCombinator } from "./builtin-contracts.js";
 import type { PromiseChainModel } from "./promise-chains.js";
 import type { TemporalComposition } from "./temporal-compose.js";
 import { formatTemporalValueType, generateQuintExpression } from "./temporal-expressions.js";
@@ -956,6 +956,17 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
   const invokedSignalFactories = new Set<ts.FunctionLikeDeclaration>();
   const inlineAbortTimeoutTargets = new Map<ts.CallExpression, number>();
   const inlineAbortCompositionTargets = new Map<ts.CallExpression, AbortTarget>();
+  const deferredCallbackArgument = (
+    call: ts.CallExpression,
+    operation: DeferredCallbackBuiltinOperation,
+  ): ts.Expression | undefined => {
+    if (call.arguments.length < (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) return undefined;
+    const callback = call.arguments[call.arguments.length - operation.callbackArgumentFromEnd];
+    if (!callback || !operation.callbackMustBeCallable) return callback;
+    const type = checker.getTypeAtLocation(callback);
+    return type.getCallSignatures().length > 0 || Boolean(type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))
+      ? callback : undefined;
+  };
   const collectScheduledCallbacks = (node: ts.Node, owner?: ts.FunctionLikeDeclaration): void => {
     const currentOwner = ts.isFunctionLike(node) && "body" in node && node.body ? node as ts.FunctionLikeDeclaration : owner;
     if (ts.isCallExpression(node)) {
@@ -968,9 +979,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
         for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
-      } else if (operation?.kind === "deferred-callback"
-        && node.arguments.length >= (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) {
-        for (const callback of resolveCallbacks(node.arguments[node.arguments.length - operation.callbackArgumentFromEnd])) {
+      } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
+        for (const callback of resolveCallbacks(deferredCallbackArgument(node, operation))) {
           if (callback !== currentOwner) scheduledCallbacks.add(callback);
         }
       }
@@ -1341,9 +1351,8 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
             span: { start: node.getStart(source), end: node.getEnd() },
           });
           collectNestedJobs(callbackNode, timerIndex);
-        } else if (operation?.kind === "deferred-callback"
-          && node.arguments.length >= (operation.callbackMinimumArguments ?? operation.callbackArgumentFromEnd)) {
-          const callbackNode = node.arguments[node.arguments.length - operation.callbackArgumentFromEnd];
+        } else if (operation?.kind === "deferred-callback" && deferredCallbackArgument(node, operation)) {
+          const callbackNode = deferredCallbackArgument(node, operation)!;
           const timerIndex = timers.length;
           timers.push({
             owner: ownerName,

@@ -182,6 +182,15 @@ the capability to `Net<"host:port">`; dynamic or partial options retain broad
 Only calls with the callback argument create externally completed poll work;
 the synchronous overload does not invent an event-loop callback. Nested jobs in
 the callback are enqueued only after that poll completion runs.
+
+`node:http` and `node:https` `request`/`get` calls contribute `Net`. Absolute
+literal URLs are narrowed to their hostname and explicit or protocol-default
+port. Object literals are narrowed when `hostname`/`host` and the effective
+port are static. A response callback creates poll work only when the final
+argument is callable (or conservatively `any`/`unknown`); callback-omitting
+`(url, options)` calls do not invent a response event. Response-stream events,
+redirects, agents, DNS-to-socket refinement, and request error events remain
+separate modeling gaps.
 Nested minimum-delay clamping,
 integer overflow, browser background throttling, complete libuv I/O phase behavior, and
 the distinction between monotonic and wall clocks also remain unmodeled. Source

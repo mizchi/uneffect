@@ -1175,6 +1175,25 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("checks a Node HTTPS health-check authority and response boundary", () => {
+    const fileName = "examples/dogfood/node-http-healthcheck.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "poll", externallyReady: true },
+      { queue: "microtask", enqueuedBy: 0 },
+    ]);
+    const quint = generateNodeEventLoopQuint("node_http_healthcheck", model);
+    expect(quint).toContain("action complete_poll_0");
+    expect(quint).toMatch(/action run_poll_0[\s\S]*node_phase == 2[\s\S]*callback_1_pending' = true/);
+
+    const wrongAuthority = source.replace("api.example.com:443", "other.example:443");
+    expect(analyzeEffects(fileName, wrongAuthority)).toContainEqual(expect.objectContaining({
+      functionName: "checkHealth", kind: "missing", effect: 'Net<"api.example.com:443">',
+    }));
+  });
+
   it("keeps conditional cancellation policies path-correlated", () => {
     const fileName = "examples/dogfood/conditional-abort-task.ts";
     const source = readFileSync(fileName, "utf8");
