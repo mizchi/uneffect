@@ -471,9 +471,9 @@ describe("typed-array static verification", () => {
 
   bench("derive numeric literal-union tuples with JavaScript arithmetic", async () => {
     await generateUneffectPropertyTestsWithZ3({ files: { "src/replicas.ts": `
-      /* uneffect: requires replicas >= 4 && signed === -7 && signed / 3 === -2 && signed % 3 === -1 */
+      /* uneffect: requires replicas >= 4 && (allowLarge || replicas <= 4) && signed === -7 && signed / 3 === -2 && signed % 3 === -1 */
       /* uneffect: ensures result >= 4 */
-      export function deployment(replicas: 1 | 4 | 9, signed: Int): number { return replicas }
+      export function deployment(replicas: 1 | 4 | 9, allowLarge: false | true, signed: Int): number { return replicas }
     ` }, solverCases: 4 });
   }, { time: 500, iterations: 1 });
 

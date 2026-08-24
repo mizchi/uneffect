@@ -24,8 +24,8 @@ export function signedPartitionRoute(partition: Int): Int {
   return partition;
 }
 
-/* uneffect: requires replicas >= 4 */
+/* uneffect: requires replicas >= 4 && (allowLarge || replicas <= 4) */
 /* uneffect: ensures result >= 4 */
-export function supportedReplicaCount(replicas: 1 | 4 | 9): number {
+export function supportedReplicaCount(replicas: 1 | 4 | 9, allowLarge: false | true): number {
   return replicas;
 }

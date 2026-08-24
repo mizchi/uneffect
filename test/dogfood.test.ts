@@ -338,7 +338,8 @@ describe("Uneffect dogfood", () => {
     expect(result.generatedFiles["examples/dogfood/shard-batch.uneffect.test.ts"]).toContain("const refinementValues = [[0,16,1008]]");
     const solved = await generateUneffectPropertyTestsWithZ3({ files: { [fileName]: readFileSync(fileName, "utf8") } });
     expect(solved.solverDiagnostics).toEqual([]);
-    expect(solved.boundaries.find((boundary) => boundary.functionName === "supportedReplicaCount")?.generatorTuples).toEqual([[4], [9]]);
+    expect(solved.boundaries.find((boundary) => boundary.functionName === "supportedReplicaCount")?.generatorTuples)
+      .toEqual([[4, false], [4, true], [9, true]]);
   });
 
   it("proves that every telemetry attempt has exactly one outcome", async () => {

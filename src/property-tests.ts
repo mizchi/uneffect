@@ -116,6 +116,16 @@ function numericLiteralUnion(domain: PropertyTestDomain): number[] | undefined {
   return [...new Set(values)];
 }
 
+function booleanLiteralUnion(domain: PropertyTestDomain): boolean[] | undefined {
+  if (typeof domain === "string" || domain.kind !== "union") return undefined;
+  const values: boolean[] = [];
+  for (const member of domain.members) {
+    if (typeof member === "string" || typeof member.value !== "boolean") return undefined;
+    values.push(member.value);
+  }
+  return [...new Set(values)];
+}
+
 function domainAccepts(domain: PropertyTestDomain, value: PropertyValue): boolean {
   if (typeof domain === "string") return (typeof value === "string" || typeof value === "number" || typeof value === "boolean") && scalarAccepts(domain, value);
   if (domain.kind === "bounded-array") return Array.isArray(value) && value.length <= domain.maximum
@@ -299,6 +309,8 @@ function literalValue(type: ts.TypeNode): PropertyLiteral | undefined {
   if (type.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (type.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (!ts.isLiteralTypeNode(type)) return undefined;
+  if (type.literal.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (type.literal.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (ts.isStringLiteral(type.literal) || ts.isNumericLiteral(type.literal)) return ts.isStringLiteral(type.literal) ? type.literal.text : Number(type.literal.text);
   if (ts.isPrefixUnaryExpression(type.literal) && type.literal.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(type.literal.operand)) return -Number(type.literal.operand.text);
   return undefined;
@@ -821,7 +833,8 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const names = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : "");
       const domains = node.parameters.map((parameter) => typeDomain(parameter.type));
       if (names.some((name) => !name) || domains.some((domain) => !domain
-        || typeof domain === "object" && domain.kind === "union" && numericLiteralUnion(domain) === undefined)) continue;
+        || typeof domain === "object" && domain.kind === "union"
+          && numericLiteralUnion(domain) === undefined && booleanLiteralUnion(domain) === undefined)) continue;
       const requirementExpressions = requires.map(propertyExpression);
       const layouts = new Map<string, Z3ArrayLayout>();
       const records = new Map<string, Z3RecordLayout>();
@@ -867,7 +880,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const declarations = names.flatMap((name, index) => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [`(declare-const ${name} Int)`];
-        if (domain.kind === "union") return [`(declare-const ${name} Int)`];
+        if (domain.kind === "union") return [`(declare-const ${name} ${booleanLiteralUnion(domain) ? "Bool" : "Int"})`];
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           return [`(declare-const ${name}__length Int)`, ...Array.from({ length: layout.maximum }, (_, at) => `(declare-const ${name}__${at} Int)` )];
@@ -890,7 +903,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
           const domain = domains[index]!;
           if (typeof domain === "string") return scalarDomainConstraint(name, domain);
           if (domain.kind === "union") {
-            const values = numericLiteralUnion(domain)!;
+            const values = numericLiteralUnion(domain) ?? booleanLiteralUnion(domain)!;
             return [values.length === 1 ? `(= ${name} ${values[0]})` : `(or ${values.map((value) => `(= ${name} ${value})`).join(" ")})`];
           }
           if (domain.kind === "bounded-array") {
@@ -928,7 +941,7 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const sizeTerms = names.flatMap((name, index): string[] => {
         const domain = domains[index]!;
         if (typeof domain === "string") return [absolute(name)];
-        if (domain.kind === "union") return [absolute(name)];
+        if (domain.kind === "union") return [booleanLiteralUnion(domain) ? `(ite ${name} 1 0)` : absolute(name)];
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           return [`${name}__length`, ...Array.from({ length: layout.maximum }, (_, at) => absolute(`${name}__${at}`))];
@@ -950,7 +963,9 @@ export async function generateUneffectPropertyTestsWithZ3(options: GenerateUneff
       const decodeTuple = (model: any): Array<PropertyValue | undefined> => names.map((name, index): PropertyValue | undefined => {
         const domain = domains[index]!;
         if (typeof domain === "string") return z3Integer(model.eval(context.Int.const(name), true).toString());
-        if (domain.kind === "union") return z3Integer(model.eval(context.Int.const(name), true).toString());
+        if (domain.kind === "union") return booleanLiteralUnion(domain)
+          ? model.eval(context.Bool.const(name), true).toString() === "true"
+          : z3Integer(model.eval(context.Int.const(name), true).toString());
         if (domain.kind === "bounded-array") {
           const layout = layouts.get(name)!;
           const length = z3Integer(model.eval(context.Int.const(`${name}__length`), true).toString());

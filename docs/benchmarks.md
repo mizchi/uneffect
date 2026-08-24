@@ -278,9 +278,10 @@ model decoding, and generated source. `solverCases` is both a resource bound
 and a coverage limit; model enumeration does not claim exhaustive coverage of
 an infinite domain.
 
-On 2026-08-24, enumerating four models for a numeric literal-union deployment
-boundary combined with negative truncating division and signed remainder
-measured 74.0309 ms mean over seven samples (9.01% relative margin of error).
+On 2026-08-24, enumerating four models for correlated numeric/boolean
+literal-union deployment boundaries combined with negative truncating division
+and signed remainder measured 84.0130 ms mean over six samples (9.82% relative
+margin of error).
 This includes fresh Z3 initialization and therefore primarily records the cold
 solver-backed path; the exact finite union constraint itself is small.
 

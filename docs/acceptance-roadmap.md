@@ -87,8 +87,9 @@ models for nonlinear scalar refinements, bounded U8/U32 arrays, and closed
 record type literals whose required fields use scalar machine domains.
 Numeric literal unions are lowered to an integer with an exact finite-membership
 constraint, so refinement solving selects only union members satisfying
-`requires`; string, boolean, and mixed literal unions remain on the ordinary
-finite generator path rather than being misrepresented as integers. For arrays,
+`requires`. Boolean literal unions use the finite SMT Bool domain. String and
+mixed literal unions remain on the ordinary finite generator path rather than
+being misrepresented as integers. For arrays,
 Integer `/` and `%` use JavaScript's truncation-toward-zero quotient and
 dividend-signed remainder rather than SMT-LIB Euclidean `div`/`mod` semantics.
 The integer refinement fragment adds a nonzero-divisor obligation; JavaScript
