@@ -277,7 +277,10 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("switch-completion.ts", source, "routing", parseSpec("switch-completion.ts", source).temporal)).toEqual([]);
 
     const valueReturn = source.replace("runtime.routed++; return", "runtime.routed++; return runtime.routed");
-    expect(validateRefinementActionBodies("switch-value-return.ts", valueReturn, "routing", parseSpec("switch-value-return.ts", valueReturn).temporal)).toContainEqual(
+    expect(validateRefinementActionBodies("switch-value-return.ts", valueReturn, "routing", parseSpec("switch-value-return.ts", valueReturn).temporal)).toEqual([]);
+
+    const effectfulReturn = source.replace("runtime.routed++; return", "runtime.routed++; return computeRoute(runtime)");
+    expect(validateRefinementActionBodies("switch-effectful-return.ts", effectfulReturn, "routing", parseSpec("switch-effectful-return.ts", effectfulReturn).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
     );
 
@@ -527,9 +530,7 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("finally-return.ts", source, "resource", parseSpec("finally-return.ts", source).temporal)).toEqual([]);
 
     const valueReturn = source.replace("if (runtime.cancelled) return", "if (runtime.cancelled) return runtime.worked");
-    expect(validateRefinementActionBodies("finally-value-return.ts", valueReturn, "resource", parseSpec("finally-value-return.ts", valueReturn).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "execute" }),
-    ]);
+    expect(validateRefinementActionBodies("finally-value-return.ts", valueReturn, "resource", parseSpec("finally-value-return.ts", valueReturn).temporal)).toEqual([]);
   });
 
   it("propagates a nested branch return through the enclosing conditional join", () => {
@@ -586,9 +587,7 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("finally-return-override.ts", source, "resource", parseSpec("finally-return-override.ts", source).temporal)).toEqual([]);
 
     const valueReturn = source.replace("          return\n", "          return runtime.released\n");
-    expect(validateRefinementActionBodies("finally-value-override.ts", valueReturn, "resource", parseSpec("finally-value-override.ts", valueReturn).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "execute" }),
-    ]);
+    expect(validateRefinementActionBodies("finally-value-override.ts", valueReturn, "resource", parseSpec("finally-value-override.ts", valueReturn).temporal)).toEqual([]);
   });
 
   it("joins a branch-local void return with the continuing path", () => {
@@ -617,7 +616,10 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("early-return.ts", source, "routing", parseSpec("early-return.ts", source).temporal)).toEqual([]);
 
     const returningValue = source.replace("return;", "return runtime.value;");
-    expect(validateRefinementActionBodies("value-return.ts", returningValue, "routing", parseSpec("value-return.ts", returningValue).temporal)).toEqual([
+    expect(validateRefinementActionBodies("value-return.ts", returningValue, "routing", parseSpec("value-return.ts", returningValue).temporal)).toEqual([]);
+
+    const effectfulReturn = source.replace("return;", "return computeValue(runtime);");
+    expect(validateRefinementActionBodies("effectful-return.ts", effectfulReturn, "routing", parseSpec("effectful-return.ts", effectfulReturn).temporal)).toEqual([
       expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
     ]);
 
@@ -629,7 +631,7 @@ describe("annotated refinement bindings", () => {
       "runtime.value += 2; } finally { runtime.value += 0 }\n      }",
     );
     expect(validateRefinementActionBodies("finally-return.ts", insideFinally, "routing", parseSpec("finally-return.ts", insideFinally).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "route", target: "value" }),
     ]);
   });
 

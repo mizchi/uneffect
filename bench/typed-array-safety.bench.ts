@@ -914,7 +914,7 @@ describe("typed-array static verification", () => {
     validateRefinementActionBodies("switch-routing.ts", source, "routing", parseSpec("switch-routing.ts", source).temporal);
   }, { time: 500, iterations: 20 });
 
-  bench("join switch return and throw completions", () => {
+  bench("join value return and throw switch completions", () => {
     const source = `/* uneffect:
       state routed: int
       state failed: int
@@ -935,7 +935,7 @@ describe("typed-array static verification", () => {
       export function route(runtime: Runtime) {
         try {
           switch (runtime.mode) {
-            case 0: runtime.routed++; return
+            case 0: runtime.routed++; return runtime.routed
             case 1: runtime.routed += 2; throw "failed"
             default: runtime.routed += 3; break
           }

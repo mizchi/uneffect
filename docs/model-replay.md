@@ -132,12 +132,16 @@ and literal `switch` labels with JavaScript entry order, fallthrough, unlabeled
 `break`, and `default`. A switch becomes conditional temporal expressions over
 the discriminant evaluated before any clause update. Dynamic or duplicate
 labels and labeled breaks fail closed as `unsupported-action-body`; they are
-never accepted by replay evidence alone. Direct case-terminal void returns and
+never accepted by replay evidence alone. Direct case-terminal returns and
 primitive-literal throws also join through the same completion lattice. An
 enclosing catch consumes only the selected throw entries, finally runs on every
 selected entry, and statements after the switch run only for entries that
-remain normal. Value returns, effectful thrown expressions, and nested or
-labeled switch transfers remain unsupported.
+remain normal. A value-bearing non-call return is accepted only when its
+expression normalizes in the pure refinement-expression fragment. The returned
+value is intentionally not compared because a temporal action describes state
+updates, not a TypeScript function result. Effectful or unresolved return calls,
+effectful thrown expressions, and nested or labeled switch transfers remain
+unsupported.
 The checker also sequences a mandatory `finally` block after a normally
 completing `try` update. Its first exception-aware fragment recognizes a direct
 terminal primitive `throw` in the try block, routes the accumulated state
@@ -151,18 +155,18 @@ dependent code, implicit exceptions, nested or nonterminal throws, rethrows,
 and abrupt completion during unwinding remain fail-closed. The telemetry
 accounting dogfood selects delivered or dropped accounting through this join
 and finalizes its audit state in `finally`.
-Outside a `try`, a direct branch-final void `return` is a supported completion:
+Outside a `try`, a direct branch-final `return` is a supported completion:
 the returned path keeps its updates while only the continuing path executes
 the statements following the `if`. Updates made before the branch are retained
 on both paths. A direct or top-level conditional void return inside `try` also
 executes `finally` on every path; statements after the try execute only on the
 normally continuing path before both states are joined. This is the first
-resource-cleanup completion rule, not general disposal proof. Value returns,
-nested abrupt completion not represented by these joins, and return/throw
-overrides originating in `finally` remain fail-closed, except for a direct
-terminal void return. That restricted override applies preceding finally
-updates and suppresses every statement after the try. Value-bearing returns,
-conditional returns in finally, and throws from finally are still rejected.
+resource-cleanup completion rule, not general disposal proof. Supported pure
+value returns follow the same completion path as void returns after their
+expression has been validated. Nested abrupt completion not represented by
+these joins remains fail-closed. A return or primitive throw originating in
+`finally` overrides prior completion on its selected paths, applies preceding
+finally updates, and suppresses statements after the try where it is abrupt.
 
 Action collection now keeps symbolic state separate from an explicit
 `normal | return | throw | mixed(returnWhen, throwWhen)` completion. A mixed
@@ -175,13 +179,15 @@ to `throwWhen`, discharges that predicate after a normally completing catch,
 and retains `returnWhen` across common `finally`. Statements after that try run
 only on paths that still complete normally (including a throw path discharged
 by catch), then their state and completion are joined with the retained return
-path. A catch may itself end paths with a conditional void return or a primitive
+path. A catch may itself end paths with a conditional return or a primitive
 literal rethrow; those predicates are composed under the original `throwWhen`,
-and every resulting path still crosses a common finally. Value returns,
-effectful rethrow expressions, catch-value-dependent control, abrupt completion
-originating in finally beyond the supported conditional void-return/primitive-
-throw fragment, break, continue, labels, and general loops are still not
-represented. A finally completion overrides a retained try/catch completion on
+and every resulting path still crosses a common finally. Pure non-call value
+returns use the same predicates but do not establish a contract for the
+returned result. Effectful or unresolved return calls, effectful rethrow
+expressions, catch-value-dependent control, abrupt completion originating in
+finally beyond the supported conditional return/primitive-throw fragment,
+break, continue, labels, and general loops are still not represented. A finally
+completion overrides a retained try/catch completion on
 the paths where finally returns or throws; where finally is normal, the prior
 completion survives. The Z3-backed validator can discharge syntactic
 differences between equivalent boolean guards and integer action updates. The

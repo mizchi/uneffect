@@ -837,12 +837,6 @@ function validateRefinementActionBodiesInSource(
         || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
         || value.kind === ts.SyntaxKind.NullKeyword;
     };
-    const directVoidReturn = (statement: ts.Statement): ts.ReturnStatement | undefined => {
-      if (ts.isReturnStatement(statement) && !statement.expression) return statement;
-      if (!ts.isBlock(statement) || statement.statements.length !== 1) return undefined;
-      const only = statement.statements[0]!;
-      return ts.isReturnStatement(only) && !only.expression ? only : undefined;
-    };
     const mergeConditionalUpdates = (
       condition: TemporalExpression,
       whenTrue: ReadonlyMap<string, TemporalExpression>,
@@ -894,7 +888,16 @@ function validateRefinementActionBodiesInSource(
       const terminalReturn = ts.isReturnStatement(statement);
       if (terminalReturn && (!allowTerminalReturn || statementIndex !== body.statements.length - 1)) return undefined;
       if (terminalReturn && !statement.expression) return "return";
-      if (terminalReturn && !ts.isCallExpression(statement.expression!)) return undefined;
+      if (terminalReturn && !ts.isCallExpression(statement.expression!)) {
+        const returned = normalizeRefinementExpression(
+          statement.expression!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+        );
+        if (!returned) return undefined;
+        // Action refinements compare state transitions, not function result values.
+        // Still resolve the expression so unsupported/effectful results are not discarded.
+        void expandLocalSnapshots(resolveCurrentState(returned));
+        return "return";
+      }
       if (ts.isThrowStatement(statement)) {
         if (!allowTerminalThrow || statementIndex !== body.statements.length - 1 || !isPureThrownValue(statement.expression)) return undefined;
         return "throw";
@@ -950,59 +953,12 @@ function validateRefinementActionBodiesInSource(
             andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "throw")),
           );
         } else {
-          const tryStatements = [...statement.tryBlock.statements];
-          const returnIndex = tryStatements.findIndex((candidate) => ts.isIfStatement(candidate)
-            && !candidate.elseStatement && directVoidReturn(candidate.thenStatement) !== undefined);
-          if (returnIndex >= 0) {
-            if (!statement.finallyBlock || tryStatements.slice(returnIndex + 1).some((candidate) => ts.isIfStatement(candidate)
-              && !candidate.elseStatement && directVoidReturn(candidate.thenStatement) !== undefined)) return undefined;
-            const conditionalReturn = tryStatements[returnIndex] as ts.IfStatement;
-            const tryLocals = new Map(localValues);
-            if (!collect(
-              ts.factory.createBlock(tryStatements.slice(0, returnIndex), true), receiver, runtimeClass, substitutions,
-              updates, tryLocals, activeCalls, false,
-            )) return undefined;
-            const normalizedCondition = normalizeRefinementExpression(
-              conditionalReturn.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), tryLocals,
-            );
-            if (!normalizedCondition) return undefined;
-            const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
-            const before = new Map(updates);
-            const returnedUpdates = new Map(before);
-            const returned = collect(
-              statement.finallyBlock, receiver, runtimeClass, substitutions,
-              returnedUpdates, new Map(localValues), activeCalls, false,
-            );
-            const normalUpdates = new Map(before);
-            const normal = collect(
-              ts.factory.createBlock(tryStatements.slice(returnIndex + 1), true), receiver, runtimeClass, substitutions,
-              normalUpdates, new Map(tryLocals), activeCalls, false,
-            );
-            if (!returned || !normal || !collect(
-              statement.finallyBlock, receiver, runtimeClass, substitutions,
-              normalUpdates, new Map(localValues), activeCalls, false,
-            ) || !collect(
-              ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
-              normalUpdates, new Map(localValues), activeCalls, false,
-            )) return undefined;
-            mergeConditionalUpdates(condition, returnedUpdates, normalUpdates, before);
-            return "return";
-          }
-          const terminal = tryStatements.at(-1);
-          if (terminal && directVoidReturn(terminal)) {
-            if (!statement.finallyBlock || !collect(
-              ts.factory.createBlock(tryStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
-              updates, new Map(localValues), activeCalls, false,
-            ) || !collect(
-              statement.finallyBlock, receiver, runtimeClass, substitutions,
-              updates, new Map(localValues), activeCalls, false,
-            )) return undefined;
-            return "return";
-          }
-          if (!collect(
+          const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, false,
-          )) return undefined;
+            updates, new Map(localValues), activeCalls, true, true,
+          );
+          if (!tryCompletion) return undefined;
+          residualCompletion = tryCompletion;
         }
         if (!statement.finallyBlock) {
           if (residualCompletion === "normal") continue;

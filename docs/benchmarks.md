@@ -778,3 +778,9 @@ finally, and the normal-only continuation, the dedicated
 over 1,435 samples (0.43% relative margin of error). This is a syntax-path
 baseline for a three-entry switch and must not be extrapolated to arbitrary CFG
 or case counts.
+
+After extending the completion lattice to validate pure value-bearing returns,
+`join value return and throw switch completions` measured 0.4669 ms mean over
+1,071 samples (2.74% relative margin of error). The returned expression is
+normalized and checked for supported purity, but its result is not compared
+with the temporal action's state transition.

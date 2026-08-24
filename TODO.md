@@ -163,7 +163,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Add typed conditional expressions to the temporal IR with runtime, Quint, replay, and Z3 `ite` lowering, then merge scalar `if`/`else` action branches symbolically.
       - [x] Compose scalar `switch` entry, fallthrough, unlabeled `break`, and `default` paths into conditional temporal updates; reject dynamic labels, duplicate labels, labeled breaks, and other unsupported abrupt flow.
       - [x] Sequence mandatory `finally` updates after a normally completing action `try` block; reject catches and return/throw/break completion until the exception-aware completion lattice is implemented.
-      - [x] Join a direct branch-local void `return` with the continuing `if` path, applying trailing statements only to paths that continue and preserving updates made before the branch; reject value returns and abrupt completion inside `try`.
+      - [x] Join a direct branch-local `return` with the continuing `if` path, applying trailing statements only to paths that continue and preserving updates made before the branch; the initial slice covered void returns and later generalized to supported pure value expressions.
       - [x] Route a direct terminal primitive `throw` through a catch body and then an optional mandatory `finally`; reject effectful throw expressions, catch-value-dependent flow, and nonterminal/nested throws.
       - [x] Split a top-level conditional primitive `throw` into exceptional and normal try paths, apply catch only to the exceptional path, join their symbolic state, and then sequence `finally` and trailing statements.
       - [x] Unwind a direct or top-level conditional void `return` through `finally`, applying post-try statements only to the normally continuing path before the symbolic join.
@@ -174,7 +174,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Apply post-try statements only to the normally continuing path after catch discharges a heterogeneous throw completion, preserving the return path across the join.
       - [x] Compose catch-local conditional void returns and primitive rethrows with prior try completion, common finally, and normal-only post-try continuation.
       - [x] Give conditional void return and primitive throw completions originating in `finally` precedence over retained try/catch completion, while preserving prior completion where finally is normal.
-      - [x] Compose direct switch-case void returns and primitive throws through the action completion lattice, enclosing catch/finally, and normal-only continuation; keep value returns and effectful throws fail-closed.
+      - [x] Compose direct switch-case returns and primitive throws through the action completion lattice, enclosing catch/finally, and normal-only continuation.
+      - [x] Accept value-bearing returns whose non-call expression normalizes in the pure refinement-expression fragment across branches, switch, try/catch/finally, and finally override; validate the expression but do not claim return-result refinement, and reject effectful or unresolved calls fail-closed.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
       - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.

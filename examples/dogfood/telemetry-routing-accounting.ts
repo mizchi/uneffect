@@ -189,12 +189,12 @@ export function finalizeTelemetryRecovery(runtime: TelemetryRoutingAccounting): 
 }
 
 /* uneffect: refinement telemetryRouting@1 action routeRecovery */
-export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
+export function routeTelemetryRecovery(runtime: TelemetryRoutingAccounting): number | void {
   try {
     switch (runtime.attempted) {
       case 0:
         runtime.recovered += 1;
-        return;
+        return runtime.recovered;
       case 1:
         runtime.recovered += 2;
         throw "telemetry recovery failed";

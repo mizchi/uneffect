@@ -868,7 +868,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const temporal = (parseSpec("early-return-routing.ts", source) as { temporal: unknown }).temporal;
     expect(validateActions("early-return-routing.ts", source, "routing", temporal)).toEqual([]);
     const valueReturn = source.replace("return }", "return runtime.routed }");
-    expect(validateActions("value-return-routing.ts", valueReturn, "routing", temporal)).toContainEqual(
+    expect(validateActions("value-return-routing.ts", valueReturn, "routing", temporal)).toEqual([]);
+    const effectfulReturn = source.replace("return }", "return computeRoute(runtime) }");
+    expect(validateActions("effectful-return-routing.ts", effectfulReturn, "routing", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
     );
   });

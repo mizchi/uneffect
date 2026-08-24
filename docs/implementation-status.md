@@ -70,10 +70,12 @@ same property is proved for arbitrary TypeScript.
   their shared boundary. Post-try statements run only on the remaining normal
   paths before joining with retained abrupt paths. Catch-local conditional void
   returns and primitive rethrows are composed through the same predicates.
-  Conditional void returns and primitive throws from finally override prior
-  completion on exactly their paths. Value returns, effectful rethrows, other
-  abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
-  unsupported. The opt-in Z3 validator proves equivalent boolean guards and
+  Conditional returns and primitive throws from finally override prior
+  completion on exactly their paths. A value-bearing non-call return is
+  accepted only when its expression normalizes in the pure refinement fragment;
+  its result is not compared with the temporal action. Effectful or unresolved
+  return calls, effectful rethrows, other abrupt finally forms, labels, and
+  arbitrary exception-aware CFGs remain unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,
   and outcomes. They deliberately do not claim to be independently checkable
