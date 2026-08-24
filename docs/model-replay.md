@@ -159,5 +159,14 @@ terminal void return. That restricted override applies preceding finally
 updates and suppresses every statement after the try. Value-bearing returns,
 conditional returns in finally, and throws from finally are still rejected.
 
+Action collection now keeps symbolic state separate from an explicit
+`normal | return | mixed(returnWhen)` completion. A mixed completion records
+the pre-state predicate for paths that have already returned. Enclosing
+conditionals apply their remaining statements only to the complementary normal
+paths, then join the state and return predicate again. This supports nested
+early-return branches without flattening them into one syntax-specific guard.
+Throw, break, continue, and labeled completions are not yet members of this
+lattice, so it is a foundation for the general CFG rather than its completion.
+
 Function bodies, source hashes, checked refinement results, and generated
 module type checking must all participate in any proof-grade evidence policy.

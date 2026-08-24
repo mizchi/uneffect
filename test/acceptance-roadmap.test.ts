@@ -530,6 +530,36 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("finally-return-override.ts", source, "resource", temporal)).toEqual([]);
   });
 
+  it("propagates nested early return without executing enclosing continuations", () => {
+    const parseSpec = futureApi("parseSpec");
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const source = `/* uneffect:
+      state routed: int
+      state observed: int
+      state outer: bool
+      state inner: bool
+      init routed = 0
+      init observed = 0
+      init outer = false
+      init inner = false
+      action route: routed' = outer ? inner ? routed : routed + 1 : routed, observed' = outer ? inner ? observed : observed + 1 : observed + 1
+    */
+      interface Runtime { routed: number; observed: number; outer: boolean; inner: boolean }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        if (runtime.outer) {
+          if (runtime.inner) return
+          runtime.routed++
+        }
+        runtime.observed++
+      }
+    `;
+    const temporal = (parseSpec("nested-return.ts", source) as { temporal: unknown }).temporal;
+    expect(validateActions("nested-return.ts", source, "routing", temporal)).toEqual([]);
+  });
+
   it("joins an early-return action branch without executing its trailing updates", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");

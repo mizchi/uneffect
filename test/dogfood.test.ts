@@ -449,9 +449,12 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingOverrideReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "drop", target: "postProcessed" }),
     );
-    const missingEarlyReturn = source.replace("if (runtime.attempted <= 0) return;", "void runtime.attempted;");
+    const missingEarlyReturn = source.replace(
+      "export function nestedPostProcessTelemetry(runtime: TelemetryRoutingAccounting): void {\n  if (runtime.attempted > 0) {\n    if (runtime.auditArmed) return;",
+      "export function nestedPostProcessTelemetry(runtime: TelemetryRoutingAccounting): void {\n  if (runtime.attempted > 0) {\n    // missing nested return",
+    );
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingEarlyReturn, "telemetryRouting", temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "armAudit" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "nestedPostProcess", target: "postProcessed" }),
     );
     const effectfulThrow = source.replace('throw "telemetry delivery rejected";', "throw makeTelemetryError(runtime);");
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulThrow, "telemetryRouting", temporal)).toContainEqual(

@@ -117,6 +117,12 @@ mean over 461 samples (0.52% RME). Removing the overriding return produces an
 `action-update-mismatch` for the newly reachable write and is excluded from
 the timed path.
 
+After separating state from `normal | return | mixed(returnWhen)` completion
+and adding a nested-return telemetry action, the complete refinement benchmark
+measured 1.2336 ms mean over 406 samples (0.60% RME). The nested path composes
+two branch predicates, applies continuation updates only to non-returned paths,
+and rejects removal of the inner return through a model-update mismatch.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

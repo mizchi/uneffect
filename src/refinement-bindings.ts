@@ -727,6 +727,7 @@ function validateRefinementActionBodiesInSource(
     return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
+  type ActionCompletion = "normal" | "return" | { kind: "mixed"; returnWhen: TemporalExpression };
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -736,7 +737,7 @@ function validateRefinementActionBodiesInSource(
     localValues: Map<string, TemporalExpression> = new Map(),
     activeCalls: ReadonlySet<string> = new Set(),
     allowTerminalReturn = true,
-  ): Map<string, TemporalExpression> | undefined => {
+  ): ActionCompletion | undefined => {
     const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
         return localValues.get(expression.name.slice("\u0000local:".length)) ?? expression;
@@ -814,8 +815,9 @@ function validateRefinementActionBodiesInSource(
       whenTrue: ReadonlyMap<string, TemporalExpression>,
       whenFalse: ReadonlyMap<string, TemporalExpression>,
       before: ReadonlyMap<string, TemporalExpression>,
+      target: Map<string, TemporalExpression> = updates,
     ): void => {
-      updates.clear();
+      target.clear();
       for (const name of stateNames) {
         const initial = { kind: "name", name } as TemporalExpression;
         const original = before.get(name) ?? initial;
@@ -824,14 +826,14 @@ function validateRefinementActionBodiesInSource(
         const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
           ? trueValue
           : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
-        if (!sameRefinementExpression(merged, initial)) updates.set(name, merged);
+        if (!sameRefinementExpression(merged, initial)) target.set(name, merged);
       }
     };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
       if (terminalReturn && (!allowTerminalReturn || statementIndex !== body.statements.length - 1)) return undefined;
-      if (terminalReturn && !statement.expression) return updates;
+      if (terminalReturn && !statement.expression) return "return";
       if (terminalReturn && !ts.isCallExpression(statement.expression!)) return undefined;
       if (ts.isForStatement(statement)) {
         const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
@@ -885,16 +887,18 @@ function validateRefinementActionBodiesInSource(
             if (!normalizedCondition) return undefined;
             const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
             const before = new Map(updates);
+            const thrownUpdates = new Map(before);
             const thrown = collect(
               statement.catchClause.block, receiver, runtimeClass, substitutions,
-              new Map(before), new Map(localValues), activeCalls, false,
+              thrownUpdates, new Map(localValues), activeCalls, false,
             );
+            const normalUpdates = new Map(before);
             const normal = collect(
               ts.factory.createBlock(tryStatements.slice(throwIndex + 1), true), receiver, runtimeClass, substitutions,
-              new Map(before), new Map(tryLocals), activeCalls, false,
+              normalUpdates, new Map(tryLocals), activeCalls, false,
             );
             if (!thrown || !normal) return undefined;
-            mergeConditionalUpdates(condition, thrown, normal, before);
+            mergeConditionalUpdates(condition, thrownUpdates, normalUpdates, before);
           }
         } else {
           const tryStatements = [...statement.tryBlock.statements];
@@ -915,23 +919,25 @@ function validateRefinementActionBodiesInSource(
             if (!normalizedCondition) return undefined;
             const condition = expandLocalSnapshots(resolveCurrentState(normalizedCondition));
             const before = new Map(updates);
+            const returnedUpdates = new Map(before);
             const returned = collect(
               statement.finallyBlock, receiver, runtimeClass, substitutions,
-              new Map(before), new Map(localValues), activeCalls, false,
+              returnedUpdates, new Map(localValues), activeCalls, false,
             );
+            const normalUpdates = new Map(before);
             const normal = collect(
               ts.factory.createBlock(tryStatements.slice(returnIndex + 1), true), receiver, runtimeClass, substitutions,
-              new Map(before), new Map(tryLocals), activeCalls, false,
+              normalUpdates, new Map(tryLocals), activeCalls, false,
             );
             if (!returned || !normal || !collect(
               statement.finallyBlock, receiver, runtimeClass, substitutions,
-              normal, new Map(localValues), activeCalls, false,
+              normalUpdates, new Map(localValues), activeCalls, false,
             ) || !collect(
               ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
-              normal, new Map(localValues), activeCalls, false,
+              normalUpdates, new Map(localValues), activeCalls, false,
             )) return undefined;
-            mergeConditionalUpdates(condition, returned, normal, before);
-            return updates;
+            mergeConditionalUpdates(condition, returnedUpdates, normalUpdates, before);
+            return "return";
           }
           const terminal = tryStatements.at(-1);
           if (terminal && directVoidReturn(terminal)) {
@@ -942,7 +948,7 @@ function validateRefinementActionBodiesInSource(
               statement.finallyBlock, receiver, runtimeClass, substitutions,
               updates, new Map(localValues), activeCalls, false,
             )) return undefined;
-            return updates;
+            return "return";
           }
           if (!collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
@@ -957,7 +963,7 @@ function validateRefinementActionBodiesInSource(
             ts.factory.createBlock(finallyStatements.slice(0, -1), true), receiver, runtimeClass, substitutions,
             updates, new Map(localValues), activeCalls, false,
           )) return undefined;
-          return updates;
+          return "return";
         }
         if (!collect(
           statement.finallyBlock, receiver, runtimeClass, substitutions,
@@ -972,28 +978,61 @@ function validateRefinementActionBodiesInSource(
         const before = new Map(updates);
         const trueBlock = asBlock(statement.thenStatement);
         const falseBlock = asBlock(statement.elseStatement);
-        const splitReturn = (block: ts.Block): { statements: ts.Statement[]; returned: boolean } | undefined => {
-          const statements = [...block.statements];
-          const returned = statements.at(-1);
-          if (!returned || !ts.isReturnStatement(returned)) return { statements, returned: false };
-          if (returned.expression) return undefined;
-          return { statements: statements.slice(0, -1), returned: true };
-        };
-        const trueCompletion = splitReturn(trueBlock);
-        const falseCompletion = splitReturn(falseBlock);
-        if (!trueCompletion || !falseCompletion) return undefined;
-        const hasBranchReturn = trueCompletion.returned || falseCompletion.returned;
-        if (hasBranchReturn && !allowTerminalReturn) return undefined;
-        const continuation = [...body.statements.slice(statementIndex + 1)];
-        const branchBody = (completion: { statements: ts.Statement[]; returned: boolean }): ts.Block => ts.factory.createBlock([
-          ...completion.statements,
-          ...(hasBranchReturn && !completion.returned ? continuation : []),
-        ], true);
-        const whenTrue = collect(branchBody(trueCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
-        const whenFalse = collect(branchBody(falseCompletion), receiver, runtimeClass, substitutions, new Map(before), new Map(localValues), activeCalls, false);
+        const trueUpdates = new Map(before);
+        const falseUpdates = new Map(before);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn);
         if (!whenTrue || !whenFalse) return undefined;
-        mergeConditionalUpdates(condition, whenTrue, whenFalse, before);
-        if (hasBranchReturn) return updates;
+        const hasBranchReturn = whenTrue !== "normal" || whenFalse !== "normal";
+        if (hasBranchReturn) {
+          const continuation = ts.factory.createBlock(body.statements.slice(statementIndex + 1), true);
+          const applyContinuation = (
+            completion: ActionCompletion,
+            branchUpdates: Map<string, TemporalExpression>,
+          ): ActionCompletion | undefined => {
+            if (completion === "return") return completion;
+            if (completion === "normal") return collect(
+              continuation, receiver, runtimeClass, substitutions,
+              branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn,
+            );
+            const beforeContinuation = new Map(branchUpdates);
+            const continuingUpdates = new Map(branchUpdates);
+            const continued = collect(
+              continuation, receiver, runtimeClass, substitutions,
+              continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn,
+            );
+            if (!continued) return undefined;
+            mergeConditionalUpdates(completion.returnWhen, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
+            if (continued === "return") return "return";
+            if (continued === "normal") return completion;
+            return {
+              kind: "mixed",
+              returnWhen: {
+                kind: "binary", operator: "or", left: completion.returnWhen,
+                right: { kind: "binary", operator: "and", left: { kind: "unary", operator: "not", operand: completion.returnWhen }, right: continued.returnWhen },
+              },
+            };
+          };
+          whenTrue = applyContinuation(whenTrue, trueUpdates);
+          whenFalse = applyContinuation(whenFalse, falseUpdates);
+          if (!whenTrue || !whenFalse) return undefined;
+        }
+        mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
+        if (hasBranchReturn) {
+          if (whenTrue === "return" && whenFalse === "return") return "return";
+          const trueReturn = whenTrue === "return"
+            ? { kind: "boolean", value: true } as TemporalExpression
+            : whenTrue === "normal" ? { kind: "boolean", value: false } as TemporalExpression : whenTrue.returnWhen;
+          const falseReturn = whenFalse === "return"
+            ? { kind: "boolean", value: true } as TemporalExpression
+            : whenFalse === "normal" ? { kind: "boolean", value: false } as TemporalExpression : whenFalse.returnWhen;
+          return {
+            kind: "mixed",
+            returnWhen: whenTrue === "return" && whenFalse === "normal" ? condition
+              : whenTrue === "normal" && whenFalse === "return" ? { kind: "unary", operator: "not", operand: condition }
+              : { kind: "conditional", condition, whenTrue: trueReturn, whenFalse: falseReturn },
+          };
+        }
         continue;
       }
       if (ts.isSwitchStatement(statement)) {
@@ -1036,13 +1075,14 @@ function validateRefinementActionBodiesInSource(
               stopped = true;
             } else pathStatements.push(...statements);
           }
+          const branchUpdates = new Map(before);
           const branch = collect(
             ts.factory.createBlock(pathStatements, true), receiver, runtimeClass, substitutions,
-            new Map(before), new Map(localValues), activeCalls, false,
+            branchUpdates, new Map(localValues), activeCalls, false,
           );
           if (!branch) return undefined;
-          if (condition) branches.push({ condition, updates: branch });
-          else defaultUpdates = branch;
+          if (condition) branches.push({ condition, updates: branchUpdates });
+          else defaultUpdates = branchUpdates;
         }
         updates.clear();
         for (const name of stateNames) {
@@ -1092,7 +1132,7 @@ function validateRefinementActionBodiesInSource(
         }
         const helperReceiver = (helper.parameters[0]!.name as ts.Identifier).text;
         if (!collect(helper.body, helperReceiver, undefined, new Map(), updates, helperLocals, new Set([...activeCalls, callKey]), true)) return undefined;
-        if (terminalReturn) return updates;
+        if (terminalReturn) return "return";
         continue;
       }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -1189,7 +1229,7 @@ function validateRefinementActionBodiesInSource(
         });
         const callKey = `method:${runtimeClass.name?.text ?? "<anonymous>"}.${methodName}`;
         if (activeCalls.has(callKey) || !collect(method.body, "this", runtimeClass, nestedSubstitutions, updates, new Map(localValues), new Set([...activeCalls, callKey]), true)) return undefined;
-        if (terminalReturn) return updates;
+        if (terminalReturn) return "return";
         continue;
       }
       if (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) {
@@ -1266,7 +1306,7 @@ function validateRefinementActionBodiesInSource(
       }
       return undefined;
     }
-    return updates;
+    return "normal";
   };
 
   for (const action of spec.actions) {
@@ -1288,8 +1328,9 @@ function validateRefinementActionBodiesInSource(
     } else if (action.guard && actualGuard && !sameRefinementExpression(action.guard.expressionAst, actualGuard)) {
       diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
     }
-    const updates = guardedBody && receiver ? collect(guardedBody.updates, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map()) : undefined;
-    if (!updates) {
+    const updates = new Map<string, TemporalExpression>();
+    const completion = guardedBody && receiver ? collect(guardedBody.updates, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map(), updates) : undefined;
+    if (!completion) {
       diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
       continue;
     }
