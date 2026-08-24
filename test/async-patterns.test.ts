@@ -2066,10 +2066,17 @@ describe("builtin async temporal patterns", () => {
       }
     `);
     expect(model.timers).toMatchObject([
-      { callback: "flag ? afterSuccess : afterFailure", queue: "timer" },
-      { queue: "microtask", enqueuedBy: 0 },
-      { queue: "next-tick", enqueuedBy: 0 },
+      { callback: "flag ? afterSuccess : afterFailure", queue: "timer", callbackAlternatives: ["afterSuccess", "afterFailure"] },
+      { queue: "microtask", enqueuedBy: 0, parentAlternative: 0 },
+      { queue: "next-tick", enqueuedBy: 0, parentAlternative: 1 },
     ]);
+    const quint = generateNodeEventLoopQuint("conditional_callback", model);
+    const success = quint.slice(quint.indexOf("action run_timer_0_alt_0"), quint.indexOf("action run_timer_0_alt_1"));
+    const failure = quint.slice(quint.indexOf("action run_timer_0_alt_1"), quint.indexOf("action advance_timers_to_poll"));
+    expect(success).toContain("callback_1_pending' = true");
+    expect(success).not.toContain("callback_2_pending' = true");
+    expect(failure).toContain("callback_2_pending' = true");
+    expect(failure).not.toContain("callback_1_pending' = true");
 
     const duplicate = analyzeAsyncPatterns("duplicate-conditional-callback.ts", `
       function callback() { queueMicrotask(() => undefined) }
@@ -2087,6 +2094,27 @@ describe("builtin async temporal patterns", () => {
     }));
     expect(partial.timers.some((timer) => timer.enqueuedBy === 0)).toBe(false);
   });
+
+  it("keeps finite conditional callback children exclusive in the Web profile", () => {
+    const model = analyzeAsyncPatterns("web-conditional-callback.ts", `
+      function afterMicrotask() { queueMicrotask(() => undefined) }
+      function afterTask() { queueMicrotask(() => "task-branch") }
+      function start(flag: boolean) { setTimeout(flag ? afterMicrotask : afterTask, 0) }
+    `);
+    expect(model.timers).toMatchObject([
+      { queue: "timer", callbackAlternatives: ["afterMicrotask", "afterTask"] },
+      { queue: "microtask", parentAlternative: 0 },
+      { queue: "microtask", parentAlternative: 1 },
+    ]);
+    const quint = generateWebEventLoopQuint("web_conditional_callback", model);
+    const microtask = quint.slice(quint.indexOf("action run_timer_task_0_alt_0"), quint.indexOf("action run_timer_task_0_alt_1"));
+    const task = quint.slice(quint.indexOf("action run_timer_task_0_alt_1"), quint.indexOf("action step = any"));
+    expect(microtask).toContain("callback_1_pending' = true");
+    expect(microtask).not.toContain("callback_2_pending' = true");
+    expect(task).toContain("callback_2_pending' = true");
+    expect(task).not.toContain("callback_1_pending' = true");
+    expect(run(quint, "eventLoopSafe").status).toBe(0);
+  }, 20_000);
 
   it("resolves a finite computed callback selection from an immutable table", () => {
     const exact = analyzeAsyncPatterns("computed-callback-table.ts", `

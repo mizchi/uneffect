@@ -748,6 +748,10 @@ describe("typed-array static verification", () => {
     analyzeAsyncPatterns("examples/dogfood/conditional-abort-task.ts", readFileSync("examples/dogfood/conditional-abort-task.ts", "utf8"));
   }, { time: 500, iterations: 5 });
 
+  bench("analyze conditional timer callback dogfood", () => {
+    analyzeAsyncPatterns("examples/dogfood/conditional-timer-callback.ts", readFileSync("examples/dogfood/conditional-timer-callback.ts", "utf8"));
+  }, { time: 500, iterations: 5 });
+
   bench("compose validator cardinality through a 4-file barrel and method graph", () => {
     const validator = defineUneffectValidator({ name: "Once", rule: "at-most-once", sink: { module: "./metrics.js", export: "sendMetric" }, specialization: { kind: "call-cardinality", maximum: 1 } });
     analyzeUneffectProject({ validators: [validator], files: {

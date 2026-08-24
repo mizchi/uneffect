@@ -1132,4 +1132,23 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action choose_abort_0_path_1");
     expect(quint).toMatch(/action abort_0_from_timer_0[\s\S]*abort_0_path == 1/);
   }, 20_000);
+
+  it("keeps conditional timer callback jobs mutually exclusive", () => {
+    const fileName = "examples/dogfood/conditional-timer-callback.ts";
+    const source = readFileSync(fileName, "utf8");
+    expect(analyzeEffects(fileName, source)).toEqual([]);
+    const model = analyzeAsyncPatterns(fileName, source);
+    expect(model.timers).toMatchObject([
+      { queue: "timer", callbackAlternatives: ["afterCacheHit", "afterOriginFetch"] },
+      { queue: "microtask", parentAlternative: 0 },
+      { queue: "next-tick", parentAlternative: 1 },
+    ]);
+    const quint = generateNodeEventLoopQuint("conditional_timer_callback", model);
+    const hit = quint.slice(quint.indexOf("action run_timer_0_alt_0"), quint.indexOf("action run_timer_0_alt_1"));
+    const miss = quint.slice(quint.indexOf("action run_timer_0_alt_1"), quint.indexOf("action advance_timers_to_poll"));
+    expect(hit).toContain("callback_1_pending' = true");
+    expect(hit).not.toContain("callback_2_pending' = true");
+    expect(miss).toContain("callback_2_pending' = true");
+    expect(miss).not.toContain("callback_1_pending' = true");
+  });
 });

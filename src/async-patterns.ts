@@ -28,6 +28,8 @@ export interface TimerPattern {
   abortComposition?: number;
   externalAbortSignal?: boolean;
   externallyReady?: boolean;
+  callbackAlternatives?: string[];
+  parentAlternative?: number;
   span: { start: number; end: number };
 }
 
@@ -1176,7 +1178,9 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
       }
     };
     const collectNestedJobs = (callbackExpression: ts.Expression | undefined, parent: number, visited = new Set<ts.FunctionLikeDeclaration>()): void => {
-      for (const callback of resolveCallbacks(callbackExpression)) {
+      const callbacks = resolveCallbacks(callbackExpression);
+      if (callbacks.length > 1) timers[parent]!.callbackAlternatives = callbacks.map((callback) => functionName(callback));
+      for (const [parentAlternative, callback] of callbacks.entries()) {
         if (!callback.body || visited.has(callback)) continue;
         visited.add(callback);
         const scan = (node: ts.Node): void => {
@@ -1189,7 +1193,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
               const callbackNode = node.arguments[operation.callbackArgument];
               const delayNode = operation.delayArgument === undefined ? undefined : node.arguments[operation.delayArgument];
               const childSource = node.getSourceFile();
-              timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
+              timers.push({ owner: ownerName, callback: callbackNode?.getText(childSource) ?? "<unknown>", delay: operation.delayArgument === undefined ? 0 : staticNumber(delayNode), recursive: false, repeats: operation.repeats, queue: operation.queue, enqueuedBy: parent, ...(callbacks.length > 1 ? { parentAlternative } : {}), handleFamily: operation.queue === "timer" ? "timeout" : operation.queue === "check" ? "immediate" : undefined, span: { start: node.getStart(childSource), end: node.getEnd() } });
               collectNestedJobs(callbackNode, child, visited);
               return;
             } else if (operation?.kind === "scheduler-yield") {
@@ -1202,6 +1206,7 @@ export function analyzeAsyncPatternsInProgram(program: ts.Program, source: ts.So
                 repeats: false,
                 queue: "scheduler-task",
                 enqueuedBy: parent,
+                ...(callbacks.length > 1 ? { parentAlternative } : {}),
                 kind: "scheduler-yield",
                 priority: timers[parent]?.priority ?? "user-visible",
                 abortTimer: timers[parent]?.abortTimer,
@@ -1775,14 +1780,16 @@ export function generateNodeEventLoopQuint(
     variables.forEach((variable) => lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`));
     lines.push("  }");
   };
-  const enqueueNodeChildren = (parent: number, updates: Map<string, string>): void => {
-    [...nextTicks, ...microtasks].filter((index) => model.timers[index]!.enqueuedBy === parent)
+  const enqueueNodeChildren = (parent: number, updates: Map<string, string>, alternative?: number): void => {
+    const belongsToAlternative = (index: number): boolean => model.timers[index]!.parentAlternative === undefined
+      || model.timers[index]!.parentAlternative === alternative;
+    [...nextTicks, ...microtasks].filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index))
       .forEach((child) => updates.set(`callback_${child}_pending`, "true"));
-    checks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+    checks.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
       updates.set(`callback_${child}_due`, "clock + 1");
     });
-    timers.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+    timers.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
       if (multiInstanceTimers.has(child)) {
         updates.set(`callback_${child}_instances`, `callback_${child}_instances + 1`);
@@ -1867,7 +1874,9 @@ export function generateNodeEventLoopQuint(
   ], new Map([["node_phase", "resume_phase"], ["wrong_phase", phaseViolation(0)]]));
   const macro = (index: number, earlier: number[], phase: number): void => {
     const timer = model.timers[index]!;
-    const updates = new Map<string, string>([
+    const alternatives: (number | undefined)[] = timer.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([
       [`callback_${index}_pending`, multiInstanceTimers.has(index)
         ? timer.repeats ? "true" : `callback_${index}_instances > 1`
         : String(timer.repeats)],
@@ -1882,18 +1891,20 @@ export function generateNodeEventLoopQuint(
       ["wrong_checkpoint_order", `wrong_checkpoint_order or (${checkpointPending.join(" or ") || "false"})`],
       ["wrong_phase", phaseViolation(phase)],
     ]);
-    if (multiInstanceTimers.has(index)) {
-      updates.set(`callback_${index}_instances`, timer.repeats ? `callback_${index}_instances` : `callback_${index}_instances - 1`);
-      updates.set(`callback_${index}_due_times`, timer.repeats
-        ? `callback_${index}_due_times.tail().append(clock + ${nodeDelay(timer)})`
-        : `callback_${index}_due_times.tail()`);
+      if (multiInstanceTimers.has(index)) {
+        updates.set(`callback_${index}_instances`, timer.repeats ? `callback_${index}_instances` : `callback_${index}_instances - 1`);
+        updates.set(`callback_${index}_due_times`, timer.repeats
+          ? `callback_${index}_due_times.tail().append(clock + ${nodeDelay(timer)})`
+          : `callback_${index}_due_times.tail()`);
+      }
+      enqueueNodeChildren(index, updates, alternative);
+      const baseName = timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`;
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, [
+        ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
+        ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
+        ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
+      ], updates);
     }
-    enqueueNodeChildren(index, updates);
-    action(timer.queue === "check" ? `run_check_${index}` : timer.queue === "poll" ? `run_poll_${index}` : timer.queue === "close" ? `run_close_${index}` : `run_timer_${index}`, [
-      ...phaseGuard(phase), `callback_${index}_pending`, `clock >= callback_${index}_due`,
-      ...(options.allowMacroBeforeCheckpoint ? [] : checkpointPending.map((pending) => `not(${pending})`)),
-      ...earlier.map((item) => `not(callback_${item}_pending) or callback_${item}_due > clock`),
-    ], updates);
   };
   timers.forEach((index, order) => macro(index, timers.slice(0, order), 1));
   polls.forEach((index) => macro(index, [], 2));
@@ -2003,14 +2014,16 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
     else if (requirements.length) updates.set("callback_precondition_broken", `callback_precondition_broken or not(${requirements.map((item) => `(${item})`).join(" and ")})`);
     summary.ensures.forEach((item) => updates.set(safe(item.target), generateQuintExpression(item.expressionAst)));
   };
-  const enqueueChildren = (parent: number, updates: Map<string, string>): void => {
-    const children = microtasks.filter((index) => model.timers[index]!.enqueuedBy === parent);
+  const enqueueChildren = (parent: number, updates: Map<string, string>, alternative?: number): void => {
+    const belongsToAlternative = (index: number): boolean => model.timers[index]!.parentAlternative === undefined
+      || model.timers[index]!.parentAlternative === alternative;
+    const children = microtasks.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index));
     children.forEach((child, offset) => {
       updates.set(`callback_${child}_pending`, "true");
       updates.set(`callback_${child}_ticket`, offset === 0 ? "next_microtask_ticket" : `next_microtask_ticket + ${offset}`);
     });
     if (children.length) updates.set("next_microtask_ticket", children.length === 1 ? "next_microtask_ticket + 1" : `next_microtask_ticket + ${children.length}`);
-    schedulerTasks.filter((index) => model.timers[index]!.enqueuedBy === parent).forEach((child) => {
+    schedulerTasks.filter((index) => model.timers[index]!.enqueuedBy === parent && belongsToAlternative(index)).forEach((child) => {
       updates.set(`callback_${child}_pending`, "true");
       updates.set(`callback_${child}_due`, `${clock} + ${model.timers[child]!.delay}`);
     });
@@ -2087,13 +2100,17 @@ export function generateWebEventLoopQuint(moduleName: string, model: AsyncPatter
   timers.forEach((index, order) => {
     const timer = model.timers[index]!;
     const earlierDue = timers.slice(0, order).map((earlier) => `not(callback_${earlier}_pending) or callback_${earlier}_due > clock`);
-    const updates = new Map<string, string>([
-      [phase, "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `${clock} + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`],
-    ]);
-    enqueueChildren(index, updates);
-    const guards = [...phaseGuard(0), `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...earlierDue];
-    applyCallbackSummary(index, guards, updates);
-    action(timerAction("run", timer, index), guards, updates);
+    const alternatives: (number | undefined)[] = timer.callbackAlternatives?.map((_, alternative) => alternative) ?? [undefined];
+    for (const alternative of alternatives) {
+      const updates = new Map<string, string>([
+        [phase, "1"], [`callback_${index}_pending`, String(timer.repeats)], [`callback_${index}_due`, timer.repeats ? `${clock} + ${timer.delay}` : `callback_${index}_due`], [`callback_${index}_fires`, `callback_${index}_fires + 1`], ["wrong_phase", `${phase} != 0`],
+      ]);
+      enqueueChildren(index, updates, alternative);
+      const guards = [...phaseGuard(0), `callback_${index}_pending`, `${clock} >= callback_${index}_due`, ...earlierDue];
+      applyCallbackSummary(index, guards, updates);
+      const baseName = timerAction("run", timer, index);
+      action(alternative === undefined ? baseName : `${baseName}_alt_${alternative}`, guards, updates);
+    }
   });
   for (const timer of new Set((model.timerEscapes ?? []).map((escape) => escape.timer))) {
     action(`external_cancel_timer_${timer}`, [`callback_${timer}_pending`], new Map([[`callback_${timer}_pending`, "false"]]));
