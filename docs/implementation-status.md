@@ -159,12 +159,13 @@ same property is proved for arbitrary TypeScript.
   mutable/imported/member/dynamic component arguments and custom wrappers
   remain unsupported.
 - The initial phase projection distinguishes replayable render, inline JSX
-  event callbacks, immutable component-local referenced/aliased event
-  callbacks, `useInsertionEffect`, `useLayoutEffect`, `useEffect` setup, and returned
-  cleanup functions. Inline JSX callback refs and immutable component-local
-  callback functions/arrows reached through transitive `const` aliases form a
-  separate commit setup and returned-cleanup phase. Reassigned, module-scope/imported,
-  prop, member, or dynamic callback refs remain explicit unknowns. Reassigned
+  event callbacks, immutable component-local and write-screened module-local
+  referenced/aliased event callbacks, `useInsertionEffect`, `useLayoutEffect`, `useEffect` setup, and returned
+  cleanup functions. Inline JSX callback refs plus immutable component-local
+  and write-screened module-local callback functions/arrows reached through
+  transitive `const` aliases form a
+  separate commit setup and returned-cleanup phase. Reassigned, imported, prop,
+  member, or dynamic callback refs remain explicit unknowns. Reassigned
   or opaque referenced event handlers are rejected rather than assumed pure.
   Aliased named imports from `react` are recognized.
 - Render-time `.current` access remains rejected except for a direct or

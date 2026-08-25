@@ -90,6 +90,16 @@ by two declarations per component. It establishes that referenced Effect
 resolution has no observed order-of-magnitude regression in this fixture, not
 a performance budget.
 
+After adding one shared write-screened module-local JSX event handler to all
+128 components, a later 2026-08-25 run measured 310.73 ms cold string, 657.80
+ms per fresh Program snapshot, and 26.4745 ms parse-only. Relative margins of
+error were 8.45%, 3.67%, and 4.91%. Every unrelated model-generation benchmark
+in the same process also slowed by roughly two to three times, so this run is
+environmentally noisy and cannot attribute the delta to module callback
+resolution. It records coverage of the expanded workload only; cached Program
+lookup remained below useful timer resolution and none of these values is a
+budget.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured

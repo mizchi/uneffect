@@ -1854,7 +1854,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues, suspensions };
     const transitionCallbacks = reactTransitionCallbacks(source, hook);
     const localCallbacks = localEventCallbacks(hook);
-    const callableCallbacks = new Map([...sourceCallbacks(source), ...localCallbacks]);
+    const callableCallbacks = new Map([...componentCallbacks, ...localCallbacks]);
     const effectEvents = localEffectEventCallbacks(hook, source);
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
@@ -2191,7 +2191,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       ...optimisticDispatcherBindings(component, source),
     ]);
     const eventCallbacks = localEventCallbacks(component);
-    const callableCallbacks = new Map([...sourceCallbacks(source), ...eventCallbacks]);
+    const callableCallbacks = new Map([...componentCallbacks, ...eventCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
     const reportTransitionUpdatesAfterAwait = (body: ts.Node, phase: ReactPhase): void => {
@@ -2253,12 +2253,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
         const refExpression = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
-        const callback = refExpression ? callbackArgument(refExpression, eventCallbacks) : undefined;
+        const callback = refExpression ? callbackArgument(refExpression, callableCallbacks) : undefined;
         if (callback) {
-          const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks);
+          const setupEffects = directEffects(callback.body, declared, transitionCallbacks, callableCallbacks);
           addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
-          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks) : [];
+          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, callableCallbacks) : [];
           if (cleanup) addPhase("cleanup", cleanupEffects);
           const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
           const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
@@ -2290,10 +2290,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           message: `${action.getText(source)} is not an inline or immutable locally resolved transition action`,
         });
         if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) {
-          addPhase("event", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
+          addPhase("event", directEffects(expression.body, declared, transitionCallbacks, callableCallbacks, callableCallbacks));
           reportTransitionUpdatesAfterAwait(expression.body, "event");
-          for (const action of unknownImmediateActions(expression.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
-          for (const call of actionDispatcherCallsOutsideAction(expression.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
+          for (const action of unknownImmediateActions(expression.body, transitionCallbacks, callableCallbacks)) reportUnknownAction(action);
+          for (const call of actionDispatcherCallsOutsideAction(expression.body, actionContextDispatchers, transitionCallbacks, callableCallbacks)) report(call, {
             kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
             message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
           });
@@ -2310,12 +2310,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             });
             return;
           }
-          const callback = eventCallbacks.get(expression.text);
+          const callback = callableCallbacks.get(expression.text);
           if (callback?.body) {
-            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
+            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, callableCallbacks, callableCallbacks));
             reportTransitionUpdatesAfterAwait(callback.body, "event");
-            for (const action of unknownImmediateActions(callback.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
-            for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
+            for (const action of unknownImmediateActions(callback.body, transitionCallbacks, callableCallbacks)) reportUnknownAction(action);
+            for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, callableCallbacks)) report(call, {
               kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
               message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
             });

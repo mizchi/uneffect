@@ -27,6 +27,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     return <button
       ref={attachAlias}
       onClick={handleClick}
+      onDoubleClick={moduleRefresh}
     >{props.label}{catalogVersion}{optimisticLabel}{selectionSnapshot.active && preferences.dense}</button>
   }
   const ItemAlias${index} = ItemView${index}
@@ -36,7 +37,8 @@ const components = Array.from({ length: 128 }, (_, index) => `
 
 const source = `
   import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react"
-  declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
+  declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown; children?: unknown } } }
+  function moduleRefresh() { fetch("/module-refresh") }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
   /* uneffect: react acquire Subscription result */

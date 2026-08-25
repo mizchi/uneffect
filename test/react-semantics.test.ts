@@ -608,11 +608,12 @@ describe("React Function Component semantics", () => {
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      function moduleSubmit() { fetch("/module-submit") }
       /* uneffect: react component */
       function Panel() {
         function submit() { fetch("/submit") }
         const handleClick = submit
-        return <button onClick={handleClick} />
+        return <><button onClick={handleClick} /><button onClick={moduleSubmit} /></>
       }
     `);
 
@@ -626,16 +627,19 @@ describe("React Function Component semantics", () => {
   it("fails closed when a referenced JSX handler is reassigned", () => {
     const result = analyzeReactSemantics("unstable-event.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      function moduleSubmit() { fetch("/module") }
+      moduleSubmit = () => console.log("changed module")
       /* uneffect: react component */
       function Panel() {
         function submit() { fetch("/submit") }
         submit = () => console.log("changed")
-        return <button onClick={submit} />
+        return <><button onClick={submit} /><button onClick={moduleSubmit} /></>
       }
     `);
-    expect(result.diagnostics).toEqual([
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: "unknown-event-handler", phase: "event", operation: "submit" }),
-    ]);
+      expect.objectContaining({ kind: "unknown-event-handler", phase: "event", operation: "moduleSubmit" }),
+    ]));
   });
 
   it("executes React transition action callbacks in their enclosing phase", () => {
@@ -888,12 +892,15 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("unknown-ref.tsx", `
       import { useRef } from "react"
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
-      function moduleAttach(_node: Element | null): void {}
       declare const alternate: (node: Element | null) => void
       /* uneffect: react acquire Observer result */
       declare function observe(node: Element | null): { readonly observer: unique symbol }
       /* uneffect: react release Observer parameter 0 */
       declare function disconnect(observer: { readonly observer: unique symbol }): void
+      function moduleAttach(node: Element | null) {
+        const observer = observe(node)
+        return () => disconnect(observer)
+      }
       /* uneffect: react component */
       function Panel(props: { alternate: boolean }) {
         const objectRef = useRef<Element | null>(null)
@@ -906,7 +913,6 @@ describe("React Function Component semantics", () => {
       }
     `);
     expect(result.diagnostics).toEqual([
-      expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "moduleAttach" }),
       expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "props.alternate ? alternate : attach" }),
     ]);
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([

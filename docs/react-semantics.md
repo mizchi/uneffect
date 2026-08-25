@@ -79,8 +79,9 @@ supported for existing code, while React 19 permits `ref` as a prop and marks
 `forwardRef` as no longer necessary in the
 [official reference](https://react.dev/reference/react/forwardRef).
 
-JSX event attributes accept inline callbacks and immutable component-local
-function/arrow callbacks reached through `const` identifier aliases. Their
+JSX event attributes accept inline callbacks, immutable component-local
+function/arrow callbacks, and write-screened module-local functions reached
+through `const` identifier aliases. Their
 capabilities belong to the `event` phase, not render. Reassigned identifiers,
 member expressions, imported callbacks, and other unresolved handler shapes
 produce `unknown-event-handler` instead of being silently treated as pure.
@@ -577,10 +578,10 @@ This is a tested initial fragment, not a complete React semantics:
   Imported/member/dynamic component arguments, custom higher-order
   wrappers, dynamic wrapper selection, custom comparator call-graph effects,
   and semantic equivalence of comparator results remain unsupported;
-- event extraction covers inline callbacks and immutable component-local
-  function/arrow callbacks through `const` aliases. Imported handlers, member
-  expressions, callbacks passed through props, and general data flow remain
-  explicit unknowns;
+- event extraction covers inline callbacks, immutable component-local
+  functions, and write-screened module-local functions through `const` aliases.
+  Imported handlers, member expressions, callbacks passed through props, and
+  general data flow remain explicit unknowns;
 - Action extraction covers inline/module/immutable-local callbacks, direct JSX
   Action dispatchers, and direct local setter calls. Dispatchers returned
   through custom Hooks, general callback data flow, updater functions passed
@@ -596,9 +597,9 @@ This is a tested initial fragment, not a complete React semantics:
   containers, and interprocedural region flow need a flow-sensitive
   ownership analysis;
 - callback-ref extraction covers inline JSX functions plus immutable
-  component-local function/arrow callbacks and transitive `const` aliases.
-  Module-scope/imported handlers, ref props, and reassigned/member/dynamic
-  callbacks are not modeled. Lazy initialization is limited to the exact
+  component-local and write-screened module-local function/arrow callbacks and
+  transitive `const` aliases. Imported handlers, ref props, and reassigned/
+  member/dynamic callbacks are not modeled. Lazy initialization is limited to the exact
   null-guarded stable-expression fragment above; factory/constructor purity
   and general control-flow dominance are not inferred;
 - dependency completeness is checked for inline and immutable component/custom-
