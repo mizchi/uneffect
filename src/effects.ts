@@ -660,7 +660,11 @@ export function analyzeEffectsInProgram(program: ts.Program, source: ts.SourceFi
 }
 
 export function analyzeEffectSummariesInProgram(program: ts.Program, source: ts.SourceFile, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source));
+  const result = analyzeProgramEffects(program, options);
+  return {
+    diagnostics: result.diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName),
+    summaries: result.summaries.filter((summary) => summary.fileName === source.fileName),
+  };
 }
 
 function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclaration> {

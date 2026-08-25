@@ -75,8 +75,24 @@ describe("evidence and optimizer obligations", () => {
     `);
     const result = analyzeEffectSummariesInProgram(program, source);
     const artifact = createEvidenceArtifact(program, source, result.summaries);
-    expect(artifact.summaries.map((item) => item.evidence)).toEqual(["verified", "inferred", "unknown"]);
-    expect(artifact).toMatchObject({ compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/), sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/), builtinContractDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(artifact.summaries.filter((item) => item.functionName !== "<module>").map((item) => item.evidence))
+      .toEqual(["verified", "inferred", "unknown"]);
+    expect(artifact).toMatchObject({ schemaVersion: 2, compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/), sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/), builtinContractDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  });
+
+  it("preserves polymorphic iterator contracts and bounds in evidence artifacts", () => {
+    const { program, source } = programOf(`
+      /* uneffect: effect Console */ function* generate() { console.log("step"); yield 1 }
+      /* uneffect: effect_parameter iterator extends Console */
+      function consume(iterator: IteratorObject<unknown>) { iterator.next() }
+      /* uneffect: effect Console */ function main() { consume(generate()) }
+    `);
+    const artifact = createEvidenceArtifact(program, source, analyzeEffectSummariesInProgram(program, source).summaries);
+    expect(artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
+      evidence: "verified",
+      iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+      iteratorEffectBounds: [{ index: 0, name: "iterator", effects: ["Console"] }],
+    });
   });
 
   it("allows stable-read reuse only with proof-grade evidence and no invalidation", () => {

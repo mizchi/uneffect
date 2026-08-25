@@ -15,9 +15,11 @@ export interface EvidenceArtifactSummary {
   functionName: string;
   effects: string[];
   evidence: EvidenceStatus;
+  iteratorEffectParameters?: Array<{ index: number; name: string; convertsThrowToRejection: boolean }>;
+  iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
 export interface EvidenceArtifact {
-  schemaVersion: 1;
+  schemaVersion: 2;
   uneffectVersion: string;
   compilerRevision: string;
   tsconfigHash: string;
@@ -30,13 +32,21 @@ const digest = (value: string): string => createHash("sha256").update(value).dig
 export function builtinContractDigest(): string { return digest(JSON.stringify(builtinContractRegistry)); }
 export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFile, summaries: readonly EffectSummary[]): EvidenceArtifact {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     uneffectVersion: "0.1.0",
     compilerRevision: ts.version,
     tsconfigHash: digest(JSON.stringify(program.getCompilerOptions(), Object.keys(program.getCompilerOptions()).sort())),
     sourceHash: digest(source.text),
     builtinContractDigest: builtinContractDigest(),
-    summaries: summaries.map((summary) => ({ functionName: summary.functionName, effects: summary.effects.map(formatEffect).sort(), evidence: summary.evidence })),
+    summaries: summaries.map((summary) => ({
+      functionName: summary.functionName,
+      effects: summary.effects.map(formatEffect).sort(),
+      evidence: summary.evidence,
+      ...(summary.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
+      ...(summary.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds.map((bound) => ({
+        index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect).sort(),
+      })) } : {}),
+    })),
   };
 }
 

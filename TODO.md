@@ -536,6 +536,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Forward iterator-effect parameters through symbol-resolved wrapper calls, preserving Promise rejection conversion.
   - [x] Add `effect_parameter p extends ...` bounds with call-site Generator specialization, stored-iterator evidence, transitive wrapper constraint checks, Promise rejection conversion, and fail-closed syntax/parameter diagnostics.
   - [x] Dogfood a telemetry batching Generator through `verifyUneffectProject`, including a negative bound-regression and project-assurance failure.
+  - [x] Preserve iterator-effect parameters and formatted bounds in evidence schema v2 and the public `uneffect evidence` JSON command.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
   - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
   - [x] Track iterator identities in one-level local object slots with constant property keys, including local object aliases and flow-sensitive slot reassignment; keep dynamic keys unknown.

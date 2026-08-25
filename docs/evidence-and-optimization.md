@@ -21,6 +21,15 @@ instead of reconstructing it from diagnostics. Program-produced summaries
 include a stable `fileName:start` ID and source span, avoiding ambiguity between
 same-named functions in different modules.
 
+`uneffect evidence file.ts` emits `schemaVersion: 2`. Each summary retains its
+formatted concrete effects and evidence status; polymorphic Generator consumers
+also retain `iteratorEffectParameters` and their formatted
+`iteratorEffectBounds`. Consequently a downstream auditor can distinguish an
+empty function-body effect set from an unbounded lazy-effect parameter and can
+inspect the declaration that justified a bounded `verified` result. Schema v1
+artifacts predate this distinction and must not be used to authorize claims
+about iterator-polymorphic functions.
+
 Project verification is fail-closed on TypeScript syntax, semantic, and
 compiler-option errors. These errors appear in `result.diagnostics`; function
 and module summaries, contract obligations, and typed-array obligations from

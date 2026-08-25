@@ -145,6 +145,28 @@ describe("uneffect command line", () => {
     expect(io.stderr).not.toContain("uneffect doctor");
   });
 
+  it("emits auditable iterator-effect parameters and bounds in evidence JSON", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-evidence-iterator-"));
+    const fileName = join(directory, "bounded.ts");
+    try {
+      writeFileSync(fileName, `
+        /* uneffect: effect Console */ function* generate() { console.log("step"); yield 1 }
+        /* uneffect: effect_parameter iterator extends Console */
+        export function consume(iterator: IteratorObject<unknown>) { iterator.next() }
+        /* uneffect: effect Console */ export function main() { consume(generate()) }
+      `);
+      const io = capture();
+      expect(await runCli(["evidence", fileName], io)).toBe(exitCode.success);
+      const output = JSON.parse(io.stdout) as { artifact: { schemaVersion: number; summaries: Array<Record<string, unknown>> } };
+      expect(output.artifact.schemaVersion).toBe(2);
+      expect(output.artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
+        evidence: "verified",
+        iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+        iteratorEffectBounds: [{ index: 0, name: "iterator", effects: ["Console"] }],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("emits the specification IR through the spec command", async () => {
     const io = capture();
     expect(await runCli(["spec", "ir", "examples/spec.ts"], io)).toBe(exitCode.success);
