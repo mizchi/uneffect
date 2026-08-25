@@ -10,7 +10,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
     useCatalogSubscription(props.label)
-    const handleClick = () => fetch("/items/${index}")
+    const handleClick = () => startTransition(() => fetch("/items/${index}"))
     return <button
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
       onClick={handleClick}
@@ -19,7 +19,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
 `).join("\n");
 
 const source = `
-  import { useContext, useEffect, useState } from "react"
+  import { startTransition, useContext, useEffect, useState } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }

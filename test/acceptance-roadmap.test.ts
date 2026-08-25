@@ -73,7 +73,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { useEffect } from "react"
+      import { startTransition, useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -89,7 +89,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
         useSubscription(topic)
-        const handleClick = () => fetch(\`/topics/\${topic}\`)
+        const handleClick = () => startTransition(() => fetch(\`/topics/\${topic}\`))
         return <button
           ref={(node) => { console.log(node); return () => console.log("detach") }}
           onClick={handleClick}

@@ -30,6 +30,15 @@ parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured
 reassignment screening, and alias resolution for referenced JSX handlers; it
 is not directly comparable to the earlier inline-handler workload.
 
+After wrapping each referenced handler's Fetch in an inline
+`startTransition` action, the source path measured 27.61 ms mean, the
+parse-only baseline 2.43 ms (about 11.38x), and the reused-Program path 37.70
+ms. Transition binding facts are cached by component AST identity; before that
+cache the same workload measured 29.41 ms and 43.89 ms respectively. The
+remaining delta includes the extra immediate-action traversal and the larger
+synthetic source, so it is retained as a regression baseline rather than
+attributed entirely to one operation.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -47,7 +47,9 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
   );
   const refresh = () => {
     setShowFailures(!showFailures);
-    fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+    startTransition(() => {
+      fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+    });
   };
   return <output ref={(node) => {
     const viewport = attachTelemetryViewport(node);

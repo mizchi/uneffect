@@ -49,6 +49,15 @@ capabilities belong to the `event` phase, not render. Reassigned identifiers,
 member expressions, imported callbacks, and other unresolved handler shapes
 produce `unknown-event-handler` instead of being silently treated as pure.
 
+Inline action callbacks passed to named or aliased `startTransition`,
+`React.startTransition`, a React namespace object, or the second tuple element
+returned by `useTransition` execute in the caller's current phase. Uneffect
+therefore retains capabilities inside the action: a Fetch nested under
+`startTransition` in an event handler is an `event` capability, while the same
+call during render is a `render-effect` error. This is effect tracking for the
+synchronous action invocation. It does not yet model transition priority,
+pending state, interruption, or the eventual rendering work as a scheduler.
+
 Named imports of `useEffect` and `useLayoutEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
 function is not treated as a built-in Hook boundary. Annotated custom Hooks
@@ -379,7 +388,8 @@ This is a tested initial fragment, not a complete React semantics:
   remain unsupported;
 - Intrinsic/component wrapper subtrees, expression-valued children, dynamic
   component selection, reachability/pending-state proof for `use`, suspension originating in a boundary or fallback,
-  rejected thenables, unbounded retries, transition priority, Offscreen trees,
+  rejected thenables, unbounded retries, transition priority/pending state,
+  referenced transition actions, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;

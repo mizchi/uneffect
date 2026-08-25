@@ -107,6 +107,39 @@ describe("React Function Component semantics", () => {
     ]);
   });
 
+  it("executes React transition action callbacks in their enclosing phase", () => {
+    const result = analyzeReactSemantics("transitions.tsx", `
+      import React, { startTransition as defer, useTransition } from "react"
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect: react component */
+      function Panel() {
+        const [, schedule] = useTransition()
+        const handleClick = () => {
+          defer(() => fetch("/refresh"))
+          schedule(() => console.log("scheduled"))
+        }
+        return <button onClick={handleClick} />
+      }
+      /* uneffect: react component */
+      function InvalidRender() {
+        React.startTransition(() => fetch("/during-render"))
+        return null
+      }
+      /* uneffect: react hook */
+      function useInvalidTransition() { defer(() => console.log("hook-render")) }
+      /* uneffect: react component */
+      function InvalidHookRender() { useInvalidTransition(); return null }
+    `);
+
+    expect(result.components.find(({ name }) => name === "Panel")!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "event", effects: ["Fetch", "Console"] }),
+    ]));
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "InvalidRender", kind: "render-effect", effect: "Fetch" }),
+      expect.objectContaining({ component: "InvalidHookRender", kind: "render-effect", effect: "Console" }),
+    ]);
+  });
+
   it("separates callback refs from render and models their Strict Mode replay", () => {
     const result = analyzeReactSemantics("callback-ref.tsx", `
       import { useRef as ref } from "react"

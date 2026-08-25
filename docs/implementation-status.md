@@ -148,6 +148,10 @@ same property is proved for arbitrary TypeScript.
   cleanup functions. Inline JSX callback refs form a separate commit setup and
   returned-cleanup phase. Reassigned or opaque referenced event handlers are
   rejected rather than assumed pure. Aliased named imports from `react` are recognized.
+- Inline actions passed to named/default/namespace `startTransition` or the
+  setter returned by `useTransition` are traversed in the enclosing phase.
+  This preserves nested capabilities but does not claim a transition scheduler
+  model or support referenced action callbacks yet.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase
