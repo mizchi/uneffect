@@ -597,6 +597,36 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves an imported runtime class method through its immutable receiver alias", async () => {
+    const fileName = "examples/dogfood/imported-runtime-refinement.ts";
+    const runtimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
+    const source = readFileSync(fileName, "utf8");
+    const runtimeSource = readFileSync(runtimeFile, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const compilerOptions: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+    };
+    const program = ts.createProgram([fileName, runtimeFile], compilerOptions);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "importedTelemetry", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "importedTelemetry", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "importedTelemetry", temporal)).toEqual([]);
+
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-runtime-dogfood-"));
+    try {
+      const wrongFile = join(directory, "imported-runtime-refinement.ts");
+      const wrongRuntimeFile = join(directory, "imported-telemetry-runtime.ts");
+      writeFileSync(wrongFile, source);
+      writeFileSync(wrongRuntimeFile, runtimeSource.replace("this.attempted += 1;", "this.attempted += 2;"));
+      const wrongProgram = ts.createProgram([wrongFile, wrongRuntimeFile], compilerOptions);
+      expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "importedTelemetry", temporal)).toContainEqual(
+        expect.objectContaining({ code: "action-update-mismatch", modelName: "record", target: "attempted" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("proves a scaled telemetry capacity relation and catches unbalanced accounting", async () => {
     const fileName = "examples/dogfood/telemetry-capacity.ts";
     const source = readFileSync(fileName, "utf8");

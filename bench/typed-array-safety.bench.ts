@@ -32,6 +32,14 @@ const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
 const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts", import.meta.url), "utf8");
 const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/worker-codec-transfer.ts", import.meta.url), "utf8");
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
+const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
+const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
+const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
+const importedRuntimeRefinementSpec = parseSpec(importedRuntimeRefinementFile, importedRuntimeRefinementSource).temporal;
+const importedRuntimeRefinementProgram = ts.createProgram([importedRuntimeRefinementFile, importedTelemetryRuntimeFile], {
+  target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+});
 const initializedTelemetryDeliverySource = telemetryDeliverySource.replace(
   "let delivery: Promise<void>;\n  delivery = sendTelemetryBatch();",
   "const delivery = sendTelemetryBatch();",
@@ -933,6 +941,15 @@ describe("typed-array static verification", () => {
     validateRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
     validateRefinementInvariantBodies(fileName, source, "telemetryRouting", temporal);
     validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal);
+  }, { time: 500, iterations: 20 });
+
+  bench("validate an imported runtime method refinement in a warm Program", () => {
+    validateRefinementActionBodiesInProgram(
+      importedRuntimeRefinementProgram,
+      importedRuntimeRefinementFile,
+      "importedTelemetry",
+      importedRuntimeRefinementSpec,
+    );
   }, { time: 500, iterations: 20 });
 
   bench("unroll finite for-of refinement with abrupt cleanup", () => {

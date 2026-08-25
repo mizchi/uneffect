@@ -67,6 +67,38 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("receiver-method-alias.ts", source, "telemetry", specification.temporal)).toEqual([]);
   });
 
+  it("specializes an imported runtime class method only with Program symbol evidence", () => {
+    const validateActions = futureApi("validateRefinementActionBodiesInProgram");
+    const parseSpecification = futureApi("parseSpec");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-imported-runtime-"));
+    const runtimeFile = join(directory, "runtime.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import type { Runtime } from "./runtime.js"
+      /* uneffect:
+       * state sent: int
+       * init sent = 0
+       * action record: sent' = sent + 1
+       */
+      /* uneffect: refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement telemetry@1 action record */
+      export function record(runtime: Runtime) { const state = runtime; state.record() }
+    `;
+    try {
+      writeFileSync(runtimeFile, `export class Runtime { sent = 0; record() { this.sent++ } }`);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const specification = parseSpecification(mainFile, source) as { temporal: unknown };
+      expect(validateActions(program, mainFile, "telemetry", specification.temporal)).toEqual([]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

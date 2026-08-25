@@ -79,7 +79,12 @@ same property is proved for arbitrary TypeScript.
   member, destructured, or cyclic aliases remain unsupported. A reviewed local
   runtime-class method may use the same alias chain as its receiver; its body is
   specialized with the existing argument substitution and recursion guard.
-  This is not dynamic method dispatch. Finite loops are
+  In the Program-backed path, the runtime class may be imported: its parameter
+  type alias must resolve through the TypeChecker to an actual class
+  declaration. A same-shaped interface is not accepted. This remains exact
+  declaration-body specialization, not proof of closed-world dynamic method
+  dispatch; subclasses, proxies, and prototype mutation remain excluded.
+  Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The
   same completion machinery consumes a statically named block's own `break`

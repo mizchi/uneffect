@@ -692,6 +692,15 @@ function validateRefinementActionBodiesInSource(
     return resolveProgramFunction(checker, expression, seen);
   };
 
+  const resolveRuntimeClass = (parameter: ts.ParameterDeclaration | undefined): ts.ClassDeclaration | undefined => {
+    const type = parameter?.type;
+    if (!type || !ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return undefined;
+    if (!checker) return classes.get(type.typeName.text);
+    let symbol = checker.getSymbolAtLocation(type.typeName);
+    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+    return symbol?.declarations?.find(ts.isClassDeclaration);
+  };
+
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
     if (!checker) return true;
     const expected = kind === "set" ? "Set" : "Map";
@@ -1625,7 +1634,6 @@ function validateRefinementActionBodiesInSource(
     const implementation = functions.get(exportName);
     const runtimeParameter = implementation?.parameters[0];
     const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
-    const runtimeType = runtimeParameter?.type && ts.isTypeReferenceNode(runtimeParameter.type) && ts.isIdentifier(runtimeParameter.type.typeName) ? runtimeParameter.type.typeName.text : undefined;
     const guardedBody = implementation?.body && receiver ? earlyReturnGuard(implementation.body, receiver) : undefined;
     const actualGuard = guardedBody?.guard;
     if (action.guard && !actualGuard) {
@@ -1636,7 +1644,7 @@ function validateRefinementActionBodiesInSource(
       diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
     }
     const updates = new Map<string, TemporalExpression>();
-    const completion = guardedBody && receiver ? collect(guardedBody.updates, receiver, runtimeType ? classes.get(runtimeType) : undefined, new Map(), updates) : undefined;
+    const completion = guardedBody && receiver ? collect(guardedBody.updates, receiver, resolveRuntimeClass(runtimeParameter), new Map(), updates) : undefined;
     if (!completion) {
       diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
       continue;

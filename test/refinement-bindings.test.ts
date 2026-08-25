@@ -1357,6 +1357,85 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("resolves imported runtime class methods only in the Program-backed path", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-runtime-method-"));
+    const runtimeFile = join(directory, "runtime.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import type { Runtime } from "./runtime.js"
+      /* uneffect:
+       * state sent: int
+       * state attempted: int
+       * init sent = 0
+       * init attempted = 0
+       * action record: sent' = sent + 1, attempted' = attempted + 1
+       */
+      /* uneffect: refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement telemetry@1 action record */
+      export function record(runtime: Runtime) {
+        const state = runtime
+        state.record()
+      }
+    `;
+    try {
+      writeFileSync(runtimeFile, `
+        export class Runtime {
+          sent = 0
+          attempted = 0
+          record() { this.attempted++; this.sent++ }
+        }
+      `);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const spec = parseSpec(mainFile, source).temporal;
+      expect(validateRefinementActionBodiesInProgram(program, mainFile, "telemetry", spec)).toEqual([]);
+      expect(validateRefinementActionBodies(mainFile, source, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+      const computed = source.replace("state.record()", 'state["record"]()');
+      writeFileSync(mainFile, computed);
+      const computedProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(computedProgram, mainFile, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+
+      const union = source.replace("export function record(runtime: Runtime)", "export function record(runtime: Runtime | Runtime)");
+      writeFileSync(mainFile, union);
+      const unionProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(unionProgram, mainFile, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+
+      writeFileSync(runtimeFile, `
+        export interface Runtime {
+          sent: number
+          attempted: number
+          record(): void
+        }
+      `);
+      writeFileSync(mainFile, source);
+      const structuralProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(structuralProgram, mainFile, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not treat a missing action binding as a successful body proof", () => {
     const source = `
       /* uneffect:

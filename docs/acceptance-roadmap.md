@@ -197,9 +197,16 @@ The same immutable whole-runtime alias may receive a method call when the
 runtime class and identifier-named method declaration are local and statically
 known. Uneffect specializes that body exactly as for a direct receiver call.
 The telemetry-routing dogfood invokes `record` through such an alias; changing
-the declaration to `let` is an explicit unsupported-body control. Imported,
-computed, polymorphic, reassigned, or escaping method receivers are not proved
-by this syntax-only path.
+the declaration to `let` is an explicit unsupported-body control. The
+Program-backed validator also follows an imported runtime parameter type to
+its TypeChecker-resolved class declaration and specializes an identifier-named
+method from that declaration. The two-file imported-telemetry dogfood checks
+action updates, its accounting invariant, and create/observe projection; a
+method body that increments the wrong amount is rejected. Syntax-only imports,
+same-shaped interfaces, computed or polymorphic methods, and reassigned or
+escaping receivers are not proved. This body comparison also does not prove
+closed-world dispatch: unscanned subclasses, prototype replacement, proxies,
+and runtime monkey-patching remain outside the refinement claim.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and

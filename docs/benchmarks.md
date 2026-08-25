@@ -421,6 +421,12 @@ retained as a development-host regression observation rather than compared
 directly with the older, smaller fixture. Mutable, imported, computed, and
 polymorphic method receivers remain outside this measurement and proof claim.
 
+The separate two-file imported-runtime dogfood, validated against a warm
+TypeScript Program, measured 0.0511 ms mean over 9,776 samples (0.88% RME) on
+the same date. Program construction, Z3 discharge, invariant comparison, and
+state projection are outside this microbenchmark; it isolates repeated action
+validation with an already-created checker and symbol graph.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
