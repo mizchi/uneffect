@@ -222,6 +222,13 @@ resolution transition must occur before the retry may commit. Effect and ref
 setup still belong only to the retry's commit generation. This captures the
 minimal no-effects-before-successful-retry law without modeling fallback trees.
 
+The bounded `repeatedSuspenseRetry` scenario extends the same law across two
+distinct suspension identities. A retry may suspend again, but it cannot create
+the second suspension before the first one resolves; the final commit cannot
+occur before the second suspension resolves. Commit-side Effect and ref setup
+still occurs only once, for the final successful generation. This is a finite
+causal trace, not an unbounded retry or thenable model.
+
 Committed render attempts carry a stable model-local generation such as
 `commit@0`. Each lifecycle entry stores both its transition and owning commit.
 Consequently, the identical transition spelling used by Strict Mode replay and
@@ -245,8 +252,9 @@ Program result once and includes the same diagnostics. The analysis is
 metadata-only and adds no runtime dependency.
 
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
-`production`, `strictModeDevelopment`, `concurrentInterruption`, or
-`dependencyChange`, or `suspenseRetry` replay into reviewable Quint. It uses
+`production`, `strictModeDevelopment`, `concurrentInterruption`,
+`dependencyChange`, `suspenseRetry`, or `repeatedSuspenseRetry` replay into
+reviewable Quint. It uses
 separate
 attempted/committed/discarded render counts, one flag per commit generation,
 separate suspended/resolved flags, and one setup/cleanup counter pair per
@@ -256,7 +264,8 @@ commit instances remain unordered. The
 `reactLifecycleSafe` invariant requires cleanup never to lead setup, setup to
 lead cleanup by at most one, and both counters to stay within the selected
 scenario's bounds. Test-only early-cleanup, setup-after-discard,
-wrong-generation setup, and retry-before-resolution transitions demonstrate
+wrong-generation setup, and retry-before-resolution transitions (including a
+retry that suspends again) demonstrate
 that the invariant is load-bearing under the Quint simulator. This is bounded
 lifecycle evidence, not a proof of React's scheduler or host commit order.
 
@@ -288,7 +297,8 @@ This is a tested initial fragment, not a complete React semantics:
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
-- Suspense fallback trees and nested boundaries, transition priority, Offscreen trees, server components, hydration,
+- Suspense fallback trees, nested boundaries, rejected thenables, unbounded
+  retries, transition priority, Offscreen trees, server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
@@ -307,8 +317,8 @@ and mutates props as independent negative controls. The same component also
 generates the bounded interrupted-render model and locks the rule that only a
 committed render authorizes its subscription/ref setup. Its dependency-change
 projection additionally distinguishes the generation owning old cleanup from
-the one owning replacement setup. Its Suspense projection locks the
-suspend-resolve-retry ordering. The checked-in
+the one owning replacement setup. Its Suspense projections lock both the
+single and repeated suspend-resolve-retry ordering. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

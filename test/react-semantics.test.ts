@@ -817,6 +817,18 @@ describe("React Function Component semantics", () => {
           { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
+      repeatedSuspenseRetry: {
+        renderInvocations: 3,
+        renderAttempts: [
+          { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
+          { instance: "render@1", outcome: "suspended", suspension: "suspension@1", retryOf: "suspension@0" },
+          { instance: "render@2", outcome: "committed", commit: "commit@0", retryOf: "suspension@1" },
+        ],
+        effects: [
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+        ],
+      },
     });
   });
 
@@ -952,6 +964,24 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("action resolve_suspension_0");
     expect(quint).toContain("resolved_suspension_0 == 1");
     expect(quint).toContain("commit_generation_0 == 1 implies resolved_suspension_0 == 1");
+  });
+
+  it("models a retry that suspends again before the final commit", () => {
+    const result = analyzeReactSemantics("repeated-suspense.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => { console.log("visible") }, []); return null }
+    `);
+    const replay = result.components[0]!.replay.repeatedSuspenseRetry;
+    expect(replay.renderAttempts).toEqual([
+      { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
+      { instance: "render@1", outcome: "suspended", suspension: "suspension@1", retryOf: "suspension@0" },
+      { instance: "render@2", outcome: "committed", commit: "commit@0", retryOf: "suspension@1" },
+    ]);
+    const quint = generateReactLifecycleQuint("repeated_suspense", result.components[0]!, "repeatedSuspenseRetry");
+    expect(quint).toContain("action resolve_suspension_1");
+    expect(quint).toContain("suspension_1 == 1 implies resolved_suspension_0 == 1");
+    expect(quint).toContain("commit_generation_0 == 1 implies resolved_suspension_1 == 1");
   });
 
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {

@@ -71,4 +71,8 @@ describe("React semantic analysis", () => {
   bench("generate Suspense-retry Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`suspense_${index}`, component, "suspenseRetry"));
   }, { time: 500, iterations: 20 });
+
+  bench("generate repeated-Suspense-retry Quint for 128 summaries", () => {
+    analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`repeated_suspense_${index}`, component, "repeatedSuspenseRetry"));
+  }, { time: 500, iterations: 20 });
 });

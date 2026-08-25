@@ -166,4 +166,33 @@ describe("React lifecycle Quint projection", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  test("rejects a repeated Suspense attempt before the prior suspension resolves", () => {
+    const analysis = analyzeReactSemantics("repeated-profile.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => { console.log("visible") }, []); return null }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-repeated-suspense-"));
+    const path = join(directory, "repeated-suspense.qnt");
+    const run = (broken: boolean) => {
+      writeFileSync(path, generateReactLifecycleQuint("react_repeated_suspense", analysis.components[0]!, "repeatedSuspenseRetry", {
+        allowRetryBeforeResolution: broken,
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactLifecycleSafe", "--max-steps=8", "--max-samples=750",
+        "--seed=0x7265706561746564", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run(false);
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      const broken = run(true);
+      expect(broken.error).toBeUndefined();
+      expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+      expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

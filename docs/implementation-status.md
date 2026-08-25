@@ -170,7 +170,7 @@ same property is proved for arbitrary TypeScript.
   immutable identifier aliases.
 - Component and custom-Hook summaries expose production, development Strict
   Mode initial-mount, one bounded concurrent-interruption, dependency-change,
-  and Suspense-retry projections. These distinguish committed, discarded, and
+  and single/repeated Suspense-retry projections. These distinguish committed, discarded, and
   suspended render attempts and model render multiplicity and
   Effect/callback-ref setup/cleanup cycles without claiming total host
   scheduling order. Source-derived instance paths preserve each setup's own
@@ -178,11 +178,12 @@ same property is proved for arbitrary TypeScript.
 - Dependency-change replay assigns the old setup/cleanup to its original commit
   generation and the replacement setup to the next generation. A lifecycle
   transition cannot be justified by a different or uncommitted generation.
-- A bounded Suspense replay gives the suspended attempt an identity, resolves
-  it explicitly, and permits the replacement commit only afterward. It does
-  not claim fallback-tree, nested-boundary, or scheduler coverage.
+- Bounded Suspense replays give each suspended attempt an identity, resolve it
+  explicitly, and permit either another suspending retry or the replacement
+  commit only afterward. They do not claim unbounded retry, fallback-tree,
+  nested-boundary, or scheduler coverage.
 - The replay IR generates reviewable production, development Strict Mode,
-  interrupted-render, dependency-change, or Suspense-retry Quint with
+  interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.
   `reactLifecycleSafe` rejects cleanup-before-setup, commit-side setup without a
   committed render, retry-before-resolution, and counter-bound violations

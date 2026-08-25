@@ -59,6 +59,7 @@ export interface ReactReplayModel {
   concurrentInterruption: ReactReplayScenario;
   dependencyChange: ReactReplayScenario;
   suspenseRetry: ReactReplayScenario;
+  repeatedSuspenseRetry: ReactReplayScenario;
 }
 
 export interface ReactComponentSummary {
@@ -178,6 +179,15 @@ function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayMo
       renderAttempts: [
         { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
         { instance: "render@1", outcome: "committed", commit: "commit@0", retryOf: "suspension@0" },
+      ],
+      effects: effects([{ transition: "setup", commit: "commit@0" }]),
+    },
+    repeatedSuspenseRetry: {
+      renderInvocations: 3,
+      renderAttempts: [
+        { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
+        { instance: "render@1", outcome: "suspended", suspension: "suspension@1", retryOf: "suspension@0" },
+        { instance: "render@2", outcome: "committed", commit: "commit@0", retryOf: "suspension@1" },
       ],
       effects: effects([{ transition: "setup", commit: "commit@0" }]),
     },
@@ -1153,7 +1163,7 @@ export function generateReactLifecycleQuint(
     if (attempt.outcome !== "committed" && attempt.commit) throw new Error(`${attempt.outcome} render ${attempt.instance} cannot create commit generation ${attempt.commit}`);
     if (attempt.outcome === "suspended" && !attempt.suspension) throw new Error(`suspended render ${attempt.instance} has no suspension identity`);
     if (attempt.outcome !== "suspended" && attempt.suspension) throw new Error(`${attempt.outcome} render ${attempt.instance} cannot create suspension ${attempt.suspension}`);
-    if (attempt.retryOf && attempt.outcome !== "committed") throw new Error(`only a committed retry can refer to suspension ${attempt.retryOf}`);
+    if (attempt.retryOf && attempt.outcome === "discarded") throw new Error(`discarded render ${attempt.instance} cannot retry suspension ${attempt.retryOf}`);
   }
   const commitIds = [...new Set(replay.renderAttempts.flatMap(({ commit }) => commit ? [commit] : []))];
   const suspensionIds = [...new Set(replay.renderAttempts.flatMap(({ suspension }) => suspension ? [suspension] : []))];
@@ -1222,16 +1232,18 @@ export function generateReactLifecycleQuint(
       updates,
       [`instance: ${attempt.instance}`, `outcome: ${attempt.outcome}${attempt.reason ? ` (${attempt.reason})` : ""}${attempt.commit ? `; generation: ${attempt.commit}` : ""}`],
     );
-    if (options.allowRetryBeforeResolution && attempt.retryOf && commitVariable) {
+    if (options.allowRetryBeforeResolution && attempt.retryOf) {
       const suspension = suspensionVariables.get(attempt.retryOf)!;
+      const earlyUpdates = new Map([
+        ["render_attempt_count", "render_attempt_count + 1"],
+        [outcomeVariable, `${outcomeVariable} + 1`],
+      ]);
+      if (commitVariable) earlyUpdates.set(commitVariable, "1");
+      if (attempt.suspension) earlyUpdates.set(suspensionVariables.get(attempt.suspension)!.suspended, "1");
       action(
-        `commit_render_${index}_before_resolution`,
+        `retry_render_${index}_before_resolution`,
         [`render_attempt_count == ${index}`, `${suspension.suspended} == 1`, `${suspension.resolved} == 0`],
-        new Map([
-          ["render_attempt_count", "render_attempt_count + 1"],
-          ["committed_render_count", "committed_render_count + 1"],
-          [commitVariable, "1"],
-        ]),
+        earlyUpdates,
       );
     }
   });
@@ -1277,7 +1289,7 @@ export function generateReactLifecycleQuint(
   for (const suspension of suspensionIds) lines.push(`    resolve_suspension_${suspensionIds.indexOf(suspension)},`);
   replay.renderAttempts.forEach((attempt, index) => {
     lines.push(`    ${attempt.outcome === "committed" ? "commit" : attempt.outcome === "suspended" ? "suspend" : "discard"}_render_${index},`);
-    if (options.allowRetryBeforeResolution && attempt.retryOf) lines.push(`    commit_render_${index}_before_resolution,`);
+    if (options.allowRetryBeforeResolution && attempt.retryOf) lines.push(`    retry_render_${index}_before_resolution,`);
   });
   replay.effects.forEach((_effect, index) => {
     for (const name of lifecycleActions[index]!) lines.push(`    ${name},`);
@@ -1300,9 +1312,11 @@ export function generateReactLifecycleQuint(
     `${state.resolved} <= ${state.suspended}`,
   );
   for (const attempt of replay.renderAttempts) {
-    if (attempt.retryOf && attempt.commit) bounds.push(
-      `(${commitVariables.get(attempt.commit)} == 1 implies ${suspensionVariables.get(attempt.retryOf)!.resolved} == 1)`,
-    );
+    if (!attempt.retryOf) continue;
+    const retryMarker = attempt.commit
+      ? commitVariables.get(attempt.commit)!
+      : suspensionVariables.get(attempt.suspension!)!.suspended;
+    bounds.push(`(${retryMarker} == 1 implies ${suspensionVariables.get(attempt.retryOf)!.resolved} == 1)`);
   }
   replay.effects.forEach((effect, index) => {
     const setupSteps = effect.lifecycle.filter(({ transition }) => transition === "setup");
