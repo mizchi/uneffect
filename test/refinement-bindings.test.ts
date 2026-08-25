@@ -1019,6 +1019,45 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("consumes a labeled-block break after finally and before the outer continuation", () => {
+    const source = `/* uneffect:
+      state sent: int
+      state finalized: int
+      state continued: int
+      state stop: bool
+      init sent = 0
+      init finalized = 0
+      init continued = 0
+      init stop = false
+      action route: sent' = stop ? sent : sent + 1, finalized' = finalized + 1, continued' = continued + 1
+    */
+      interface Runtime { sent: number; finalized: number; continued: number; stop: boolean }
+      /* uneffect: refinement routing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement routing@1 action route */
+      export function route(runtime: Runtime) {
+        delivery: {
+          try {
+            if (runtime.stop) break delivery
+            runtime.sent++
+          } finally {
+            runtime.finalized++
+          }
+        }
+        runtime.continued++
+      }
+    `;
+    expect(validateRefinementActionBodies("labeled-break.ts", source, "routing", parseSpec("labeled-break.ts", source).temporal)).toEqual([]);
+
+    for (const invalid of [
+      source.replace("break delivery", "continue delivery"),
+      source.replace("break delivery", "break outside"),
+      source.replace("if (runtime.stop) break delivery", "if (runtime.stop) return"),
+    ]) expect(validateRefinementActionBodies("invalid-labeled-break.ts", invalid, "routing", parseSpec("invalid-labeled-break.ts", invalid).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
+    );
+  });
+
   it("merges multiple nested member writes independent of model field order", () => {
     const source = `/* uneffect:
       state lease: { owner: int, epoch: int }

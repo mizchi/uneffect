@@ -53,6 +53,18 @@ describe("Uneffect dogfood", () => {
     );
   });
 
+  it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
+    const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "labeledDelivery", temporal)).toEqual([]);
+
+    const invertedBreak = source.replace("if (runtime.skip) break attempt;", "if (!runtime.skip) break attempt;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, invertedBreak, "labeledDelivery", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "delivered" }),
+    );
+  });
+
   it("accepts grouped resource-release cases and catches an uncleared exit", () => {
     const fileName = "examples/dogfood/grouped-resource-release.ts";
     const source = readFileSync(fileName, "utf8");

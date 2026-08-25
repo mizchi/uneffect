@@ -171,6 +171,13 @@ call escapes, cycles, member/destructuring aliases, and dynamically selected
 targets remain unsupported rather than being treated as the original runtime.
 The finite telemetry batch dogfood uses this alias form before its loop.
 
+A separate labeled-delivery acceptance path models cancellation with
+`attempt: { ... break attempt }`. The local break is consumed only after the
+selected path runs its `finally`, and the audit statement following the label
+runs on both the break and ordinary paths. Labeled `continue`, cross/nested
+labels, and actual function returns inside this fragment remain fail-closed;
+this is not a general labeled-control-flow fixed point.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

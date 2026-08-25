@@ -39,6 +39,41 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("receiver-alias.ts", source, "telemetry", specification.temporal)).toEqual([]);
   });
 
+  it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state delivered: int
+       * state finalized: int
+       * state audited: int
+       * state skip: bool
+       * init delivered = 0
+       * init finalized = 0
+       * init audited = 0
+       * init skip = false
+       * action deliver: delivered' = skip ? delivered : delivered + 1, finalized' = finalized + 1, audited' = audited + 1
+       */
+      interface Runtime { delivered: number; finalized: number; audited: number; skip: boolean }
+      /* uneffect: refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement telemetry@1 action deliver */
+      export function deliver(runtime: Runtime) {
+        attempt: {
+          try {
+            if (runtime.skip) break attempt
+            runtime.delivered++
+          } finally {
+            runtime.finalized++
+          }
+        }
+        runtime.audited++
+      }
+    `;
+    const specification = parseSpecification("labeled-delivery.ts", source) as { temporal: unknown };
+    expect(validateActions("labeled-delivery.ts", source, "telemetry", specification.temporal)).toEqual([]);
+  });
+
   it("refines finite TypeScript iteration with abrupt completion and finally cleanup", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

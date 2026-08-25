@@ -104,6 +104,9 @@ const leaseAuthoritySpec = parseSpec(leaseAuthorityFile, leaseAuthoritySource).t
 const finiteTelemetryBatchFile = "examples/dogfood/finite-telemetry-batch.ts";
 const finiteTelemetryBatchSource = readFileSync(finiteTelemetryBatchFile, "utf8");
 const finiteTelemetryBatchSpec = parseSpec(finiteTelemetryBatchFile, finiteTelemetryBatchSource).temporal;
+const labeledTelemetryFile = "examples/dogfood/labeled-telemetry-delivery.ts";
+const labeledTelemetrySource = readFileSync(labeledTelemetryFile, "utf8");
+const labeledTelemetrySpec = parseSpec(labeledTelemetryFile, labeledTelemetrySource).temporal;
 const leaseAuthorityProgram = ts.createProgram([leaseAuthorityFile], {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.NodeNext,
@@ -938,6 +941,15 @@ describe("typed-array static verification", () => {
       finiteTelemetryBatchSource,
       "telemetryBatch",
       finiteTelemetryBatchSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("consume a labeled refinement break through finally", () => {
+    validateRefinementActionBodies(
+      labeledTelemetryFile,
+      labeledTelemetrySource,
+      "labeledDelivery",
+      labeledTelemetrySpec,
     );
   }, { time: 500, iterations: 20 });
 

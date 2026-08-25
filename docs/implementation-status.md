@@ -76,10 +76,14 @@ same property is proved for arbitrary TypeScript.
   bounded ascending loops, finite numeric/boolean literal `for...of` loops, and
   acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
   through lexical, non-escaping `const` alias chains; mutable, escaping,
-  member, destructured, or cyclic aliases remain unsupported. Finite loops are expanded into the same
-  completion sequence as straight-line code, so an early return suppresses
+  member, destructured, or cyclic aliases remain unsupported. Finite loops are
+  expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The
-  action-control subset keeps return and throw completion predicates distinct,
+  same completion machinery consumes a statically named block's own `break`
+  after its mandatory `finally` work and then executes the outer continuation.
+  Labeled loops, `continue`, nested/cross-label transfers, and real returns
+  inside that labeled fragment remain unsupported. The action-control subset
+  keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
   their shared boundary. Post-try statements run only on the remaining normal
   paths before joining with retained abrupt paths. Catch-local conditional void

@@ -1000,6 +1000,39 @@ function validateRefinementActionBodiesInSource(
         sequenceThrowValue(completion, continued),
       );
     };
+    const rewriteLabeledBreaks = (statement: ts.LabeledStatement): ts.Block | undefined => {
+      if (!ts.isBlock(statement.statement)) return undefined;
+      let invalid = false;
+      const blockStart = statement.statement.getStart(source);
+      const replacements: Array<{ start: number; end: number }> = [];
+      const pending: ts.Node[] = [...statement.statement.getChildren(source)];
+      while (pending.length > 0) {
+        const node = pending.pop()!;
+        if (ts.isFunctionLike(node) || ts.isClassLike(node) || ts.isLabeledStatement(node)
+          || ts.isReturnStatement(node)
+          || ts.isContinueStatement(node) && !!node.label) {
+          invalid = true;
+          continue;
+        }
+        if (ts.isBreakStatement(node) && node.label) {
+          if (node.label.text !== statement.label.text) invalid = true;
+          else replacements.push({ start: node.getStart(source) - blockStart, end: node.getEnd() - blockStart });
+          continue;
+        }
+        pending.push(...node.getChildren(source));
+      }
+      if (invalid || replacements.length === 0) return undefined;
+      let rewritten = statement.statement.getText(source);
+      replacements.sort((left, right) => right.start - left.start);
+      for (const replacement of replacements) {
+        // The existing return completion implements exactly the local abrupt
+        // path. The enclosing labeled-statement handler consumes it instead
+        // of propagating it as a function return.
+        rewritten = `${rewritten.slice(0, replacement.start)}return;${rewritten.slice(replacement.end)}`;
+      }
+      const parsed = ts.createSourceFile("__uneffect_labeled_block.ts", rewritten, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      return parsed.statements.length === 1 && ts.isBlock(parsed.statements[0]) ? parsed.statements[0] : undefined;
+    };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
@@ -1029,6 +1062,27 @@ function validateRefinementActionBodiesInSource(
           );
         }
         return "throw";
+      }
+      if (ts.isLabeledStatement(statement)) {
+        const labeledBlock = rewriteLabeledBreaks(statement);
+        if (!labeledBlock) return undefined;
+        const completion = collect(
+          labeledBlock, receiver, runtimeClass, substitutions,
+          updates, new Map(localValues), activeCalls, true, allowTerminalThrow,
+        );
+        if (!completion) return undefined;
+        // A return here is the rewritten break and is consumed by this label.
+        // Throws remain abrupt and only the non-throw paths execute the outer
+        // continuation.
+        const escapingThrow = makeCompletion(
+          { kind: "boolean", value: false },
+          completionPredicate(completion, "throw"),
+          completionThrowValue(completion),
+        );
+        if (escapingThrow === "normal") continue;
+        return applyContinuation(
+          escapingThrow, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+        );
       }
       if (ts.isForStatement(statement)) {
         const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
