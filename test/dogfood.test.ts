@@ -17,6 +17,23 @@ import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } fr
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("accepts mandatory finally release of a loop-local upload session alias", () => {
+    const fileName = "examples/dogfood/upload-session-finally.ts";
+    const source = readFileSync(fileName, "utf8");
+    const verified = analyzeAsyncSafety(fileName, source);
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "uploadConfiguredParts", kind: "disposed-resource-use",
+    }));
+
+    const missingClear = source.replace(
+      "activeSession = undefined;",
+      "// missing mandatory alias clear",
+    );
+    expect(analyzeAsyncSafety(fileName, missingClear).diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "uploadConfiguredParts", kind: "disposed-resource-use",
+    }));
+  });
+
   it("refines a finite telemetry batch across early return and per-sink finalization", async () => {
     const fileName = "examples/dogfood/finite-telemetry-batch.ts";
     const source = readFileSync(fileName, "utf8");

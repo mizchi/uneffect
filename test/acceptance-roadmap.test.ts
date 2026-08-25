@@ -665,6 +665,43 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.orderedEvents).toContainEqual(expect.objectContaining({ kind: "transfer", resource: "buffer" }));
   });
 
+  it("discharges a loop-local resource alias only when finally clears every exit", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const source = `
+      interface Session { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Promise<Session>
+      declare function use(session: Session): Promise<void>
+      async function deliver(enabled: boolean, fail: boolean) {
+        let active: Session | undefined
+        while (enabled) {
+          await using session = await open()
+          active = session
+          try {
+            await use(session)
+            if (fail) throw new Error("delivery failed")
+          } finally {
+            active = undefined
+          }
+        }
+        active?.send()
+      }
+    `;
+    const verified = analyzeAsync("finally-cleared-resource.ts", source) as {
+      diagnostics: Array<{ functionName: string; kind: string }>;
+    };
+    expect(verified.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "deliver", kind: "disposed-resource-use",
+    }));
+
+    const conditionalClear = analyzeAsync("conditionally-cleared-resource.ts", source.replace(
+      "active = undefined",
+      "if (!fail) active = undefined",
+    )) as typeof verified;
+    expect(conditionalClear.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliver", kind: "disposed-resource-use",
+    }));
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

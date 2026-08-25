@@ -134,7 +134,9 @@ same property is proved for arbitrary TypeScript.
   in `catch` or `finally` remains conservative because a later throw can lose
   the replacement.
 - `using` and `await using` track reverse-order disposal, exceptional exits,
-  and selected exactly-once lifetime obligations.
+  and selected exactly-once lifetime obligations. The finite loop alias summary
+  accepts a direct or static-slot alias cleared by a common `finally` for every
+  continuing input state; a conditional clear remains a disposed-use error.
 - Web and Node event-loop models cover the implemented ordering fragments for
   timers, intervals, microtasks, animation frames, Promise jobs, cancellation,
   and selected Node phases. Host-specific gaps remain explicit.

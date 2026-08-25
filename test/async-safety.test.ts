@@ -2048,6 +2048,55 @@ describe("async error and explicit resource safety", () => {
     expect(run(aliasQuint).status).not.toBe(0);
   });
 
+  it("joins mandatory finally clears into loop-local resource alias flow", () => {
+    const result = analyzeAsyncSafety("finally-cleared-resource-alias.ts", `
+      interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Promise<Resource>
+      declare function work(resource: Resource): Promise<void>
+      async function cleared(enabled: boolean) {
+        let alias: Resource | undefined
+        while (enabled) {
+          await using resource = await open()
+          alias = resource
+          try { await work(resource) }
+          finally { alias = undefined }
+        }
+        alias?.send()
+      }
+      async function conditional(enabled: boolean, release: boolean) {
+        let alias: Resource | undefined
+        while (enabled) {
+          await using resource = await open()
+          alias = resource
+          try { await work(resource) }
+          finally { if (release) alias = undefined }
+        }
+        alias?.send()
+      }
+      async function aggregate(enabled: boolean) {
+        const state: { current?: Resource } = {}
+        while (enabled) {
+          await using resource = await open()
+          state.current = resource
+          try { await work(resource) }
+          finally { state.current = undefined }
+        }
+        state.current?.send()
+      }
+    `);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "cleared", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "conditional", kind: "disposed-resource-use",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "aggregate", kind: "disposed-resource-use",
+    }));
+    expect(result.resourceAliases.filter(({ owner }) => owner === "conditional")).toHaveLength(1);
+    expect(result.resourceAliases.filter(({ owner }) => owner === "cleared" || owner === "aggregate")).toEqual([]);
+  });
+
   it("shares one loop decision across aliases of the same repeated resource generation", () => {
     const result = analyzeAsyncSafety("repeated-resource-multiple-aliases.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }

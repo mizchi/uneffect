@@ -564,6 +564,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
       - [x] Join resource aliases introduced in `for`/`for...in`/`for...of`/`while`/`do...while` bodies when every executed iteration terminally clears or returns; preserve zero-iteration state and reject pre-clear abrupt completion.
       - [x] Compute a finite per-target loop exit summary so clear-before-`break`/`continue` paths join safely, while uncleared exits and clear-then-reassign paths remain escaping.
+      - [x] Treat an unconditional direct/static-slot alias clear in a loop-local `finally` as the common exceptional, normal, and transfer exit; retain conditional or uncleared finally paths conservatively.
       - [x] Preserve acquisition index, repeated-site classification, and a stable symbolic generation snapshot on every reported resource-alias escape.
       - [x] Lower reported alias capture, lexical disposal, and post-scope use into unified Quint; compare the captured generation with `disposed_generation_N` and violate `resourceSafe` on a disposed-generation match.
       - [x] Add repeat/exit decisions for repeated alias acquisitions, recapturing the incremented generation on every arbitrary finite iteration and preserving a zero-iteration skip path.

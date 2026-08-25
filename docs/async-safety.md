@@ -659,8 +659,12 @@ entry state, while `do...while` applies its mandatory first iteration. A
 The restricted path summary accepts `break` and `continue` only after the
 target is cleared, treats `return` as unable to reach the post-loop use, and
 rejects `throw` conservatively. Reassigning the target after a clear resets the
-proof. Nested loops, switches, try/finally, and general loop invariants remain
-unsupported by this join. Escapes that are still
+proof. A loop-local `try` with `finally` is accepted when that finally clears
+the direct alias or static aggregate slot for both cleared and uncleared input
+states; this covers normal completion, rejection/throw, return, and loop
+transfer without treating a conditional clear as mandatory. Nested loops,
+switches inside the loop summary, try/catch state joins not discharged by such
+a finally, and general loop invariants remain unsupported by this join. Escapes that are still
 reported retain a symbolic acquisition-generation snapshot. Unified Quint
 lowering increments that generation on every modeled acquisition, captures it
 for each alias, and compares it with the generation recorded by lexical

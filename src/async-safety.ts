@@ -1163,6 +1163,18 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           : { normal: new Set(input), safe: true };
         return { normal: new Set([...thenFlow.normal, ...elseFlow.normal]), safe: thenFlow.safe && elseFlow.safe };
       }
+      if (ts.isTryStatement(statement) && statement.finallyBlock) {
+        // Finally receives both the uncleared and cleared states because the
+        // protected region may complete normally or abruptly at any point.
+        // Only a finally that clears every continuing state (or terminates it
+        // after clearing) can discharge the post-loop alias fact.
+        const finallyFlow = loopClearFlow(statement.finallyBlock, new Set([false, true]), target);
+        if (!finallyFlow.safe) return { normal: new Set(input), safe: false };
+        for (const cleared of finallyFlow.normal) {
+          if (!cleared) return { normal: new Set(input), safe: false };
+        }
+        return finallyFlow;
+      }
       if (ts.isReturnStatement(statement)) return { normal: new Set(), safe: true };
       if (ts.isBreakStatement(statement) || ts.isContinueStatement(statement)) {
         let safe = true;

@@ -920,6 +920,13 @@ With clear-before-continue and clear-before-break paths added to the batch,
 the fixture measured 128.81 ms mean over five cold samples (6.73% relative
 margin of error), remaining within the prior cold-run range.
 
+On 2026-08-25, cold analysis of `upload-session-finally.ts`, which assigns an
+`await using` session to a loop-carried alias and clears it in a mandatory
+`finally`, measured 121.26 ms mean over 20 samples (1.60% relative margin of
+error). This includes TypeScript Program construction and symbol-aware alias
+flow. It is a small-file latency observation, not a scaling claim for general
+exception CFGs.
+
 ## Collection refinement receiver identity
 
 On 2026-08-23, the Node Lease authority dogfood (eight Set/Map actions) measured

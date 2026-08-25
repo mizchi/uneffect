@@ -234,6 +234,13 @@ path-sensitive alias analysis. The runtime assertions remain separate clauses:
 an arbitrary Hoare `requires` or `ensures` expression is not automatically
 converted into a runtime check.
 
+The async resource acceptance path recognizes a loop-local alias of an
+`await using` resource as released when a common `finally` clears it on every
+continuing exit. The check covers normal completion and failure before lexical
+async disposal. Replacing the mandatory assignment with a one-branch clear
+retains `disposed-resource-use`; arbitrary loop-carried alias relations remain
+outside this finite must-clear summary.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with
