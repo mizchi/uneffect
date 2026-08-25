@@ -141,6 +141,30 @@ export const corsaCheckerFactRule = createRule({
         functions.push(pending);
         bindingFunctions.set(initializer, pending);
       },
+      MethodDefinition(node: any) {
+        if (node.computed || node.kind !== "method" || node.key?.type !== "Identifier") return;
+        const classBody = node.parent;
+        const classNode = classBody?.parent;
+        if (classBody?.type !== "ClassBody" || classNode?.type !== "ClassDeclaration" || classNode.id?.type !== "Identifier") return;
+        const wrapper = classNode.parent?.type === "ExportNamedDeclaration" || classNode.parent?.type === "ExportDefaultDeclaration"
+          ? classNode.parent
+          : classNode;
+        if (wrapper.parent?.type !== "Program" || node.value?.type !== "FunctionExpression") return;
+        const directSymbol = checker.getSymbolAtLocation(node.key as Node);
+        const type = checker.getTypeAtLocation(node.key as Node);
+        const symbol = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
+        if (!symbol) return;
+        const pending: PendingFunction = {
+          node,
+          symbolId: symbol.id,
+          name: `${classNode.id.name}.${node.key.name}`,
+          typeRepr: type ? checker.typeToString(type) : "unknown",
+          start: byteOffset(text, node.range[0]),
+          end: byteOffset(text, node.range[1]),
+        };
+        functions.push(pending);
+        bindingFunctions.set(node.value, pending);
+      },
       ArrowFunctionExpression: enterBindingFunction,
       "ArrowFunctionExpression:exit": exitBindingFunction,
       FunctionExpression: enterBindingFunction,

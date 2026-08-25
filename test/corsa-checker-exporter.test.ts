@@ -170,4 +170,58 @@ describe("corsa-bind checker fact exporter", () => {
       provenance: { satisfiesRequirement: true },
     });
   });
+
+  it("exports checker-backed class methods and cross-file direct method calls", async () => {
+    const files = {
+      "a.ts": `
+        export class Logger {
+          /* uneffect: effect Console */
+          emit(message: string): void { console.log(message) }
+        }
+      `,
+      "b.ts": `
+        import { Logger } from "./a.js";
+        export function main(logger: Logger) { logger.emit("x") }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+
+    expect(compared.equivalent, JSON.stringify({
+      schemaDrift: compared.schemaDrift,
+      typescriptIr: compared.typescriptIr,
+      corsaIr: compared.corsaIr,
+    }, null, 2)).toBe(true);
+    expect(compared.typescriptIr.functions).toEqual([
+      { name: "Logger.emit", effects: ["Console"] },
+      { name: "main", effects: ["Console"] },
+    ]);
+    expect(compared.typescriptIr.calls).toEqual([
+      { caller: "main", callee: "Logger.emit", callbackTiming: "none" },
+    ]);
+  });
+
+  it("fails closed when an explicitly annotated computed method is outside checker coverage", async () => {
+    const files = {
+      "fixture.ts": `
+        const key = "emit" as const;
+        class Logger {
+          /* uneffect: effect Console */
+          [key]() { console.log("x") }
+        }
+        export function main(logger: Logger) { logger[key]() }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+
+    expect(compared).toMatchObject({
+      equivalent: false,
+      semanticEquivalent: true,
+      provenance: { satisfiesRequirement: true },
+    });
+    expect(compared.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("annotated computed method"),
+    }));
+  });
 });

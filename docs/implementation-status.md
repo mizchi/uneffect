@@ -353,8 +353,9 @@ same property is proved for arbitrary TypeScript.
   effects, calls, and ordered events. These are currently TypeScript-reference
   facts passed through Rust, with machine-readable provenance. An optional
   real corsa-bind exporter covers a fail-closed multi-file top-level function
-  declaration and single immutable arrow/function-expression binding,
-  direct-call/type/trivia slice with project-wide byte coordinates; broader
+  declaration, single immutable arrow/function-expression binding, and
+  identifier-named top-level class method direct-call/type/trivia slice with
+  project-wide byte coordinates; broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test

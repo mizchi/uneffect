@@ -489,8 +489,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Preserve Corsa symbol identity across project imports and place every frontend span in deterministic project-wide UTF-8 coordinates.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
+  - [x] Export identifier-named methods of top-level classes and resolve direct cross-file method calls by checker symbol identity; reject explicitly annotated computed methods as uncovered instead of accepting empty parity.
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
-    - [ ] Extend the checker-backed exporter beyond single top-level immutable arrow/function-expression bindings to methods, nested callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
+    - [ ] Extend the checker-backed exporter beyond identifier-named methods of top-level classes to computed/polymorphic methods, nested callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
     - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.

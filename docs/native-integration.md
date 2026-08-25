@@ -66,8 +66,9 @@ const result = await compareUneffectFrontends({
 
 This executable slice supports multiple project files, top-level named function
 declarations and single-declarator immutable arrow/function-expression
-bindings, direct local and cross-file calls between those functions, function
-type text, and leading `uneffect:` trivia. Corsa symbol IDs are
+bindings, identifier-named methods of top-level classes, direct local and
+cross-file calls between those callables, function type text, and leading
+`uneffect:` trivia. Corsa symbol IDs are
 collected before numeric schema IDs are assigned, so imported calls retain
 declaration identity. A local function name is kept when unique and rendered as
 `path/to/file.ts::name` when duplicated elsewhere in the project; call edges
@@ -76,9 +77,11 @@ Calls outside the exported project symbol set are not emitted. Traversal stops
 at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a
 reference edge then fails rather than claiming parity. Promise/resource
-records, methods, nested callbacks, overload facts, and callback timing are not
-checker-exported yet; using those constructs therefore cannot establish full
-frontend parity. Install compatible
+records, computed or polymorphically dispatched methods, nested callbacks,
+overload facts, and callback timing are not checker-exported yet. An explicitly
+annotated computed method produces a coverage failure even if both projections
+would otherwise be empty. Using those constructs therefore cannot establish
+full frontend parity. Install compatible
 `corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers and supply a real Corsa or
 `tsgo` executable. The package does not silently fall back to TypeScript facts.
 `requireCorsaCheckerFacts` accepts only the object returned by the in-process

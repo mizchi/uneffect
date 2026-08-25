@@ -154,6 +154,9 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
   const program = programOf(options.files), functions: NormalizedFrontendIr["functions"] = [];
+  const coverageFailures = options.corsaFacts || options.requireCorsaCheckerFacts
+    ? checkerCoverageFailures(program, options.files)
+    : [];
   const nameCounts = topLevelFunctionNameCounts(program, options.files);
   for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
@@ -203,7 +206,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
     input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
   });
-  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
+  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {
     const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;
     corsaIr.functions.sort((left, right) => left.name.localeCompare(right.name));
@@ -214,10 +217,45 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
         ? "corsa-checker provenance was not authenticated by the in-process exporter"
         : "actual corsa-bind checker facts are unavailable; comparison used TypeScript reference-adapter records",
     }];
-    return { equivalent: semanticEquivalent && provenance.satisfiesRequirement, semanticEquivalent, provenance, schemaDrift: provenanceFailure, typescriptIr, corsaIr };
+    return { equivalent: semanticEquivalent && provenance.satisfiesRequirement && coverageFailures.length === 0, semanticEquivalent, provenance, schemaDrift: [...coverageFailures, ...provenanceFailure], typescriptIr, corsaIr };
   } catch (error) {
-    return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
+    return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [...coverageFailures, { frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
   }
+}
+
+function checkerCoverageFailures(program: ts.Program, files: Readonly<Record<string, string>>): FrontendSchemaDrift[] {
+  const failures: FrontendSchemaDrift[] = [];
+  for (const source of program.getSourceFiles()) {
+    const fileName = projectFileName(files, source.fileName);
+    if (!fileName) continue;
+    for (const statement of source.statements) {
+      if (ts.isClassDeclaration(statement) && statement.name) {
+        for (const member of statement.members) {
+          if (!ts.isMethodDeclaration(member) || !member.body) continue;
+          const leading = source.text.slice(member.getFullStart(), member.getStart(source));
+          if (!extractAnnotations(leading, "effect").length || ts.isIdentifier(member.name)) continue;
+          failures.push({
+            frontend: "corsa",
+            message: `${fileName}:${source.getLineAndCharacterOfPosition(member.getStart(source)).line + 1}: annotated computed method is outside checker-backed frontend coverage`,
+          });
+        }
+      }
+      if (ts.isVariableStatement(statement)) {
+        const leading = source.text.slice(statement.getFullStart(), statement.getStart(source));
+        if (!extractAnnotations(leading, "effect").length) continue;
+        const declarations = statement.declarationList.declarations;
+        const supported = Boolean(statement.declarationList.flags & ts.NodeFlags.Const)
+          && declarations.length === 1
+          && ts.isIdentifier(declarations[0]!.name)
+          && Boolean(declarations[0]!.initializer && (ts.isArrowFunction(declarations[0]!.initializer!) || ts.isFunctionExpression(declarations[0]!.initializer!)));
+        if (!supported) failures.push({
+          frontend: "corsa",
+          message: `${fileName}:${source.getLineAndCharacterOfPosition(statement.getStart(source)).line + 1}: annotated variable callable is outside checker-backed frontend coverage`,
+        });
+      }
+    }
+  }
+  return failures;
 }
 
 function topLevelFunctionNameCounts(program: ts.Program, files: Readonly<Record<string, string>>): Map<string, number> {
@@ -235,7 +273,7 @@ interface TopLevelCallable {
   name: string;
   nameNode: ts.Identifier;
   body: ts.ConciseBody;
-  declaration: ts.Statement;
+  declaration: ts.Node;
 }
 
 function topLevelCallables(source: ts.SourceFile): TopLevelCallable[] {
@@ -243,6 +281,18 @@ function topLevelCallables(source: ts.SourceFile): TopLevelCallable[] {
   for (const statement of source.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
       callables.push({ name: statement.name.text, nameNode: statement.name, body: statement.body, declaration: statement });
+      continue;
+    }
+    if (ts.isClassDeclaration(statement) && statement.name) {
+      for (const member of statement.members) {
+        if (!ts.isMethodDeclaration(member) || !member.body || !ts.isIdentifier(member.name)) continue;
+        callables.push({
+          name: `${statement.name.text}.${member.name.text}`,
+          nameNode: member.name,
+          body: member.body,
+          declaration: member,
+        });
+      }
       continue;
     }
     if (!ts.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) continue;
