@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -652,6 +652,26 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("pending == 1 iff shown < started");
     expect(() => generateReactTransitionQuint("bad-name", { maxActions: 2 })).toThrow("invalid Quint module name");
     expect(() => generateReactTransitionQuint("bad_bound", { maxActions: 0 })).toThrow("maxActions");
+  });
+
+  it("generates an already-revealed Suspense boundary Transition model from TSX", () => {
+    const result = analyzeReactSemantics("transition-suspense.tsx", `
+      import { Suspense, use } from "react"
+      const data = Promise.resolve("ready")
+      /* uneffect: react component */ function Results() { use(data); return null }
+      /* uneffect: react component */ function Spinner() { return null }
+      function App() { return <Suspense fallback={<Spinner />}><Results /></Suspense> }
+    `);
+    const quint = generateReactTransitionSuspenseQuintFromAnalysis("search_visibility", result);
+    expect(quint).toContain("boundary: suspense@");
+    expect(quint).toContain("primary: Results");
+    expect(quint).toContain("fallback: Spinner");
+    expect(quint).toContain("action suspend_transition_render");
+    expect(quint).toContain("action resolve_suspension");
+    expect(quint).toContain("action retry_transition_render");
+    expect(quint).toContain("val reactTransitionSuspenseSafe");
+    expect(quint).toContain("pending == 1 implies content_visible == 1 and fallback_visible == 0");
+    expect(() => generateReactTransitionSuspenseQuintFromAnalysis("missing", { ...result, suspenseBoundaries: [] })).toThrow("root 0 is not available");
   });
 
   it("separates callback refs from render and models their Strict Mode replay", () => {

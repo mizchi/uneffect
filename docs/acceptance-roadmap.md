@@ -36,7 +36,9 @@ contract layer for existing TypeScript:
     sequential queue, pending flag, and failure cancellation laws. JSX-event
     Transition Actions diagnose unwrapped state updates after `await`; a second
     bounded projection checks aggregate pending, interruption/retry, and final
-    commit after all Actions settle.
+    commit after all Actions settle. A third analysis-backed projection keeps
+    an already revealed Suspense boundary's stale content visible while a
+    Transition suspends or is interrupted, until resolution and retry commit.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a

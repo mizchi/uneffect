@@ -169,6 +169,11 @@ same property is proved for arbitrary TypeScript.
   aggregate pending Actions, arbitrary settlement order, interruptible render,
   retry, and final commit. Imported, reassigned, higher-order,
   custom-Hook-returned, and otherwise opaque async flow remains outside this proof.
+- An explicit analysis-backed Transition/Suspense projection applies the
+  already-revealed-boundary rule: suspension and interruption preserve stale
+  content and suppress fallback until resolution, retry, and final commit.
+  Prior visibility, urgency, and newly mounted nested boundaries are inputs to
+  the modeling decision rather than facts inferred from TSX execution.
 - Named/default/namespace `useActionState` and `useOptimistic` calls separate
   side-effecting Action callbacks from pure optimistic reducers. JSX
   `action`/`formAction` accepts a directly returned Action dispatcher, while

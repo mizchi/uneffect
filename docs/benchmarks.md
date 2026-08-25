@@ -129,6 +129,16 @@ the additional dispatcher/await scan but not 128 positive async-boundary
 diagnostics. These observations are not pass/fail budgets or evidence of a
 speedup over the preceding run.
 
+The follow-up already-revealed Transition/Suspense generator measured 0.0058
+ms mean over 86,660 samples (0.54% RME) for one extracted nested-boundary root.
+In the same run, source analysis measured 82.23 ms (1.43% RME), parse-only
+5.17 ms (0.74% RME), and the reused Program 126.80 ms (3.62% RME). The
+generator consumes an already analyzed boundary and emits only the bounded
+visibility model; it excludes TSX analysis and Quint execution. The Program
+result is noisy and the changed benchmark set can affect the process, so these
+figures are observations rather than a regression budget or a claimed
+analysis slowdown.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

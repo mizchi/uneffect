@@ -68,6 +68,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const generateReactActionQueue = futureApi("generateReactActionQueueQuint");
     const generateReactTransition = futureApi("generateReactTransitionQuint");
+    const generateTransitionSuspense = futureApi("generateReactTransitionSuspenseQuintFromAnalysis");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
@@ -199,6 +200,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const extractedBoundaryQuint = generateExtractedSuspenseBoundary("extracted_boundary", extracted) as string;
     expect(extractedBoundaryQuint).toContain("component: Primary");
     expect(extractedBoundaryQuint).toContain("component: Fallback");
+    const transitionSuspenseQuint = generateTransitionSuspense("feed_transition_visibility", extracted) as string;
+    expect(transitionSuspenseQuint).toContain("val reactTransitionSuspenseSafe");
+    expect(transitionSuspenseQuint).toContain("pending == 1 implies content_visible == 1 and fallback_visible == 0");
     const nested = analyzeReact("src/nested-boundary.tsx", `
       import { Suspense } from "react"
       /* uneffect: react component */ function Primary() { return null }

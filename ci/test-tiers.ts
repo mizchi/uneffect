@@ -70,6 +70,12 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
 
 export const ciIsolatedTestFiles: readonly string[] = ["test/dogfood.test.ts"];
 export const ciIsolatedTestTimeoutMs = 60_000;
+/** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
+export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;
+
+export function isIsolatedSolverHardTimeout(error: { code?: unknown } | undefined): boolean {
+  return error?.code === "ETIMEDOUT";
+}
 
 export function parseVitestListNames(file: string, output: string): readonly string[] {
   const prefix = `${file} > `;

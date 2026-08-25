@@ -48,10 +48,14 @@ runner captures each explicitly isolated test and retries it once only when
 both parts of that crash signature are present. One Node Lease strengthening
 query has also twice taken Z3 from its usual roughly one-second runtime to the
 60-second Vitest limit in a fresh process. That exact file, test name, and
-timeout signature receives the same one-process retry. Other timeouts and all
-assertion failures are never retried, and a repeated crash or timeout still
-fails the job. This is process recovery for recognized verifier-runtime
-failures, not a flaky-test allowance or weakened proof obligation.
+timeout signature receives the same one-process retry. Because synchronous Z3
+WASM can block Vitest's JavaScript timer along with the query, every explicitly
+isolated test also has a parent-process deadline 15 seconds beyond the Vitest
+limit. Reaching that hard deadline kills the child and is retryable under the
+same bounded policy. Other reported timeouts and all assertion failures are
+never retried, and a repeated crash or timeout still fails the job. This is
+process recovery for recognized verifier-runtime failures, not a flaky-test
+allowance or weakened proof obligation.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds

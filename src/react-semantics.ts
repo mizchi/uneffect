@@ -2531,6 +2531,141 @@ export function generateReactTransitionQuint(moduleName: string, options: ReactT
   return lines.join("\n");
 }
 
+export interface ReactTransitionSuspenseOptions {
+  /** Finite render-attempt bound for interruption/retry exploration. */
+  maxRenderAttempts?: number;
+  /** Test-only fault injection that replaces already revealed content with fallback. */
+  allowFallbackDuringTransition?: boolean;
+  /** Test-only fault injection that commits the suspended update before resolution. */
+  allowCommitBeforeResolution?: boolean;
+  /** Test-only fault injection that hides already revealed content when a render is interrupted. */
+  allowHideContentOnInterrupt?: boolean;
+}
+
+/**
+ * Generate a bounded visibility model for a Transition updating an already
+ * revealed Suspense boundary. Newly mounted boundaries and urgent updates have
+ * different fallback rules and are intentionally outside this projection.
+ */
+export function generateReactTransitionSuspenseQuint(
+  moduleName: string,
+  boundary: ReactSuspenseBoundarySummary,
+  options: ReactTransitionSuspenseOptions = {},
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const maxRenderAttempts = options.maxRenderAttempts ?? 3;
+  if (!Number.isSafeInteger(maxRenderAttempts) || maxRenderAttempts < 2 || maxRenderAttempts > 8) {
+    throw new Error("maxRenderAttempts must be a safe integer between 2 and 8");
+  }
+  if (boundary.primaryNodes.length === 0) throw new Error(`Suspense boundary ${boundary.instance} has no primary nodes`);
+  const variables = [
+    "transition_started", "pending", "render_attempts", "active_render", "suspended_attempts",
+    "interrupted_attempts", "suspended", "resolved", "committed", "content_visible", "fallback_visible",
+  ] as const;
+  const initial = new Map<string, string>([["content_visible", "1"]]);
+  const lines = [
+    `module ${moduleName} {`,
+    `  // boundary: ${boundary.instance}`,
+    `  // primary: ${boundary.primary}`,
+    `  // fallback: ${boundary.fallback}`,
+    ...variables.map((name) => `  var ${name}: int`),
+    "",
+    "  action init = all {",
+    ...variables.map((name) => `    ${name}' = ${initial.get(name) ?? "0"},`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comment: string): void => {
+    actions.push(name);
+    lines.push("", `  // ${comment}`, `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("start_transition", ["transition_started == 0"], new Map([
+    ["transition_started", "1"], ["pending", "1"],
+  ]), "an update begins while the boundary's previous content is already visible");
+  action("begin_transition_render", [
+    "transition_started == 1", "committed == 0", "render_attempts == 0", "active_render == 0",
+  ], new Map([
+    ["render_attempts", "render_attempts + 1"], ["active_render", "1"],
+  ]), "begin the first background render");
+  action("suspend_transition_render", ["active_render == 1", "suspended == 0"], new Map([
+    ["active_render", "0"], ["suspended_attempts", "suspended_attempts + 1"], ["suspended", "1"],
+  ]), "suspension keeps already revealed content visible instead of committing fallback");
+  action("resolve_suspension", ["suspended == 1", "resolved == 0"], new Map([
+    ["resolved", "1"],
+  ]), "the suspended resource resolves before retry");
+  action("retry_transition_render", [
+    "suspended == 1", "resolved == 1", "committed == 0", "active_render == 0",
+    `render_attempts < ${maxRenderAttempts}`,
+  ], new Map([
+    ["render_attempts", "render_attempts + 1"], ["active_render", "1"],
+  ]), "retry the Transition render after resolution");
+  action("interrupt_transition_render", ["active_render == 1", `render_attempts < ${maxRenderAttempts}`], new Map([
+    ["active_render", "0"], ["interrupted_attempts", "interrupted_attempts + 1"],
+  ]), "an urgent update may interrupt background work without hiding content");
+  action("retry_interrupted_render", [
+    "transition_started == 1", "committed == 0", "active_render == 0",
+    "render_attempts == suspended_attempts + interrupted_attempts + committed",
+    "(suspended == 0 or resolved == 1)", `render_attempts < ${maxRenderAttempts}`,
+  ], new Map([
+    ["render_attempts", "render_attempts + 1"], ["active_render", "1"],
+  ]), "restart an interrupted background render");
+  action("commit_transition_content", [
+    "active_render == 1", "committed == 0", "(suspended == 0 or resolved == 1)",
+  ], new Map([
+    ["active_render", "0"], ["committed", "1"], ["pending", "0"],
+  ]), "commit the final content and finish the Transition");
+  if (options.allowFallbackDuringTransition) action("commit_fallback_during_transition", [
+    "pending == 1", "suspended == 1", "resolved == 0",
+  ], new Map([
+    ["content_visible", "0"], ["fallback_visible", "1"],
+  ]), "fault injection: replace already revealed content with fallback");
+  if (options.allowCommitBeforeResolution) action("commit_before_suspension_resolution", [
+    "suspended == 1", "resolved == 0", "committed == 0", "active_render == 0",
+  ], new Map([
+    ["committed", "1"], ["pending", "0"],
+  ]), "fault injection: commit a suspended attempt before its resource resolves");
+  if (options.allowHideContentOnInterrupt) action("hide_content_on_interrupt", [
+    "pending == 1", "active_render == 0", "interrupted_attempts >= 1",
+  ], new Map([
+    ["content_visible", "0"],
+  ]), "fault injection: interruption hides the already committed content");
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const safety = [
+    "0 <= transition_started", "transition_started <= 1",
+    "0 <= pending", "pending <= 1", "(pending == 1 iff transition_started == 1 and committed == 0)",
+    "0 <= render_attempts", `render_attempts <= ${maxRenderAttempts}`,
+    "0 <= suspended_attempts", "suspended_attempts <= 1", "0 <= interrupted_attempts",
+    "0 <= active_render", "active_render <= 1",
+    "active_render == render_attempts - suspended_attempts - interrupted_attempts - committed",
+    "0 <= suspended", "suspended <= 1", "suspended_attempts == suspended",
+    "0 <= resolved", "resolved <= suspended", "0 <= committed", "committed <= 1",
+    "(committed == 1 implies suspended == 0 or resolved == 1)",
+    "0 <= content_visible", "content_visible <= 1", "0 <= fallback_visible", "fallback_visible <= 1",
+    "content_visible + fallback_visible == 1",
+    "(pending == 1 implies content_visible == 1 and fallback_visible == 0)",
+  ];
+  lines.push("", `  val reactTransitionSuspenseSafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
+/** Generate the already-revealed Transition/Suspense model from one extracted root boundary. */
+export function generateReactTransitionSuspenseQuintFromAnalysis(
+  moduleName: string,
+  analysis: ReactSemanticsResult,
+  rootBoundaryIndex = 0,
+  options: ReactTransitionSuspenseOptions = {},
+): string {
+  const roots = analysis.suspenseBoundaries.filter(({ parentBoundary }) => parentBoundary === undefined);
+  const boundary = roots[rootBoundaryIndex];
+  if (!boundary) throw new Error(`Transition/Suspense root ${rootBoundaryIndex} is not available`);
+  return generateReactTransitionSuspenseQuint(moduleName, boundary, options);
+}
+
 /** Generate an instance-preserving bounded lifecycle model without imposing an order between commit instances. */
 export function generateReactLifecycleQuint(
   moduleName: string,

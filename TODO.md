@@ -32,6 +32,7 @@ documentation are all updated.
 - [x] Replace `extractions/setup-just` with the official Linux musl release asset pinned by version and SHA-256, removing its transitive Node 20 `setup-crate` action.
 - [x] Upgrade the SHA-pinned `pnpm/action-setup` workflow dependency to Node 24-native v6.0.9 and retain `actions/setup-node` pnpm-store caching.
 - [x] Isolate every solver-bearing test file in its own Vitest process so a Z3 WASM heap failure cannot poison later suites in the same CI tier.
+- [x] Enforce a parent-process deadline for explicitly isolated solver tests so synchronous Z3 WASM cannot block Vitest's in-process timeout indefinitely, with only bounded whole-process retries.
 - [x] Explain diagnostics instead of reporting solver verdicts: replay contract counterexamples over the invariant IR, trace effects to the operation that produces them, and locate unsupported constructs where they appear.
 - [x] Commit a `fixtures/` corpus that pairs each input with its generated `.diag` report, and score every diagnostic against a committed quality rubric that CI holds at its current level.
 - [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
@@ -50,6 +51,7 @@ documentation are all updated.
 - [x] Recognize comment-opted direct React `memo`/`forwardRef` component wrapper chains, preserve the wrapper variable identity, separate memo comparator work, and fail closed on effectful/opaque comparators or unsupported wrapper shapes.
 - [x] Separate React 19 `useActionState` Actions from pure `useOptimistic` reducers, accept action/formAction dispatchers, reject opaque callbacks and effectful optimistic reducers, and require both returned dispatchers to run in an Action context.
 - [x] Generate a bounded Quint model for one `useActionState` dispatcher queue, proving sequential reducer execution, pending-state consistency, and cancellation of queued tail work after a thrown Action with load-bearing fault injections.
+- [x] Compose an already-revealed extracted Suspense boundary with a bounded Transition, preserving stale content across suspension/interruption until resolution, retry, and final commit with load-bearing visibility faults.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.

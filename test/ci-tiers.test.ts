@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -103,5 +103,16 @@ describe("CI test tier manifest", () => {
     expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("FAIL test/other.test.ts\nTest timed out in 60000ms")).toBe(false);
+  });
+
+  it("hard-stops an isolated solver process when synchronous WASM blocks Vitest's timer", () => {
+    expect(ciIsolatedProcessTimeoutMs).toBeGreaterThan(ciIsolatedTestTimeoutMs);
+    expect(ciIsolatedProcessTimeoutMs).toBeLessThanOrEqual(ciIsolatedTestTimeoutMs + 30_000);
+    expect(isIsolatedSolverHardTimeout({ code: "ETIMEDOUT" })).toBe(true);
+    expect(isIsolatedSolverHardTimeout({ code: "ENOMEM" })).toBe(false);
+    expect(isIsolatedSolverHardTimeout(undefined)).toBe(false);
+    const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
+    expect(runner).toContain("timeout: ciIsolatedProcessTimeoutMs");
+    expect(runner).toContain("isIsolatedSolverHardTimeout(result.error)");
   });
 });

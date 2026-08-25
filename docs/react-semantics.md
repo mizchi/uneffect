@@ -469,6 +469,19 @@ runtime concurrency. The projection counts Actions and render attempts but
 does not model update values, priority lanes, Suspense visibility, cancellation,
 or a concrete host scheduler.
 
+`generateReactTransitionSuspenseQuintFromAnalysis` composes a separately
+selected, already-revealed root Suspense boundary with Transition visibility.
+The previous content remains visible and fallback remains hidden while the
+Transition render suspends or is interrupted; resolution enables retry, and a
+successful retry may commit the new content and clear pending. Fault switches
+replace stale content with fallback, commit before resolution, or hide content
+on interruption, and each violates `reactTransitionSuspenseSafe`. The generated
+comments retain the extracted boundary, primary, and fallback identities.
+Callers must explicitly select this already-revealed mode: Uneffect does not
+infer whether a boundary was previously committed, whether an update is urgent,
+or whether a nested boundary is newly mounted. Those cases have different
+fallback rules and remain outside this projection.
+
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
 `production`, `strictModeDevelopment`, `concurrentInterruption`,
 `dependencyChange`, `suspenseRetry`, or `repeatedSuspenseRetry` replay into
@@ -537,7 +550,8 @@ This is a tested initial fragment, not a complete React semantics:
   insertion Effect component-by-component cleanup/setup interleaving,
   Effect Events passed through props/imports or higher-order containers,
   external-store member callbacks, general cache/immutability proofs,
-  exact snapshot invocation counts, transition fallback-to-blocking behavior,
+  exact snapshot invocation counts, automatic prior-visibility inference and
+  transition fallback-to-blocking behavior,
   server/client snapshot equality, non-object/member/aliased imperative-handle
   return values, methods introduced through object spread or prototype flow,
   cross-component calls through refs, and React compiler assumptions are not

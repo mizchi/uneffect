@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuint } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -41,6 +41,41 @@ describe("async invalidation Quint model", () => {
 });
 
 describe("React lifecycle Quint projection", () => {
+  test("keeps already revealed Suspense content visible during a Transition retry", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-suspense-"));
+    const path = join(directory, "transition-suspense.qnt");
+    const boundary = {
+      instance: "Suspense@0", primary: "Results", fallback: "Spinner",
+      primaryKey: "results.tsx:Results", fallbackKey: "results.tsx:Spinner",
+      primaryNodes: [{ kind: "component" as const, displayName: "Results", componentKey: "results.tsx:Results" }],
+      span: { start: 0, end: 1 },
+    };
+    const run = (fault: "none" | "fallback" | "unresolved-commit" | "interrupt-hide") => {
+      writeFileSync(path, generateReactTransitionSuspenseQuint("react_transition_suspense", boundary, {
+        allowFallbackDuringTransition: fault === "fallback",
+        allowCommitBeforeResolution: fault === "unresolved-commit",
+        allowHideContentOnInterrupt: fault === "interrupt-hide",
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactTransitionSuspenseSafe", "--max-steps=10", "--max-samples=10000",
+        "--seed=0x73757370656e7365", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run("none");
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      expect(valid.stdout + valid.stderr).toContain("No violation found");
+      for (const fault of ["fallback", "unresolved-commit", "interrupt-hide"] as const) {
+        const broken = run(fault);
+        expect(broken.error).toBeUndefined();
+        expect(broken.status, `${fault}: ${broken.stdout}${broken.stderr}`).toBe(1);
+        expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("keeps a Transition pending through Actions and interruptible render", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-"));
     const path = join(directory, "transition.qnt");

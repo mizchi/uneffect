@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, parseVitestListNames, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
@@ -35,6 +35,7 @@ for (const tier of tiers) {
       const runIsolated = () => spawnSync(pnpm, args, {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier },
         encoding: "utf8", maxBuffer: 20 * 1024 * 1024,
+        timeout: ciIsolatedProcessTimeoutMs, killSignal: "SIGKILL",
       });
       const emit = (captured: ReturnType<typeof runIsolated>) => {
         if (captured.stdout) process.stdout.write(captured.stdout);
@@ -47,9 +48,10 @@ for (const tier of tiers) {
           result = runIsolated();
           emit(result);
           const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-          if (result.status === 0 || attempt >= maxSolverAttempts || !shouldRetryIsolatedSolverFailure(output)) break;
+          const hardTimeout = isIsolatedSolverHardTimeout(result.error);
+          if (result.status === 0 || attempt >= maxSolverAttempts || !(hardTimeout || shouldRetryIsolatedSolverFailure(output))) break;
           attempt++;
-          process.stderr.write(`retrying isolated test after a recognized transient solver-process failure (attempt ${attempt}/${maxSolverAttempts}): ${file} -t ${testName}\n`);
+          process.stderr.write(`retrying isolated test after a recognized transient solver-process ${hardTimeout ? "hard timeout" : "failure"} (attempt ${attempt}/${maxSolverAttempts}): ${file} -t ${testName}\n`);
         }
       } else {
         result = spawnSync(pnpm, args, {
