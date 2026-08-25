@@ -230,7 +230,9 @@ same property is proved for arbitrary TypeScript.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase
-  summaries into components through a Program-level fixed point.
+  summaries into components through a Program-level fixed point. The complete
+  result is cached by immutable TypeScript `Program` identity and exposed as a
+  `ReadonlyMap`; a changed project requires a new Program snapshot.
 - Local and cross-module custom-Hook call cycles are diagnosed on each
   participating edge, including indirect recursion.
 - The tested fragment rejects direct render capabilities, selected

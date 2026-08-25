@@ -80,6 +80,7 @@ host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName ===
   ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TSX)
   : originalGetSourceFile(fileName, languageVersion, onError, fresh);
 const program = ts.createProgram(["catalog.tsx"], compilerOptions, host);
+const createCatalogProgram = () => ts.createProgram(["catalog.tsx"], compilerOptions, host);
 const analyzed = analyzeReactSemantics("catalog.tsx", source);
 const nested = analyzeReactSemantics("nested.tsx", `
   import { Suspense } from "react"
@@ -130,7 +131,11 @@ describe("React semantic analysis", () => {
     ts.createSourceFile("catalog.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   }, { time: 1_000, iterations: 30 });
 
-  bench("classify one reused TypeScript Program", () => {
+  bench("classify one fresh TypeScript Program snapshot", () => {
+    analyzeReactProgram(createCatalogProgram());
+  }, { time: 1_000, iterations: 30 });
+
+  bench("look up one cached TypeScript Program analysis", () => {
     analyzeReactProgram(program);
   }, { time: 1_000, iterations: 30 });
 
@@ -190,7 +195,7 @@ describe("React semantic analysis", () => {
     generateReactSuspenseTreeQuintFromAnalysis("suspense_tree", suspenseTree);
   }, { time: 500, iterations: 20 });
 
-  bench("classify one reused causal Suspense Program", () => {
+  bench("look up one cached causal Suspense Program analysis", () => {
     analyzeReactProgram(causalProgram);
   }, { time: 500, iterations: 20 });
 

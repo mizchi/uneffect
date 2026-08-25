@@ -159,6 +159,7 @@ describe("React Function Component semantics", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
       });
       const results = analyzeReactProgram(program);
+      expect(analyzeReactProgram(program)).toBe(results);
       expect(results.get(viewsFile)!.components.map(({ name }) => name)).toEqual(["Content", "Spinner"]);
       expect(results.get(appFile)!.suspenseBoundaries).toContainEqual(expect.objectContaining({
         primaryKey: `${viewsFile}:Content`, fallbackKey: `${viewsFile}:Spinner`,

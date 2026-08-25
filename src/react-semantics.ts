@@ -4059,9 +4059,19 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
     resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, results, hookNodes)));
 }
 
-/** Analyze every implementation source while computing the custom-Hook fixed point only once. */
-export function analyzeReactProgram(program: ts.Program): Map<string, ReactSemanticsResult> {
-  return analyzeProgramFixedPoint(program);
+const reactProgramAnalysisCache = new WeakMap<ts.Program, ReadonlyMap<string, ReactSemanticsResult>>();
+
+/**
+ * Analyze every implementation source while computing the custom-Hook fixed
+ * point only once per immutable TypeScript Program snapshot. The returned map
+ * is the cached analysis snapshot and must be treated as read-only by callers.
+ */
+export function analyzeReactProgram(program: ts.Program): ReadonlyMap<string, ReactSemanticsResult> {
+  const cached = reactProgramAnalysisCache.get(program);
+  if (cached) return cached;
+  const result = analyzeProgramFixedPoint(program);
+  reactProgramAnalysisCache.set(program, result);
+  return result;
 }
 
 /** Program-backed path: composes annotated custom Hooks through resolved named imports and aliases. */

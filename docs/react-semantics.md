@@ -462,8 +462,12 @@ diagnostics. It also returns supported and unsupported direct JSX Suspense
 boundary facts.
 `analyzeReactProgram(program)` and `analyzeReactSemanticsInProgram` add
 TypeScript-resolved cross-file composition. `uneffect check` computes the
-Program result once and includes the same diagnostics. The analysis is
-metadata-only and adds no runtime dependency.
+Program result once and includes the same diagnostics. A TypeScript `Program`
+is treated as an immutable compiler snapshot: its complete fixed-point result
+is cached by Program identity and returned as a `ReadonlyMap`. Callers must
+construct a new Program after source changes rather than mutating an old
+snapshot or its analysis values. The analysis is metadata-only and adds no
+runtime dependency.
 
 `generateReactActionQueueQuint(moduleName, { maxQueuedActions })` generates a
 bounded model for one `useActionState` dispatcher. Dispatch appends work and

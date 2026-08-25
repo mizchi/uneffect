@@ -68,6 +68,17 @@ was 19.4778 ms over 52 samples (7.52%). This workload includes a whole-source
 syntactic write screen for every analysis and the run is noisy; it establishes
 an observed regression point, not an isolated cost or an acceptable budget.
 
+After caching the complete fixed-point result by immutable TypeScript Program
+identity, a follow-up 2026-08-25 run separated fresh snapshots from cached
+lookups. Cold string analysis measured 142.20 ms mean over 30 samples, a newly
+constructed Program snapshot measured 296.27 ms over 30 samples, and the
+parse-only baseline measured 7.5025 ms over 134 samples. Cached lookup was
+below this benchmark's useful timer resolution (reported as 0.0000 ms), so no
+nanosecond-level speed claim is made. The earlier 303.07/276.55/19.4778 ms run
+was noisy and did not distinguish recomputation from lookup. The cache assumes
+the TypeScript Program and returned `ReadonlyMap` analysis snapshot are not
+mutated; source changes require a new Program.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured
