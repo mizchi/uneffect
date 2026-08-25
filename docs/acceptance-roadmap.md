@@ -30,7 +30,8 @@ contract layer for existing TypeScript:
 12. Opted-in React function components separate replayable render from event,
     React Actions, pure optimistic reducers, Effect setup, external-store reads/subscriptions, imperative-handle
     factories/exposed methods, and cleanup capabilities without changing
-    emitted code; annotated custom Hooks compose through resolved imports, and
+    emitted code; immutable local event handlers and callback refs compose
+    through `const` aliases, annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity. An
     explicit bounded Quint projection checks one Action dispatcher's
     sequential queue, pending flag, and failure cancellation laws. Direct

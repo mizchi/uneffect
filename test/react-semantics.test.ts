@@ -783,22 +783,38 @@ describe("React Function Component semantics", () => {
     }));
   });
 
-  it("fails closed for referenced or dynamically selected callback refs", () => {
+  it("resolves immutable local callback refs and fails closed for opaque or dynamic refs", () => {
     const result = analyzeReactSemantics("unknown-ref.tsx", `
       import { useRef } from "react"
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
-      declare const attach: (node: Element | null) => void
+      function moduleAttach(_node: Element | null): void {}
       declare const alternate: (node: Element | null) => void
+      /* uneffect: react acquire Observer result */
+      declare function observe(node: Element | null): { readonly observer: unique symbol }
+      /* uneffect: react release Observer parameter 0 */
+      declare function disconnect(observer: { readonly observer: unique symbol }): void
       /* uneffect: react component */
       function Panel(props: { alternate: boolean }) {
         const objectRef = useRef<Element | null>(null)
-        return <div ref={objectRef}><div ref={attach} /><div ref={props.alternate ? alternate : attach} /></div>
+        const attach = (node: Element | null) => {
+          const observer = observe(node)
+          return () => disconnect(observer)
+        }
+        const stableAttach = attach
+        return <div ref={objectRef}><div ref={stableAttach} /><div ref={moduleAttach} /><div ref={props.alternate ? alternate : attach} /></div>
       }
     `);
     expect(result.diagnostics).toEqual([
-      expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "attach" }),
+      expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "moduleAttach" }),
       expect.objectContaining({ kind: "unknown-ref-callback", phase: "ref-callback", operation: "props.alternate ? alternate : attach" }),
     ]);
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      { phase: "ref-callback", effects: ["Acquire<Observer>"] },
+      { phase: "cleanup", effects: ["Release<Observer>"] },
+    ]));
+    expect(result.components[0]!.replay.production.effects).toContainEqual(expect.objectContaining({
+      phase: "ref-callback", setupEffects: ["Acquire<Observer>"], cleanupEffects: ["Release<Observer>"],
+    }));
   });
 
   it("rejects non-idempotent render operations and mutation of props", () => {
@@ -2203,6 +2219,14 @@ describe("React Function Component semantics", () => {
     ));
     expect(leakingRef.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "TelemetryDashboard", kind: "missing-effect-cleanup", phase: "ref-callback", effect: "TelemetryViewport",
+    }));
+
+    const opaqueRef = analyzeReactSemantics(fileName, source.replace(
+      "ref={viewportRef}",
+      "ref={props.handleRef}",
+    ));
+    expect(opaqueRef.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "TelemetryDashboard", kind: "unknown-ref-callback", phase: "ref-callback", operation: "props.handleRef",
     }));
   });
 

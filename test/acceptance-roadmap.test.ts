@@ -171,12 +171,17 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           return () => removeFeedStyles()
         }, [])
         const refresh = () => fetch(\`/topics/\${topic}\`)
+        const attachButton = (node: Element | null) => {
+          console.log(node)
+          return () => console.log("detach")
+        }
+        const buttonRef = attachButton
         const handleClick = () => beginRefresh(async () => {
           await Promise.resolve()
           startTransition(() => { setRefreshTopic(topic); refresh() })
         })
         return <form action={saveTopicAction}><button
-          ref={(node) => { console.log(node); return () => console.log("detach") }}
+          ref={buttonRef}
           onClick={handleClick}
         />{optimisticTopic}</form>
       })

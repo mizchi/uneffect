@@ -564,8 +564,9 @@ This is a tested initial fragment, not a complete React semantics:
   aliases. Reassigned bindings, mutation through calls, properties stored in
   containers, and interprocedural region flow need a flow-sensitive
   ownership analysis;
-- callback-ref extraction covers inline JSX functions only; referenced refs,
-  ref props, and the predictable lazy-initialization
+- callback-ref extraction covers inline JSX functions plus immutable
+  component-local function/arrow callbacks and transitive `const` aliases.
+  Module-scope/imported handlers, ref props, reassigned/member/dynamic callbacks, and the predictable lazy-initialization
   exception for render-time `.current` access are not modeled;
 - dependency completeness is checked for the documented inline lexical
   fragment; referenced callbacks, custom stability contracts, module mutation,

@@ -109,10 +109,12 @@ export const TelemetryDashboard = memo(function TelemetryDashboard(props: { serv
     setShowFailures(!showFailures);
     startTransition(requestRefresh);
   };
-  return <form action={saveService}><output ref={(node) => {
+  const attachViewport = (node: Element | null) => {
     const viewport = attachTelemetryViewport(node);
     return () => detachTelemetryViewport(viewport);
-  }}>
+  };
+  const viewportRef = attachViewport;
+  return <form action={saveService}><output ref={viewportRef}>
     {online ? visibleRows.length : 0}{optimisticService}{saving}
     <button onClick={refresh}>refresh</button>
   </output></form>;

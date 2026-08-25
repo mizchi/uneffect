@@ -2060,9 +2060,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         return;
       }
       if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
-        const callback = node.initializer && ts.isJsxExpression(node.initializer)
+        const refExpression = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
-        if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+        const callback = refExpression ? callbackArgument(refExpression, eventCallbacks) : undefined;
+        if (callback) {
           const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks);
           addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
@@ -2081,12 +2082,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           for (const issue of lifecycle.issues) report(issue.node, {
             kind: issue.kind, phase: "ref-callback", effect: issue.capability, message: issue.detail,
           });
-        } else if (!(callback && ts.isIdentifier(callback) && refs.has(callback.text))
-          && callback?.kind !== ts.SyntaxKind.NullKeyword) {
-          const operation = callback?.getText(source) ?? node.initializer?.getText(source) ?? "ref";
-          report(callback ?? node, {
+        } else if (!(refExpression && ts.isIdentifier(refExpression) && refs.has(refExpression.text))
+          && refExpression?.kind !== ts.SyntaxKind.NullKeyword) {
+          const operation = refExpression?.getText(source) ?? node.initializer?.getText(source) ?? "ref";
+          report(refExpression ?? node, {
             kind: "unknown-ref-callback", phase: "ref-callback", operation,
-            message: `${operation} is not an inline callback ref or a locally resolved object ref`,
+            message: `${operation} is not an inline or immutable locally resolved callback ref, or a locally resolved object ref`,
           });
         }
         return;

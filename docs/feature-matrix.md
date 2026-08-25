@@ -37,6 +37,11 @@ successful verification.
 | Native Rust/Corsa frontend | Partial | A neutral IR, Rust parser/lattice, source spans, and parity fixtures exist. | Inferred effects, call edges, ordered events, and real checker facts do not yet have full parity. See [#8](https://github.com/mizchi/uneffect/issues/8). |
 | Proof-guided optimization | Planned | Narrow authorization and ownership-assertion-elision prototypes establish the fail-closed shape of a transformation. | General compression, mangling, reordering, and dead-code elimination are not implemented. See [#13](https://github.com/mizchi/uneffect/issues/13). |
 
+For the React row, callback refs also include immutable component-local
+function/arrow callbacks reached through transitive `const` aliases. The open
+"referenced callback ref" boundary means module-scope/imported, prop, member, reassigned,
+or dynamically selected references, not these locally proven bindings.
+
 ## Verification confidence
 
 The strongest current claims are local and fragment-specific:

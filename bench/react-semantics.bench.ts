@@ -18,8 +18,10 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const refresh = () => fetch("/items/${index}")
     const refreshAlias = refresh
     const handleClick = () => startTransition(refreshAlias)
+    const attach = () => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }
+    const attachAlias = attach
     return <button
-      ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
+      ref={attachAlias}
       onClick={handleClick}
     >{props.label}{catalogVersion}{optimisticLabel}{selectionSnapshot.active && preferences.dense}</button>
   })

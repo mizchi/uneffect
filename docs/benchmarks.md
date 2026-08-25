@@ -18,8 +18,9 @@ opted-in components. Every component calls one shared annotated custom Hook
 whose passive Effect has a result/parameter identity contract and matching
 acquire/release cleanup, a checked `[label]` dependency, and an immutable local
 JSX event-handler reference. Each component also builds immutable props, state, and context region
-facts through local `const` aliases and contains an identity-checked inline
-callback ref with returned cleanup. Each component also has an insertion
+facts through local `const` aliases and contains an identity-checked immutable
+local callback ref reached through another `const` alias, with returned cleanup.
+Each component also has an insertion
 Effect with StyleWrite setup/cleanup so phase normalization and the local
 state-dispatch/ref prohibition scans remain in the measured path. The shared
 subscription Hook defines a local Effect Event, calls it from its passive
@@ -30,6 +31,15 @@ an identity-matched acquire/release lifecycle.
 The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
+
+After moving all 128 callback refs from inline functions to immutable local
+functions reached through one `const` alias, the 2026-08-25 run measured
+71.9466 ms mean over 30 samples (0.92% relative margin of error) for cold
+source analysis and 100.05 ms over 30 samples (1.33%) for analysis of one
+reused TypeScript Program. The source also exercises all previously added
+React phase and formal-model features, so this is not an isolated callback-ref
+cost. Program construction is excluded only from the second measurement; both
+figures are observations rather than regression budgets.
 
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the

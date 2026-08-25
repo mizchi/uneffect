@@ -157,9 +157,12 @@ same property is proved for arbitrary TypeScript.
 - The initial phase projection distinguishes replayable render, inline JSX
   event callbacks, immutable component-local referenced/aliased event
   callbacks, `useInsertionEffect`, `useLayoutEffect`, `useEffect` setup, and returned
-  cleanup functions. Inline JSX callback refs form a separate commit setup and
-  returned-cleanup phase. Reassigned or opaque referenced event handlers are
-  rejected rather than assumed pure. Aliased named imports from `react` are recognized.
+  cleanup functions. Inline JSX callback refs and immutable component-local
+  callback functions/arrows reached through transitive `const` aliases form a
+  separate commit setup and returned-cleanup phase. Reassigned, module-scope/imported,
+  prop, member, or dynamic callback refs remain explicit unknowns. Reassigned
+  or opaque referenced event handlers are rejected rather than assumed pure.
+  Aliased named imports from `react` are recognized.
 - Insertion Effect setup is ordered before callback refs, layout Effects, and
   passive Effects in replay and Quint. Direct `useState`/`useReducer`
   dispatchers and their transitive local `const` aliases are rejected inside
