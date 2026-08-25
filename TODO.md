@@ -485,11 +485,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts.
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
   - [x] Carry mandatory fact provenance through schema v7 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
-  - [x] Export the initial real checker-backed slice through the `corsa-oxlint` plugin context: top-level named functions, Corsa type text, direct call edges, and leading Uneffect trivia.
+  - [x] Export the initial real checker-backed slice through the `corsa-oxlint` plugin context: top-level named functions and single immutable arrow/function-expression bindings, Corsa type text, direct call edges, and leading Uneffect trivia.
   - [x] Preserve Corsa symbol identity across project imports and place every frontend span in deterministic project-wide UTF-8 coordinates.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
+  - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
-    - [ ] Extend the checker-backed exporter to methods, arrows, callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
+    - [ ] Extend the checker-backed exporter beyond single top-level immutable arrow/function-expression bindings to methods, nested callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
     - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.

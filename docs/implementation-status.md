@@ -352,7 +352,8 @@ same property is proved for arbitrary TypeScript.
   schema-v7 consumer cover structured declarations, source spans, inferred
   effects, calls, and ordered events. These are currently TypeScript-reference
   facts passed through Rust, with machine-readable provenance. An optional
-  real corsa-bind exporter covers a fail-closed multi-file top-level function/
+  real corsa-bind exporter covers a fail-closed multi-file top-level function
+  declaration and single immutable arrow/function-expression binding,
   direct-call/type/trivia slice with project-wide byte coordinates; broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration

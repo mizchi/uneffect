@@ -74,11 +74,29 @@ export const corsaCheckerFactRule = createRule({
     const text = context.sourceCode.text as string;
     const functions: PendingFunction[] = [];
     const calls: PendingCall[] = [];
-    const functionStack: PendingFunction[] = [];
+    const functionStack: Array<PendingFunction | null> = [];
+    const bindingFunctions = new WeakMap<object, PendingFunction>();
+
+    const enterBindingFunction = (node: any): void => {
+      functionStack.push(bindingFunctions.get(node) ?? null);
+    };
+    const exitBindingFunction = (node: any): void => {
+      functionStack.pop();
+    };
 
     return {
       FunctionDeclaration(node: any) {
-        if (!node.id || !node.body) return;
+        if (!node.id || !node.body) {
+          functionStack.push(null);
+          return;
+        }
+        const wrapper = node.parent?.type === "ExportNamedDeclaration" || node.parent?.type === "ExportDefaultDeclaration"
+          ? node.parent
+          : node;
+        if (wrapper.parent?.type !== "Program") {
+          functionStack.push(null);
+          return;
+        }
         const directSymbol = checker.getSymbolAtLocation(node.id as Node);
         const type = checker.getTypeAtLocation(node.id as Node);
         const symbol = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
@@ -97,6 +115,36 @@ export const corsaCheckerFactRule = createRule({
       "FunctionDeclaration:exit"() {
         functionStack.pop();
       },
+      VariableDeclarator(node: any) {
+        const initializer = node.init;
+        if (!initializer || (initializer.type !== "ArrowFunctionExpression" && initializer.type !== "FunctionExpression")) return;
+        if (node.id?.type !== "Identifier") return;
+        const declaration = node.parent;
+        const wrapper = declaration?.parent?.type === "ExportNamedDeclaration" ? declaration.parent : declaration;
+        if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || declaration.declarations?.length !== 1) return;
+        if (wrapper?.parent?.type !== "Program") return;
+        const directSymbol = checker.getSymbolAtLocation(node.id as Node);
+        const type = checker.getTypeAtLocation(node.id as Node);
+        const symbol = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
+        if (!symbol) return;
+        const pending: PendingFunction = {
+          node: wrapper,
+          symbolId: symbol.id,
+          // Corsa represents anonymous function values with a synthetic
+          // `__function` type symbol. Keep that symbol for identity/edges,
+          // but expose the immutable binding name as the source callable.
+          name: node.id.name,
+          typeRepr: type ? checker.typeToString(type) : "unknown",
+          start: byteOffset(text, wrapper.range[0]),
+          end: byteOffset(text, wrapper.range[1]),
+        };
+        functions.push(pending);
+        bindingFunctions.set(initializer, pending);
+      },
+      ArrowFunctionExpression: enterBindingFunction,
+      "ArrowFunctionExpression:exit": exitBindingFunction,
+      FunctionExpression: enterBindingFunction,
+      "FunctionExpression:exit": exitBindingFunction,
       CallExpression(node: any) {
         const caller = functionStack.at(-1);
         if (!caller) return;

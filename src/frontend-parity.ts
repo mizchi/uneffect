@@ -74,22 +74,22 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
   const nameCounts = topLevelFunctionNameCounts(program, files);
   let nextId = 1;
   const symbols: any[] = [], trivia: unknown[] = [], calls: any[] = [];
-  const ids = new Map<ts.Symbol, number>(), declarations: Array<{ source: ts.SourceFile; sourceName: string; node: ts.FunctionDeclaration; id: number }> = [];
+  const ids = new Map<ts.Symbol, number>(), declarations: Array<{ source: ts.SourceFile; sourceName: string; callable: TopLevelCallable; id: number }> = [];
   const checker = program.getTypeChecker();
   for (const source of program.getSourceFiles()) {
     const sourceName = projectFileName(files, source.fileName);
     if (!sourceName) continue;
-    for (const node of source.statements) {
-      if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
-      const id = nextId++, leading = source.text.slice(node.getFullStart(), node.getStart(source));
-      const symbol = checker.getSymbolAtLocation(node.name);
+    for (const callable of topLevelCallables(source)) {
+      const id = nextId++, leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
+      const symbol = checker.getSymbolAtLocation(callable.nameNode);
       if (symbol) ids.set(symbol, id);
-      declarations.push({ source, sourceName, node, id });
-      symbols.push({ id, name: projectFunctionDisplayName(sourceName, node.name.text, nameCounts), kind: "function", typeRepr: node.getText(source).slice(0, node.getText(source).indexOf("{")).trim(), overloads: [], effectParameters: [], span: { start: coordinates.offset(sourceName, node.getStart(source)), end: coordinates.offset(sourceName, node.getEnd()) } });
-      if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: coordinates.offset(sourceName, node.getFullStart()), end: coordinates.offset(sourceName, node.getStart(source)) } });
+      declarations.push({ source, sourceName, callable, id });
+      const type = checker.getTypeAtLocation(callable.nameNode);
+      symbols.push({ id, name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), kind: "function", typeRepr: checker.typeToString(type), overloads: [], effectParameters: [], span: { start: coordinates.offset(sourceName, callable.declaration.getStart(source)), end: coordinates.offset(sourceName, callable.declaration.getEnd()) } });
+      if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: coordinates.offset(sourceName, callable.declaration.getFullStart()), end: coordinates.offset(sourceName, callable.declaration.getStart(source)) } });
     }
   }
-  for (const { source, sourceName, node, id: caller } of declarations) {
+  for (const { source, sourceName, callable, id: caller } of declarations) {
     const visit = (child: ts.Node): void => {
       if (ts.isCallExpression(child)) {
         const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
@@ -100,9 +100,9 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       }
       ts.forEachChild(child, visit);
     };
-    ts.forEachChild(node.body!, visit);
+    ts.forEachChild(callable.body, visit);
   }
-  const idsByFileAndName = new Map(declarations.map((item) => [`${item.sourceName}\0${item.node.name!.text}`, item.id]));
+  const idsByFileAndName = new Map(declarations.map((item) => [`${item.sourceName}\0${item.callable.name}`, item.id]));
   const promiseObservations: unknown[] = [], rejectionOwnership: unknown[] = [], resourceScopes: unknown[] = [], disposals: unknown[] = [], suppressedErrors: unknown[] = [];
   const protocolSymbols: Array<{ id: number; kind: "sync" | "async"; fileName: string; span: { start: number; end: number } }> = [];
   const protocolIds = new Map<string, number>();
@@ -155,12 +155,11 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
   const program = programOf(options.files), functions: NormalizedFrontendIr["functions"] = [];
   const nameCounts = topLevelFunctionNameCounts(program, options.files);
-  for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const node of source.statements) {
-    if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+  for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
-    const leading = source.text.slice(node.getFullStart(), node.getStart(source));
+    const leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
     const effects = extractAnnotations(leading, "effect").flatMap((union) => splitTopLevel(union, "|").map(parseEffectExpression)).map(formatEffect).sort();
-    functions.push({ name: projectFunctionDisplayName(sourceName, node.name.text, nameCounts), effects });
+    functions.push({ name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
   const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
@@ -225,12 +224,40 @@ function topLevelFunctionNameCounts(program: ts.Program, files: Readonly<Record<
   const counts = new Map<string, number>();
   for (const source of program.getSourceFiles()) {
     if (!projectFileName(files, source.fileName)) continue;
-    for (const node of source.statements) {
-      if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
-      counts.set(node.name.text, (counts.get(node.name.text) ?? 0) + 1);
+    for (const callable of topLevelCallables(source)) {
+      counts.set(callable.name, (counts.get(callable.name) ?? 0) + 1);
     }
   }
   return counts;
+}
+
+interface TopLevelCallable {
+  name: string;
+  nameNode: ts.Identifier;
+  body: ts.ConciseBody;
+  declaration: ts.Statement;
+}
+
+function topLevelCallables(source: ts.SourceFile): TopLevelCallable[] {
+  const callables: TopLevelCallable[] = [];
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      callables.push({ name: statement.name.text, nameNode: statement.name, body: statement.body, declaration: statement });
+      continue;
+    }
+    if (!ts.isVariableStatement(statement) || statement.declarationList.declarations.length !== 1) continue;
+    if (!(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+    const declaration = statement.declarationList.declarations[0]!;
+    if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+    if (!ts.isArrowFunction(declaration.initializer) && !ts.isFunctionExpression(declaration.initializer)) continue;
+    callables.push({
+      name: declaration.name.text,
+      nameNode: declaration.name,
+      body: declaration.initializer.body,
+      declaration: statement,
+    });
+  }
+  return callables;
 }
 
 function semanticProjection(ir: NormalizedFrontendIr): Omit<NormalizedFrontendIr, "provenance"> {

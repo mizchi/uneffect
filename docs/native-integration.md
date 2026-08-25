@@ -65,16 +65,20 @@ const result = await compareUneffectFrontends({
 ```
 
 This executable slice supports multiple project files, top-level named function
-declarations, direct local and cross-file calls between those functions,
-function type text, and leading `uneffect:` trivia. Corsa symbol IDs are
+declarations and single-declarator immutable arrow/function-expression
+bindings, direct local and cross-file calls between those functions, function
+type text, and leading `uneffect:` trivia. Corsa symbol IDs are
 collected before numeric schema IDs are assigned, so imported calls retain
 declaration identity. A local function name is kept when unique and rendered as
 `path/to/file.ts::name` when duplicated elsewhere in the project; call edges
 use the same identity and cannot collapse solely because spellings match.
-Calls outside the exported project symbol set are not
-emitted. Promise/resource records, methods, arrows, callbacks, overload facts,
-and callback timing are not checker-exported yet; using those
-constructs therefore cannot establish full frontend parity. Install compatible
+Calls outside the exported project symbol set are not emitted. Traversal stops
+at unsupported nested function and callback boundaries, so their work is not
+misreported as an immediate call by the outer function; comparison with a
+reference edge then fails rather than claiming parity. Promise/resource
+records, methods, nested callbacks, overload facts, and callback timing are not
+checker-exported yet; using those constructs therefore cannot establish full
+frontend parity. Install compatible
 `corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers and supply a real Corsa or
 `tsgo` executable. The package does not silently fall back to TypeScript facts.
 `requireCorsaCheckerFacts` accepts only the object returned by the in-process
@@ -96,7 +100,7 @@ not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
 them to Rust native rules. Expanding the implemented schema-v7 exporter from
-the single-file slice above to the whole neutral IR remains the P6 production
+the restricted slice above to the whole neutral IR remains the P6 production
 integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
 semantic parity.

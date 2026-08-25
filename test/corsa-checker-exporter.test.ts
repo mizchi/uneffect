@@ -119,4 +119,55 @@ describe("corsa-bind checker fact exporter", () => {
       { caller: "b.ts::run", callee: "a.ts::run", callbackTiming: "none" },
     ]);
   });
+
+  it("exports checker-backed top-level const arrows and function expressions across imports", async () => {
+    const files = {
+      "a.ts": `/* uneffect: effect Console */ export const emit = (message: string): void => { console.log(message) }`,
+      "b.ts": `import { emit } from "./a.js"; export const main = function () { emit("x") }`,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const compared = await compareUneffectFrontends({
+      files,
+      corsaFacts: facts,
+      requireCorsaCheckerFacts: true,
+    });
+
+    expect(compared.equivalent, JSON.stringify({
+      schemaDrift: compared.schemaDrift,
+      typescriptIr: compared.typescriptIr,
+      corsaIr: compared.corsaIr,
+    }, null, 2)).toBe(true);
+    expect(compared.typescriptIr.functions).toEqual([
+      { name: "emit", effects: ["Console"] },
+      { name: "main", effects: ["Console"] },
+    ]);
+    expect(compared.typescriptIr.calls).toEqual([
+      { caller: "main", callee: "emit", callbackTiming: "none" },
+    ]);
+  });
+
+  it("does not mislabel calls inside unsupported callbacks as immediate outer calls", async () => {
+    const files = {
+      "fixture.ts": `
+        /* uneffect: effect Console */
+        function emit() { console.log("x") }
+        export function main() { [1].forEach(() => emit()) }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+
+    expect(facts.symbols).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "emit" }),
+      expect.objectContaining({ name: "main" }),
+    ]));
+    expect(facts.symbols).toHaveLength(2);
+    expect(facts.calls).toHaveLength(0);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared).toMatchObject({
+      equivalent: false,
+      semanticEquivalent: false,
+      provenance: { satisfiesRequirement: true },
+    });
+  });
 });
