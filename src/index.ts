@@ -238,3 +238,5 @@ export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProjec
 export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
 export { verifyUneffectProject } from "./project-verification.js";
 export type { ProjectVerificationObligation, VerifyUneffectProjectOptions, VerifyUneffectProjectResult } from "./project-verification.js";
+export { assessProjectVerification } from "./project-assurance.js";
+export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";

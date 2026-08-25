@@ -848,6 +848,10 @@ describe("Uneffect dogfood", () => {
     expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("action run_poll_0") }));
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_next_tick_1");
     expect(verified.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nodeEventLoopSafe", result: "verified" }));
+    expect(verified.assurance.passed).toBe(false);
+    expect(verified.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "effect", fileName: "src/node-service.ts", subject: "consumeFlushSteps",
+    }));
     const asyncModel = analyzeAsyncPatterns("src/node-service.ts", source);
     const selectedTimer = asyncModel.timers.findIndex((timer) => timer.callback === 'flushDispatcher.select(preferCache ? "success" : "failure")');
     expect(selectedTimer).toBeGreaterThanOrEqual(0);
@@ -998,6 +1002,11 @@ describe("Uneffect dogfood", () => {
     expect(result.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ fileName, kind: "ownership" }),
       expect.objectContaining({ fileName, kind: "dataview-backing-bounds" }),
+    ]));
+    expect(result.assurance.passed).toBe(false);
+    expect(result.assurance.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ domain: "ownership", fileName }),
+      expect.objectContaining({ domain: "typed-array", fileName }),
     ]));
   });
 

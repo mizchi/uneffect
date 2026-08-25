@@ -40,6 +40,14 @@ properties become `error` without running their backend. The API can still
 return diagnostics, models, and emitted JavaScript for gradual adoption; those
 outputs are not proof evidence.
 
+`verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
+It rejects unknown effect summaries, non-verified contract obligations,
+unknown/counterexample typed-array obligations, ownership and instrumentation
+diagnostics, assumption-policy violations, non-verified attributed temporal
+properties, and empty/uncovered input. A verified leaf never overrides an
+unknown sibling. Trusted typed-array obligations may pass, but are counted and
+remain listed as an exclusion rather than being described as proved.
+
 The public `AssuranceAssessment` also exposes `claims`, `exclusions`, and
 `coverage` as machine-readable fields. Coverage records the selected-file,
 effect-summary, and contract-artifact counts plus every selected file that

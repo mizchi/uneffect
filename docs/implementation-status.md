@@ -428,6 +428,10 @@ same property is proved for arbitrary TypeScript.
   are `unknown`; parser recovery is never presented as proof-grade evidence.
   `verifyUneffectProject` also downgrades contract and typed-array obligations
   from that source and refuses to report a verified temporal property.
+- `verifyUneffectProject` returns a cross-domain `assurance` assessment with
+  source-attributed blockers, coverage, claims, and exclusions. It prevents a
+  verified leaf artifact from being used as a project-level green result while
+  another supplied function or semantic domain remains unknown.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect

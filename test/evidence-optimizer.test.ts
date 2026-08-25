@@ -16,6 +16,27 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("rejects a vacuous project verification result", async () => {
+    const result = await verifyUneffectProject({ files: {} });
+    expect(result.assurance).toMatchObject({ passed: false, coverage: { checkedFiles: 0 } });
+    expect(result.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "coverage", fileName: "<project>", subject: "<coverage>",
+    }));
+  });
+
+  it("makes runtime instrumentation failures project assurance blockers", async () => {
+    const fileName = "src/runtime-boundary.ts";
+    const result = await verifyUneffectProject({ runtimeAssertions: "fallback", files: { [fileName]: `
+      /* uneffect: assert missing: Nat */
+      export function parse(value: number) { return value }
+    ` } });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
+    expect(result.assurance).toMatchObject({ passed: false });
+    expect(result.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "instrument", fileName, subject: "missing",
+    }));
+  });
+
   it("does not issue project-level proof evidence for an ill-typed source", async () => {
     const fileName = "src/invalid-project.ts";
     const result = await verifyUneffectProject({ temporalRuntime: "web", files: { [fileName]: `
@@ -36,6 +57,13 @@ describe("evidence and optimizer obligations", () => {
     expect(result.typedArrays.obligations).not.toContainEqual(expect.objectContaining({ result: "verified" }));
     expect(result.temporal?.properties).toEqual(expect.arrayContaining([
       expect.objectContaining({ fileName, name: "eventLoopSafe", result: "error", output: expect.stringContaining("TypeScript errors") }),
+    ]));
+    expect(result.assurance).toMatchObject({ passed: false, coverage: { checkedFiles: 1 } });
+    expect(result.assurance.blockers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ domain: "typescript", fileName }),
+      expect.objectContaining({ domain: "contract", fileName }),
+      expect.objectContaining({ domain: "typed-array", fileName }),
+      expect.objectContaining({ domain: "temporal", fileName }),
     ]));
   });
 
@@ -132,12 +160,15 @@ describe("evidence and optimizer obligations", () => {
       expect.objectContaining({ domain: "dispatch-sealing", reason: "application owns the complete class graph", owner: "runtime-team", expiresOn: "2027-02-28", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
     ]));
     expect(result.assumptions.violations).toEqual([]);
+    expect(result.assurance).toMatchObject({ passed: true, blockers: [] });
 
     const missingOwner = await verifyUneffectProject({
       files: { [fileName]: source.replace("/* uneffect: trust_owner binary-platform */", "") },
       assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
     });
     expect(missingOwner.assumptions.violations).toContainEqual(expect.objectContaining({ rule: "owner-required", domain: "typed-array" }));
+    expect(missingOwner.assurance).toMatchObject({ passed: false });
+    expect(missingOwner.assurance.blockers).toContainEqual(expect.objectContaining({ domain: "assumption", fileName }));
     expect(missingOwner.diagnostics).toContainEqual(expect.objectContaining({ kind: "assumption-policy", rule: "owner-required" }));
 
     const missingDispatchOwner = await verifyUneffectProject({

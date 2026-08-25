@@ -15,6 +15,7 @@ import { extractAnnotations } from "./annotations.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
+import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -38,6 +39,7 @@ export interface VerifyUneffectProjectResult {
   ownership: { diagnostics: ProjectOwnershipDiagnostic[] };
   assumptions: AssumptionLedger;
   effects: EffectAnalysisResult;
+  assurance: ProjectAssuranceAssessment;
   temporal?: ProjectTemporalVerification;
 }
 
@@ -217,5 +219,6 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
-  return { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects, ...(temporal ? { temporal } : {}) };
+  const partial = { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects, ...(temporal ? { temporal } : {}) };
+  return { ...partial, assurance: assessProjectVerification(partial, Object.keys(options.files)) };
 }

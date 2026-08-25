@@ -31,6 +31,18 @@ must not be interpreted as verified output. Every temporal property carries
 its source `fileName`, so a verified sibling cannot be mistaken for evidence
 about an invalid file with the same property name.
 
+The returned `result.assurance` is the conservative project-level acceptance
+decision. It aggregates source-attributed blockers from TypeScript, effects,
+contracts, typed arrays, ownership, runtime instrumentation, assumption policy,
+temporal verification, and evidence coverage. Consumers should gate on
+`result.assurance.passed`, not `diagnostics.length`, one verified obligation,
+or a same-named temporal property. Its `claims`, `exclusions`, and per-domain
+`blockers` remain machine-readable. Inferred effects are accepted; explicit
+typed-array trust is counted separately and remains an assumption. An unknown
+helper anywhere in the supplied project makes the project assessment fail even
+when a selected entry function and its temporal property are individually
+verified.
+
 ## Reproducible artifacts
 
 `just evidence file.ts` emits JSON containing the Uneffect version, TypeScript compiler revision, normalized compiler-options hash, source hash, builtin-contract digest, summaries, and diagnostics. Changing any of these proof dependencies invalidates the artifact.
