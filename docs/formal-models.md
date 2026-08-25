@@ -191,6 +191,9 @@ thenable causality remain outside this bounded proof.
 The Program variant stores and resolves canonical component keys after
 TypeScript symbol aliasing, including barrels and default exports; it does not
 fall back to matching imported display names.
+React and component namespace tags use their imported symbols as well; an
+unrelated object property named `Suspense` or `Profile` is not accepted by
+spelling alone.
 
 ## Verification ledger
 

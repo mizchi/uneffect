@@ -1043,6 +1043,17 @@ describe("React Function Component semantics", () => {
       .toThrow("Suspense boundary 0 is not available");
   });
 
+  it("does not recognize an unrelated namespace property named Suspense", () => {
+    const result = analyzeReactSemantics("unrelated-suspense.tsx", `
+      declare const UI: { Suspense: unknown }
+      /* uneffect: react component */ function Primary() { return null }
+      /* uneffect: react component */ function Fallback() { return null }
+      function App() { return <UI.Suspense fallback={<Fallback />}><Primary /></UI.Suspense> }
+    `);
+    expect(result.suspenseBoundaries).toEqual([]);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+  });
+
   it("resolves cross-file Suspense components through barrel and default import aliases", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-symbols-"));
     const componentsFile = join(directory, "components.tsx");
@@ -1075,6 +1086,40 @@ describe("React Function Component semantics", () => {
       const quint = generateReactSuspenseBoundaryQuintFromProgram("cross_file_boundary", results, appFile);
       expect(quint).toContain("component: Profile");
       expect(quint).toContain("component: Spinner");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves React and component namespace JSX tags", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-namespace-"));
+    const componentsFile = join(directory, "views.tsx");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(componentsFile, `
+        /* uneffect: react component */ export function Profile() { return null }
+        /* uneffect: react component */ export function Spinner() { return null }
+      `);
+      writeFileSync(appFile, `
+        import * as React from "react"
+        import * as views from "./views.js"
+        export function App() { return <React.Suspense fallback={<views.Spinner />}><views.Profile /></React.Suspense> }
+      `);
+      const program = ts.createProgram([componentsFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const app = results.get(appFile)!;
+      expect(app.suspenseBoundaries).toEqual([
+        expect.objectContaining({
+          primary: "views.Profile", fallback: "views.Spinner",
+          primaryKey: `${componentsFile}:Profile`, fallbackKey: `${componentsFile}:Spinner`,
+        }),
+      ]);
+      expect(app.unsupportedSuspenseBoundaries).toEqual([]);
+      expect(generateReactSuspenseBoundaryQuintFromProgram("namespace_boundary", results, appFile))
+        .toContain("val suspenseBoundarySafe");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -1245,7 +1290,7 @@ describe("React Function Component semantics", () => {
     const app = results.get(appFile)!;
     expect(app.suspenseBoundaries).toEqual([
       expect.objectContaining({
-        primary: "Profile", fallback: "Spinner",
+        primary: "views.ProfileFromBarrel", fallback: "views.SpinnerFromBarrel",
         primaryKey: `${componentsFile}:RemoteProfile`,
         fallbackKey: `${componentsFile}:RemoteSpinner`,
       }),

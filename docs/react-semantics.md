@@ -251,8 +251,9 @@ edge back to exactly one summary per side and fails closed otherwise. The
 lower-level explicit-summary generator remains available.
 
 The Program-backed analyzer additionally resolves direct component tags
-through TypeScript symbols across named import aliases, re-export barrels, and
-default exports. Each edge stores canonical `file:name` keys for both sides;
+through TypeScript symbols across named import aliases, namespace-qualified
+tags, re-export barrels, and default exports. Both named/aliased `Suspense` and
+`React.Suspense` from a React namespace import are recognized. Each edge stores canonical `file:name` keys for both sides;
 `generateReactSuspenseBoundaryQuintFromProgram` resolves those keys against the
 complete Program result map and rejects missing or duplicate summaries. The
 source-local API deliberately cannot authorize an imported component that has
@@ -333,7 +334,7 @@ This is a tested initial fragment, not a complete React semantics:
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
 - General Suspense trees, fragments, expression-valued or multiple children,
-  namespace component tags, dynamic component selection, nested-boundary propagation,
+  dynamic component selection, nested-boundary propagation,
   rejected thenables, unbounded retries, transition priority, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
@@ -358,9 +359,9 @@ the one owning replacement setup. Its Suspense projections lock both the
 single and repeated suspend-resolve-retry ordering. The checked-in
 `react-suspense-boundary.tsx` fixture additionally exercises automatic direct
 JSX edge extraction and the bounded boundary generator. The checked-in
-`react-suspense-symbol-*` fixture resolves primary/fallback aliases through a
-barrel to default and named component exports before generating the same
-model. The checked-in
+`react-suspense-symbol-*` fixture uses `React.Suspense` and namespace-qualified
+component tags, then resolves them through a barrel to default and named
+component exports before generating the same model. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

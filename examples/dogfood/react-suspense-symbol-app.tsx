@@ -1,9 +1,8 @@
-import { Suspense } from "react";
-import {
-  ProfileFromBarrel as Profile,
-  SpinnerFromBarrel as Spinner,
-} from "./react-suspense-symbol-barrel.js";
+import * as React from "react";
+import * as views from "./react-suspense-symbol-barrel.js";
 
 export function RemoteProfileBoundary() {
-  return <Suspense fallback={<Spinner />}><Profile /></Suspense>;
+  return <React.Suspense fallback={<views.SpinnerFromBarrel />}>
+    <views.ProfileFromBarrel />
+  </React.Suspense>;
 }

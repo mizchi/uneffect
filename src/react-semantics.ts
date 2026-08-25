@@ -678,6 +678,7 @@ function expressionRoot(expression: ts.Expression): string | undefined {
 }
 
 const reactImportNameCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, string>>();
+const reactNamespaceImportCache = new WeakMap<ts.SourceFile, ReadonlySet<string>>();
 
 function reactImportNames(source: ts.SourceFile): ReadonlyMap<string, string> {
   const cached = reactImportNameCache.get(source);
@@ -693,6 +694,26 @@ function reactImportNames(source: ts.SourceFile): ReadonlyMap<string, string> {
   }
   reactImportNameCache.set(source, imports);
   return imports;
+}
+
+function reactNamespaceImportNames(source: ts.SourceFile): ReadonlySet<string> {
+  const cached = reactNamespaceImportCache.get(source);
+  if (cached) return cached;
+  const imports = new Set<string>();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== "react" || !statement.importClause?.namedBindings
+      || !ts.isNamespaceImport(statement.importClause.namedBindings)) continue;
+    imports.add(statement.importClause.namedBindings.name.text);
+  }
+  reactNamespaceImportCache.set(source, imports);
+  return imports;
+}
+
+function isReactSuspenseTag(source: ts.SourceFile, tag: ts.JsxTagNameExpression): boolean {
+  if (ts.isIdentifier(tag)) return reactImportNames(source).get(tag.text) === "Suspense";
+  return ts.isPropertyAccessExpression(tag) && tag.name.text === "Suspense"
+    && ts.isIdentifier(tag.expression) && reactNamespaceImportNames(source).has(tag.expression.text);
 }
 
 /** Immutable render snapshots are distinct from stable identities such as setters and refs. */
@@ -814,7 +835,9 @@ interface InternalReactAnalysis {
   hookNodes: Map<string, ComponentNode>;
 }
 
-function directJsxComponentTag(node: ts.Node | undefined): ts.Identifier | undefined {
+interface DirectJsxComponentTag { displayName: string; location: ts.Identifier }
+
+function directJsxComponentTag(node: ts.Node | undefined): DirectJsxComponentTag | undefined {
   if (!node) return undefined;
   const expression = ts.isJsxExpression(node) ? node.expression : node;
   if (!expression) return undefined;
@@ -822,24 +845,26 @@ function directJsxComponentTag(node: ts.Node | undefined): ts.Identifier | undef
   const tag = ts.isJsxElement(unwrapped)
     ? unwrapped.openingElement.tagName
     : ts.isJsxSelfClosingElement(unwrapped) ? unwrapped.tagName : undefined;
-  return tag && ts.isIdentifier(tag) && /^[A-Z]/u.test(tag.text) ? tag : undefined;
+  if (tag && ts.isIdentifier(tag) && /^[A-Z]/u.test(tag.text)) return { displayName: tag.text, location: tag };
+  if (tag && ts.isPropertyAccessExpression(tag) && ts.isIdentifier(tag.name) && /^[A-Z]/u.test(tag.name.text)) {
+    return { displayName: tag.getText(tag.getSourceFile()), location: tag.name };
+  }
+  return undefined;
 }
 
 function directJsxComponentName(node: ts.Node | undefined): string | undefined {
-  return directJsxComponentTag(node)?.text;
+  return directJsxComponentTag(node)?.displayName;
 }
 
 function suspenseBoundaryFacts(
   source: ts.SourceFile,
   components: readonly ReactComponentSummary[],
 ): { boundaries: ReactSuspenseBoundarySummary[]; unsupported: ReactUnsupportedSuspenseBoundary[] } {
-  const imports = reactImportNames(source);
   const componentNames = new Set(components.map(({ name }) => name));
   const boundaries: ReactSuspenseBoundarySummary[] = [];
   const unsupported: ReactUnsupportedSuspenseBoundary[] = [];
   const visit = (node: ts.Node): void => {
-    if (ts.isJsxElement(node) && ts.isIdentifier(node.openingElement.tagName)
-      && imports.get(node.openingElement.tagName.text) === "Suspense") {
+    if (ts.isJsxElement(node) && isReactSuspenseTag(source, node.openingElement.tagName)) {
       const instance = `suspense@${node.getStart(source)}`;
       const span = { start: node.getStart(source), end: node.getEnd() };
       const fail = (reason: ReactUnsupportedSuspenseBoundaryReason): void => { unsupported.push({ instance, reason, span }); };
@@ -1700,10 +1725,9 @@ function resolveProgramSuspenseBoundaries(
     const result = results.get(source.fileName);
     if (!result) continue;
     const imports = reactImportNames(source);
-    if (![...imports.values()].includes("Suspense")) continue;
+    if (![...imports.values()].includes("Suspense") && reactNamespaceImportNames(source).size === 0) continue;
     const visit = (node: ts.Node): void => {
-      if (ts.isJsxElement(node) && ts.isIdentifier(node.openingElement.tagName)
-        && imports.get(node.openingElement.tagName.text) === "Suspense") {
+      if (ts.isJsxElement(node) && isReactSuspenseTag(source, node.openingElement.tagName)) {
         const fallbackAttribute = node.openingElement.attributes.properties.find(
           (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute)
             && ts.isIdentifier(attribute.name) && attribute.name.text === "fallback",
@@ -1713,16 +1737,16 @@ function resolveProgramSuspenseBoundaries(
         const fallbackTag = fallbackAttribute?.initializer ? directJsxComponentTag(fallbackAttribute.initializer) : undefined;
         const primaryTag = children.length === 1 ? directJsxComponentTag(children[0]) : undefined;
         if (primaryTag && fallbackTag) {
-          const primaryDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primaryTag));
-          const fallbackDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(fallbackTag));
+          const primaryDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primaryTag.location));
+          const fallbackDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(fallbackTag.location));
           const primaryKey = primaryDeclaration ? declarationKey(primaryDeclaration) : undefined;
           const fallbackKey = fallbackDeclaration ? declarationKey(fallbackDeclaration) : undefined;
           if (primaryKey && fallbackKey && componentKeys.has(primaryKey) && componentKeys.has(fallbackKey)) {
             const instance = `suspense@${node.getStart(source)}`;
             const boundary: ReactSuspenseBoundarySummary = {
               instance,
-              primary: primaryTag.text,
-              fallback: fallbackTag.text,
+              primary: primaryTag.displayName,
+              fallback: fallbackTag.displayName,
               primaryKey,
               fallbackKey,
               span: { start: node.getStart(source), end: node.getEnd() },
