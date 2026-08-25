@@ -33,13 +33,15 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into thirteen phases:
+The analyzer currently projects component work into fifteen phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
 | `render` | Replayable calculation of the next UI value | Must be idempotent and free of observable capabilities |
 | `memo-compare` | Optional `memo` comparison of previous and next props | Must be pure; an unresolved custom comparator fails closed |
+| `optimistic-reducer` | `useOptimistic` state projection while an Action is pending | Must be pure and idempotent; an unresolved reducer fails closed |
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
+| `action` | A `useActionState` reducerAction or JSX `action`/`formAction` callback | Capabilities are tracked as Action work rather than render work |
 | `imperative-handle-method` | Method exposed to a ref consumer by `useImperativeHandle` | Method capabilities are recorded as externally invoked work, not factory work |
 | `external-store-snapshot` | `useSyncExternalStore` client `getSnapshot` read during replayable rendering | Read capabilities are recorded at the specialized boundary |
 | `server-snapshot` | Optional `getServerSnapshot` read during SSR or hydration | Capabilities remain distinct from the client snapshot |
@@ -87,6 +89,23 @@ pending state, interruption, or the eventual rendering work as a scheduler.
 Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
 otherwise opaque actions produce `unknown-transition-action` rather than losing
 their capabilities silently.
+
+Named, aliased, default, and namespace calls to React 19 `useActionState` and
+`useOptimistic` have distinct contracts. A resolvable `useActionState`
+`reducerAction` contributes its capabilities to `action`; the dispatcher may
+be passed directly to JSX `action` or `formAction`. A `useOptimistic` update
+function is analyzed in `optimistic-reducer`, where declared effects and
+selected non-idempotent host reads are errors. Their state and pending tuple
+values are immutable render snapshots. Both returned setters must be called
+inside a recognized Action such as `startTransition`, `useTransition`, or a
+JSX Action prop; a direct render/event call is
+`action-dispatch-outside-action`. Opaque callbacks and JSX Action handlers
+fail closed. These rules follow the official
+[useActionState](https://react.dev/reference/react/useActionState) and
+[useOptimistic](https://react.dev/reference/react/useOptimistic) contracts.
+They do not yet model the sequential Action queue, pending-flag transitions,
+progressive enhancement, cancellation after a thrown Action, or Error Boundary
+routing.
 
 Named or aliased `useEffectEvent` creates a dedicated local callback class.
 Calls from insertion, layout, or passive Effect setup/cleanup expand the Event's
@@ -452,6 +471,12 @@ This is a tested initial fragment, not a complete React semantics:
   function/arrow callbacks through `const` aliases. Imported handlers, member
   expressions, callbacks passed through props, and general data flow remain
   explicit unknowns;
+- Action extraction covers inline/module/immutable-local callbacks, direct JSX
+  Action dispatchers, and direct local setter calls. Dispatchers returned
+  through custom Hooks, general callback data flow, updater functions passed
+  to an optimistic setter, exact sequential queue ordering, pending-state
+  transitions, progressive enhancement/permalinks, Server Functions, and
+  Action failure/Error Boundary composition remain unsupported;
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
   aliases. Reassigned bindings, mutation through calls, properties stored in
@@ -490,7 +515,8 @@ summary only claims coverage for the constructs listed above.
 `examples/dogfood/react-telemetry-dashboard.tsx` is itself a direct `memo`
 wrapper and combines `useState`, a pure `useMemo` calculation, a custom subscription Hook, an identity-checked inline
 callback ref, matching cleanup, an imperative handle exposing a Fetch method,
-and an inline Fetch event. Its regression test
+an Action that persists a filter, a pure optimistic projection, and an inline
+Fetch event. Its regression test
 removes Effect/ref cleanup, substitutes another resource, removes a dependency,
 and mutates props as independent negative controls. The same component also
 generates the bounded interrupted-render model and locks the rule that only a

@@ -1,8 +1,9 @@
-import { memo, startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useOptimistic, useState, useSyncExternalStore } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
     button: { onClick?: () => void; children?: unknown };
+    form: { action?: unknown; children?: unknown };
     output: { children?: unknown; ref?: unknown };
   }
 }
@@ -46,6 +47,8 @@ declare function readTelemetryStatus(): boolean;
 declare function insertTelemetryStyles(): void;
 /* uneffect: effect StyleWrite */
 declare function removeTelemetryStyles(): void;
+/* uneffect: effect TelemetryFilterSave */
+declare function saveTelemetryFilter(service: string): Promise<void>;
 
 /* uneffect: react hook */
 function useTelemetryStyles(): void {
@@ -83,6 +86,11 @@ function useTelemetrySubscription(service: string): void {
 export const TelemetryDashboard = memo(function TelemetryDashboard(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
   const [showFailures, setShowFailures] = useState(false);
   const online = useTelemetryOnlineStatus();
+  const [savedService, saveService, saving] = useActionState(async (previous: string) => {
+    await saveTelemetryFilter(props.service);
+    return previous === props.service ? previous : props.service;
+  }, props.service);
+  const [optimisticService] = useOptimistic(savedService, (_previous, next: string) => next);
   useTelemetryStyles();
   useTelemetrySubscription(props.service);
   useImperativeHandle(props.handleRef, () => ({
@@ -101,11 +109,11 @@ export const TelemetryDashboard = memo(function TelemetryDashboard(props: { serv
     setShowFailures(!showFailures);
     startTransition(requestRefresh);
   };
-  return <output ref={(node) => {
+  return <form action={saveService}><output ref={(node) => {
     const viewport = attachTelemetryViewport(node);
     return () => detachTelemetryViewport(viewport);
   }}>
-    {online ? visibleRows.length : 0}
+    {online ? visibleRows.length : 0}{optimisticService}{saving}
     <button onClick={refresh}>refresh</button>
-  </output>;
+  </output></form>;
 });

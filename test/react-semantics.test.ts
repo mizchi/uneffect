@@ -416,6 +416,105 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("separates side-effecting Actions from pure optimistic reducers", () => {
+    const result = analyzeReactSemantics("react-actions.tsx", `
+      import React, { useActionState as actionState, useOptimistic as optimistic } from "react"
+      declare namespace JSX { interface IntrinsicElements { form: { action?: unknown }; button: { formAction?: unknown; onClick?: unknown } } }
+      /* uneffect: effect Save */ declare function save(value: string): Promise<void>
+      /* uneffect: effect Audit */ declare function audit(): void
+
+      /* uneffect: react hook */
+      function useSave(initial: string) {
+        return actionState(async (previous: string, next: string) => {
+          await save(next)
+          return previous + next
+        }, initial)
+      }
+
+      /* uneffect: react component */
+      function Editor(props: { initial: string; value: string }) {
+        useSave(props.initial)
+        const [saved, dispatch, pending] = actionState(async (previous: string, next: string) => {
+          await save(next)
+          return previous + next
+        }, props.initial)
+        const [draft, updateDraft] = optimistic(saved, (current, next: string) => current + next)
+        return <form action={dispatch}><button formAction={async () => { await save(props.value) }} /></form>
+      }
+
+      /* uneffect: react component */
+      function Namespaced(props: { value: string }) {
+        const [state] = React.useActionState(async (_previous: string, next: string) => {
+          await save(next)
+          return next
+        }, props.value)
+        const [draft] = React.useOptimistic(state, (current: string) => current)
+        return null
+      }
+
+      /* uneffect: react component */
+      function Impure(props: { value: string }) {
+        const [actionValue, , pending] = actionState((previous: string) => previous, props.value)
+        const [state] = optimistic(props.value, (current: string) => {
+          audit()
+          Date.now()
+          return current
+        })
+        state.value = "mutated"
+        actionValue.value = "mutated"
+        pending.value = false
+        return null
+      }
+
+      /* uneffect: react component */
+      function Opaque(props: { value: string }, action: Function, reducer: Function) {
+        actionState(action, props.value)
+        optimistic(props.value, reducer)
+        return <form action={props.value} />
+      }
+
+      /* uneffect: react component */
+      function InvalidDispatch(props: { value: string }) {
+        const [, dispatch] = actionState((previous: string) => previous, props.value)
+        const [, update] = optimistic(props.value, (previous: string) => previous)
+        return <button onClick={() => { dispatch(props.value); update(props.value) }} />
+      }
+
+      /* uneffect: react component */
+      function TransitionDispatch(props: { value: string }) {
+        const [, dispatch] = actionState((previous: string) => previous, props.value)
+        const [, update] = optimistic(props.value, (previous: string) => previous)
+        return <button onClick={() => React.startTransition(() => { dispatch(props.value); update(props.value) })} />
+      }
+    `);
+
+    const editor = result.components.find(({ name }) => name === "Editor")!;
+    expect(editor.phases).toEqual(expect.arrayContaining([
+      { phase: "action", effects: ["Save"] },
+      { phase: "optimistic-reducer", effects: [] },
+    ]));
+    expect(result.components.find(({ name }) => name === "Namespaced")!.phases).toEqual(expect.arrayContaining([
+      { phase: "action", effects: ["Save"] },
+      { phase: "optimistic-reducer", effects: [] },
+    ]));
+    expect(result.components.find(({ name }) => name === "Impure")!.phases).toContainEqual({
+      phase: "optimistic-reducer", effects: ["Audit"],
+    });
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: "Impure", kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect: "Audit" }),
+      expect.objectContaining({ component: "Impure", kind: "optimistic-reducer-effect", phase: "optimistic-reducer", operation: "Date.now" }),
+      expect.objectContaining({ component: "Impure", kind: "immutable-input-mutation", operation: "state.value" }),
+      expect.objectContaining({ component: "Impure", kind: "immutable-input-mutation", operation: "actionValue.value" }),
+      expect.objectContaining({ component: "Impure", kind: "immutable-input-mutation", operation: "pending.value" }),
+      expect.objectContaining({ component: "Opaque", kind: "unknown-action-callback", phase: "action" }),
+      expect.objectContaining({ component: "Opaque", kind: "unknown-optimistic-reducer", phase: "optimistic-reducer" }),
+      expect.objectContaining({ component: "Opaque", kind: "unknown-action-handler", phase: "action" }),
+      expect.objectContaining({ component: "InvalidDispatch", kind: "action-dispatch-outside-action", phase: "event", operation: "dispatch" }),
+      expect.objectContaining({ component: "InvalidDispatch", kind: "action-dispatch-outside-action", phase: "event", operation: "update" }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => ["useSave", "Editor", "Namespaced", "TransitionDispatch"].includes(component))).toEqual([]);
+  });
+
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -1897,6 +1996,8 @@ describe("React Function Component semantics", () => {
       name: "TelemetryDashboard",
       phases: expect.arrayContaining([
         expect.objectContaining({ phase: "memo-compare", effects: [] }),
+        expect.objectContaining({ phase: "action", effects: ["TelemetryFilterSave"] }),
+        expect.objectContaining({ phase: "optimistic-reducer", effects: [] }),
         expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
         expect.objectContaining({ phase: "passive-effect", effects: expect.arrayContaining(["Console", "Acquire<TelemetrySubscription>"]) }),
         expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),

@@ -28,7 +28,7 @@ contract layer for existing TypeScript:
 11. External dogfood reports false positives, unknown summaries, annotation
     density, and frontend/verifier cost.
 12. Opted-in React function components separate replayable render from event,
-    Effect setup, external-store reads/subscriptions, imperative-handle
+    React Actions, pure optimistic reducers, Effect setup, external-store reads/subscriptions, imperative-handle
     factories/exposed methods, and cleanup capabilities without changing
     emitted code; annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity.

@@ -10,6 +10,8 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
     const catalogVersion = useCatalogVersion()
+    const [savedLabel, saveLabel] = useActionState(async (previous: string) => { await persistLabel(props.label); return previous }, props.label)
+    const [optimisticLabel] = useOptimistic(savedLabel, (_previous, next: string) => next)
     useImperativeHandle(props.ref, () => ({ refresh() { fetch("/items/${index}/imperative") } }), [])
     useInsertionEffect(() => { insertRule(); return () => removeRule() }, [])
     useCatalogSubscription(props.label)
@@ -19,12 +21,12 @@ const components = Array.from({ length: 128 }, (_, index) => `
     return <button
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
       onClick={handleClick}
-    >{props.label}{catalogVersion}{selectionSnapshot.active && preferences.dense}</button>
+    >{props.label}{catalogVersion}{optimisticLabel}{selectionSnapshot.active && preferences.dense}</button>
   })
 `).join("\n");
 
 const source = `
-  import { memo, startTransition, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useState, useSyncExternalStore } from "react"
+  import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useState, useSyncExternalStore } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
@@ -36,6 +38,8 @@ const source = `
   declare function insertRule(): void
   /* uneffect: effect StyleWrite */
   declare function removeRule(): void
+  /* uneffect: effect LabelSave */
+  declare function persistLabel(label: string): Promise<void>
   interface CatalogVersionSubscription { readonly id: string }
   /* uneffect: react acquire CatalogVersionSubscription result */
   declare function openCatalogVersion(notify: () => void): CatalogVersionSubscription

@@ -98,6 +98,17 @@ recovery, comparator classification, and Program identity preservation, so
 this replaces the unwrapped imperative-handle run as the current synthetic
 React baseline; it is not an isolated estimate of React's runtime `memo` cost.
 
+After adding one `useActionState` Action and one pure `useOptimistic` reducer
+to every wrapped component, a 2026-08-25 run measured 134.47 ms for source
+analysis (2.36% RME), 10.76 ms for parse-only (5.80% RME), and 180.19 ms for
+the reused Program (4.25% RME). Consolidating state, Action, and optimistic
+dispatcher discovery into one cached component walk improved an immediately
+preceding 155.12/238.96 ms analysis run, but this expanded workload is still
+materially slower than the 59.54/92.92 ms wrapper baseline. The source now
+contains 256 additional callbacks and 128 async bodies; the result is recorded
+as a regression target, not accepted as isolated per-Hook overhead. Parse-only
+noise also prevents attributing the full delta to Uneffect.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

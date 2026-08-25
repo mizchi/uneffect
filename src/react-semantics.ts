@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "memo-compare" | "event" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
+export type ReactPhase = "render" | "memo-compare" | "optimistic-reducer" | "event" | "action" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
@@ -21,6 +21,11 @@ export type ReactDiagnosticKind =
   | "memo-comparator-effect"
   | "unknown-memo-comparator"
   | "unsupported-react-component-wrapper"
+  | "optimistic-reducer-effect"
+  | "unknown-action-callback"
+  | "unknown-optimistic-reducer"
+  | "unknown-action-handler"
+  | "action-dispatch-outside-action"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -553,9 +558,10 @@ function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bi
     }
     if (ts.isVariableDeclaration(node)) {
       for (const name of bindingNames(node.name)) bindings.add(name);
-      if (node.initializer && ts.isCallExpression(node.initializer) && ts.isIdentifier(node.initializer.expression)) {
-        const imported = reactImports.get(node.initializer.expression.text);
-        if (ts.isArrayBindingPattern(node.name) && (imported === "useState" || imported === "useReducer" || imported === "useTransition")) {
+      if (node.initializer && ts.isCallExpression(node.initializer)) {
+        const imported = ts.isIdentifier(node.initializer.expression) ? reactImports.get(node.initializer.expression.text) : undefined;
+        if (ts.isArrayBindingPattern(node.name) && (imported === "useState" || imported === "useReducer" || imported === "useTransition"
+          || isUseActionStateCall(source, node.initializer.expression) || isUseOptimisticCall(source, node.initializer.expression))) {
           const element = node.name.elements[1];
           if (element && !ts.isOmittedExpression(element)) for (const name of bindingNames(element.name)) stable.add(name);
         } else if (ts.isIdentifier(node.name) && imported === "useRef") stable.add(node.name.text);
@@ -569,11 +575,19 @@ function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bi
   return { bindings, stable };
 }
 
-/** State dispatchers are stable identities, but are forbidden inside insertion Effects. */
-function stateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
-  const updaters = new Set<string>();
+interface DispatcherBindingFacts {
+  state: ReadonlySet<string>;
+  action: ReadonlySet<string>;
+  optimistic: ReadonlySet<string>;
+}
+
+const dispatcherBindingCache = new WeakMap<ComponentNode, DispatcherBindingFacts>();
+
+function dispatcherBindingFacts(boundary: ComponentNode, source: ts.SourceFile): DispatcherBindingFacts {
+  const cached = dispatcherBindingCache.get(boundary);
+  if (cached) return cached;
+  const state = new Set<string>(), action = new Set<string>(), optimistic = new Set<string>();
   const aliases: Array<{ name: string; target: string }> = [];
-  const imports = reactImportNames(source);
   const visit = (node: ts.Node): void => {
     if (node !== boundary.body && ts.isFunctionLike(node)) return;
     if (ts.isVariableDeclaration(node)
@@ -581,13 +595,18 @@ function stateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): R
       && (node.parent.flags & ts.NodeFlags.Const) !== 0
       && node.initializer) {
       const initializer = unwrapExpression(node.initializer);
-      if (ts.isCallExpression(initializer)
-        && ts.isIdentifier(initializer.expression)
-        && (imports.get(initializer.expression.text) === "useState" || imports.get(initializer.expression.text) === "useReducer")
-        && ts.isArrayBindingPattern(node.name)) {
+      if (ts.isCallExpression(initializer) && ts.isArrayBindingPattern(node.name)) {
+        const isAction = isUseActionStateCall(source, initializer.expression);
+        const isOptimistic = isUseOptimisticCall(source, initializer.expression);
+        const isState = isReactBuiltinCall(source, initializer.expression, "useState")
+          || isReactBuiltinCall(source, initializer.expression, "useReducer") || isAction || isOptimistic;
         const dispatcher = node.name.elements[1];
         if (dispatcher && !ts.isOmittedExpression(dispatcher)) {
-          for (const name of bindingNames(dispatcher.name)) updaters.add(name);
+          for (const name of bindingNames(dispatcher.name)) {
+            if (isState) state.add(name);
+            if (isAction) action.add(name);
+            if (isOptimistic) optimistic.add(name);
+          }
         }
       } else if (ts.isIdentifier(node.name) && ts.isIdentifier(initializer)) {
         aliases.push({ name: node.name.text, target: initializer.text });
@@ -599,12 +618,29 @@ function stateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): R
   let changed = true;
   while (changed) {
     changed = false;
-    for (const alias of aliases) if (updaters.has(alias.target) && !updaters.has(alias.name)) {
-      updaters.add(alias.name);
-      changed = true;
+    for (const alias of aliases) {
+      for (const bindings of [state, action, optimistic]) if (bindings.has(alias.target) && !bindings.has(alias.name)) {
+        bindings.add(alias.name);
+        changed = true;
+      }
     }
   }
-  return updaters;
+  const facts = { state, action, optimistic };
+  dispatcherBindingCache.set(boundary, facts);
+  return facts;
+}
+
+/** State dispatchers are stable identities, but are forbidden inside insertion Effects. */
+function stateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return dispatcherBindingFacts(boundary, source).state;
+}
+
+function actionDispatcherBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return dispatcherBindingFacts(boundary, source).action;
+}
+
+function optimisticDispatcherBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return dispatcherBindingFacts(boundary, source).optimistic;
 }
 
 function stateUpdates(node: ts.Node, updaters: ReadonlySet<string>): ts.CallExpression[] {
@@ -856,16 +892,26 @@ function callbackArgument(
   return ts.isIdentifier(expression) ? callbacks.get(expression.text) : undefined;
 }
 
-function isUseSyncExternalStoreCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
-  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "useSyncExternalStore";
-  return ts.isPropertyAccessExpression(expression) && expression.name.text === "useSyncExternalStore"
+function isReactBuiltinCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression, importedName: string): boolean {
+  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === importedName;
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === importedName
     && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
 }
 
+function isUseActionStateCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  return isReactBuiltinCall(source, expression, "useActionState");
+}
+
+function isUseOptimisticCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  return isReactBuiltinCall(source, expression, "useOptimistic");
+}
+
+function isUseSyncExternalStoreCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  return isReactBuiltinCall(source, expression, "useSyncExternalStore");
+}
+
 function isUseImperativeHandleCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
-  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "useImperativeHandle";
-  return ts.isPropertyAccessExpression(expression) && expression.name.text === "useImperativeHandle"
-    && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
+  return isReactBuiltinCall(source, expression, "useImperativeHandle");
 }
 
 function imperativeHandleMethodEffects(
@@ -1107,6 +1153,34 @@ function reactTransitionCallbacks(source: ts.SourceFile, boundary: ComponentNode
   return callbacks;
 }
 
+function actionDispatcherCallsOutsideAction(
+  node: ts.Node,
+  dispatchers: ReadonlySet<string>,
+  actionCallbacks: ReadonlySet<string>,
+  localCallbacks: ReadonlyMap<string, LocalEventCallback>,
+): ts.CallExpression[] {
+  const invalid: ts.CallExpression[] = [];
+  const visit = (current: ts.Node, insideAction: boolean): void => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (ts.isCallExpression(current)) {
+      if (ts.isIdentifier(current.expression) && dispatchers.has(current.expression.text) && !insideAction) invalid.push(current);
+      if (actionCallbacks.has(callName(current) ?? "")) {
+        const argument = current.arguments[0];
+        const callback = argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
+          ? argument : argument && ts.isIdentifier(argument) ? localCallbacks.get(argument.text) : undefined;
+        if (callback?.body) visit(callback.body, true);
+        // The Action callback has already been traversed in its Action context.
+        ts.forEachChild(current.expression, (child) => visit(child, insideAction));
+        for (const other of current.arguments.slice(1)) visit(other, insideAction);
+        return;
+      }
+    }
+    ts.forEachChild(current, (child) => visit(child, insideAction));
+  };
+  visit(node, false);
+  return invalid;
+}
+
 function returnedCleanup(callback: LocalEventCallback): ts.ArrowFunction | ts.FunctionExpression | undefined {
   if (!ts.isBlock(callback.body)) return undefined;
   for (const statement of callback.body.statements) {
@@ -1214,13 +1288,17 @@ function immutableSnapshotBindings(boundary: ComponentNode, source: ts.SourceFil
       const initializer = declaration.initializer && unwrapExpression(declaration.initializer);
       if (!initializer) continue;
       let snapshot = false;
-      if (ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)) {
-        const imported = imports.get(initializer.expression.text);
+      if (ts.isCallExpression(initializer)) {
+        const imported = ts.isIdentifier(initializer.expression) ? imports.get(initializer.expression.text) : undefined;
         if (imported === "useContext") snapshot = true;
-        if ((imported === "useState" || imported === "useReducer") && ts.isArrayBindingPattern(declaration.name)) {
-          const value = declaration.name.elements[0];
-          if (value && !ts.isOmittedExpression(value)) for (const name of bindingNames(value.name)) {
-            if (!immutable.has(name)) { immutable.add(name); changed = true; }
+        if ((imported === "useState" || imported === "useReducer" || isUseActionStateCall(source, initializer.expression)
+          || isUseOptimisticCall(source, initializer.expression)) && ts.isArrayBindingPattern(declaration.name)) {
+          const indices = isUseActionStateCall(source, initializer.expression) ? [0, 2] : [0];
+          for (const index of indices) {
+            const value = declaration.name.elements[index];
+            if (value && !ts.isOmittedExpression(value)) for (const name of bindingNames(value.name)) {
+              if (!immutable.has(name)) { immutable.add(name); changed = true; }
+            }
           }
           continue;
         }
@@ -1520,6 +1598,17 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             span: { start: node.getStart(source), end: node.getEnd() },
           });
         }
+        if (isUseActionStateCall(source, node.expression)) {
+          const action = callbackArgument(node.arguments[0], callableCallbacks);
+          add("action", action ? directEffects(action.body, declared, transitionCallbacks, localCallbacks) : []);
+          return;
+        }
+        if (isUseOptimisticCall(source, node.expression)) {
+          const reducerArgument = node.arguments[1];
+          const reducer = callbackArgument(reducerArgument, callableCallbacks);
+          add("optimistic-reducer", reducer ? directEffects(reducer.body, declared, transitionCallbacks, localCallbacks) : []);
+          return;
+        }
         if (isUseImperativeHandleCall(source, node.expression)) {
           const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
           if (createHandle) {
@@ -1620,6 +1709,44 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
+        if (isUseActionStateCall(source, node.expression)) {
+          const action = callbackArgument(node.arguments[0], callableCallbacks);
+          if (!action) reportHook(node.arguments[0] ?? node, {
+            kind: "unknown-action-callback", phase: "action", operation: node.arguments[0]?.getText(source) ?? "<argument 0>",
+            message: "useActionState reducerAction is not an inline, module-local, or immutable Hook-local callback",
+          });
+          if (isConditionalWithin(node, hook)) reportHook(node, {
+            kind: "conditional-hook", phase: "render", hook: "useActionState",
+            message: "useActionState has control-flow-dependent call order",
+          });
+          return;
+        }
+        if (isUseOptimisticCall(source, node.expression)) {
+          const reducerArgument = node.arguments[1];
+          const reducer = callbackArgument(reducerArgument, callableCallbacks);
+          if (reducerArgument && !reducer) reportHook(reducerArgument, {
+            kind: "unknown-optimistic-reducer", phase: "optimistic-reducer", operation: reducerArgument.getText(source),
+            message: "useOptimistic reducer is not an inline, module-local, or immutable Hook-local callback",
+          });
+          if (reducer) {
+            for (const effect of directEffects(reducer.body, declared)) reportHook(reducerArgument!, {
+              kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect,
+              message: `${effect} is observable in a reducer that React requires to be pure`,
+            });
+            for (const call of directNonIdempotentCalls(reducer.body)) {
+              const operation = knownNonIdempotentOperation(call)!;
+              reportHook(call, {
+                kind: "optimistic-reducer-effect", phase: "optimistic-reducer", operation,
+                message: `${operation} is not idempotent in a reducer that React requires to be pure`,
+              });
+            }
+          }
+          if (isConditionalWithin(node, hook)) reportHook(node, {
+            kind: "conditional-hook", phase: "render", hook: "useOptimistic",
+            message: "useOptimistic has control-flow-dependent call order",
+          });
+          return;
+        }
         if (isUseImperativeHandleCall(source, node.expression)) {
           const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
           if (!createHandle) reportHook(node.arguments[1] ?? node, {
@@ -1763,6 +1890,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const immutableSnapshots = immutableSnapshotBindings(component, source);
     const refs = renderRefBindings(component, source);
     const stateUpdaters = stateUpdaterBindings(component, source);
+    const actionDispatchers = actionDispatcherBindings(component, source);
+    const actionContextDispatchers = new Set([
+      ...actionDispatchers,
+      ...optimisticDispatcherBindings(component, source),
+    ]);
     const eventCallbacks = localEventCallbacks(component);
     const callableCallbacks = new Map([...sourceCallbacks(source), ...eventCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
@@ -1800,6 +1932,23 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         kind: "throw-thenable", certainty: "unknown", fileName,
         expression: node.expression.getText(source), span: { start: node.getStart(source), end: node.getEnd() },
       });
+      if (ts.isJsxAttribute(node) && (node.name.getText(source) === "action" || node.name.getText(source) === "formAction")
+        && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression) {
+        const expression = unwrapExpression(node.initializer.expression);
+        if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
+          addPhase("action", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks));
+        } else if (ts.isIdentifier(expression) && actionDispatchers.has(expression.text)) {
+          addPhase("action");
+        } else if (ts.isIdentifier(expression) && callableCallbacks.has(expression.text)) {
+          addPhase("action", directEffects(callableCallbacks.get(expression.text)!.body, declared, transitionCallbacks, eventCallbacks));
+        } else {
+          report(expression, {
+            kind: "unknown-action-handler", phase: "action", operation: expression.getText(source),
+            message: `${expression.getText(source)} is not an inline, immutable locally resolved, or useActionState-dispatched Action`,
+          });
+        }
+        return;
+      }
       if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
         const callback = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
@@ -1841,6 +1990,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) {
           addPhase("event", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks));
           for (const action of unknownImmediateActions(expression.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
+          for (const call of actionDispatcherCallsOutsideAction(expression.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
+            kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
+            message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
+          });
           for (const call of effectEventCallsInPhase(expression.body, effectEvents, transitionCallbacks, eventCallbacks)) report(call, {
             kind: "invalid-effect-event-call", phase: "event", operation: call.expression.getText(source),
             message: `${call.expression.getText(source)} is an Effect Event and may only be called from an Effect`,
@@ -1858,6 +2011,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           if (callback?.body) {
             addPhase("event", directEffects(callback.body, declared, transitionCallbacks, eventCallbacks));
             for (const action of unknownImmediateActions(callback.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
+            for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
+              kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
+              message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
+            });
             for (const call of effectEventCallsInPhase(callback.body, effectEvents, transitionCallbacks, eventCallbacks)) report(call, {
               kind: "invalid-effect-event-call", phase: "event", operation: call.expression.getText(source),
               message: `${call.expression.getText(source)} is an Effect Event and may only be called from an Effect`,
@@ -1876,10 +2033,56 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         return;
       }
       if (ts.isCallExpression(node)) {
+        if (ts.isIdentifier(node.expression) && actionContextDispatchers.has(node.expression.text)) {
+          report(node, {
+            kind: "action-dispatch-outside-action", phase: "render", operation: node.expression.text,
+            message: `${node.expression.text} must be dispatched inside a React Action`,
+          });
+          return;
+        }
         if (ts.isIdentifier(node.expression) && effectEvents.has(node.expression.text)) {
           report(node, {
             kind: "invalid-effect-event-call", phase: "render", operation: node.expression.text,
             message: `${node.expression.text} is an Effect Event and may only be called from an Effect`,
+          });
+          return;
+        }
+        if (isUseActionStateCall(source, node.expression)) {
+          const action = callbackArgument(node.arguments[0], callableCallbacks);
+          if (!action) report(node.arguments[0] ?? node, {
+            kind: "unknown-action-callback", phase: "action", operation: node.arguments[0]?.getText(source) ?? "<argument 0>",
+            message: "useActionState reducerAction is not an inline, module-local, or immutable component-local callback",
+          });
+          else addPhase("action", directEffects(action.body, declared, transitionCallbacks, eventCallbacks));
+          if (isConditionalWithin(node, component)) report(node, {
+            kind: "conditional-hook", phase: "render", hook: "useActionState",
+            message: "useActionState has control-flow-dependent call order",
+          });
+          return;
+        }
+        if (isUseOptimisticCall(source, node.expression)) {
+          const reducerArgument = node.arguments[1];
+          const reducer = callbackArgument(reducerArgument, callableCallbacks);
+          if (reducerArgument && !reducer) report(reducerArgument, {
+            kind: "unknown-optimistic-reducer", phase: "optimistic-reducer", operation: reducerArgument.getText(source),
+            message: "useOptimistic reducer is not an inline, module-local, or immutable component-local callback",
+          });
+          const effects = reducer ? directEffects(reducer.body, declared, transitionCallbacks, eventCallbacks) : [];
+          addPhase("optimistic-reducer", effects);
+          for (const effect of effects) report(reducerArgument!, {
+            kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect,
+            message: `${effect} is observable in a reducer that React requires to be pure`,
+          });
+          if (reducer) for (const call of directNonIdempotentCalls(reducer.body)) {
+            const operation = knownNonIdempotentOperation(call)!;
+            report(call, {
+              kind: "optimistic-reducer-effect", phase: "optimistic-reducer", operation,
+              message: `${operation} is not idempotent in a reducer that React requires to be pure`,
+            });
+          }
+          if (isConditionalWithin(node, component)) report(node, {
+            kind: "conditional-hook", phase: "render", hook: "useOptimistic",
+            message: "useOptimistic has control-flow-dependent call order",
           });
           return;
         }

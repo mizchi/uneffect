@@ -165,6 +165,13 @@ same property is proved for arbitrary TypeScript.
   the enclosing phase, including transitive `const` aliases.
   This preserves nested capabilities but does not claim a transition scheduler
   model. Imported, reassigned, and otherwise opaque actions fail closed.
+- Named/default/namespace `useActionState` and `useOptimistic` calls separate
+  side-effecting Action callbacks from pure optimistic reducers. JSX
+  `action`/`formAction` accepts a directly returned Action dispatcher, while
+  direct render/event calls to Action and optimistic setters are rejected
+  unless nested in a recognized transition Action. Action queue ordering,
+  pending-state transitions, progressive enhancement, and Error Boundary
+  failure routing are not modeled.
 - Local named/aliased `useEffectEvent` callbacks and transitive `const` aliases
   compose into insertion/layout/passive setup and cleanup phases. Their
   bindings are omitted from dependency requirements; explicit dependency-array

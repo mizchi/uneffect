@@ -73,8 +73,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { memo, startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useSyncExternalStore } from "react"
-      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
+      import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useSyncExternalStore } from "react"
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown }; form: { action?: unknown; children?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
       /* uneffect: react release Subscription */
@@ -92,6 +92,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function readTopicStatus(): boolean
       /* uneffect: effect HandlePrepare */
       declare function prepareFeedHandle(): void
+      /* uneffect: effect TopicSave */
+      declare function saveTopic(topic: string): Promise<void>
       function subscribeTopicStatus(notify: () => void) {
         const subscription = openTopicStatus(notify)
         return () => closeTopicStatus(subscription)
@@ -112,6 +114,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       }
       /* uneffect: react component */
       export const Feed = memo(function Feed({ topic, ref }: { topic: string; ref: unknown }) {
+        const [savedTopic, saveTopicAction] = useActionState(async (previous: string) => {
+          await saveTopic(topic)
+          return previous === topic ? previous : topic
+        }, topic)
+        const [optimisticTopic] = useOptimistic(savedTopic, (_previous, next: string) => next)
         useTopicStatus()
         useSubscription(topic)
         useImperativeHandle(ref, () => {
@@ -124,10 +131,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         }, [])
         const refresh = () => fetch(\`/topics/\${topic}\`)
         const handleClick = () => startTransition(refresh)
-        return <button
+        return <form action={saveTopicAction}><button
           ref={(node) => { console.log(node); return () => console.log("detach") }}
           onClick={handleClick}
-        />
+        />{optimisticTopic}</form>
       })
       function Legacy() { console.log("not opted in"); return null }
     `) as { diagnostics: unknown[]; components: Array<{ name: string; phases: Array<{ phase: string; effects: string[] }> }> };
@@ -136,6 +143,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
       expect.objectContaining({ phase: "render", effects: [] }),
       expect.objectContaining({ phase: "memo-compare", effects: [] }),
+      expect.objectContaining({ phase: "action", effects: ["TopicSave"] }),
+      expect.objectContaining({ phase: "optimistic-reducer", effects: [] }),
       expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
       expect.objectContaining({ phase: "ref-callback", effects: ["Console"] }),
       expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),
