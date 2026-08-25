@@ -1197,6 +1197,86 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("uses definition-module contracts for imported specialized Hook callbacks", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-specialized-imports-"));
+    const callbacksFile = join(directory, "callbacks.ts"), appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(callbacksFile, `
+        interface StoreConnection { readonly store: unique symbol }
+        /* uneffect: effect SaveRecord */ declare function saveRecord(): void
+        /* uneffect: effect PrepareHandle */ declare function prepareHandle(): void
+        /* uneffect: effect SnapshotRead */ declare function readSnapshot(): number
+        /* uneffect: effect CompareAudit */ declare function auditCompare(): void
+        /* uneffect: react acquire StoreConnection result */
+        declare function connectStore(notify: () => void): StoreConnection
+        /* uneffect: react release StoreConnection parameter 0 */
+        declare function disconnectStore(connection: StoreConnection): void
+        export function saveAction(previous: number): number {
+          saveRecord()
+          if (previous < 0) throw new TypeError("negative")
+          return previous + 1
+        }
+        export default saveAction
+        export function noisyOptimistic(previous: number): number { console.log(previous); return previous }
+        export function createHandle() {
+          prepareHandle()
+          return { refresh() { fetch("/refresh") } }
+        }
+        export function subscribeStore(notify: () => void) {
+          const connection = connectStore(notify)
+          return () => disconnectStore(connection)
+        }
+        export function getSnapshot(): number { return readSnapshot() }
+        export function compareProps(): boolean { auditCompare(); return true }
+      `);
+      writeFileSync(appFile, `
+        import { memo, useActionState, useImperativeHandle, useOptimistic, useSyncExternalStore } from "react"
+        import saveAction, { compareProps, createHandle, getSnapshot, noisyOptimistic, subscribeStore } from "./callbacks.js"
+        declare namespace JSX { interface IntrinsicElements { form: { action?: unknown } } }
+        /* uneffect: react hook */
+        function useImportedResources(ref: unknown) {
+          const [saved] = useActionState(saveAction, 0)
+          useOptimistic(saved, noisyOptimistic)
+          useImperativeHandle(ref, createHandle, [])
+          useSyncExternalStore(subscribeStore, getSnapshot)
+        }
+        /* uneffect: react component */
+        export function App(props: { ref: unknown }) {
+          useImportedResources(props.ref)
+          return <form />
+        }
+        function ComparedView() { return <form /> }
+        /* uneffect: react component */
+        export const Compared = memo(ComparedView, compareProps)
+      `);
+      const program = ts.createProgram([callbacksFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect: "Console" }),
+        expect.objectContaining({ kind: "memo-comparator-effect", phase: "memo-compare", effect: "CompareAudit" }),
+      ]);
+      const app = result.components.find(({ name }) => name === "App")!;
+      expect(app.phases).toEqual(expect.arrayContaining([
+        { phase: "action", effects: ["SaveRecord", "Throw<TypeError>"] },
+        { phase: "optimistic-reducer", effects: ["Console"] },
+        { phase: "imperative-handle", effects: ["PrepareHandle"] },
+        { phase: "imperative-handle-method", effects: ["Fetch"] },
+        { phase: "external-store-snapshot", effects: ["SnapshotRead"] },
+        { phase: "external-store-subscribe", effects: ["Acquire<StoreConnection>"] },
+        { phase: "cleanup", effects: ["Release<StoreConnection>"] },
+      ]));
+      expect(app.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
+        phase: "external-store-subscribe",
+        setupEffects: ["Acquire<StoreConnection>"], cleanupEffects: ["Release<StoreConnection>"],
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves barrel, namespace, and default custom Hook calls by TypeScript symbol", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-imports-"));
     const namedFile = join(directory, "named.tsx"), barrelFile = join(directory, "barrel.ts");
@@ -2562,6 +2642,8 @@ describe("React Function Component semantics", () => {
       { phase: "event", effects: ["Fetch"] },
       { phase: "ref-callback", effects: ["Acquire<RemoteViewport>"] },
       { phase: "cleanup", effects: expect.arrayContaining(["Release<RemoteAuditConnection>", "Release<RemoteViewport>"]) },
+      { phase: "external-store-snapshot", effects: ["RemoteAuditSnapshotRead"] },
+      { phase: "external-store-subscribe", effects: ["Acquire<RemoteAuditConnection>"] },
       { phase: "layout-effect", effects: ["DomWrite"] },
       { phase: "passive-effect", effects: expect.arrayContaining(["Acquire<RemoteAuditConnection>", "Console"]) },
     ]));

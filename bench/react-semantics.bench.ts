@@ -20,6 +20,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     useInsertionEffect(installRuleAlias, [])
     useCatalogSubscription(props.label)
     useEffect(moduleInstall, [])
+    useSyncExternalStore(moduleSubscribe, moduleSnapshot)
     const refresh = () => fetch("/items/${index}", optionsAlias.current ?? undefined)
     const refreshAlias = refresh
     const handleClick = () => startTransition(refreshAlias)
@@ -38,7 +39,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
 
 const source = `
   import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react"
-  import { moduleInstall, moduleRefresh } from "./callbacks.js"
+  import { moduleInstall, moduleRefresh, moduleSnapshot, moduleSubscribe } from "./callbacks.js"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
@@ -85,11 +86,18 @@ const callbackSource = `
   declare function subscribeModule(): ModuleSubscription
   /* uneffect: react release ModuleSubscription parameter 0 */
   declare function unsubscribeModule(subscription: ModuleSubscription): void
+  /* uneffect: effect ModuleSnapshotRead */
+  declare function readModuleSnapshot(): number
   export function moduleInstall() {
     const subscription = subscribeModule()
     return () => unsubscribeModule(subscription)
   }
   export function moduleRefresh() { fetch("/module-refresh") }
+  export function moduleSubscribe() {
+    const subscription = subscribeModule()
+    return () => unsubscribeModule(subscription)
+  }
+  export function moduleSnapshot() { return readModuleSnapshot() }
 `;
 const compilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,

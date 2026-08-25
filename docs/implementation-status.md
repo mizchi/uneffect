@@ -167,7 +167,7 @@ same property is proved for arbitrary TypeScript.
   separate commit setup and returned-cleanup phase. Source-only analysis keeps
   imported, prop, member, or dynamic callback refs as explicit unknowns.
   Program analysis resolves write-screened JSX event/ref functions through
-  named aliases, barrels, and namespace imports while retaining the
+  named aliases, barrels, default imports, and namespace imports while retaining the
   declaration module's effect and acquire/release contracts. Reassigned,
   unresolved imported/prop/member, or dynamic callbacks remain unknown. Reassigned
   or opaque referenced event handlers are rejected rather than assumed pure.
@@ -186,7 +186,7 @@ same property is proved for arbitrary TypeScript.
 - Effect and reviewed render-Hook callbacks resolve inline functions plus
   immutable component/custom-Hook-local functions through transitive `const`
   aliases. Program analysis additionally resolves write-screened named,
-  barrel, and namespace imports, retaining definition-module effects,
+  barrel, default, and namespace imports, retaining definition-module effects,
   setup/cleanup resource identity, custom-Hook composition, render-purity
   diagnostics, and replay. Imported callbacks have no caller-local capture
   obligations; mutable/unresolved-member/dynamic callbacks remain fail-closed.
@@ -215,7 +215,9 @@ same property is proved for arbitrary TypeScript.
   projection proves single-active sequential queue ordering, pending-state
   consistency, and cancellation of queued tail work after failure. Direct
   Action throws retain `Throw<ErrorType>` or `Throw<unknown>` evidence. A
-  companion projection composes failure cancellation, Hook rethrow, fallback
+  Program-resolved write-screened imported Action/reducer uses its
+  definition-module effects, helper graph, and throw evidence. A companion
+  projection composes failure cancellation, Hook rethrow, fallback
   render, and fallback commit for explicitly selected action/fallback
   component summaries. It is not automatically derived from dispatcher call
   cardinality or JSX Error Boundary ownership and does not model state values,
@@ -225,16 +227,18 @@ same property is proved for arbitrary TypeScript.
   bindings are omitted from dependency requirements; explicit dependency-array
   entries and calls from render, JSX events, or transition actions are
   diagnosed. Prop/import/higher-order Effect Event flow remains unsupported.
-- `useSyncExternalStore` resolves inline, module-local, and immutable local
-  subscribe/client-snapshot/server-snapshot callbacks. Snapshot capabilities
+- `useSyncExternalStore` resolves inline, module-local, immutable local, and
+  Program-resolved write-screened imported subscribe/client-snapshot/server-
+  snapshot callbacks. Snapshot capabilities
   occupy specialized client/server phases; subscribe setup and returned
   cleanup form an identity-checked commit lifecycle that reaches Quint.
   Opaque callbacks, missing returned unsubscribe functions, and direct fresh
   object/array snapshots fail closed. Member
   callbacks, general cache proofs, exact call counts, transition fallback, and
   hydration equality remain unsupported.
-- `useImperativeHandle` resolves named/default/namespace calls and local or
-  module-local factories. Factory work is a layout-commit lifecycle; methods,
+- `useImperativeHandle` resolves named/default/namespace calls and local,
+  module-local, or Program-resolved write-screened imported factories. Factory
+  work is a layout-commit lifecycle; methods,
   accessors, and function properties on directly returned object literals are
   separate externally invoked capabilities. Dependency omissions, conditional
   calls, and opaque factories fail closed. Object spread, prototype/member

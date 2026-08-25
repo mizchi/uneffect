@@ -68,7 +68,9 @@ immutability. The wrapper variable remains the component identity for
 Program-backed imports and Suspense edges. Mutable bindings, imported
 arguments, member/dynamic selection, and custom HOCs remain fail-closed. An
 optional `memo` comparator is resolved from an inline,
-module-local, or immutable local callback and analyzed in `memo-compare`;
+module-local, immutable local, or Program-resolved write-screened imported
+callback and analyzed in `memo-compare`; imported comparators use their
+definition-module effect/helper environment;
 observable capabilities or selected non-idempotent host reads produce
 `memo-comparator-effect`, while an opaque
 comparator produces `unknown-memo-comparator`. A comment on any other wrapper
@@ -81,7 +83,7 @@ supported for existing code, while React 19 permits `ref` as a prop and marks
 
 JSX event attributes accept inline callbacks, immutable component-local
 function/arrow callbacks, write-screened module-local functions reached
-through `const` identifier aliases, and Program-resolved named/barrel/namespace
+through `const` identifier aliases, and Program-resolved named/barrel/default/namespace
 imports of such functions. Their
 capabilities belong to the `event` phase, not render. In source-only analysis,
 or when Program resolution fails, reassigned identifiers, arbitrary member
@@ -91,7 +93,7 @@ produce `unknown-event-handler` instead of being silently treated as pure.
 Effect and reviewed render-Hook callbacks accept the same inline or immutable
 component/custom-Hook-local function fragment through transitive `const`
 aliases. Program analysis also resolves write-screened functions through named
-aliases, barrels, and namespace imports. Definition-module effects, returned
+aliases, barrels, default imports, and namespace imports. Definition-module effects, returned
 cleanup, resource identity, render-purity diagnostics, custom-Hook composition,
 and replay use the resolved callback. Imported callbacks cannot lexically
 capture caller-local values, so an inline finite dependency array is still
@@ -139,7 +141,9 @@ pending-flag consistency, and cancellation of the queued tail after a thrown
 Action. A direct `throw new ErrorType(...)` in a resolvable Action is retained
 as `Throw<ErrorType>` for the standard JavaScript Error constructors; other
 direct thrown values become `Throw<unknown>`. This evidence follows immutable
-local callback calls but is not attributed to ordinary JSX event callbacks.
+local callback calls. Program-resolved imported Actions and optimistic reducers
+use their definition-module effects and helper graph; reassigned or unresolved
+exports remain opaque. This evidence is not attributed to ordinary JSX event callbacks.
 Progressive enhancement and Server Functions remain outside this projection.
 
 Named or aliased `useEffectEvent` creates a dedicated local callback class.
@@ -153,7 +157,9 @@ silently treated as an ordinary event handler. This implements the local,
 inline fragment of the [React `useEffectEvent` contract](https://react.dev/reference/react/useEffectEvent).
 
 Named, default-object, or namespace-qualified `useSyncExternalStore` calls resolve inline,
-module-local, and immutable component/custom-Hook-local callback arguments.
+module-local, immutable component/custom-Hook-local, and Program-resolved
+write-screened imported callback arguments. Imported callbacks retain the
+definition module's snapshot effects and subscription acquire/release contracts.
 Client and optional server snapshot capabilities are not charged as ordinary
 render violations: the Hook is the explicit external-read boundary. The
 subscribe callback forms an `external-store-subscribe` commit instance, and a
@@ -167,8 +173,9 @@ unsubscribe function produces `missing-external-store-cleanup`, following the
 [React external-store contract](https://react.dev/reference/react/useSyncExternalStore).
 
 Named, default-object, or namespace-qualified `useImperativeHandle` calls
-resolve inline, module-local, and immutable component/custom-Hook-local handle
-factories. Factory capabilities occupy an `imperative-handle` commit instance;
+resolve inline, module-local, immutable component/custom-Hook-local, and
+Program-resolved write-screened imported handle factories. Imported factories
+retain definition-module effects. Factory capabilities occupy an `imperative-handle` commit instance;
 methods, getters, setters, and function-valued properties on a directly
 returned object occupy `imperative-handle-method`, because a ref consumer may
 invoke them later. Dependency arrays use the same lexical capture checks as
@@ -580,7 +587,7 @@ This is a tested initial fragment, not a complete React semantics:
   inline function, source-local immutable function/arrow, or write-screened
   module-local function declaration reached through `const` aliases.
   Imported/member/dynamic component arguments, custom higher-order
-  wrappers, dynamic wrapper selection, custom comparator call-graph effects,
+  wrappers, dynamic wrapper selection, higher-order/dynamic comparator call-graph effects,
   and semantic equivalence of comparator results remain unsupported;
 - event extraction covers inline callbacks, immutable component-local
   functions, and write-screened module-local functions through `const` aliases.
@@ -607,7 +614,7 @@ This is a tested initial fragment, not a complete React semantics:
 - callback-ref extraction covers inline JSX functions plus immutable
   component-local and write-screened module-local function/arrow callbacks and
   transitive `const` aliases. Program analysis additionally resolves
-  write-screened named, barrel, and namespace imports while retaining the
+  write-screened named, barrel, default, and namespace imports while retaining the
   declaration module's effect and acquire/release contracts. Ref props and
   reassigned/unresolved-member/dynamic callbacks are not modeled. Lazy initialization is limited to the exact
   null-guarded stable-expression fragment above; factory/constructor purity
@@ -668,6 +675,7 @@ causal model excludes the static navigation leaf. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. The custom Hook installs an imported
-Effect callback whose definition module owns its acquire/release contract; the
+Effect callback and an imported external-store subscription/snapshot whose
+definition module owns their effects and acquire/release contracts; the
 component also uses imported event and callback-ref functions. These are
 controlled fixtures rather than an ecosystem false-positive measurement.

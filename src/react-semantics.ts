@@ -1893,20 +1893,44 @@ function analyzeReactSource(
         }
         if (isUseActionStateCall(source, node.expression)) {
           const action = callbackArgument(node.arguments[0], callableCallbacks);
-          add("action", action ? actionEffects(action.body, declared, transitionCallbacks, localCallbacks, localCallbacks) : []);
+          if (action) {
+            const environment = callbackAnalysisEnvironment(
+              action, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            add("action", actionEffects(
+              action.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          } else add("action", []);
           return;
         }
         if (isUseOptimisticCall(source, node.expression)) {
           const reducerArgument = node.arguments[1];
           const reducer = callbackArgument(reducerArgument, callableCallbacks);
-          add("optimistic-reducer", reducer ? directEffects(reducer.body, declared, transitionCallbacks, localCallbacks) : []);
+          if (reducer) {
+            const environment = callbackAnalysisEnvironment(
+              reducer, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            add("optimistic-reducer", directEffects(
+              reducer.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          } else add("optimistic-reducer", []);
           return;
         }
         if (isUseImperativeHandleCall(source, node.expression)) {
           const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
           if (createHandle) {
-            const setupEffects = directEffects(createHandle.body, declared, transitionCallbacks, localCallbacks);
-            const methodEffects = imperativeHandleMethodEffects(createHandle, declared, transitionCallbacks, localCallbacks);
+            const environment = callbackAnalysisEnvironment(
+              createHandle, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const setupEffects = directEffects(
+              createHandle.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            );
+            const methodEffects = imperativeHandleMethodEffects(
+              createHandle, environment.declared, environment.immediateCallbacks, environment.callbacks,
+            );
             add("imperative-handle", setupEffects);
             add("imperative-handle-method", methodEffects);
             instances.push(commitInstance("imperative-handle", node, setupEffects, []));
@@ -1917,13 +1941,38 @@ function analyzeReactSource(
           const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
           const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
           const serverSnapshot = callbackArgument(node.arguments[2], callableCallbacks);
-          if (snapshot) add("external-store-snapshot", directEffects(snapshot.body, declared, transitionCallbacks, localCallbacks));
-          if (serverSnapshot) add("server-snapshot", directEffects(serverSnapshot.body, declared, transitionCallbacks, localCallbacks));
+          if (snapshot) {
+            const environment = callbackAnalysisEnvironment(
+              snapshot, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            add("external-store-snapshot", directEffects(
+              snapshot.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          }
+          if (serverSnapshot) {
+            const environment = callbackAnalysisEnvironment(
+              serverSnapshot, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            add("server-snapshot", directEffects(
+              serverSnapshot.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          }
           if (subscribe) {
-            const setupEffects = directEffects(subscribe.body, declared, transitionCallbacks, localCallbacks);
+            const environment = callbackAnalysisEnvironment(
+              subscribe, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const setupEffects = directEffects(
+              subscribe.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            );
             const cleanup = returnedCleanup(subscribe);
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, localCallbacks) : [];
-            const lifecycle = lifecycleSummary(subscribe, cleanup, acquisitions, releases);
+            const cleanupEffects = cleanup ? directEffects(
+              cleanup.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ) : [];
+            const lifecycle = lifecycleSummary(subscribe, cleanup, environment.acquisitions, environment.releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
             const released = lifecycle.released.map((capability) => `Release<${capability}>`);
             add("external-store-subscribe", [...setupEffects, ...acquired]);
@@ -1931,7 +1980,10 @@ function analyzeReactSource(
             add("cleanup", released);
             instances.push(commitInstance("external-store-subscribe", node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
             if (lifecycle.missing.length > 0) leaked.push({ phase: "external-store-subscribe", capabilities: lifecycle.missing });
-            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({ ...issue, phase: "external-store-subscribe" as const })));
+            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({
+              ...issue, node: subscribe.getSourceFile() === source ? issue.node : node,
+              phase: "external-store-subscribe" as const,
+            })));
           }
           return;
         }
@@ -2038,13 +2090,20 @@ function analyzeReactSource(
             message: "useOptimistic reducer is not an inline, module-local, or immutable Hook-local callback",
           });
           if (reducer) {
-            for (const effect of directEffects(reducer.body, declared)) reportHook(reducerArgument!, {
+            const environment = callbackAnalysisEnvironment(
+              reducer, source, declared, callableCallbacks,
+              reactTransitionCallbacks(source, hook), acquisitions, releases,
+            );
+            for (const effect of directEffects(
+              reducer.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            )) reportHook(reducerArgument!, {
               kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect,
               message: `${effect} is observable in a reducer that React requires to be pure`,
             });
             for (const call of directNonIdempotentCalls(reducer.body)) {
               const operation = knownNonIdempotentOperation(call)!;
-              reportHook(call, {
+              reportHook(reducer.getSourceFile() === source ? call : reducerArgument!, {
                 kind: "optimistic-reducer-effect", phase: "optimistic-reducer", operation,
                 message: `${operation} is not idempotent in a reducer that React requires to be pure`,
               });
@@ -2085,9 +2144,9 @@ function analyzeReactSource(
           }
           const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
           const fresh = snapshot && returnsFreshSnapshot(snapshot);
-          if (fresh) reportHook(fresh, {
+          if (fresh) reportHook(snapshot?.getSourceFile() === source ? fresh : node.arguments[1]!, {
             kind: "uncached-external-store-snapshot", phase: "external-store-snapshot",
-            operation: fresh.getText(source),
+            operation: fresh.getText(fresh.getSourceFile()),
             message: "getSnapshot creates a fresh object or array on every read instead of returning a cached immutable snapshot",
           });
           const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
@@ -2237,7 +2296,13 @@ function analyzeReactSource(
         });
         continue;
       }
-      const effects = directEffects(comparator.body, declared, transitionCallbacks, eventCallbacks);
+      const environment = callbackAnalysisEnvironment(
+        comparator, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+      );
+      const effects = directEffects(
+        comparator.body, environment.declared, environment.immediateCallbacks,
+        environment.callbacks, environment.callbacks,
+      );
       addPhase("memo-compare", effects);
       for (const effect of effects) report(comparatorArgument, {
         kind: "memo-comparator-effect", phase: "memo-compare", effect,
@@ -2245,7 +2310,7 @@ function analyzeReactSource(
       });
       for (const call of directNonIdempotentCalls(comparator.body)) {
         const operation = knownNonIdempotentOperation(call)!;
-        report(call, {
+        report(comparator.getSourceFile() === source ? call : comparatorArgument, {
           kind: "memo-comparator-effect", phase: "memo-compare", operation,
           message: `${operation} is not idempotent while React compares previous and next props`,
         });
@@ -2392,7 +2457,15 @@ function analyzeReactSource(
             kind: "unknown-action-callback", phase: "action", operation: node.arguments[0]?.getText(source) ?? "<argument 0>",
             message: "useActionState reducerAction is not an inline, module-local, or immutable component-local callback",
           });
-          else addPhase("action", actionEffects(action.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
+          else {
+            const environment = callbackAnalysisEnvironment(
+              action, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            addPhase("action", actionEffects(
+              action.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          }
           if (isConditionalWithin(node, component)) report(node, {
             kind: "conditional-hook", phase: "render", hook: "useActionState",
             message: "useActionState has control-flow-dependent call order",
@@ -2406,7 +2479,13 @@ function analyzeReactSource(
             kind: "unknown-optimistic-reducer", phase: "optimistic-reducer", operation: reducerArgument.getText(source),
             message: "useOptimistic reducer is not an inline, module-local, or immutable component-local callback",
           });
-          const effects = reducer ? directEffects(reducer.body, declared, transitionCallbacks, eventCallbacks) : [];
+          const environment = reducer ? callbackAnalysisEnvironment(
+            reducer, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+          ) : undefined;
+          const effects = reducer && environment ? directEffects(
+            reducer.body, environment.declared, environment.immediateCallbacks,
+            environment.callbacks, environment.callbacks,
+          ) : [];
           addPhase("optimistic-reducer", effects);
           for (const effect of effects) report(reducerArgument!, {
             kind: "optimistic-reducer-effect", phase: "optimistic-reducer", effect,
@@ -2414,7 +2493,7 @@ function analyzeReactSource(
           });
           if (reducer) for (const call of directNonIdempotentCalls(reducer.body)) {
             const operation = knownNonIdempotentOperation(call)!;
-            report(call, {
+            report(reducer.getSourceFile() === source ? call : reducerArgument!, {
               kind: "optimistic-reducer-effect", phase: "optimistic-reducer", operation,
               message: `${operation} is not idempotent in a reducer that React requires to be pure`,
             });
@@ -2433,8 +2512,16 @@ function analyzeReactSource(
             message: "useImperativeHandle createHandle is not an inline, module-local, or immutable component-local callback",
           });
           else {
-            const setupEffects = directEffects(createHandle.body, declared, transitionCallbacks, eventCallbacks);
-            const methodEffects = imperativeHandleMethodEffects(createHandle, declared, transitionCallbacks, eventCallbacks);
+            const environment = callbackAnalysisEnvironment(
+              createHandle, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const setupEffects = directEffects(
+              createHandle.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            );
+            const methodEffects = imperativeHandleMethodEffects(
+              createHandle, environment.declared, environment.immediateCallbacks, environment.callbacks,
+            );
             addPhase("imperative-handle", setupEffects);
             addPhase("imperative-handle-method", methodEffects);
             instances.push(commitInstance("imperative-handle", node, setupEffects, []));
@@ -2463,25 +2550,48 @@ function analyzeReactSource(
             });
           }
           if (snapshot) {
-            addPhase("external-store-snapshot", directEffects(snapshot.body, declared, transitionCallbacks, eventCallbacks));
+            const environment = callbackAnalysisEnvironment(
+              snapshot, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            addPhase("external-store-snapshot", directEffects(
+              snapshot.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
             const fresh = returnsFreshSnapshot(snapshot);
-            if (fresh) report(fresh, {
+            if (fresh) report(snapshot.getSourceFile() === source ? fresh : node.arguments[1]!, {
               kind: "uncached-external-store-snapshot", phase: "external-store-snapshot",
-              operation: fresh.getText(source),
+              operation: fresh.getText(fresh.getSourceFile()),
               message: "getSnapshot creates a fresh object or array on every read instead of returning a cached immutable snapshot",
             });
           }
-          if (serverSnapshot) addPhase("server-snapshot", directEffects(serverSnapshot.body, declared, transitionCallbacks, eventCallbacks));
+          if (serverSnapshot) {
+            const environment = callbackAnalysisEnvironment(
+              serverSnapshot, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            addPhase("server-snapshot", directEffects(
+              serverSnapshot.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          }
           if (subscribe) {
-            const setupEffects = directEffects(subscribe.body, declared, transitionCallbacks, eventCallbacks);
+            const environment = callbackAnalysisEnvironment(
+              subscribe, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const setupEffects = directEffects(
+              subscribe.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            );
             const cleanup = returnedCleanup(subscribe);
             if (!cleanup) report(node.arguments[0]!, {
               kind: "missing-external-store-cleanup", phase: "external-store-subscribe",
               operation: node.arguments[0]!.getText(source),
               message: "useSyncExternalStore subscribe must return an unsubscribe cleanup function",
             });
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks) : [];
-            const lifecycle = lifecycleSummary(subscribe, cleanup, acquisitions, releases);
+            const cleanupEffects = cleanup ? directEffects(
+              cleanup.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ) : [];
+            const lifecycle = lifecycleSummary(subscribe, cleanup, environment.acquisitions, environment.releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
             const released = lifecycle.released.map((capability) => `Release<${capability}>`);
             addPhase("external-store-subscribe", [...setupEffects, ...acquired]);
@@ -2492,7 +2602,7 @@ function analyzeReactSource(
               kind: "missing-effect-cleanup", phase: "external-store-subscribe",
               effect: lifecycle.missing.join(" | "), message: `external store subscription acquires ${lifecycle.missing.join(", ")} without a matching cleanup release`,
             });
-            for (const issue of lifecycle.issues) report(issue.node, {
+            for (const issue of lifecycle.issues) report(subscribe.getSourceFile() === source ? issue.node : node, {
               kind: issue.kind, phase: "external-store-subscribe", effect: issue.capability, message: issue.detail,
             });
           }
@@ -3929,7 +4039,7 @@ function importedCustomHooks(
   return imports;
 }
 
-function importedJsxCallbacks(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, LocalEventCallback> {
+function importedReactCallbacks(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, LocalEventCallback> {
   const callbacks = new Map<string, LocalEventCallback>();
   const add = (key: string, location: ts.Node): void => {
     const declaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(location));
@@ -4125,7 +4235,7 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
       const analysis = analyzeReactSource(
         candidate,
         importedCustomHooks(candidate, checker, summaries),
-        importedJsxCallbacks(candidate, checker),
+        importedReactCallbacks(candidate, checker),
       );
       nextResults.set(candidate.fileName, analysis.result);
       for (const hook of analysis.result.hooks) next.set(`${candidate.fileName}:${hook.name}`, analysis.hookSummaries.get(hook.name)!);

@@ -1187,3 +1187,16 @@ resolution, definition-module contract lookup, and replay construction. The
 run was noisy in several unrelated model-generation cases, so it is recorded
 as an observation rather than a regression budget or an attributed cross-run
 performance change.
+
+After applying the definition-module environment to specialized React Hook
+callbacks, each generated component additionally installs an imported
+`useSyncExternalStore` subscription and snapshot alongside its imported
+Effect. Cold source parsing/classification measured 111.83 ms mean over 30
+samples (0.56% relative margin of error), fresh two-file Program construction
+and analysis measured 297.92 ms over 30 samples (2.74%), and the TSX parse
+baseline measured 7.4710 ms over 134 samples (1.36%). Cached lookup remained
+below useful timer resolution. The Program workload now constructs 128
+imported Effect lifecycles plus 128 imported external-store snapshot and
+subscription lifecycles. These results are observations, not a regression
+budget; workload growth and run-to-run noise prevent attributing the difference
+from the prior run solely to callback-environment lookup.
