@@ -60,6 +60,7 @@ documentation are all updated.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.
+- [x] Resolve immutable component/custom-Hook-local Effect and render callbacks through transitive `const` aliases for dependency completeness, phase effects, cleanup/resource identity, insertion safety, and replay; keep mutable/member/imported/dynamic callbacks fail-closed.
 - [x] Resolve direct custom-Hook call sites through TypeScript symbols across named aliases, barrels, namespaces, and default imports, and reject local/cross-module indirect recursion cycles.
 - [x] Track destructured props, `useState`/`useReducer` snapshots, `useContext` values, and transitive local `const` aliases as immutable render regions, including assignment, update, and delete writes.
 - [x] Reject direct `useRef` `.current` access during replayable render, and project inline callback refs as commit setup/returned-cleanup phases with resource matching and development Strict Mode replay.

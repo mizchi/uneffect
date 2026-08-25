@@ -75,11 +75,13 @@ function useTelemetryOnlineStatus(): boolean {
 /* uneffect: react hook */
 function useTelemetrySubscription(service: string): void {
   const reportConnected = useEffectEvent(() => console.log("telemetry connected", service));
-  useEffect(() => {
+  const connect = () => {
     reportConnected();
     const subscription = subscribeToTelemetry(service);
     return () => unsubscribeFromTelemetry(subscription);
-  }, [service]);
+  };
+  const connectAlias = connect;
+  useEffect(connectAlias, [service]);
 }
 
 function TelemetryDashboardView(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {

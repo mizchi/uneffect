@@ -15,7 +15,9 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const [savedLabel, saveLabel] = useActionState(async (previous: string) => { await persistLabel(props.label); return previous }, props.label)
     const [optimisticLabel] = useOptimistic(savedLabel, (_previous, next: string) => next)
     useImperativeHandle(props.ref, () => ({ refresh() { fetch("/items/${index}/imperative") } }), [])
-    useInsertionEffect(() => { insertRule(); return () => removeRule() }, [])
+    const installRule = () => { insertRule(); return () => removeRule() }
+    const installRuleAlias = installRule
+    useInsertionEffect(installRuleAlias, [])
     useCatalogSubscription(props.label)
     const refresh = () => fetch("/items/${index}", optionsAlias.current ?? undefined)
     const refreshAlias = refresh

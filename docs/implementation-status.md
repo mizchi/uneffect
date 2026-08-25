@@ -178,6 +178,11 @@ same property is proved for arbitrary TypeScript.
   insertion callbacks, as is local `useRef.current` access before ref
   attachment. Host DOM mutation timing and cross-component
   insertion-cleanup/setup interleaving are not claimed.
+- Effect and reviewed render-Hook callbacks resolve inline functions plus
+  immutable component/custom-Hook-local functions through transitive `const`
+  aliases. Dependency capture, setup/cleanup effects, resource identity,
+  insertion safety, and replay share that resolution; mutable/member/imported/
+  dynamic callbacks remain fail-closed.
 - Inline and immutable local actions passed to named/default/namespace
   `startTransition` or the setter returned by `useTransition` are traversed in
   the enclosing phase, including transitive `const` aliases.

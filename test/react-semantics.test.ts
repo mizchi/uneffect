@@ -236,12 +236,14 @@ describe("React Function Component semantics", () => {
         const styleRef = useRef<HTMLStyleElement | null>(null)
         useEffect(() => console.log("passive"), [])
         useLayoutEffect(() => console.log("layout"), [])
-        insert(() => {
+        const installStyles = () => {
           insertRule()
           updateReady(true)
           void styleRef.current
           return () => { removeRule(); updateReady(false) }
-        }, [])
+        }
+        const installStylesAlias = installStyles
+        insert(installStylesAlias, [])
         return null
       }
     `);
@@ -1285,6 +1287,13 @@ describe("React Function Component semantics", () => {
         effect(() => console.log(load()), [props.service])
         return null
       }
+      /* uneffect: react component */
+      function ReferencedClosure(props: { service: string }) {
+        const synchronize = () => console.log(props.service)
+        const synchronizeAlias = synchronize
+        effect(synchronizeAlias, [])
+        return null
+      }
     `);
 
     expect(result.diagnostics).toEqual(expect.arrayContaining([
@@ -1304,7 +1313,14 @@ describe("React Function Component semantics", () => {
         component: "LocalFunction", kind: "missing-hook-dependency", hook: "effect",
         dependencies: ["load"],
       }),
+      expect.objectContaining({
+        component: "ReferencedClosure", kind: "missing-hook-dependency", hook: "effect",
+        dependencies: ["props.service"],
+      }),
     ]));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      component: "ReferencedClosure", kind: "unknown-hook-closure",
+    }));
   });
 
   it("accepts covering dependencies and ignores stable state setters and Effect locals", () => {
@@ -1336,7 +1352,7 @@ describe("React Function Component semantics", () => {
       import { useEffect, useMemo } from "react"
       /* uneffect: react component */
       function Dashboard(props: { service: string }, dependencies: unknown[]) {
-        const callback = () => console.log(props.service)
+        let callback = () => console.log(props.service)
         useEffect(callback, [props.service])
         useEffect(() => console.log(props.service), dependencies)
         useMemo(() => props.service, [{ service: props.service }])
@@ -2297,8 +2313,8 @@ describe("React Function Component semantics", () => {
     }));
 
     const staleClosure = analyzeReactSemantics(fileName, source.replace(
-      "}, [service]);",
-      "}, []);",
+      "useEffect(connectAlias, [service]);",
+      "useEffect(connectAlias, []);",
     ));
     expect(staleClosure.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "useTelemetrySubscription", kind: "missing-hook-dependency", dependencies: ["service"],

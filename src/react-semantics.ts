@@ -1934,8 +1934,8 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             if (callback) add("render", directEffects(callback.body, declared, transitionCallbacks, localCallbacks));
             return;
           }
-          const callback = node.arguments[0];
-          if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+          const callback = callbackArgument(node.arguments[0], callableCallbacks);
+          if (callback) {
             const setupEffects = directEffects(callback.body, declared, transitionCallbacks, localCallbacks, effectEvents);
             add(builtinPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
@@ -2089,12 +2089,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         }
         if (builtinHook || customHook) {
           const dependencyHook = called ? dependencyHooks.get(called) : undefined;
-          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, hook, source)) reportHook(issue.node, {
+          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, hook, source, callableCallbacks)) reportHook(issue.node, {
             kind: issue.kind, phase: dependencyHook.phase, hook: called, operation: issue.operation, dependencies: issue.dependencies, message: issue.detail,
           });
           if (dependencyHook?.phase === "insertion-effect") {
-            const callback = node.arguments[dependencyHook.callback];
-            if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+            const callback = callbackArgument(node.arguments[dependencyHook.callback], callableCallbacks);
+            if (callback) {
               const cleanup = returnedCleanup(callback);
               for (const body of cleanup ? [callback.body, cleanup.body] : [callback.body]) {
                 for (const update of stateUpdates(body, stateUpdaters)) reportHook(update, {
@@ -2504,12 +2504,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         }
         if (hookPhase) {
           const dependencyHook = called ? dependencyHooks.get(called) : undefined;
-          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, component, source)) report(issue.node, {
+          if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, component, source, callableCallbacks)) report(issue.node, {
             kind: issue.kind, phase: dependencyHook.phase, hook: called, operation: issue.operation, dependencies: issue.dependencies, message: issue.detail,
           });
           if (dependencyHook?.phase === "insertion-effect") {
-            const callback = node.arguments[dependencyHook.callback];
-            if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+            const callback = callbackArgument(node.arguments[dependencyHook.callback], callableCallbacks);
+            if (callback) {
               const cleanup = returnedCleanup(callback);
               for (const body of cleanup ? [callback.body, cleanup.body] : [callback.body]) {
                 for (const update of stateUpdates(body, stateUpdaters)) report(update, {
@@ -2528,12 +2528,13 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           if (isConditionalWithin(node, component)) report(node, { kind: "conditional-hook", phase: "render", hook: called, message: `${called} has control-flow-dependent call order` });
           if (hookPhase === "render-hook") {
             addPhase("render");
-            const callback = called ? inlineCallback(node, renderCallbacks.get(called)) : undefined;
+            const callbackIndex = called ? renderCallbacks.get(called) : undefined;
+            const callback = callbackArgument(callbackIndex === undefined ? undefined : node.arguments[callbackIndex], callableCallbacks);
             if (callback) visitRender(callback.body);
             return;
           }
-          const callback = node.arguments[0];
-          if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+          const callback = callbackArgument(node.arguments[0], callableCallbacks);
+          if (callback) {
             const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks, effectEvents);
             addPhase(hookPhase, setupEffects);
             const cleanup = returnedCleanup(callback);

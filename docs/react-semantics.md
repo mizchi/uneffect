@@ -85,6 +85,14 @@ capabilities belong to the `event` phase, not render. Reassigned identifiers,
 member expressions, imported callbacks, and other unresolved handler shapes
 produce `unknown-event-handler` instead of being silently treated as pure.
 
+Effect and reviewed render-Hook callbacks accept the same inline or immutable
+component/custom-Hook-local function fragment through transitive `const`
+aliases. Dependency capture, setup effects, returned cleanup, resource
+identity, insertion-Effect state/ref restrictions, and replay all use the same
+resolved callback. Mutable, member, imported, and dynamically selected
+callbacks remain opaque and fail closed where the Hook contract requires
+inspectable evidence.
+
 Inline or immutable component/custom-Hook-local action callbacks passed to named or aliased `startTransition`,
 `React.startTransition`, a React namespace object, or the second tuple element
 returned by `useTransition` execute in the caller's current phase. Uneffect
@@ -327,7 +335,7 @@ function Feed() {
 }
 ```
 
-Within an inline Effect setup and its returned inline cleanup, the analyzer
+Within an inline or immutable local Effect setup and its returned cleanup, the analyzer
 tracks the acquired result through identifier-bound immutable aliases. It
 rejects a release of an unrelated expression, duplicate release of one
 identity, an unreleased second identity of the same capability, and
@@ -593,9 +601,10 @@ This is a tested initial fragment, not a complete React semantics:
   callbacks are not modeled. Lazy initialization is limited to the exact
   null-guarded stable-expression fragment above; factory/constructor purity
   and general control-flow dominance are not inferred;
-- dependency completeness is checked for the documented inline lexical
-  fragment; referenced callbacks, custom stability contracts, module mutation,
-  and TypeScript-symbol-level aliasing remain unsupported;
+- dependency completeness is checked for inline and immutable component/custom-
+  Hook-local callbacks through transitive `const` aliases; custom stability
+  contracts, module mutation, imported callbacks, and TypeScript-symbol-level
+  aliasing remain unsupported;
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;

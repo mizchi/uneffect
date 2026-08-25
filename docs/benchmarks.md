@@ -79,6 +79,17 @@ was noisy and did not distinguish recomputation from lookup. The cache assumes
 the TypeScript Program and returned `ReadonlyMap` analysis snapshot are not
 mutated; source changes require a new Program.
 
+After replacing each benchmark component's inline insertion-Effect callback
+with an immutable function plus one `const` alias, the same date's run measured
+132.22 ms mean over 30 cold-string samples and 289.54 ms over 30 fresh Program
+snapshots. The parse-only baseline was 8.4930 ms over 118 samples with a 7.14%
+relative margin of error. Cached Program lookup again fell below useful timer
+resolution. Compared with the preceding 142.20/296.27/7.5025 ms run, this does
+not demonstrate a speedup: the parse baseline was noisy and the workload grew
+by two declarations per component. It establishes that referenced Effect
+resolution has no observed order-of-magnitude regression in this fixture, not
+a performance budget.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured
