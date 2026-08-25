@@ -1,3 +1,4 @@
+import ts from "typescript";
 import type { AsyncSafetyDiagnostic } from "./async-safety.js";
 import { formatEffect } from "./capabilities.js";
 import type { CheckResult } from "./check.js";
@@ -18,6 +19,28 @@ export interface TypeScriptCheckerDiagnostic {
   message: string;
   typescriptCode: number;
   notes?: DiagnosticNote[];
+}
+
+/** Convert compiler failures into the same source-attributed diagnostic contract used by every frontend. */
+export function fromTypeScriptDiagnostic(
+  diagnostic: ts.Diagnostic,
+  kind: TypeScriptCheckerDiagnostic["kind"],
+): TypeScriptCheckerDiagnostic {
+  const fileName = diagnostic.file?.fileName ?? "<typescript-options>";
+  const line = diagnostic.file && diagnostic.start !== undefined
+    ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 1;
+  const severity = diagnostic.category === ts.DiagnosticCategory.Warning ? "warning" : "error";
+  const label = kind === "syntax" ? "syntax errors" : kind === "semantic" ? "semantic errors" : "option errors";
+  const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+  return {
+    domain: "typescript", kind, severity, fileName, line, functionName: "<typescript>",
+    message: `TypeScript source has ${label} (\`TS${diagnostic.code}\`): ${detail}`,
+    typescriptCode: diagnostic.code,
+    notes: [
+      { label: "because", detail },
+      { label: "construct", detail: `TypeScript reported TS${diagnostic.code} at line ${line}` },
+    ],
+  };
 }
 export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TypeScriptCheckerDiagnostic;
 

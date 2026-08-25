@@ -426,6 +426,8 @@ same property is proved for arbitrary TypeScript.
 - TypeScript syntax, semantic, and compiler-option errors are source-attributed
   Uneffect errors. Function and `<module>` summaries from an ill-typed source
   are `unknown`; parser recovery is never presented as proof-grade evidence.
+  `verifyUneffectProject` also downgrades contract and typed-array obligations
+  from that source and refuses to report a verified temporal property.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect

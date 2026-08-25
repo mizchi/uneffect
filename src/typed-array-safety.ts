@@ -200,6 +200,12 @@ function constantTableDeclaration(declaration: ts.VariableDeclaration, source: t
   return { expression, domain: compact.includes("U8") ? "u8" : "u32" };
 }
 
+function unwrapTransparentExpression(expression: ts.Expression): ts.Expression {
+  return ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression)
+    || ts.isSatisfiesExpression(expression) || ts.isNonNullExpression(expression)
+    ? unwrapTransparentExpression(expression.expression) : expression;
+}
+
 function constantNumber(expression: ts.Expression, constants: ReadonlyMap<string, number>): number | undefined {
   if (ts.isParenthesizedExpression(expression) || ts.isAsExpression(expression) || ts.isNonNullExpression(expression)) return constantNumber(expression.expression, constants);
   if (ts.isNumericLiteral(expression)) return Number(expression.text);
@@ -436,14 +442,16 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
     const candidates: Array<{ kind: TypedArrayObligation["kind"]; goal: string; node: ts.Node; value?: ts.Expression; lower?: number; upper?: number; assumptions?: string[]; requiresInteger?: boolean; knownResult?: "verified" | "counterexample" }> = [];
     const visit = (current: ts.Node): void => {
       if (current !== node && ts.isFunctionLike(current)) return;
-      if (bounded && ts.isReturnStatement(current) && current.expression && ts.isNewExpression(current.expression)
-        && current.expression.expression.getText(source) === bounded.constructor && current.expression.arguments?.length === 1) {
-        const length = current.expression.arguments[0]!;
+      const returned = ts.isReturnStatement(current) && current.expression
+        ? unwrapTransparentExpression(current.expression) : undefined;
+      if (bounded && returned && ts.isNewExpression(returned)
+        && returned.expression.getText(source) === bounded.constructor && returned.arguments?.length === 1) {
+        const length = returned.arguments[0]!;
         candidates.push({ kind: "max-length", goal: `${length.getText(source)} >= 0 && ${length.getText(source)} <= ${bounded.maximum}`, node: length, value: length, upper: bounded.maximum });
       }
-      if (boundedView !== undefined && ts.isReturnStatement(current) && current.expression && ts.isNewExpression(current.expression)
-        && current.expression.expression.getText(source) === "DataView" && current.expression.arguments?.[0]) {
-        const construction = current.expression;
+      if (boundedView !== undefined && returned && ts.isNewExpression(returned)
+        && returned.expression.getText(source) === "DataView" && returned.arguments?.[0]) {
+        const construction = returned;
         const argumentsList = construction.arguments!;
         const buffer = argumentsList[0]!;
         const bufferMaximum = ts.isIdentifier(buffer) ? fixedArrayBufferBytes(parameterTypes.get(buffer.text) ?? "", constants) : undefined;

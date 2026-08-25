@@ -21,6 +21,16 @@ instead of reconstructing it from diagnostics. Program-produced summaries
 include a stable `fileName:start` ID and source span, avoiding ambiguity between
 same-named functions in different modules.
 
+Project verification is fail-closed on TypeScript syntax, semantic, and
+compiler-option errors. These errors appear in `result.diagnostics`; function
+and module summaries, contract obligations, and typed-array obligations from
+the invalid source are downgraded to `unknown`. Optional temporal models may
+still be emitted for inspection, but their properties return `error` without
+invoking Quint. Emitted JavaScript remains available for gradual tooling and
+must not be interpreted as verified output. Every temporal property carries
+its source `fileName`, so a verified sibling cannot be mistaken for evidence
+about an invalid file with the same property name.
+
 ## Reproducible artifacts
 
 `just evidence file.ts` emits JSON containing the Uneffect version, TypeScript compiler revision, normalized compiler-options hash, source hash, builtin-contract digest, summaries, and diagnostics. Changing any of these proof dependencies invalidates the artifact.

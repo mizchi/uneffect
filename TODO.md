@@ -482,6 +482,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Expose assurance claims and exclusions as typed assessment data and print exclusions even on success, preventing CI consumers from treating a context-free green boolean as a whole-program proof.
 - [x] Reject vacuous assurance when no proof-relevant evidence is emitted, report machine-readable coverage counts, and reject each explicitly selected file that contributes neither an effect summary nor a contract artifact.
 - [x] Reject TypeScript syntax, semantic, and compiler-option errors, and downgrade every function/module summary from an ill-typed source to `unknown` instead of trusting parser recovery.
+- [x] Apply the same fail-closed TypeScript boundary to `verifyUneffectProject`: report compiler diagnostics, downgrade contract/typed-array obligations, and suppress proof-grade temporal results for invalid sources.
 - [x] Emit source-attributed `<module>` may-effect summaries for direct operations, TypeChecker-resolved calls/overloads, known inline callbacks, and static local import closure; compose cycles by a conservative fixed point and keep unresolved calls/dynamic imports unknown.
 - [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA temporal ordering, side-effectful external packages, conditional dynamic imports, callback identifiers, and complete class/namespace initialization semantics.
 - [x] Define one proof-obligation schema per optimizer transformation.

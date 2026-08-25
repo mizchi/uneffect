@@ -5,5 +5,5 @@ export function transferThenDecode(
   buffer: FixedArrayBuffer<12>,
 ): BoundedDataView<12> {
   worker.postMessage(buffer, [buffer]);
-  return new DataView(buffer);
+  return new DataView(buffer) as unknown as BoundedDataView<12>;
 }

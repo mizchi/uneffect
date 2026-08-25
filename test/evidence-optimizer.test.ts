@@ -16,6 +16,29 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("does not issue project-level proof evidence for an ill-typed source", async () => {
+    const fileName = "src/invalid-project.ts";
+    const result = await verifyUneffectProject({ temporalRuntime: "web", files: { [fileName]: `
+      const broken: number = "not-a-number"
+      type BoundedUint8Array<N extends number> = Uint8Array
+      function writeTag(output: BoundedUint8Array<1>) { output[0] = 7 }
+      /* uneffect: ensures result === value */
+      export function identity(value: number): number { return value }
+    ` } });
+
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      domain: "typescript", kind: "semantic", fileName, severity: "error",
+    }));
+    expect(result.effects.summaries.filter((summary) => summary.fileName === fileName))
+      .toEqual(expect.arrayContaining([expect.objectContaining({ evidence: "unknown" })]));
+    expect(result.obligations).not.toContainEqual(expect.objectContaining({ result: "verified" }));
+    expect(result.typedArrays.obligations.length).toBeGreaterThan(0);
+    expect(result.typedArrays.obligations).not.toContainEqual(expect.objectContaining({ result: "verified" }));
+    expect(result.temporal?.properties).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fileName, name: "eventLoopSafe", result: "error", output: expect.stringContaining("TypeScript errors") }),
+    ]));
+  });
+
   it("attaches evidence to every summary and binds reproducibility inputs", () => {
     const { program, source } = programOf(`
       /* uneffect: effect Console */ function checked() { console.log("x") }

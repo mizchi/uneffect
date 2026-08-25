@@ -34,6 +34,12 @@ still walk its recovered AST. The default gradual check reports the same
 TypeScript errors and exits non-zero; Uneffect never upgrades an ill-typed
 source to proof-grade evidence.
 
+The programmatic `verifyUneffectProject` boundary applies the same rule across
+domains: contract and typed-array obligations become `unknown`, and temporal
+properties become `error` without running their backend. The API can still
+return diagnostics, models, and emitted JavaScript for gradual adoption; those
+outputs are not proof evidence.
+
 The public `AssuranceAssessment` also exposes `claims`, `exclusions`, and
 `coverage` as machine-readable fields. Coverage records the selected-file,
 effect-summary, and contract-artifact counts plus every selected file that
