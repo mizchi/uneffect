@@ -687,29 +687,35 @@ describe("React Function Component semantics", () => {
 
   it("analyzes imported transition actions in their declaration environment", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-imports-"));
-    const callbacksFile = join(directory, "callbacks.ts"), appFile = join(directory, "app.tsx");
+    const callbacksFile = join(directory, "callbacks.ts"), barrelFile = join(directory, "barrel.ts");
+    const appFile = join(directory, "app.tsx");
     try {
       writeFileSync(callbacksFile, `
         /* uneffect: effect RemoteTransition */ declare function auditTransition(): void
         function fetchRemote() { auditTransition(); fetch("/remote") }
         export function remoteAction() { fetchRemote() }
+        export default function defaultAction() { fetchRemote() }
         export let unstableAction = () => auditTransition()
         unstableAction = () => console.log("changed")
       `);
+      writeFileSync(barrelFile, `export { remoteAction, unstableAction } from "./callbacks.js"`);
       writeFileSync(appFile, `
         import { startTransition, useEffect } from "react"
-        import { remoteAction, unstableAction } from "./callbacks.js"
+        import defaultAction, * as actions from "./callbacks.js"
+        import { remoteAction, unstableAction } from "./barrel.js"
         declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
         /* uneffect: react component */
         function Panel() {
           useEffect(() => { startTransition(remoteAction) }, [])
           return <button onClick={() => {
             startTransition(remoteAction)
+            startTransition(defaultAction)
+            startTransition(actions.remoteAction)
             startTransition(unstableAction)
           }} />
         }
       `);
-      const program = ts.createProgram([callbacksFile, appFile], {
+      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
       });

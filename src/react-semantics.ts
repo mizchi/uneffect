@@ -1289,7 +1289,7 @@ function unknownImmediateActions(
     if (ts.isCallExpression(current) && immediateCallbacks.has(callName(current) ?? "")) {
       const action = current.arguments[0];
       const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
-        ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+        ? action : action ? callbackArgument(action, localCallbacks) : undefined;
       if (callback?.body) visit(callback.body);
       else if (action) unknown.push(action);
     }
@@ -1340,7 +1340,7 @@ function actionDispatcherCallsOutsideAction(
       if (actionCallbacks.has(callName(current) ?? "")) {
         const argument = current.arguments[0];
         const callback = argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
-          ? argument : argument && ts.isIdentifier(argument) ? localCallbacks.get(argument.text) : undefined;
+          ? argument : argument ? callbackArgument(argument, localCallbacks) : undefined;
         if (callback?.body) visit(callback.body, true);
         // The Action callback has already been traversed in its Action context.
         ts.forEachChild(current.expression, (child) => visit(child, insideAction));
@@ -1381,7 +1381,7 @@ function transitionUpdatesAfterAwait(
         let state = visit(current.expression, insideTransition, afterAwait);
         const argument = current.arguments[0];
         const callback = argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
-          ? argument : argument && ts.isIdentifier(argument) ? localCallbacks.get(argument.text) : undefined;
+          ? argument : argument ? callbackArgument(argument, localCallbacks) : undefined;
         if (callback?.body) visit(callback.body, true, false);
         for (const other of current.arguments.slice(1)) state = visit(other, insideTransition, state);
         return state;
