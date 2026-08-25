@@ -150,11 +150,12 @@ same property is proved for arbitrary TypeScript.
   check without changing runtime output.
 - A comment on a wrapper variable may cross direct named/default/namespace
   React `memo` and `forwardRef` chains around an inline function or a
-  source-local immutable function/arrow reached through transitive `const`
-  aliases. The
+  source-local immutable function/arrow or write-screened module-local
+  function declaration reached through transitive `const` aliases. The
   variable identity survives Program imports and Suspense resolution. Optional
   memo comparators form a pure `memo-compare` phase; observable or opaque
-  comparators and unsupported wrapper shapes fail closed. Function-declaration,
+  comparators and unsupported wrapper shapes fail closed. The declaration
+  write screen is conservative and may reject shadowed-name uncertainty;
   mutable/imported/member/dynamic component arguments and custom wrappers
   remain unsupported.
 - The initial phase projection distinguishes replayable render, inline JSX

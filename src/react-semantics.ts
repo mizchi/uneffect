@@ -919,6 +919,10 @@ function sourceConstComponentCallbacks(source: ts.SourceFile): ReadonlyMap<strin
   const callbacks = new Map<string, LocalEventCallback>();
   const aliases = new Map<string, string>();
   for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) {
+      callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
+      continue;
+    }
     if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
     for (const declaration of statement.declarationList.declarations) {
       if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
@@ -927,9 +931,42 @@ function sourceConstComponentCallbacks(source: ts.SourceFile): ReadonlyMap<strin
       else if (ts.isIdentifier(initializer)) aliases.set(declaration.name.text, initializer.text);
     }
   }
+  const reassigned = new Set<string>();
+  const collectAssignmentTargets = (expression: ts.Expression): void => {
+    const target = unwrapExpression(expression);
+    if (ts.isIdentifier(target)) {
+      reassigned.add(target.text);
+      return;
+    }
+    if (ts.isArrayLiteralExpression(target)) {
+      for (const element of target.elements) if (!ts.isOmittedExpression(element)) {
+        collectAssignmentTargets(ts.isSpreadElement(element) ? element.expression : element as ts.Expression);
+      }
+      return;
+    }
+    if (ts.isObjectLiteralExpression(target)) for (const property of target.properties) {
+      if (ts.isShorthandPropertyAssignment(property)) reassigned.add(property.name.text);
+      else if (ts.isPropertyAssignment(property)) collectAssignmentTargets(property.initializer);
+      else if (ts.isSpreadAssignment(property)) collectAssignmentTargets(property.expression);
+    }
+  };
+  const visitWrites = (node: ts.Node): void => {
+    if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment) collectAssignmentTargets(node.left);
+    if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+      && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)) {
+      collectAssignmentTargets(node.operand);
+    }
+    if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && ts.isExpression(node.initializer)) {
+      collectAssignmentTargets(node.initializer);
+    }
+    ts.forEachChild(node, visitWrites);
+  };
+  visitWrites(source);
   const resolved = new Map<string, LocalEventCallback>();
   const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
-    if (seen.has(name)) return undefined;
+    if (seen.has(name) || reassigned.has(name)) return undefined;
     const callback = callbacks.get(name);
     if (callback) return callback;
     const alias = aliases.get(name);

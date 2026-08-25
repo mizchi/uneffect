@@ -60,6 +60,14 @@ the source by two declarations per component and exercises wrapper identity
 resolution; it is not an isolated resolution cost and is not a regression
 budget.
 
+After changing those 128 bodies to module-local function declarations while
+retaining the `const` alias and wrapper shape, the 2026-08-25 run measured
+303.07 ms mean over 30 cold-source samples (7.15% relative margin of error)
+and 276.55 ms over 30 reused-Program samples (14.07%). The parse-only baseline
+was 19.4778 ms over 52 samples (7.52%). This workload includes a whole-source
+syntactic write screen for every analysis and the run is noisy; it establishes
+an observed regression point, not an isolated cost or an acceptable budget.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured

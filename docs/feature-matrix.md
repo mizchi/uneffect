@@ -46,10 +46,12 @@ strict null guard without `else`, and one same-ref assignment from the stable
 literal/object/array fragment. General factory/constructor purity and
 control-flow dominance remain open.
 For component wrappers, a referenced argument is now supported when it is a
-source-local immutable function/arrow reached only through `const` identifier
-aliases. Function declarations, mutable/imported/member/dynamic arguments and
-custom HOCs remain outside the wrapper claim; the annotated wrapper name is
-the Program/Suspense component identity.
+source-local immutable function/arrow or a write-screened module-local function
+declaration reached only through `const` identifier aliases. The declaration
+screen conservatively rejects any syntactic assignment, update, or loop-target
+write and may reject shadowed-name uncertainty. Mutable/imported/member/dynamic
+arguments and custom HOCs remain outside the wrapper claim; the annotated
+wrapper name is the Program/Suspense component identity.
 
 ## Verification confidence
 

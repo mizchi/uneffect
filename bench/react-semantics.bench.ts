@@ -3,7 +3,7 @@ import { bench, describe } from "vitest";
 import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
-  const ItemView${index} = function ItemView${index}(props: { label: string; active: boolean; ref: unknown }) {
+  function ItemView${index}(props: { label: string; active: boolean; ref: unknown }) {
     const options = useRef<{ method: "POST" } | null>(null)
     const optionsAlias = options
     if (optionsAlias.current === null) optionsAlias.current = { method: "POST" }

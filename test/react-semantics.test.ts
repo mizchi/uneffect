@@ -71,9 +71,19 @@ describe("React Function Component semantics", () => {
       /* uneffect: react component */
       const ReferencedForward = React.memo(legacyRef(ReferencedInputView))
 
+      function DeclaredView(props: { path: string }) { return <button onClick={() => fetch(props.path)} /> }
+      const DeclaredAlias = DeclaredView
+      /* uneffect: react component */
+      const DeclaredMemo = remember(DeclaredAlias)
+
       let MutableView = (_props: object) => null
       /* uneffect: react component */
       const MutableMemo = remember(MutableView)
+
+      function ReassignedView(_props: object) { return null }
+      ReassignedView = (_props: object) => null
+      /* uneffect: react component */
+      const ReassignedMemo = remember(ReassignedView)
 
       declare function importedComponent(props: object): null
       /* uneffect: react component */
@@ -85,7 +95,7 @@ describe("React Function Component semantics", () => {
     `);
 
     expect(result.components.map(({ name }) => name)).toEqual([
-      "MemoButton", "ForwardedInput", "ImpureComparator", "OpaqueComparator", "ReferencedMemo", "ReferencedForward",
+      "MemoButton", "ForwardedInput", "ImpureComparator", "OpaqueComparator", "ReferencedMemo", "ReferencedForward", "DeclaredMemo",
     ]);
     expect(result.components.find(({ name }) => name === "MemoButton")!.phases).toEqual(expect.arrayContaining([
       { phase: "event", effects: ["Fetch"] },
@@ -108,12 +118,17 @@ describe("React Function Component semantics", () => {
       { phase: "ref-callback", effects: ["Console"] },
       { phase: "memo-compare", effects: [] },
     ]));
+    expect(result.components.find(({ name }) => name === "DeclaredMemo")!.phases).toEqual(expect.arrayContaining([
+      { phase: "event", effects: ["Fetch"] },
+      { phase: "memo-compare", effects: [] },
+    ]));
     expect(result.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ component: "ImpureComparator", kind: "memo-comparator-effect", phase: "memo-compare", effect: "CompareAudit" }),
       expect.objectContaining({ component: "ImpureComparator", kind: "memo-comparator-effect", phase: "memo-compare", operation: "Date.now" }),
       expect.objectContaining({ component: "OpaqueComparator", kind: "unknown-memo-comparator", phase: "memo-compare" }),
       expect.objectContaining({ component: "OpaqueWrapped", kind: "unsupported-react-component-wrapper" }),
       expect.objectContaining({ component: "MutableMemo", kind: "unsupported-react-component-wrapper" }),
+      expect.objectContaining({ component: "ReassignedMemo", kind: "unsupported-react-component-wrapper" }),
       expect.objectContaining({ component: "WrongWrapper", kind: "unsupported-react-component-wrapper" }),
     ]));
     expect(result.diagnostics.filter(({ component }) => ["MemoButton", "ForwardedInput"].includes(component))).toEqual([]);
@@ -126,7 +141,7 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(viewsFile, `
         import { forwardRef, memo } from "react"
-        const ContentView = function ContentView(_props: object, _ref: unknown) { return null }
+        function ContentView(_props: object, _ref: unknown) { return null }
         const ContentAlias = ContentView
         /* uneffect: react component */
         export const Content = memo(forwardRef(ContentAlias))

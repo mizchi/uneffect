@@ -151,7 +151,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           return () => unsubscribe()
         }, [topic])
       }
-      const FeedView = function FeedView({ topic, ref }: { topic: string; ref: unknown }) {
+      function FeedView({ topic, ref }: { topic: string; ref: unknown }) {
         const renderCache = useRef<{ topic: string } | null>(null)
         const cacheAlias = renderCache
         if (cacheAlias.current === null) {

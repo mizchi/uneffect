@@ -35,7 +35,8 @@ contract layer for existing TypeScript:
     local event handlers and callback refs compose
     through `const` aliases, annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity for
-    inline or source-local immutable aliased component bodies. An
+    inline, source-local immutable, or write-screened module-local function
+    declaration component bodies reached through aliases. An
     explicit bounded Quint projection checks one Action dispatcher's
     sequential queue, pending flag, and failure cancellation laws. Direct
     Action throws retain typed `Throw` evidence; a companion projection

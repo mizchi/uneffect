@@ -82,7 +82,7 @@ function useTelemetrySubscription(service: string): void {
   }, [service]);
 }
 
-const TelemetryDashboardView = function TelemetryDashboardView(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
+function TelemetryDashboardView(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
   const requestOptions = useRef<{ method: "POST" } | null>(null);
   const optionsAlias = requestOptions;
   if (optionsAlias.current === null) {
@@ -122,7 +122,7 @@ const TelemetryDashboardView = function TelemetryDashboardView(props: { service:
     {online ? visibleRows.length : 0}{optimisticService}{saving}
     <button onClick={refresh}>refresh</button>
   </output></form>;
-};
+}
 
 /* uneffect: react component */
 export const TelemetryDashboard = memo(TelemetryDashboardView);

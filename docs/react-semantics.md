@@ -57,13 +57,17 @@ Creating JSX is a render calculation, not a `DomWrite`. React's later host DOM
 commit is outside the component function. Direct writes through `document` or
 `window` during render are `DomWrite` and are rejected.
 
-A component comment on a variable declaration may wrap one inline function, or
-one source-local immutable function/arrow reached through transitive `const`
-identifier aliases, in any direct named/default/namespace React `memo` and
-`forwardRef` chain. The wrapper variable remains the component identity for
-Program-backed imports and Suspense edges. Mutable bindings, function
-declarations, imported arguments, member/dynamic selection, and custom HOCs
-remain fail-closed. An optional `memo` comparator is resolved from an inline,
+A component comment on a variable declaration may wrap one inline function,
+one source-local immutable function/arrow, or one module-local function
+declaration reached through transitive `const` identifier aliases, in any
+direct named/default/namespace React `memo` and `forwardRef` chain. A function
+declaration is admitted only when a conservative source scan finds no
+assignment, update, or loop-target write to its name. The source-only scan may
+reject a write to a shadowed binding rather than claiming symbol-level
+immutability. The wrapper variable remains the component identity for
+Program-backed imports and Suspense edges. Mutable bindings, imported
+arguments, member/dynamic selection, and custom HOCs remain fail-closed. An
+optional `memo` comparator is resolved from an inline,
 module-local, or immutable local callback and analyzed in `memo-compare`;
 observable capabilities or selected non-idempotent host reads produce
 `memo-comparator-effect`, while an opaque
@@ -556,9 +560,9 @@ This is a tested initial fragment, not a complete React semantics:
   named, barrel, namespace, and default imports; element access, dynamically
   selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
 - component wrappers cover direct React `memo`/`forwardRef` chains around one
-  inline or source-local immutable function/arrow reached through `const`
-  aliases. Function declarations, mutable/imported/member/dynamic component
-  arguments, custom higher-order
+  inline function, source-local immutable function/arrow, or write-screened
+  module-local function declaration reached through `const` aliases.
+  Imported/member/dynamic component arguments, custom higher-order
   wrappers, dynamic wrapper selection, custom comparator call-graph effects,
   and semantic equivalence of comparator results remain unsupported;
 - event extraction covers inline callbacks and immutable component-local
