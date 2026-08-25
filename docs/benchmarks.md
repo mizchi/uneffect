@@ -413,6 +413,14 @@ the return predicate survives common finally processing. The current raw
 symbolic state retains redundant conditionals from pre-catch joins; path-aware
 simplification is not included in this timing or claimed as implemented.
 
+On 2026-08-26, after the telemetry buffer action began calling its reviewed
+local runtime method through a non-escaping `const` receiver alias, the current
+complete refinement benchmark measured 3.5655 ms mean over 141 samples (2.24%
+RME). This run includes the subsequently expanded telemetry fixture, so it is
+retained as a development-host regression observation rather than compared
+directly with the older, smaller fixture. Mutable, imported, computed, and
+polymorphic method receivers remain outside this measurement and proof claim.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

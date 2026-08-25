@@ -193,6 +193,14 @@ Consequently a `const state = runtime` alias works inside the block but its use
 after `}` is an unsupported body rather than an inferred runtime reference.
 The labeled-delivery dogfood nests this scoped alias block inside try/finally.
 
+The same immutable whole-runtime alias may receive a method call when the
+runtime class and identifier-named method declaration are local and statically
+known. Uneffect specializes that body exactly as for a direct receiver call.
+The telemetry-routing dogfood invokes `record` through such an alias; changing
+the declaration to `let` is an explicit unsupported-body control. Imported,
+computed, polymorphic, reassigned, or escaping method receivers are not proved
+by this syntax-only path.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

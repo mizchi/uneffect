@@ -824,6 +824,16 @@ function validateRefinementActionBodiesInSource(
     // branch collection receives a snapshot, so aliases declared in a nested
     // block cannot leak into its sibling or enclosing continuation.
     const substitutions = new Map(initialSubstitutions);
+    const isRuntimeReceiverExpression = (expression: ts.Expression, seen: ReadonlySet<string> = new Set()): boolean => {
+      const candidate = unwrap(expression);
+      if (candidate.kind === ts.SyntaxKind.ThisKeyword) return receiver === "this";
+      if (!ts.isIdentifier(candidate)) return false;
+      if (candidate.text === receiver) return true;
+      if (seen.has(candidate.text)) return false;
+      const replacement = substitutions.get(candidate.text);
+      return replacement !== undefined
+        && isRuntimeReceiverExpression(replacement, new Set([...seen, candidate.text]));
+    };
     const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
         return localValues.get(expression.name.slice("\u0000local:".length)) ?? expression;
@@ -1516,7 +1526,7 @@ function validateRefinementActionBodiesInSource(
         }
       }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
-        && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === receiver && runtimeClass) {
+        && isRuntimeReceiverExpression(node.expression.expression) && runtimeClass) {
         const methodName = node.expression.name.text;
         const method = runtimeClass.members.find((member): member is ts.MethodDeclaration => ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && member.name.text === methodName);
         if (!method?.body || method.parameters.length !== node.arguments.length) return undefined;

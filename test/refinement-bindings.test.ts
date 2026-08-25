@@ -1345,6 +1345,16 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("routing.ts", source, "routing", parseSpec("routing.ts", source).temporal)).toEqual([
       expect.objectContaining({ code: "action-update-mismatch", modelName: "conditional", exportName: "conditional", actual: "delivered === 0 ? delivered + 1 : delivered" }),
     ]);
+
+    const aliased = source.replace('export function deliver(runtime: Runtime) { runtime.record("delivered") }', 'export function deliver(runtime: Runtime) { const state = runtime; state.record("delivered") }');
+    expect(validateRefinementActionBodies("aliased-method.ts", aliased, "routing", parseSpec("aliased-method.ts", aliased).temporal)).toEqual([
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "conditional", exportName: "conditional" }),
+    ]);
+
+    const mutableAlias = aliased.replace("const state = runtime", "let state = runtime");
+    expect(validateRefinementActionBodies("mutable-method-alias.ts", mutableAlias, "routing", parseSpec("mutable-method-alias.ts", mutableAlias).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver", exportName: "deliver" }),
+    );
   });
 
   it("does not treat a missing action binding as a successful body proof", () => {

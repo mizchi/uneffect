@@ -39,6 +39,34 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("receiver-alias.ts", source, "telemetry", specification.temporal)).toEqual([]);
   });
 
+  it("specializes a known runtime method through an immutable receiver alias", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state sent: int
+       * state attempted: int
+       * init sent = 0
+       * init attempted = 0
+       * action record: sent' = sent + 1, attempted' = attempted + 1
+       */
+      class Runtime {
+        sent = 0
+        attempted = 0
+        record() { this.attempted++; this.sent++ }
+      }
+      /* uneffect: refinement telemetry@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement telemetry@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement telemetry@1 action record */
+      export function record(runtime: Runtime) {
+        const state = runtime
+        state.record()
+      }
+    `;
+    const specification = parseSpecification("receiver-method-alias.ts", source) as { temporal: unknown };
+    expect(validateActions("receiver-method-alias.ts", source, "telemetry", specification.temporal)).toEqual([]);
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

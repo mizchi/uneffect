@@ -105,7 +105,10 @@ export function dropTelemetry(runtime: TelemetryRoutingAccounting): void {
 }
 
 /* uneffect: refinement telemetryRouting@1 action buffer */
-export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void { runtime.record("buffered"); }
+export function bufferTelemetry(runtime: TelemetryRoutingAccounting): void {
+  const accounting = runtime;
+  accounting.record("buffered");
+}
 
 /* uneffect: refinement telemetryRouting@1 action reject */
 export function rejectTelemetry(runtime: TelemetryRoutingAccounting): void {

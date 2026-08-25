@@ -485,6 +485,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "telemetryRouting", temporal)).toEqual([]);
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "telemetryRouting", temporal)).toEqual([]);
     expect(validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal)).toEqual([]);
+    const mutableMethodReceiver = source.replace("const accounting = runtime;", "let accounting = runtime;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, mutableMethodReceiver, "telemetryRouting", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "buffer" }),
+    );
     const missingFinallyUpdate = source.replace("runtime.attempted += 1;", "// missing attempted update");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyUpdate, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "attempted" }),

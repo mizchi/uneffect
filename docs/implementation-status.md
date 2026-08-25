@@ -76,7 +76,10 @@ same property is proved for arbitrary TypeScript.
   bounded ascending loops, finite numeric/boolean literal `for...of` loops, and
   acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
   through lexical, non-escaping `const` alias chains; mutable, escaping,
-  member, destructured, or cyclic aliases remain unsupported. Finite loops are
+  member, destructured, or cyclic aliases remain unsupported. A reviewed local
+  runtime-class method may use the same alias chain as its receiver; its body is
+  specialized with the existing argument substitution and recursion guard.
+  This is not dynamic method dispatch. Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The
   same completion machinery consumes a statically named block's own `break`
