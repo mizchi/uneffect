@@ -13,3 +13,4 @@ error effect/missing fixtures/effects/throw-effect.ts:3 in parsePort
 
 evidence:
   effects parsePort: Throw<TypeError> | Console (unknown)
+  effects <module>: no effect (verified)

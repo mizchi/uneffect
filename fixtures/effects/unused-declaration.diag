@@ -14,3 +14,4 @@ warning effect/unused fixtures/effects/unused-declaration.ts:3 in report
 
 evidence:
   effects report: Console (verified)
+  effects <module>: no effect (verified)

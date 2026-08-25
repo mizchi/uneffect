@@ -13,3 +13,4 @@ error contract/unsupported fixtures/contracts/unsupported-parameter-type.ts:3 in
 
 evidence:
   effects length: no effect (inferred)
+  effects <module>: no effect (verified)

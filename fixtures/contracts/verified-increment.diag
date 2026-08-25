@@ -7,3 +7,4 @@ no diagnostics
 evidence:
   proved increment: ensures result > x
   effects increment: no effect (inferred)
+  effects <module>: no effect (verified)

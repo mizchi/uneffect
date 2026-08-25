@@ -18,3 +18,4 @@ evidence:
   proved count: invariant i >= 0 && i <= n
   proved count: ensures result == n
   effects count: no effect (inferred)
+  effects <module>: no effect (verified)

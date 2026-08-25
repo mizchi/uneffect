@@ -30,3 +30,4 @@ warning effect/unused fixtures/effects/unknown-effect.ts:3 in report
 
 evidence:
   effects report: Console (unknown)
+  effects <module>: no effect (verified)

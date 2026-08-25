@@ -6,3 +6,4 @@ no diagnostics
 
 evidence:
   effects report: Console (verified)
+  effects <module>: no effect (verified)

@@ -14,3 +14,4 @@ error effect/missing fixtures/effects/mutate-property.ts:5 in record
 
 evidence:
   effects record: Mutate<typeof state.calls> | Mutate<typeof state.total> (unknown)
+  effects <module>: no effect (verified)

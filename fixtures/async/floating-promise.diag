@@ -13,3 +13,4 @@ error async/floating-promise fixtures/async/floating-promise.ts:7 in run
 evidence:
   effects save: no effect (inferred)
   effects run: no effect (inferred)
+  effects <module>: no effect (verified)

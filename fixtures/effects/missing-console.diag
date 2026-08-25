@@ -13,3 +13,4 @@ error effect/missing fixtures/effects/missing-console.ts:2 in report
 
 evidence:
   effects report: Console (inferred)
+  effects <module>: no effect (verified)

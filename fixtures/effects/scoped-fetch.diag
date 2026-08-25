@@ -42,3 +42,4 @@ warning effect/unused fixtures/effects/scoped-fetch.ts:8 in loadReport
 evidence:
   effects loadUsers: Fetch<GET, "https://api.example.com/users"> | Net<"api.example.com:443"> (verified)
   effects loadReport: Fetch<GET, "https://reports.example.com/latest"> | Net<"reports.example.com:443"> (unknown)
+  effects <module>: no effect (verified)

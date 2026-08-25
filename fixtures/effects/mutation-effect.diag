@@ -13,3 +13,4 @@ error effect/missing fixtures/effects/mutation-effect.ts:4 in record
 
 evidence:
   effects record: Mutate<typeof state.calls> (inferred)
+  effects <module>: no effect (verified)

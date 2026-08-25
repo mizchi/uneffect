@@ -14,3 +14,4 @@ error effect/missing fixtures/effects/transitive-console.ts:7 in summarize
 evidence:
   effects report: Console (verified)
   effects summarize: Console (inferred)
+  effects <module>: no effect (verified)

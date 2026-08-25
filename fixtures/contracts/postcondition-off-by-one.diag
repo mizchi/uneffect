@@ -16,3 +16,4 @@ error contract/ensures fixtures/contracts/postcondition-off-by-one.ts:5 in decre
 
 evidence:
   effects decrement: no effect (inferred)
+  effects <module>: no effect (verified)

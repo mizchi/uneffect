@@ -18,3 +18,4 @@ evidence:
   proved countByTwo: invariant i >= 0 && i <= n
   proved countByTwo: ensures result >= n
   effects countByTwo: no effect (inferred)
+  effects <module>: no effect (verified)

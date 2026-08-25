@@ -14,3 +14,4 @@ error contract/unsupported fixtures/contracts/unsupported-call.ts:11 in announce
 evidence:
   effects report: Console (verified)
   effects announce: Console (verified)
+  effects <module>: no effect (verified)
