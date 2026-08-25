@@ -43,6 +43,12 @@ Creating JSX is a render calculation, not a `DomWrite`. React's later host DOM
 commit is outside the component function. Direct writes through `document` or
 `window` during render are `DomWrite` and are rejected.
 
+JSX event attributes accept inline callbacks and immutable component-local
+function/arrow callbacks reached through `const` identifier aliases. Their
+capabilities belong to the `event` phase, not render. Reassigned identifiers,
+member expressions, imported callbacks, and other unresolved handler shapes
+produce `unknown-event-handler` instead of being silently treated as pure.
+
 Named imports of `useEffect` and `useLayoutEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
 function is not treated as a built-in Hook boundary. Annotated custom Hooks
@@ -353,8 +359,10 @@ This is a tested initial fragment, not a complete React semantics:
 - direct identifier/property calls of annotated custom Hooks resolve through
   named, barrel, namespace, and default imports; element access, dynamically
   selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
-- event extraction covers inline JSX function callbacks, not referenced
-  handlers or callbacks passed through component props;
+- event extraction covers inline callbacks and immutable component-local
+  function/arrow callbacks through `const` aliases. Imported handlers, member
+  expressions, callbacks passed through props, and general data flow remain
+  explicit unknowns;
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
   aliases. Reassigned bindings, mutation through calls, properties stored in

@@ -74,6 +74,39 @@ describe("React Function Component semantics", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("classifies locally referenced and aliased JSX handlers as event work", () => {
+    const result = analyzeReactSemantics("referenced-events.tsx", `
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect: react component */
+      function Panel() {
+        function submit() { fetch("/submit") }
+        const handleClick = submit
+        return <button onClick={handleClick} />
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "render", effects: [] }),
+      expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
+    ]));
+  });
+
+  it("fails closed when a referenced JSX handler is reassigned", () => {
+    const result = analyzeReactSemantics("unstable-event.tsx", `
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect: react component */
+      function Panel() {
+        function submit() { fetch("/submit") }
+        submit = () => console.log("changed")
+        return <button onClick={submit} />
+      }
+    `);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ kind: "unknown-event-handler", phase: "event", operation: "submit" }),
+    ]);
+  });
+
   it("separates callback refs from render and models their Strict Mode replay", () => {
     const result = analyzeReactSemantics("callback-ref.tsx", `
       import { useRef as ref } from "react"

@@ -143,9 +143,11 @@ same property is proved for arbitrary TypeScript.
   variable-bound function expressions/arrows into a TSX-specific semantic
   check without changing runtime output.
 - The initial phase projection distinguishes replayable render, inline JSX
-  event callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
+  event callbacks, immutable component-local referenced/aliased event
+  callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
   cleanup functions. Inline JSX callback refs form a separate commit setup and
-  returned-cleanup phase. Aliased named imports from `react` are recognized.
+  returned-cleanup phase. Reassigned or opaque referenced event handlers are
+  rejected rather than assumed pure. Aliased named imports from `react` are recognized.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase

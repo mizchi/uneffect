@@ -10,9 +10,10 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
     useCatalogSubscription(props.label)
+    const handleClick = () => fetch("/items/${index}")
     return <button
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
-      onClick={() => fetch("/items/${index}")}
+      onClick={handleClick}
     >{props.label}{selectionSnapshot.active && preferences.dense}</button>
   }
 `).join("\n");

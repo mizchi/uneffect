@@ -45,14 +45,15 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
     () => showFailures ? props.rows.filter((row) => row.failures > 0) : props.rows,
     [props.rows, showFailures],
   );
+  const refresh = () => {
+    setShowFailures(!showFailures);
+    fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+  };
   return <output ref={(node) => {
     const viewport = attachTelemetryViewport(node);
     return () => detachTelemetryViewport(viewport);
   }}>
     {visibleRows.length}
-    <button onClick={() => {
-      setShowFailures(!showFailures);
-      fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
-    }}>refresh</button>
+    <button onClick={refresh}>refresh</button>
   </output>;
 }

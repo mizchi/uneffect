@@ -8,6 +8,7 @@ export type ReactDiagnosticKind =
   | "immutable-input-mutation"
   | "render-ref-access"
   | "unknown-ref-callback"
+  | "unknown-event-handler"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -634,6 +635,49 @@ function inlineCallback(call: ts.CallExpression, index: number | undefined): ts.
   return argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) ? argument : undefined;
 }
 
+type LocalEventCallback = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+
+function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, LocalEventCallback> {
+  if (!ts.isBlock(component.body)) return new Map();
+  const callbacks = new Map<string, LocalEventCallback>();
+  const aliases = new Map<string, string>();
+  const reassigned = new Set<string>();
+  for (const statement of component.body.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement);
+    if (!ts.isVariableStatement(statement)
+      || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      if (ts.isArrowFunction(declaration.initializer) || ts.isFunctionExpression(declaration.initializer)) {
+        callbacks.set(declaration.name.text, declaration.initializer);
+      } else if (ts.isIdentifier(declaration.initializer)) aliases.set(declaration.name.text, declaration.initializer.text);
+    }
+  }
+  const visitWrites = (node: ts.Node): void => {
+    if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      && ts.isIdentifier(node.left)) reassigned.add(node.left.text);
+    if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+      && ts.isIdentifier(node.operand)) reassigned.add(node.operand.text);
+    ts.forEachChild(node, visitWrites);
+  };
+  visitWrites(component.body);
+  const resolved = new Map<string, LocalEventCallback>();
+  const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
+    if (reassigned.has(name) || seen.has(name)) return undefined;
+    const callback = callbacks.get(name);
+    if (callback) return callback;
+    const alias = aliases.get(name);
+    return alias ? resolve(alias, new Set(seen).add(name)) : undefined;
+  };
+  for (const name of [...callbacks.keys(), ...aliases.keys()]) {
+    const callback = resolve(name);
+    if (callback) resolved.set(name, callback);
+  }
+  return resolved;
+}
+
 function callName(call: ts.CallExpression): string | undefined {
   if (ts.isIdentifier(call.expression)) return call.expression.text;
   if (ts.isPropertyAccessExpression(call.expression)) return call.expression.getText(call.getSourceFile());
@@ -1187,6 +1231,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const immutableSnapshots = immutableSnapshotBindings(component, source);
     const refs = renderRefBindings(component, source);
+    const eventCallbacks = localEventCallbacks(component);
     const visitRender = (node: ts.Node): void => {
       if (node !== component.body && ts.isFunctionLike(node)) return;
       if (ts.isThrowStatement(node) && node.expression) suspensions.push({
@@ -1228,6 +1273,19 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("on") && node.initializer && ts.isJsxExpression(node.initializer)) {
         const expression = node.initializer.expression;
         if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) addPhase("event", directEffects(expression.body, declared));
+        else if (expression && ts.isIdentifier(expression)) {
+          const callback = eventCallbacks.get(expression.text);
+          if (callback?.body) addPhase("event", directEffects(callback.body, declared));
+          else report(expression, {
+            kind: "unknown-event-handler", phase: "event", operation: expression.text,
+            message: `${expression.text} is not an immutable locally resolved event callback`,
+          });
+        } else if (expression) {
+          report(expression, {
+            kind: "unknown-event-handler", phase: "event", operation: expression.getText(source),
+            message: `${expression.getText(source)} is not an inline or immutable locally resolved event callback`,
+          });
+        }
         return;
       }
       if (ts.isCallExpression(node)) {

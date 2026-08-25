@@ -89,9 +89,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
         useSubscription(topic)
+        const handleClick = () => fetch(\`/topics/\${topic}\`)
         return <button
           ref={(node) => { console.log(node); return () => console.log("detach") }}
-          onClick={() => fetch(\`/topics/\${topic}\`)}
+          onClick={handleClick}
         />
       }
       function Legacy() { console.log("not opted in"); return null }
@@ -167,10 +168,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const causalSource = `
       import { Suspense, use } from "react"
       const data = Promise.resolve("ready")
+      const legacy = Promise.resolve("legacy")
       /* uneffect: react component */ function Data() { return <p>{use(data)}</p> }
+      /* uneffect: react component */ function LegacyData() { throw legacy }
+      /* uneffect: react component */ function Broken() { throw new Error("broken") }
       /* uneffect: react component */ function Static() { return <nav>Static</nav> }
       /* uneffect: react component */ function Fallback() { return <p>Loading</p> }
-      function App() { return <Suspense fallback={<Fallback />}><><Static /><Data /></></Suspense> }
+      function App() { return <Suspense fallback={<Fallback />}><><Static /><Broken /><Data /><LegacyData /></></Suspense> }
     `;
     const causalOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
     const causalHost = ts.createCompilerHost(causalOptions);
@@ -184,7 +188,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       requireKnownSuspension: true,
     }) as string;
     expect(causalQuint).toContain("leaf 0: Data; owner boundary 0; cause react-use(data)");
+    expect(causalQuint).toContain("leaf 1: LegacyData; owner boundary 0; cause throw-thenable(legacy)");
     expect(causalQuint).not.toContain("Static; owner boundary");
+    expect(causalQuint).not.toContain("Broken; owner boundary");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

@@ -16,12 +16,19 @@ Compare results on the same machine and runtime before and after a change.
 `bench/react-semantics.bench.ts` constructs one TSX module containing 128
 opted-in components. Every component calls one shared annotated custom Hook
 whose passive Effect has a result/parameter identity contract and matching
-acquire/release cleanup, a checked `[label]` dependency, and an inline JSX event
-handler. Each component also builds immutable props, state, and context region
+acquire/release cleanup, a checked `[label]` dependency, and an immutable local
+JSX event-handler reference. Each component also builds immutable props, state, and context region
 facts through local `const` aliases and contains an identity-checked inline
 callback ref with returned cleanup. The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
+
+After replacing the 128 inline event callbacks with immutable local callback
+references on the same date, the source path measured 24.35 ms mean and the
+parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured
+35.41 ms. This is the first regression point that includes construction,
+reassignment screening, and alias resolution for referenced JSX handlers; it
+is not directly comparable to the earlier inline-handler workload.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
