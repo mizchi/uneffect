@@ -307,11 +307,31 @@ function componentWrapperCalls(node: AnnotatableFunction): ts.CallExpression[] {
   return calls;
 }
 
-function directWrappedComponent(initializer: ts.Expression, source: ts.SourceFile): ComponentNode | undefined {
+interface WrappedComponentResolution {
+  component: ComponentNode;
+  wrappers: ts.CallExpression[];
+}
+
+function resolveWrappedComponent(
+  initializer: ts.Expression,
+  source: ts.SourceFile,
+  callbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+): WrappedComponentResolution | undefined {
   const expression = unwrapExpression(initializer);
-  if ((ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) && expression.body) return expression as ComponentNode;
+  if ((ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) && expression.body) {
+    return { component: expression as ComponentNode, wrappers: [] };
+  }
+  if (ts.isIdentifier(expression)) {
+    const component = callbacks.get(expression.text);
+    return component ? { component, wrappers: [] } : undefined;
+  }
   if (!ts.isCallExpression(expression) || !reactComponentWrapperKind(source, expression.expression) || !expression.arguments[0]) return undefined;
-  return directWrappedComponent(expression.arguments[0], source);
+  const inner = resolveWrappedComponent(expression.arguments[0], source, callbacks);
+  return inner ? { component: inner.component, wrappers: [...inner.wrappers, expression] } : undefined;
+}
+
+function directWrappedComponent(initializer: ts.Expression, source: ts.SourceFile): ComponentNode | undefined {
+  return resolveWrappedComponent(initializer, source)?.component;
 }
 
 function ownerNode(node: AnnotatableFunction): ts.Node {
@@ -888,6 +908,38 @@ function sourceCallbacks(source: ts.SourceFile): ReadonlyMap<string, LocalEventC
     if (callback) resolved.set(name, callback);
   }
   sourceCallbackCache.set(source, resolved);
+  return resolved;
+}
+
+const sourceConstComponentCallbackCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, LocalEventCallback>>();
+
+function sourceConstComponentCallbacks(source: ts.SourceFile): ReadonlyMap<string, LocalEventCallback> {
+  const cached = sourceConstComponentCallbackCache.get(source);
+  if (cached) return cached;
+  const callbacks = new Map<string, LocalEventCallback>();
+  const aliases = new Map<string, string>();
+  for (const statement of source.statements) {
+    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const initializer = unwrapExpression(declaration.initializer);
+      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) callbacks.set(declaration.name.text, initializer);
+      else if (ts.isIdentifier(initializer)) aliases.set(declaration.name.text, initializer.text);
+    }
+  }
+  const resolved = new Map<string, LocalEventCallback>();
+  const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
+    if (seen.has(name)) return undefined;
+    const callback = callbacks.get(name);
+    if (callback) return callback;
+    const alias = aliases.get(name);
+    return alias ? resolve(alias, new Set(seen).add(name)) : undefined;
+  };
+  for (const name of [...callbacks.keys(), ...aliases.keys()]) {
+    const callback = resolve(name);
+    if (callback) resolved.set(name, callback);
+  }
+  sourceConstComponentCallbackCache.set(source, resolved);
   return resolved;
 }
 
@@ -1679,6 +1731,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
   const acquisitions = lifecycleDeclarations(source, "acquire"), releases = lifecycleDeclarations(source, "release");
   const components: ReactComponentSummary[] = [], diagnostics: ReactSemanticDiagnostic[] = [];
   const candidates: ComponentNode[] = [], annotatable: AnnotatableFunction[] = [];
+  const referencedComponents: Array<{
+    component: ComponentNode;
+    name: string;
+    wrappers: ts.CallExpression[];
+    spanNode: ts.Node;
+  }> = [];
   const collect = (node: ts.Node): void => {
     if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node)) {
       annotatable.push(node);
@@ -1687,12 +1745,20 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     ts.forEachChild(node, collect);
   };
   collect(source);
+  const componentCallbacks = sourceConstComponentCallbacks(source);
   for (const statement of source.statements) {
     if (!ts.isVariableStatement(statement)
       || !extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "react").some((value) => value.trim() === "component")) continue;
     for (const declaration of statement.declarationList.declarations) {
-      if (declaration.initializer && directWrappedComponent(declaration.initializer, source)) continue;
       const name = declaration.name.getText(source);
+      const resolved = declaration.initializer
+        ? resolveWrappedComponent(declaration.initializer, source, componentCallbacks) : undefined;
+      if (resolved) {
+        if (ownerNode(resolved.component) !== statement) referencedComponents.push({
+          component: resolved.component, name, wrappers: resolved.wrappers, spanNode: declaration,
+        });
+        continue;
+      }
       diagnostics.push({
         fileName, component: name, functionName: name, kind: "unsupported-react-component-wrapper", phase: "render", severity: "error",
         line: source.getLineAndCharacterOfPosition(declaration.getStart(source)).line + 1,
@@ -2057,9 +2123,16 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       message: issue.detail,
     });
   }
-  for (const component of candidates) {
-    if (!extractAnnotations(leadingText(source, component), "react").some((value) => value.trim() === "component")) continue;
-    const name = componentName(component), phaseEffects = new Map<ReactPhase, Set<string>>([["render", new Set()]]);
+  const componentEntries = [
+    ...candidates.filter((component) => extractAnnotations(leadingText(source, component), "react")
+      .some((value) => value.trim() === "component"))
+      .map((component) => ({
+        component, name: componentName(component), wrappers: componentWrapperCalls(component), spanNode: component as ts.Node,
+      })),
+    ...referencedComponents,
+  ];
+  for (const { component, name, wrappers, spanNode } of componentEntries) {
+    const phaseEffects = new Map<ReactPhase, Set<string>>([["render", new Set()]]);
     const instances: CommitInstanceSummary[] = [];
     const suspensions: ReactSuspensionSource[] = [];
     const addPhase = (phase: ReactPhase, effects: readonly string[] = []): void => {
@@ -2090,7 +2163,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         message: `${call.expression.getText(source)} runs after await and must be wrapped in a new React Transition`,
       });
     };
-    for (const wrapper of componentWrapperCalls(component)) {
+    for (const wrapper of wrappers) {
       if (reactComponentWrapperKind(source, wrapper.expression) !== "memo") continue;
       addPhase("memo-compare");
       const comparatorArgument = wrapper.arguments[1];
@@ -2481,7 +2554,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     visitRender(component.body);
     components.push({
-      name, span: { start: component.getStart(source), end: component.getEnd() },
+      name, span: { start: spanNode.getStart(source), end: spanNode.getEnd() },
       phases: [...phaseEffects].map(([phase, effects]) => ({ phase, effects: [...effects] })),
       replay: replayModel(instances),
       suspensions,
@@ -3672,13 +3745,61 @@ function functionDeclarationForSymbol(
   for (const declaration of target.declarations ?? []) {
     if (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration)) return declaration;
     if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
-      if (ts.isFunctionExpression(declaration.initializer) || ts.isArrowFunction(declaration.initializer)) return declaration.initializer;
-      const wrapped = directWrappedComponent(declaration.initializer, declaration.getSourceFile());
-      if (wrapped) return wrapped;
+      const resolved = functionExpressionForReactComponent(checker, declaration.initializer, seen);
+      if (resolved) return resolved;
     }
     if (ts.isExportAssignment(declaration)) {
       const resolved = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(declaration.expression), seen);
       if (resolved) return resolved;
+    }
+  }
+  return undefined;
+}
+
+function functionExpressionForReactComponent(
+  checker: ts.TypeChecker,
+  expression: ts.Expression,
+  seen: Set<ts.Symbol>,
+): AnnotatableFunction | undefined {
+  const value = unwrapExpression(expression);
+  if (ts.isFunctionExpression(value) || ts.isArrowFunction(value)) return value;
+  if (ts.isIdentifier(value) || ts.isPropertyAccessExpression(value)) {
+    return functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(value), seen);
+  }
+  if (ts.isCallExpression(value) && reactComponentWrapperKind(value.getSourceFile(), value.expression)
+    && value.arguments[0]) {
+    return functionExpressionForReactComponent(checker, value.arguments[0], seen);
+  }
+  return undefined;
+}
+
+function reactComponentKeyForSymbol(
+  checker: ts.TypeChecker,
+  symbol: ts.Symbol | undefined,
+  seen = new Set<ts.Symbol>(),
+): string | undefined {
+  if (!symbol || seen.has(symbol)) return undefined;
+  seen.add(symbol);
+  const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+  if (target !== symbol) return reactComponentKeyForSymbol(checker, target, seen);
+  for (const declaration of target.declarations ?? []) {
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer
+      && ts.isVariableDeclarationList(declaration.parent)
+      && ts.isVariableStatement(declaration.parent.parent)) {
+      const statement = declaration.parent.parent;
+      const source = declaration.getSourceFile();
+      const annotated = extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "react")
+        .some((value) => value.trim() === "component");
+      if (annotated && functionExpressionForReactComponent(checker, declaration.initializer, new Set(seen))) {
+        return `${source.fileName}:${declaration.name.getText(source)}`;
+      }
+    }
+    if (ts.isExportAssignment(declaration)) {
+      const key = reactComponentKeyForSymbol(checker, checker.getSymbolAtLocation(declaration.expression), seen);
+      if (key) return key;
+    }
+    if (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration)) {
+      return declarationKey(declaration);
     }
   }
   return undefined;
@@ -3785,14 +3906,12 @@ function resolveProgramSuspenseBoundaries(
         for (const primary of primaries ?? []) if (primary.kind === "boundary") parents.set(primary.node, instance);
         const primaryNodes = primaries?.map((primary): ReactSuspensePrimaryNode | undefined => {
           if (primary.kind === "boundary") return { kind: "boundary", instance: primary.instance };
-          const declaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primary.tag.location));
-          const componentKey = declaration ? declarationKey(declaration) : undefined;
+          const componentKey = reactComponentKeyForSymbol(checker, checker.getSymbolAtLocation(primary.tag.location));
           return componentKey && componentKeys.has(componentKey)
             ? { kind: "component", displayName: primary.tag.displayName, componentKey } : undefined;
         });
         if (primaryNodes?.every((primary): primary is ReactSuspensePrimaryNode => primary !== undefined) && fallbackTag) {
-          const fallbackDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(fallbackTag.location));
-          const fallbackKey = fallbackDeclaration ? declarationKey(fallbackDeclaration) : undefined;
+          const fallbackKey = reactComponentKeyForSymbol(checker, checker.getSymbolAtLocation(fallbackTag.location));
           if (primaryNodes.length > 0 && fallbackKey && componentKeys.has(fallbackKey)) {
             const singleton = primaryNodes.length === 1 ? primaryNodes[0] : undefined;
             const primaryBoundary = singleton?.kind === "boundary" ? singleton.instance : undefined;

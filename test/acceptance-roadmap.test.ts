@@ -151,8 +151,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           return () => unsubscribe()
         }, [topic])
       }
-      /* uneffect: react component */
-      export const Feed = memo(function Feed({ topic, ref }: { topic: string; ref: unknown }) {
+      const FeedView = function FeedView({ topic, ref }: { topic: string; ref: unknown }) {
         const renderCache = useRef<{ topic: string } | null>(null)
         const cacheAlias = renderCache
         if (cacheAlias.current === null) {
@@ -189,7 +188,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           ref={buttonRef}
           onClick={handleClick}
         />{optimisticTopic}</form>
-      })
+      }
+      /* uneffect: react component */
+      export const Feed = memo(FeedView)
       function Legacy() { console.log("not opted in"); return null }
     `) as { diagnostics: unknown[]; components: Array<{ name: string; phases: Array<{ phase: string; effects: string[] }> }> };
     expect(result.diagnostics).toEqual([]);

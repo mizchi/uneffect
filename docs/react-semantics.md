@@ -50,17 +50,20 @@ The analyzer currently projects component work into fifteen phases:
 | `layout-effect` | `useLayoutEffect` setup after commit | Capabilities are recorded separately |
 | `imperative-handle` | `useImperativeHandle` factory during the layout commit | Factory capabilities and lifecycle replay are separate from exposed methods |
 | `passive-effect` | `useEffect` setup after commit | Capabilities are recorded separately |
-| `ref-callback` | Inline JSX callback ref invoked during commit | Setup capabilities are separate from render |
+| `ref-callback` | Inline or immutable component-local JSX callback ref invoked during commit | Setup capabilities are separate from render |
 | `cleanup` | Function returned by an Effect or callback-ref setup | May release a setup acquisition |
 
 Creating JSX is a render calculation, not a `DomWrite`. React's later host DOM
 commit is outside the component function. Direct writes through `document` or
 `window` during render are `DomWrite` and are rejected.
 
-A component comment on a variable declaration may wrap one inline function in
-any direct named/default/namespace React `memo` and `forwardRef` chain. The
-wrapper variable remains the component identity for Program-backed imports and
-Suspense edges. An optional `memo` comparator is resolved from an inline,
+A component comment on a variable declaration may wrap one inline function, or
+one source-local immutable function/arrow reached through transitive `const`
+identifier aliases, in any direct named/default/namespace React `memo` and
+`forwardRef` chain. The wrapper variable remains the component identity for
+Program-backed imports and Suspense edges. Mutable bindings, function
+declarations, imported arguments, member/dynamic selection, and custom HOCs
+remain fail-closed. An optional `memo` comparator is resolved from an inline,
 module-local, or immutable local callback and analyzed in `memo-compare`;
 observable capabilities or selected non-idempotent host reads produce
 `memo-comparator-effect`, while an opaque
@@ -553,7 +556,9 @@ This is a tested initial fragment, not a complete React semantics:
   named, barrel, namespace, and default imports; element access, dynamically
   selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
 - component wrappers cover direct React `memo`/`forwardRef` chains around one
-  inline function. Referenced/imported component arguments, custom higher-order
+  inline or source-local immutable function/arrow reached through `const`
+  aliases. Function declarations, mutable/imported/member/dynamic component
+  arguments, custom higher-order
   wrappers, dynamic wrapper selection, custom comparator call-graph effects,
   and semantic equivalence of comparator results remain unsupported;
 - event extraction covers inline callbacks and immutable component-local

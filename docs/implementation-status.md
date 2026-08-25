@@ -148,12 +148,15 @@ same property is proved for arbitrary TypeScript.
 - `/* uneffect: react component */` opts function declarations and
   variable-bound function expressions/arrows into a TSX-specific semantic
   check without changing runtime output.
-- A comment on a variable-bound inline function may cross direct
-  named/default/namespace React `memo` and `forwardRef` wrapper chains. The
+- A comment on a wrapper variable may cross direct named/default/namespace
+  React `memo` and `forwardRef` chains around an inline function or a
+  source-local immutable function/arrow reached through transitive `const`
+  aliases. The
   variable identity survives Program imports and Suspense resolution. Optional
   memo comparators form a pure `memo-compare` phase; observable or opaque
-  comparators and unsupported wrapper shapes fail closed. Referenced/imported
-  component arguments and custom/dynamic wrappers remain unsupported.
+  comparators and unsupported wrapper shapes fail closed. Function-declaration,
+  mutable/imported/member/dynamic component arguments and custom wrappers
+  remain unsupported.
 - The initial phase projection distinguishes replayable render, inline JSX
   event callbacks, immutable component-local referenced/aliased event
   callbacks, `useInsertionEffect`, `useLayoutEffect`, `useEffect` setup, and returned

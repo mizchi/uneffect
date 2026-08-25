@@ -51,6 +51,15 @@ read; it does not isolate the checker branch and must not be interpreted as a
 like-for-like regression from the preceding workload. These are observations,
 not budgets.
 
+After moving all 128 component bodies out of `memo(function ...)` into
+source-local function expressions reached through one `const` alias, the
+2026-08-25 run measured 104.53 ms mean over 30 cold-source samples (3.43%
+relative margin of error) and 124.94 ms over 30 reused-Program samples (1.30%).
+The parse-only baseline was 7.3999 ms over 136 samples (1.31%). This expands
+the source by two declarations per component and exercises wrapper identity
+resolution; it is not an isolated resolution cost and is not a regression
+budget.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured

@@ -45,6 +45,11 @@ The same row's lazy-ref support means only a direct/aliased `useRef(null)`, one
 strict null guard without `else`, and one same-ref assignment from the stable
 literal/object/array fragment. General factory/constructor purity and
 control-flow dominance remain open.
+For component wrappers, a referenced argument is now supported when it is a
+source-local immutable function/arrow reached only through `const` identifier
+aliases. Function declarations, mutable/imported/member/dynamic arguments and
+custom HOCs remain outside the wrapper claim; the annotated wrapper name is
+the Program/Suspense component identity.
 
 ## Verification confidence
 

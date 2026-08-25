@@ -34,7 +34,8 @@ contract layer for existing TypeScript:
     admitted while ordinary render ref access remains diagnostic; immutable
     local event handlers and callback refs compose
     through `const` aliases, annotated custom Hooks compose through resolved imports, and
-    direct React memo/forwardRef wrappers preserve component identity. An
+    direct React memo/forwardRef wrappers preserve component identity for
+    inline or source-local immutable aliased component bodies. An
     explicit bounded Quint projection checks one Action dispatcher's
     sequential queue, pending flag, and failure cancellation laws. Direct
     Action throws retain typed `Throw` evidence; a companion projection

@@ -3,8 +3,7 @@ import { bench, describe } from "vitest";
 import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
-  /* uneffect: react component */
-  export const Item${index} = memo(function Item${index}(props: { label: string; active: boolean; ref: unknown }) {
+  const ItemView${index} = function ItemView${index}(props: { label: string; active: boolean; ref: unknown }) {
     const options = useRef<{ method: "POST" } | null>(null)
     const optionsAlias = options
     if (optionsAlias.current === null) optionsAlias.current = { method: "POST" }
@@ -27,7 +26,10 @@ const components = Array.from({ length: 128 }, (_, index) => `
       ref={attachAlias}
       onClick={handleClick}
     >{props.label}{catalogVersion}{optimisticLabel}{selectionSnapshot.active && preferences.dense}</button>
-  })
+  }
+  const ItemAlias${index} = ItemView${index}
+  /* uneffect: react component */
+  export const Item${index} = memo(ItemAlias${index})
 `).join("\n");
 
 const source = `
