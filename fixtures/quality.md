@@ -13,11 +13,12 @@ regress; the remaining ones move the score and point at the next message to impr
 | action | yes | does a hint say what to change next? |
 | plain-language | yes | is the message free of raw solver verdicts and SMT jargon? |
 
-Score: **1.000** (126/126 criteria over 21 diagnostics, threshold 1.000)
+Score: **1.000** (132/132 criteria over 22 diagnostics, threshold 1.000)
 
 | fixture | diagnostic | line | missing |
 | --- | --- | --- | --- |
 | fixtures/async/floating-promise.ts | async/floating-promise | 7 | — |
+| fixtures/async/invalid-disposable.ts | typescript/semantic | 7 | — |
 | fixtures/async/invalid-disposable.ts | async/invalid-disposable | 7 | — |
 | fixtures/async/invalid-disposable.ts | async/disposed-resource-escape | 8 | — |
 | fixtures/contracts/loop-invariant-not-established.ts | contract/invariant | 7 | — |

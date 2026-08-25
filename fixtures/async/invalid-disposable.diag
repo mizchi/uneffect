@@ -1,6 +1,16 @@
 $ uneffect check --evidence fixtures/async/invalid-disposable.ts
 # `using` requires the disposal protocol; this resource never releases anything.
 
+error typescript/semantic fixtures/async/invalid-disposable.ts:7 in <typescript>
+  message: TypeScript source has semantic errors (`TS2850`): The initializer of a 'using' declaration must be either an object with a '[Symbol.dispose]()' method, or be 'null' or 'undefined'.
+  Property '[Symbol.dispose]' is missing in type '{ close(): void; }' but required in type 'Disposable'.
+  7 |   using resource = open();
+    |   ^
+  because: The initializer of a 'using' declaration must be either an object with a '[Symbol.dispose]()' method, or be 'null' or 'undefined'.
+  Property '[Symbol.dispose]' is missing in type '{ close(): void; }' but required in type 'Disposable'.
+  construct: TypeScript reported TS2850 at /Users/mz/ghq/github.com/mizchi/neo-effect/fixtures/async/invalid-disposable.ts:7
+  hint: fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence
+
 error async/invalid-disposable fixtures/async/invalid-disposable.ts:7 in withResource
   message: withResource binds resource with using, which requires the Symbol.dispose protocol that resource does not provide
   7 |   using resource = open();
@@ -17,10 +27,10 @@ error async/disposed-resource-escape fixtures/async/invalid-disposable.ts:8 in w
   because: the using scope disposes resource before this function returns, so the caller receives a released resource
   hint: stop the resource from escaping its disposal scope, or hand the caller an owned resource instead
 
-2 error(s), 0 warning(s)
+3 error(s), 0 warning(s)
 
 evidence:
-  effects open: no effect (inferred)
-  effects close: no effect (inferred)
-  effects withResource: no effect (inferred)
-  effects <module>: no effect (verified)
+  effects open: no effect (unknown)
+  effects close: no effect (unknown)
+  effects withResource: no effect (unknown)
+  effects <module>: no effect (unknown)

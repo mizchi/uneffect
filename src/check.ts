@@ -52,11 +52,15 @@ function typescriptDiagnostic(
     ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 1;
   const category = diagnostic.category === ts.DiagnosticCategory.Warning ? "warning" : "error";
   const label = kind === "syntax" ? "syntax errors" : kind === "semantic" ? "semantic errors" : "option errors";
+  const detail = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
   return {
     domain: "typescript", kind, severity: category, fileName, line, functionName: "<typescript>",
-    message: `TypeScript source has ${label}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
+    message: `TypeScript source has ${label} (\`TS${diagnostic.code}\`): ${detail}`,
     typescriptCode: diagnostic.code,
-    notes: [{ label: "typescript", detail: `TS${diagnostic.code}` }],
+    notes: [
+      { label: "because", detail },
+      { label: "construct", detail: `TypeScript reported TS${diagnostic.code} at ${fileName}:${line}` },
+    ],
   };
 }
 
