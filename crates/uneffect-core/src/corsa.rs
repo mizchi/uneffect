@@ -2,7 +2,22 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 6;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 7;
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum FrontendFactProducer {
+    #[serde(rename = "typescript-reference")]
+    TypeScriptReference,
+    #[serde(rename = "corsa-checker")]
+    CorsaChecker,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontendFactProvenance {
+    pub producer: FrontendFactProducer,
+    pub checker_backed: bool,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -10,6 +25,7 @@ pub struct CorsaFrontendFile {
     pub schema_version: u32,
     pub file_id: u32,
     pub compiler_revision: String,
+    pub provenance: FrontendFactProvenance,
     pub symbols: Vec<CorsaSymbol>,
     pub calls: Vec<CorsaCall>,
     pub trivia: Vec<CorsaTrivia>,
@@ -213,6 +229,7 @@ pub struct NativeSymbolSummary {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NativeFrontendProgram {
     pub compiler_revision: String,
+    pub provenance: FrontendFactProvenance,
     pub symbols: BTreeMap<u64, NativeSymbolSummary>,
     pub calls: Vec<CorsaCall>,
     pub protocol_symbols: BTreeMap<u64, CorsaProtocolSymbol>,
@@ -227,6 +244,7 @@ pub struct NativeFrontendProgram {
 #[serde(rename_all = "camelCase")]
 pub struct NormalizedFrontendProgram {
     pub schema_version: u32,
+    pub provenance: NormalizedFactProvenance,
     pub functions: Vec<NormalizedFunction>,
     pub calls: Vec<NormalizedCall>,
     pub ordered_events: Vec<NormalizedCallEvent>,
@@ -236,6 +254,14 @@ pub struct NormalizedFrontendProgram {
     pub resource_scopes: Vec<NormalizedResourceScope>,
     pub disposals: Vec<NormalizedDisposal>,
     pub suppressed_errors: Vec<NormalizedSuppressedError>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NormalizedFactProvenance {
+    pub producer: FrontendFactProducer,
+    pub checker_backed: bool,
+    pub compiler_revision: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -369,6 +395,11 @@ impl NativeFrontendProgram {
         ordered_events.sort_by_key(|event| (event.start, event.end));
         NormalizedFrontendProgram {
             schema_version: CORSA_FRONTEND_SCHEMA_VERSION,
+            provenance: NormalizedFactProvenance {
+                producer: self.provenance.producer,
+                checker_backed: self.provenance.checker_backed,
+                compiler_revision: self.compiler_revision.clone(),
+            },
             functions: self
                 .symbols
                 .values()
@@ -559,6 +590,12 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
             file.schema_version
         )));
     }
+    let expected_checker_backed = file.provenance.producer == FrontendFactProducer::CorsaChecker;
+    if file.provenance.checker_backed != expected_checker_backed {
+        return Err(CorsaFrontendError(
+            "frontend provenance producer and checkerBacked disagree".into(),
+        ));
+    }
     let mut ids = BTreeSet::new();
     let mut symbols = BTreeMap::new();
     for symbol in file.symbols {
@@ -688,6 +725,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
     }
     Ok(NativeFrontendProgram {
         compiler_revision: file.compiler_revision,
+        provenance: file.provenance,
         symbols,
         calls: file.calls,
         protocol_symbols,

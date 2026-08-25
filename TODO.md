@@ -484,6 +484,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts.
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
+  - [x] Carry mandatory fact provenance through schema v7 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.

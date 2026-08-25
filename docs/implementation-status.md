@@ -349,8 +349,10 @@ same property is proved for arbitrary TypeScript.
 ## Native integration, CI, and performance
 
 - The analyzer core is separated from frontend adapters. A Rust neutral IR and
-  Corsa bridge cover structured declarations and source spans; semantic parity
-  with the TypeScript reference frontend is incomplete.
+  schema-v7 consumer cover structured declarations, source spans, inferred
+  effects, calls, and ordered events. These are currently TypeScript-reference
+  facts passed through Rust, with machine-readable provenance; the real
+  corsa-bind checker exporter is not implemented.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test
   files are process-isolated.

@@ -4,7 +4,10 @@ Uneffect's implementation layer is replaceable; its frontend and proof contracts
 
 ## Corsa interchange
 
-The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v6 consumes:
+The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v7 consumes:
+
+- mandatory fact provenance (`typescript-reference` or `corsa-checker`) and a
+  consistent `checkerBacked` flag,
 
 - stable symbol IDs and declaration kinds (`function`, `method`, `arrow`, callback, overload),
 - TypeScript type text and selected overload signatures,
@@ -23,15 +26,18 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; Rust does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
-reference side emits schema-v6 mapper records, the Rust
+reference side emits schema-v7 mapper records, the Rust
 `uneffect-corsa-normalize` binary consumes them, and both sides are compared as
 the same normalized functions, transitive inferred effect sets, resolved local
 call edges, source-ordered call events, Promise ownership records, resource
 scopes, disposal order, and nested resource failure payloads. UTF-16 offsets
 are converted to UTF-8 byte spans before crossing the schema. Frontend-specific
-evidence provenance remains outside this semantic projection. The mapper
-records are currently produced by the TypeScript reference adapter, not by a
-linked typescript-go/Corsa build. The reference adapter proves that aliases of
+evidence provenance is carried through this semantic projection. The result
+separates `semanticEquivalent` from overall `equivalent` and reports its
+producer. With `requireCorsaCheckerFacts: true`, reference facts fail closed
+even when Rust normalization is semantically equal. The mapper records are
+currently produced by the TypeScript reference adapter, not by a linked
+typescript-go/Corsa build. The reference adapter proves that aliases of
 the standard symbols resolve through TypeChecker identity while same-spelled
 user properties do not become protocols.
 
@@ -41,7 +47,7 @@ file extensions, return generated TypeScript plus source-span mappings, and do
 not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
-them to Rust native rules. A schema-v6 exporter at that bridge remains the P6
+them to Rust native rules. A schema-v7 exporter at that bridge remains the P6
 production integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
 semantic parity.

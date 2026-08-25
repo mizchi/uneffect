@@ -229,7 +229,7 @@ export type { AsyncControlCompletionPath, AsyncControlCondition, AsyncControlEdg
 export { resolveDisposalProtocol } from "./disposal-symbols.js";
 export type { ResolvedDisposalProtocol } from "./disposal-symbols.js";
 export { compareUneffectFrontends } from "./frontend-parity.js";
-export type { CompareUneffectFrontendsOptions, CompareUneffectFrontendsResult, FrontendSchemaDrift, NormalizedFrontendIr } from "./frontend-parity.js";
+export type { CompareUneffectFrontendsOptions, CompareUneffectFrontendsResult, FrontendFactProvenance, FrontendSchemaDrift, NormalizedFrontendIr } from "./frontend-parity.js";
 export { buildProgramCallGraph, instantiateCallbackEffects } from "./call-graph.js";
 export type { CallableKind, CallGraphEdge, CallGraphNode, EffectParameter, InstantiatedCallbackEffects, InvocationTiming, ProgramCallGraph } from "./call-graph.js";
 export { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionErrorBoundaryQuint, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "./react-semantics.js";

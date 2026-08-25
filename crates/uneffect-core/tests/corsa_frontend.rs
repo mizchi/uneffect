@@ -3,9 +3,10 @@ use uneffect_core::corsa::{CallbackTiming, CorsaSymbolKind, NativeEvidence, cons
 #[test]
 fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
     let program = consume_corsa_json(r#"{
-      "schemaVersion": 6,
+      "schemaVersion": 7,
       "fileId": 7,
       "compilerRevision": "typescript-go@deadbeef",
+      "provenance":{"producer":"corsa-checker","checkerBacked":true},
       "symbols": [
         { "id": 1, "name": "load", "kind": "function", "typeRepr": "(p: string) => string", "overloads": ["(p: string): string"], "effectParameters": [], "span": { "start": 10, "end": 80 } },
         { "id": 2, "name": "callback", "kind": "callback", "typeRepr": "() => void", "overloads": [], "effectParameters": [0], "span": { "start": 90, "end": 110 } }
@@ -24,15 +25,26 @@ fn consumes_versioned_corsa_symbols_types_overloads_calls_and_trivia() {
 
 #[test]
 fn rejects_unknown_schema_and_dangling_symbol_edges() {
-    let unsupported = r#"{"schemaVersion":7,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[],"trivia":[],"protocolSymbols":[]}"#;
+    let unsupported = r#"{"schemaVersion":8,"fileId":1,"compilerRevision":"x","provenance":{"producer":"corsa-checker","checkerBacked":true},"symbols":[],"calls":[],"trivia":[],"protocolSymbols":[]}"#;
     assert!(
         consume_corsa_json(unsupported)
             .unwrap_err()
             .to_string()
             .contains("unsupported")
     );
-    let dangling = r#"{"schemaVersion":6,"fileId":1,"compilerRevision":"x","symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[],"protocolSymbols":[]}"#;
+    let dangling = r#"{"schemaVersion":7,"fileId":1,"compilerRevision":"x","provenance":{"producer":"corsa-checker","checkerBacked":true},"symbols":[],"calls":[{"caller":1,"callee":2,"overloadIndex":null,"callbackTiming":"unknown","span":{"start":0,"end":1}}],"trivia":[],"protocolSymbols":[]}"#;
     assert!(consume_corsa_json(dangling).is_err());
+}
+
+#[test]
+fn rejects_provenance_that_claims_a_checker_without_checker_backing() {
+    let input = r#"{"schemaVersion":7,"fileId":1,"compilerRevision":"typescript-reference@x","provenance":{"producer":"corsa-checker","checkerBacked":false},"symbols":[],"calls":[],"trivia":[],"protocolSymbols":[]}"#;
+    assert!(
+        consume_corsa_json(input)
+            .unwrap_err()
+            .to_string()
+            .contains("provenance")
+    );
 }
 
 #[test]
@@ -40,7 +52,7 @@ fn validates_resource_disposal_protocol_symbol_identity() {
     let input = |protocol_symbol: u64, protocol_kind: &str| {
         format!(
             r#"{{
-      "schemaVersion":6,"fileId":1,"compilerRevision":"x",
+      "schemaVersion":7,"fileId":1,"compilerRevision":"x","provenance":{{"producer":"corsa-checker","checkerBacked":true}},
       "symbols":[{{"id":1,"name":"run","kind":"function","typeRepr":"() => void","overloads":[],"effectParameters":[],"span":{{"start":0,"end":1}}}}],
       "calls":[],"trivia":[],
       "protocolSymbols":[{{"id":7,"kind":"sync","fileName":"resource.ts","span":{{"start":2,"end":3}}}}],
@@ -68,7 +80,7 @@ fn rejects_invalid_or_contradictory_control_conditions() {
     let input = |conditions: &str| {
         format!(
             r#"{{
-      "schemaVersion":6,"fileId":1,"compilerRevision":"x",
+      "schemaVersion":7,"fileId":1,"compilerRevision":"x","provenance":{{"producer":"corsa-checker","checkerBacked":true}},
       "symbols":[{{"id":1,"name":"run","kind":"function","typeRepr":"() => void","overloads":[],"effectParameters":[],"span":{{"start":0,"end":1}}}}],
       "calls":[],"trivia":[],"protocolSymbols":[],
       "promiseObservations":[{{"owner":1,"source":"task()","observation":"await","catchesRejection":false,"conditional":true,"controlConditions":{conditions},"controlPaths":[{conditions}],"span":{{"start":1,"end":2}}}}]
@@ -83,7 +95,7 @@ fn rejects_invalid_or_contradictory_control_conditions() {
         .is_err()
     );
     let mismatched_primary = r#"{
-      "schemaVersion":6,"fileId":1,"compilerRevision":"x",
+      "schemaVersion":7,"fileId":1,"compilerRevision":"x","provenance":{"producer":"corsa-checker","checkerBacked":true},
       "symbols":[{"id":1,"name":"run","kind":"function","typeRepr":"() => void","overloads":[],"effectParameters":[],"span":{"start":0,"end":1}}],
       "calls":[],"trivia":[],"protocolSymbols":[],
       "promiseObservations":[{"owner":1,"source":"task()","observation":"await","catchesRejection":false,"conditional":true,"controlConditions":[{"id":"case:0","expected":true}],"controlPaths":[[{"id":"case:0","expected":false}],[{"id":"case:1","expected":true}]],"span":{"start":1,"end":2}}]

@@ -9,9 +9,18 @@ export interface CompareUneffectFrontendsOptions {
   corsaSchemaVersion?: number;
   /** Allows slower cold Rust builds while retaining a finite process boundary. */
   corsaTimeoutMs?: number;
+  /** Fail the comparison unless records came from an actual corsa-bind checker. */
+  requireCorsaCheckerFacts?: boolean;
+}
+export interface FrontendFactProvenance {
+  producer: "typescript-reference" | "corsa-checker";
+  checkerBacked: boolean;
+  compilerRevision: string;
+  satisfiesRequirement: boolean;
 }
 export interface NormalizedFrontendIr {
-  schemaVersion: 6;
+  schemaVersion: 7;
+  provenance: Omit<FrontendFactProvenance, "satisfiesRequirement">;
   functions: Array<{ name: string; effects: string[] }>;
   calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
   orderedEvents: Array<{ kind: "call"; caller: string; callee: string; start: number; end: number }>;
@@ -25,6 +34,8 @@ export interface NormalizedFrontendIr {
 export interface FrontendSchemaDrift { frontend: "corsa"; message: string }
 export interface CompareUneffectFrontendsResult {
   equivalent: boolean;
+  semanticEquivalent: boolean;
+  provenance: FrontendFactProvenance;
   schemaDrift: FrontendSchemaDrift[];
   typescriptIr: NormalizedFrontendIr;
   corsaIr: NormalizedFrontendIr | null;
@@ -115,7 +126,7 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       if (payload) suppressedErrors.push({ owner, payload });
     }
   }
-  return { schemaVersion, fileId: 1, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  return { schemaVersion, fileId: 1, provenance: { producer: "typescript-reference" as const, checkerBacked: false }, compilerRevision: `typescript-reference@${ts.version}`, symbols, calls, trivia, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
 }
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
@@ -127,7 +138,12 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     functions.push({ name: node.name.text, effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 6);
+  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
+  const provenance: FrontendFactProvenance = {
+    ...input.provenance,
+    compilerRevision: input.compilerRevision,
+    satisfiesRequirement: !options.requireCorsaCheckerFacts,
+  };
   const protocolSymbols = input.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
   const names = new Map(input.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
   const calls = input.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
@@ -155,16 +171,22 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
     escapingFailure: item.escapingFailure, exits: item.exits }));
   const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
-  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 6, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  const irProvenance = { ...input.provenance, compilerRevision: input.compilerRevision };
+  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 7, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
     input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
   });
-  if (execution.error || execution.status !== 0) return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
+  if (execution.error || execution.status !== 0) return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: `${execution.stderr}${execution.error?.message ?? ""}`.trim() }], typescriptIr, corsaIr: null };
   try {
     const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;
     corsaIr.functions.sort((left, right) => left.name.localeCompare(right.name));
-    return { equivalent: JSON.stringify(typescriptIr) === JSON.stringify(corsaIr), schemaDrift: [], typescriptIr, corsaIr };
+    const semanticEquivalent = JSON.stringify(typescriptIr) === JSON.stringify(corsaIr);
+    const provenanceFailure: FrontendSchemaDrift[] = provenance.satisfiesRequirement ? [] : [{
+      frontend: "corsa",
+      message: "actual corsa-bind checker facts are unavailable; comparison used TypeScript reference-adapter records",
+    }];
+    return { equivalent: semanticEquivalent && provenance.satisfiesRequirement, semanticEquivalent, provenance, schemaDrift: provenanceFailure, typescriptIr, corsaIr };
   } catch (error) {
-    return { equivalent: false, schemaDrift: [{ frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
+    return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
   }
 }

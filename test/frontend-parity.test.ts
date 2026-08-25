@@ -2,6 +2,35 @@ import { describe, expect, it } from "vitest";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("TypeScript/Corsa neutral projection parity", () => {
+  it("reports reference facts as reference facts and cannot satisfy a Corsa-checker requirement", async () => {
+    const files = { "provenance.ts": `export function run() { return 1 }` };
+    const reference = await compareUneffectFrontends({ files });
+    expect(reference).toMatchObject({
+      equivalent: true,
+      semanticEquivalent: true,
+      provenance: {
+        producer: "typescript-reference",
+        checkerBacked: false,
+        satisfiesRequirement: true,
+      },
+    });
+
+    const required = await compareUneffectFrontends({ files, requireCorsaCheckerFacts: true });
+    expect(required).toMatchObject({
+      equivalent: false,
+      semanticEquivalent: true,
+      provenance: {
+        producer: "typescript-reference",
+        checkerBacked: false,
+        satisfiesRequirement: false,
+      },
+    });
+    expect(required.schemaDrift).toContainEqual(expect.objectContaining({
+      frontend: "corsa",
+      message: expect.stringContaining("actual corsa-bind checker facts are unavailable"),
+    }));
+  });
+
   it("keeps Corsa execution bounded and reports an explicit timeout", async () => {
     const result = await compareUneffectFrontends({
       files: { "timeout.ts": `export function run() {}` },
@@ -18,7 +47,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 7 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 8 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -59,7 +88,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     }));
   });
 
-  it("preserves disjunctive control paths in schema v6", async () => {
+  it("preserves disjunctive control paths in schema v7", async () => {
     const result = await compareUneffectFrontends({ files: { "conditional.ts": `
       interface Resource { [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
@@ -71,7 +100,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
       }
     ` } });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
-    expect(result.typescriptIr.schemaVersion).toBe(6);
+    expect(result.typescriptIr.schemaVersion).toBe(7);
     expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
     expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
   });
