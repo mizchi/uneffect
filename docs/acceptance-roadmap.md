@@ -164,6 +164,13 @@ still contributes its state update. Dynamic iterables, spreads, destructuring,
 shadowed loop bindings, `for await`, and more than 64 elements fail closed as
 unsupported rather than being treated as a proof.
 
+Action refinement also follows a whole-runtime receiver through lexical,
+non-escaping `const` alias chains. Each block receives an alias snapshot, so a
+nested declaration cannot leak into sibling or enclosing flow. `let`, unknown
+call escapes, cycles, member/destructuring aliases, and dynamically selected
+targets remain unsupported rather than being treated as the original runtime.
+The finite telemetry batch dogfood uses this alias form before its loop.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

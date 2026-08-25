@@ -47,7 +47,7 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "telemetryBatch", temporal)).toEqual([]);
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "telemetryBatch", temporal)).toEqual([]);
 
-    const missingFinalization = source.replace("runtime.finalized++;", "// missing finalization");
+    const missingFinalization = source.replace("accounting.finalized++;", "// missing finalization");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinalization, "telemetryBatch", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "sendBatch", target: "finalized" }),
     );

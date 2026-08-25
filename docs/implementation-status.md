@@ -74,7 +74,9 @@ same property is proved for arbitrary TypeScript.
   scalar and nested-record updates, selected native Set/Map operations,
   conditionals, scalar switch fallthrough and direct return/throw entries,
   bounded ascending loops, finite numeric/boolean literal `for...of` loops, and
-  acyclic symbol-resolved helpers. Finite loops are expanded into the same
+  acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
+  through lexical, non-escaping `const` alias chains; mutable, escaping,
+  member, destructured, or cyclic aliases remain unsupported. Finite loops are expanded into the same
   completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The
   action-control subset keeps return and throw completion predicates distinct,

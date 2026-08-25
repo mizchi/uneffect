@@ -980,6 +980,45 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("tracks immutable receiver aliases and rejects mutable or escaping aliases", () => {
+    const source = `/* uneffect:
+      state value: int
+      init value = 0
+      action increment: value' = value + 1
+    */
+      interface Runtime { value: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action increment */
+      export function increment(runtime: Runtime) {
+        const state = runtime
+        const alias = state
+        alias.value++
+      }
+    `;
+    expect(validateRefinementActionBodies("receiver-alias.ts", source, "counter", parseSpec("receiver-alias.ts", source).temporal)).toEqual([]);
+
+    const mutable = source.replace("const state = runtime", "let state = runtime");
+    expect(validateRefinementActionBodies("mutable-receiver-alias.ts", mutable, "counter", parseSpec("mutable-receiver-alias.ts", mutable).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+    );
+    const escaping = source.replace("const alias = state", "const alias = state\n        consume(alias)");
+    expect(validateRefinementActionBodies("escaping-receiver-alias.ts", escaping, "counter", parseSpec("escaping-receiver-alias.ts", escaping).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+    );
+    const unsupportedAliases = [
+      source.replace("const state = runtime\n        const alias = state", "{ const state = runtime }\n        const alias = state"),
+      source.replace("const state = runtime", "const state = runtime.value"),
+      source.replace("const state = runtime", "const { value: state } = runtime"),
+      source.replace("const state = runtime\n        const alias = state", "const state = alias\n        const alias = runtime"),
+    ];
+    for (const [index, unsupported] of unsupportedAliases.entries()) {
+      expect(validateRefinementActionBodies(`unsupported-receiver-alias-${index}.ts`, unsupported, "counter", parseSpec(`unsupported-receiver-alias-${index}.ts`, unsupported).temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+      );
+    }
+  });
+
   it("merges multiple nested member writes independent of model field order", () => {
     const source = `/* uneffect:
       state lease: { owner: int, epoch: int }

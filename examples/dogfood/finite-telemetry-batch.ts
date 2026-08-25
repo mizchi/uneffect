@@ -29,12 +29,13 @@ export function observeTelemetryBatch(runtime: TelemetryBatchAccounting): Teleme
 export function sendTelemetryBatch(runtime: TelemetryBatchAccounting): void {
   // A production sender would associate these finite weights with three
   // statically configured sinks. The accounting transition is runtime-free.
+  const accounting = runtime;
   for (const units of [1, 2, 4] as const) {
     try {
-      runtime.sentUnits += units;
-      if (runtime.stopAfter === units) return;
+      accounting.sentUnits += units;
+      if (accounting.stopAfter === units) return;
     } finally {
-      runtime.finalized++;
+      accounting.finalized++;
     }
   }
 }

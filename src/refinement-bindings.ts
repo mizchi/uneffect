@@ -813,13 +813,17 @@ function validateRefinementActionBodiesInSource(
     body: ts.Block,
     receiver: string,
     runtimeClass: ts.ClassDeclaration | undefined,
-    substitutions: ReadonlyMap<string, ts.Expression>,
+    initialSubstitutions: ReadonlyMap<string, ts.Expression>,
     updates: Map<string, TemporalExpression> = new Map(),
     localValues: Map<string, TemporalExpression> = new Map(),
     activeCalls: ReadonlySet<string> = new Set(),
     allowTerminalReturn = true,
     allowTerminalThrow = false,
   ): ActionCompletion | undefined => {
+    // Each lexical block gets its own immutable-alias environment. Recursive
+    // branch collection receives a snapshot, so aliases declared in a nested
+    // block cannot leak into its sibling or enclosing continuation.
+    const substitutions = new Map(initialSubstitutions);
     const expandLocalSnapshots = (expression: TemporalExpression): TemporalExpression => {
       if (expression.kind === "name" && expression.name.startsWith("\u0000local:")) {
         return localValues.get(expression.name.slice("\u0000local:".length)) ?? expression;
@@ -1315,7 +1319,22 @@ function validateRefinementActionBodiesInSource(
       if (ts.isVariableStatement(statement)) {
         if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
         for (const declaration of statement.declarationList.declarations) {
-          if (!ts.isIdentifier(declaration.name) || !declaration.initializer || localValues.has(declaration.name.text)) return undefined;
+          if (!ts.isIdentifier(declaration.name) || !declaration.initializer
+            || localValues.has(declaration.name.text) || substitutions.has(declaration.name.text)) return undefined;
+          const resolveReceiverAlias = (expression: ts.Expression, seen: ReadonlySet<string> = new Set()): ts.Expression | undefined => {
+            const candidate = unwrap(expression);
+            if (candidate.kind === ts.SyntaxKind.ThisKeyword) return receiver === "this" ? candidate : undefined;
+            if (!ts.isIdentifier(candidate)) return undefined;
+            if (candidate.text === receiver) return candidate;
+            if (seen.has(candidate.text)) return undefined;
+            const replacement = substitutions.get(candidate.text);
+            return replacement ? resolveReceiverAlias(replacement, new Set([...seen, candidate.text])) : undefined;
+          };
+          const receiverAlias = resolveReceiverAlias(declaration.initializer);
+          if (receiverAlias) {
+            substitutions.set(declaration.name.text, receiverAlias);
+            continue;
+          }
           const value = normalizeRefinementExpression(declaration.initializer, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!value) return undefined;
           localValues.set(declaration.name.text, expandLocalSnapshots(resolveCurrentState(value)));
