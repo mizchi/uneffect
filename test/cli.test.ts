@@ -72,9 +72,9 @@ describe("uneffect command line", () => {
       expect(gradual.stderr).toContain("no diagnostics");
 
       const noUnknown = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", unknownFile], noUnknown)).toBe(exitCode.failed);
-      expect(noUnknown.stderr).toContain("assurance no-unknown: failed");
-      expect(noUnknown.stderr).toContain("consume: effect summary is unknown");
+      expect(await runCli(["check", "--assurance", "no-unknown", unknownFile], noUnknown)).toBe(exitCode.success);
+      expect(noUnknown.stderr).toContain("assurance no-unknown: passed");
+      expect(noUnknown.stderr).toContain("iterator-effect parameters describe caller-supplied lazy effects");
 
       const tracked = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", inferredFile], tracked)).toBe(exitCode.success);

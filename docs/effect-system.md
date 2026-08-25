@@ -121,6 +121,12 @@ standard pure iterator contributes no effect, and an opaque argument remains
 unknown. Parameter-derived unknown evidence is tracked separately from intrinsic
 unknown consumption, so specializing every iterator parameter never hides an
 unrelated property escape or dynamic factory inside the consumer.
+The effect summary exposes the same contract as `iteratorEffectParameters` and
+uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not
+a closed proof that the function is effect-free: its lazy effects are supplied
+by each call site. A normal `uneffect: effect ...` annotation is not currently
+syntax for bounding that effect parameter, so an annotated polymorphic consumer
+remains `unknown` rather than being reported as verified.
 Simple mutable local bindings are flow-sensitive. A straight-line assignment
 kills the previous iterator state and replaces it with the classified RHS;
 assignments under branches, loops, switch, or try/catch join generator targets,

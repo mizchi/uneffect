@@ -447,6 +447,12 @@ same property is proved for arbitrary TypeScript.
   effect-set fixed point; unresolved calls and dynamic imports are unknown.
   Exact ESM/TLA temporal ordering and external-package initialization remain
   explicit non-claims. Dogfood includes the executable `src/cli.ts` entrypoint.
+- Direct Generator iterator consumers now expose polymorphic
+  `iteratorEffectParameters` in effect summaries. Known call sites specialize
+  the lazy body effects, while opaque arguments remain unknown. `no-unknown`
+  accepts the represented parameter but reports that it is not a closed
+  concrete effect set; `declared` still rejects it because the current ordinary
+  effect annotation syntax cannot bind the parameter.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

@@ -36,6 +36,7 @@ const commonClaims = [
 
 const commonExclusions = [
   "unannotated semantic domains are not checked by this profile",
+  "iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set",
   "module summaries are may-effect sets and do not prove exact import or top-level-await temporal ordering",
   "dependencies, dynamically loaded code, native addons, and unmodeled host behavior are outside the explicitly checked file boundary",
   "a verified bounded or assumption-dependent artifact is not an unbounded or assumption-free proof",

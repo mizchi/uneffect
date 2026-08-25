@@ -4,7 +4,7 @@ import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import type { FsBuiltinOperation } from "./builtin-contracts.js";
-import { buildProgramCallGraph, type CallGraphEdge } from "./call-graph.js";
+import { buildProgramCallGraph, type CallGraphEdge, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 
@@ -27,6 +27,8 @@ export interface EffectSummary {
   id?: string;
   fileName?: string;
   span?: { start: number; end: number };
+  /** Iterator parameters whose lazy body effects are supplied and instantiated by each call site. */
+  iteratorEffectParameters?: IteratorEffectParameter[];
 }
 export interface EffectAnalysisResult { diagnostics: EffectDiagnostic[]; summaries: EffectSummary[] }
 
@@ -808,10 +810,16 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, actual, effect) });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
+    const polymorphicIterator = graphNode.iteratorEffectParameters.length > 0;
     const evidence: EvidenceStatus = invalidSources.has(source.fileName)
-      || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id)
+      || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
+      || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
+      || (polymorphicIterator && allowed.length > 0)
       ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
-    summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });
+    summaries.push({
+      functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span,
+      ...(polymorphicIterator ? { iteratorEffectParameters: graphNode.iteratorEffectParameters } : {}),
+    });
   }
 
   // Module evaluation is a separate owner from every function body. Keeping a

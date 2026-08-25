@@ -350,6 +350,8 @@ describe("multi-file call graph and effect polymorphism", () => {
           void Promise.all(choosePartial(log))
         }
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
+        /* uneffect: effect Console */
+        export function boundedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
         export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
@@ -520,7 +522,9 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeOpaquePromiseAll"))
         .toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
-        .toMatchObject({ evidence: "unknown" });
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "boundedIteratorParameter"))
+        .toMatchObject({ evidence: "unknown", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -532,7 +536,7 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumePureIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumePromiseIteratorParameter"))
-        .toMatchObject({ evidence: "unknown" });
+        .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownPromiseIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).toContainEqual(expect.objectContaining({

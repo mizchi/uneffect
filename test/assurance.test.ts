@@ -32,6 +32,18 @@ describe("assurance claim boundaries", () => {
     expect(assessment.exclusions).toContain("inferred effects need not have an explicit upper-bound declaration");
   });
 
+  it("accepts a represented iterator-effect parameter without claiming a closed concrete effect set", () => {
+    const summary = {
+      functionName: "consume", fileName: "src/consume.ts", effects: [], evidence: "inferred" as const,
+      iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+    };
+    const noUnknown = assessCheckAssurance({ summaries: [summary], artifacts: [] }, "no-unknown");
+    expect(noUnknown).toMatchObject({ passed: true, blockers: [] });
+    expect(noUnknown.exclusions).toContain("iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
+    expect(assessCheckAssurance({ summaries: [summary], artifacts: [] }, "declared"))
+      .toMatchObject({ passed: false, blockers: [expect.objectContaining({ kind: "effect" })] });
+  });
+
   it("rejects an assurance result that emitted no evidence", () => {
     const assessment = assessCheckAssurance({ summaries: [], artifacts: [] }, "no-unknown");
 

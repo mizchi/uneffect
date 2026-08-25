@@ -532,6 +532,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Convert generator-body `Throw<T>` during Promise combinator iteration to rejection while retaining synchronous factory-call throws.
   - [x] Mark iterator-like `.next()` through unresolved parameters/properties as unknown evidence while preserving standard-library pure iterator aliases.
   - [x] Specialize iterator-consuming function parameters at call sites from known generator factories/bindings, pure standard iterators, or explicit unknown arguments.
+  - [x] Expose directly consumed iterator parameters as explicit polymorphic effect parameters in function summaries instead of misclassifying the generic definition as opaque.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
   - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
   - [x] Track iterator identities in one-level local object slots with constant property keys, including local object aliases and flow-sensitive slot reassignment; keep dynamic keys unknown.

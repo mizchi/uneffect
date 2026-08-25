@@ -842,16 +842,13 @@ describe("Uneffect dogfood", () => {
     expect(verified.diagnostics).toEqual([]);
     const scheduleSummary = verified.effects.summaries.find((summary) => summary.functionName === "scheduleFlush");
     expect(scheduleSummary).toMatchObject({ fileName: "src/node-service.ts", evidence: "verified", id: expect.stringMatching(/^src\/node-service\.ts:\d+$/), span: { start: expect.any(Number), end: expect.any(Number) } });
-    expect(verified.effects.summaries.find((summary) => summary.functionName === "consumeFlushSteps"))
-      .toMatchObject({ evidence: "unknown" });
     expect(scheduleSummary?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind)).toEqual(expect.arrayContaining(["FsRead", "Console", "Timer"]));
     expect(verified.temporal?.models).toContainEqual(expect.objectContaining({ kind: "node-event-loop", quint: expect.stringContaining("action run_poll_0") }));
     expect(verified.temporal?.models[0]?.quint).toContain("action drain_next_tick_1");
     expect(verified.temporal?.properties).toContainEqual(expect.objectContaining({ name: "nodeEventLoopSafe", result: "verified" }));
-    expect(verified.assurance.passed).toBe(false);
-    expect(verified.assurance.blockers).toContainEqual(expect.objectContaining({
-      domain: "effect", fileName: "src/node-service.ts", subject: "consumeFlushSteps",
-    }));
+    expect(verified.effects.summaries.find((summary) => summary.functionName === "consumeFlushSteps"))
+      .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0 })] });
+    expect(verified.assurance).toMatchObject({ passed: true, blockers: [] });
     const asyncModel = analyzeAsyncPatterns("src/node-service.ts", source);
     const selectedTimer = asyncModel.timers.findIndex((timer) => timer.callback === 'flushDispatcher.select(preferCache ? "success" : "failure")');
     expect(selectedTimer).toBeGreaterThanOrEqual(0);

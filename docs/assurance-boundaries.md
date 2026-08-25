@@ -19,7 +19,7 @@ uneffect check --assurance declared src/file.ts
 | Mode | Exit 0 establishes | It does not establish |
 | --- | --- | --- |
 | default gradual check | No enabled checker emitted an error. Warnings and unknown effect summaries may remain. | Completeness, purity, or whole-program safety. |
-| `--assurance no-unknown` | The explicitly checked files have no `unknown` effect summary and every emitted contract artifact is verified. Inferred effect inventories are accepted. | That inferred effects are declaration-checked, or that an analysis was enabled for every semantic domain. |
+| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories and explicitly represented iterator-effect parameters are accepted. | That inferred effects are declaration-checked, that an iterator-polymorphic function has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
 | `--assurance declared` | In addition, every emitted function effect summary is checked against an explicit effect declaration. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
 
 Both assurance profiles print their scope and every blocker. They are intended
@@ -65,7 +65,9 @@ assurance result to a context-free green boolean.
 - `verified`: the exact emitted obligation passed its checker, or an explicit
   effect upper bound covered the effects found in the supported call graph.
 - `inferred`: Uneffect computed a useful effect inventory, but no explicit
-  upper-bound declaration was checked.
+  upper-bound declaration was checked. A summary with
+  `iteratorEffectParameters` is effect-polymorphic: the field is a represented
+  call-site obligation, not evidence that the empty concrete inventory is pure.
 - `trusted`: the result depends on a reviewed external or builtin semantic
   contract or an explicit user-owned boundary such as dispatch sealing. Trusted
   evidence is auditable input, not a derived proof.
@@ -81,6 +83,7 @@ for “this function is correct.”
 | Area | Safe reliance line | Outside the current claim |
 | --- | --- | --- |
 | Capability effects | Explicit declarations checked with `--assurance declared`, over symbol-resolved calls and reviewed builtin contracts. | Reflection, arbitrary dynamic dispatch, unresolved callbacks, native addons, and unreviewed host APIs. |
+| Generator effects | Direct iterator consumers expose `iteratorEffectParameters`; resolved call sites specialize them to generator-body effects, pure standard iterators, or `unknown`. | A closed effect bound for the generic consumer itself, transitive forwarding through arbitrary wrappers, escaped iterators, and dynamic properties. Ordinary effect annotations do not yet bind iterator-effect parameters. |
 | Hoare contracts | Individual emitted obligations whose artifact status is `verified`. | Termination, arbitrary heap aliasing, general loops, and unsupported expressions. |
 | Async/resource safety | The diagnostics and models for the exact patterns listed in the feature matrix, with negative regression coverage. | A complete exception-aware JavaScript CFG or proof that every rejection/resource escape is detected. |
 | React function components | Explicit `react component`/`react hook` boundaries and the documented phase/callback fragment. | Unannotated components, dynamic HOCs/Hooks/callbacks, full React scheduling, Server Components, and runtime reachability. |
