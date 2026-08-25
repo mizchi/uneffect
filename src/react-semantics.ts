@@ -987,7 +987,36 @@ function callbackArgument(
   if (!argument) return undefined;
   const expression = unwrapExpression(argument);
   if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression;
-  return ts.isIdentifier(expression) ? callbacks.get(expression.text) : undefined;
+  if (ts.isIdentifier(expression)) return callbacks.get(expression.text);
+  return ts.isPropertyAccessExpression(expression) ? callbacks.get(expression.getText(expression.getSourceFile())) : undefined;
+}
+
+interface CallbackAnalysisEnvironment {
+  declared: ReadonlyMap<string, string[]>;
+  callbacks: ReadonlyMap<string, LocalEventCallback>;
+  acquisitions: ReadonlyMap<string, LifecycleContract>;
+  releases: ReadonlyMap<string, LifecycleContract>;
+}
+
+function callbackAnalysisEnvironment(
+  callback: LocalEventCallback,
+  ownerSource: ts.SourceFile,
+  ownerDeclared: ReadonlyMap<string, string[]>,
+  ownerCallbacks: ReadonlyMap<string, LocalEventCallback>,
+  ownerAcquisitions: ReadonlyMap<string, LifecycleContract>,
+  ownerReleases: ReadonlyMap<string, LifecycleContract>,
+): CallbackAnalysisEnvironment {
+  const callbackSource = callback.getSourceFile();
+  if (callbackSource === ownerSource) return {
+    declared: ownerDeclared, callbacks: ownerCallbacks,
+    acquisitions: ownerAcquisitions, releases: ownerReleases,
+  };
+  return {
+    declared: effectDeclarations(callbackSource),
+    callbacks: new Map([...sourceConstComponentCallbacks(callbackSource), ...ownerCallbacks]),
+    acquisitions: lifecycleDeclarations(callbackSource, "acquire"),
+    releases: lifecycleDeclarations(callbackSource, "release"),
+  };
 }
 
 function isReactBuiltinCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression, importedName: string): boolean {
@@ -1761,7 +1790,11 @@ function suspenseBoundaryFacts(
   return { boundaries, unsupported };
 }
 
-function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map()): InternalReactAnalysis {
+function analyzeReactSource(
+  source: ts.SourceFile,
+  externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map(),
+  externalJsxCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+): InternalReactAnalysis {
   const fileName = source.fileName;
   const hooks = importedHooks(source), renderCallbacks = importedRenderCallbacks(source);
   const dependencyHooks = importedDependencyHooks(source), declared = effectDeclarations(source);
@@ -2192,6 +2225,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     ]);
     const eventCallbacks = localEventCallbacks(component);
     const callableCallbacks = new Map([...componentCallbacks, ...eventCallbacks]);
+    const jsxCallbacks = new Map([...callableCallbacks, ...externalJsxCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
     const reportTransitionUpdatesAfterAwait = (body: ts.Node, phase: ReactPhase): void => {
@@ -2253,14 +2287,17 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
         const refExpression = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
-        const callback = refExpression ? callbackArgument(refExpression, callableCallbacks) : undefined;
+        const callback = refExpression ? callbackArgument(refExpression, jsxCallbacks) : undefined;
         if (callback) {
-          const setupEffects = directEffects(callback.body, declared, transitionCallbacks, callableCallbacks);
+          const environment = callbackAnalysisEnvironment(
+            callback, source, declared, jsxCallbacks, acquisitions, releases,
+          );
+          const setupEffects = directEffects(callback.body, environment.declared, transitionCallbacks, environment.callbacks);
           addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
-          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, callableCallbacks) : [];
+          const cleanupEffects = cleanup ? directEffects(cleanup.body, environment.declared, transitionCallbacks, environment.callbacks) : [];
           if (cleanup) addPhase("cleanup", cleanupEffects);
-          const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+          const lifecycle = lifecycleSummary(callback, cleanup, environment.acquisitions, environment.releases);
           const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
           const released = lifecycle.released.map((capability) => `Release<${capability}>`);
           addPhase("ref-callback", acquired);
@@ -2302,36 +2339,44 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             message: `${call.expression.getText(source)} is an Effect Event and may only be called from an Effect`,
           });
         }
-        else if (expression && ts.isIdentifier(expression)) {
-          if (effectEvents.has(expression.text)) {
+        else if (expression) {
+          const callback = callbackArgument(expression, jsxCallbacks);
+          const operation = expression.getText(source);
+          if (!ts.isIdentifier(expression) && !callback) {
             report(expression, {
-              kind: "invalid-effect-event-call", phase: "event", operation: expression.text,
-              message: `${expression.text} is an Effect Event and cannot be used as a JSX event handler`,
+              kind: "unknown-event-handler", phase: "event", operation,
+              message: `${operation} is not an inline or immutable locally resolved event callback`,
             });
             return;
           }
-          const callback = callableCallbacks.get(expression.text);
+          if (ts.isIdentifier(expression) && effectEvents.has(expression.text)) {
+            report(expression, {
+              kind: "invalid-effect-event-call", phase: "event", operation,
+              message: `${operation} is an Effect Event and cannot be used as a JSX event handler`,
+            });
+            return;
+          }
           if (callback?.body) {
-            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, callableCallbacks, callableCallbacks));
-            reportTransitionUpdatesAfterAwait(callback.body, "event");
-            for (const action of unknownImmediateActions(callback.body, transitionCallbacks, callableCallbacks)) reportUnknownAction(action);
-            for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, callableCallbacks)) report(call, {
-              kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
-              message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
-            });
-            for (const call of effectEventCallsInPhase(callback.body, effectEvents, transitionCallbacks, eventCallbacks)) report(call, {
-              kind: "invalid-effect-event-call", phase: "event", operation: call.expression.getText(source),
-              message: `${call.expression.getText(source)} is an Effect Event and may only be called from an Effect`,
-            });
+            const environment = callbackAnalysisEnvironment(
+              callback, source, declared, jsxCallbacks, acquisitions, releases,
+            );
+            addPhase("event", directEffects(callback.body, environment.declared, transitionCallbacks, environment.callbacks, environment.callbacks));
+            if (callback.getSourceFile() === source) {
+              reportTransitionUpdatesAfterAwait(callback.body, "event");
+              for (const action of unknownImmediateActions(callback.body, transitionCallbacks, environment.callbacks)) reportUnknownAction(action);
+              for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, environment.callbacks)) report(call, {
+                kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
+                message: `${call.expression.getText(source)} must be dispatched inside a React Action`,
+              });
+              for (const call of effectEventCallsInPhase(callback.body, effectEvents, transitionCallbacks, eventCallbacks)) report(call, {
+                kind: "invalid-effect-event-call", phase: "event", operation: call.expression.getText(source),
+                message: `${call.expression.getText(source)} is an Effect Event and may only be called from an Effect`,
+              });
+            }
           }
           else report(expression, {
-            kind: "unknown-event-handler", phase: "event", operation: expression.text,
-            message: `${expression.text} is not an immutable locally resolved event callback`,
-          });
-        } else if (expression) {
-          report(expression, {
-            kind: "unknown-event-handler", phase: "event", operation: expression.getText(source),
-            message: `${expression.getText(source)} is not an inline or immutable locally resolved event callback`,
+            kind: "unknown-event-handler", phase: "event", operation,
+            message: `${operation} is not an immutable locally resolved event callback`,
           });
         }
         return;
@@ -3873,6 +3918,37 @@ function importedCustomHooks(
   return imports;
 }
 
+function importedJsxCallbacks(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, LocalEventCallback> {
+  const callbacks = new Map<string, LocalEventCallback>();
+  const add = (key: string, location: ts.Node): void => {
+    const declaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(location));
+    if (!declaration?.body) return;
+    const callback = declaration as LocalEventCallback;
+    const stableCallbacks = sourceConstComponentCallbacks(declaration.getSourceFile());
+    if ([...stableCallbacks.values()].includes(callback)) callbacks.set(key, callback);
+  };
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause) continue;
+    if (statement.importClause.name) add(statement.importClause.name.text, statement.importClause.name);
+    const bindings = statement.importClause.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) {
+      for (const element of bindings.elements) add(element.name.text, element.name);
+    } else if (bindings && ts.isNamespaceImport(bindings)) {
+      const symbol = checker.getSymbolAtLocation(bindings.name);
+      const moduleSymbol = symbol && symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
+      if (moduleSymbol) for (const exported of checker.getExportsOfModule(moduleSymbol)) {
+        const declaration = functionDeclarationForSymbol(checker, exported);
+        if (!declaration?.body) continue;
+        const callback = declaration as LocalEventCallback;
+        if ([...sourceConstComponentCallbacks(declaration.getSourceFile()).values()].includes(callback)) {
+          callbacks.set(`${bindings.name.text}.${exported.name}`, callback);
+        }
+      }
+    }
+  }
+  return callbacks;
+}
+
 function addProgramHookCycleDiagnostics(
   program: ts.Program,
   results: Map<string, ReactSemanticsResult>,
@@ -4035,7 +4111,11 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
     const next = new Map<string, CustomHookSummary>(), nextResults = new Map<string, ReactSemanticsResult>();
     const nextHookNodes = new Map<string, ComponentNode>();
     for (const candidate of sources) {
-      const analysis = analyzeReactSource(candidate, importedCustomHooks(candidate, checker, summaries));
+      const analysis = analyzeReactSource(
+        candidate,
+        importedCustomHooks(candidate, checker, summaries),
+        importedJsxCallbacks(candidate, checker),
+      );
       nextResults.set(candidate.fileName, analysis.result);
       for (const hook of analysis.result.hooks) next.set(`${candidate.fileName}:${hook.name}`, analysis.hookSummaries.get(hook.name)!);
       for (const [name, node] of analysis.hookNodes) nextHookNodes.set(`${candidate.fileName}:${name}`, node);

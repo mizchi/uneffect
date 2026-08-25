@@ -37,8 +37,8 @@ const components = Array.from({ length: 128 }, (_, index) => `
 
 const source = `
   import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react"
+  import { moduleRefresh } from "./callbacks.js"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown; children?: unknown } } }
-  function moduleRefresh() { fetch("/module-refresh") }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
   /* uneffect: react acquire Subscription result */
@@ -78,13 +78,22 @@ const source = `
   }
   ${components}
 `;
-const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
+const callbackSource = `export function moduleRefresh() { fetch("/module-refresh") }`;
+const compilerOptions: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve, noEmit: true,
+};
 const host = ts.createCompilerHost(compilerOptions), originalGetSourceFile = host.getSourceFile.bind(host);
 host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName === "catalog.tsx"
   ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TSX)
-  : originalGetSourceFile(fileName, languageVersion, onError, fresh);
-const program = ts.createProgram(["catalog.tsx"], compilerOptions, host);
-const createCatalogProgram = () => ts.createProgram(["catalog.tsx"], compilerOptions, host);
+  : fileName === "callbacks.ts"
+    ? ts.createSourceFile(fileName, callbackSource, languageVersion, true, ts.ScriptKind.TS)
+    : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+host.resolveModuleNames = (moduleNames) => moduleNames.map((name) => name === "./callbacks.js"
+  ? { resolvedFileName: "callbacks.ts", extension: ts.Extension.Ts }
+  : undefined);
+const program = ts.createProgram(["catalog.tsx", "callbacks.ts"], compilerOptions, host);
+const createCatalogProgram = () => ts.createProgram(["catalog.tsx", "callbacks.ts"], compilerOptions, host);
 const analyzed = analyzeReactSemantics("catalog.tsx", source);
 const nested = analyzeReactSemantics("nested.tsx", `
   import { Suspense } from "react"

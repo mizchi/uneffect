@@ -1,1 +1,1 @@
-export { useDocumentTitle } from "./react-symbol-hooks.js";
+export { refreshRemoteTelemetry, useDocumentTitle } from "./react-symbol-hooks.js";

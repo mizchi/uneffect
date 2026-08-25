@@ -164,8 +164,12 @@ same property is proved for arbitrary TypeScript.
   cleanup functions. Inline JSX callback refs plus immutable component-local
   and write-screened module-local callback functions/arrows reached through
   transitive `const` aliases form a
-  separate commit setup and returned-cleanup phase. Reassigned, imported, prop,
-  member, or dynamic callback refs remain explicit unknowns. Reassigned
+  separate commit setup and returned-cleanup phase. Source-only analysis keeps
+  imported, prop, member, or dynamic callback refs as explicit unknowns.
+  Program analysis resolves write-screened JSX event/ref functions through
+  named aliases, barrels, and namespace imports while retaining the
+  declaration module's effect and acquire/release contracts. Reassigned,
+  unresolved imported/prop/member, or dynamic callbacks remain unknown. Reassigned
   or opaque referenced event handlers are rejected rather than assumed pure.
   Aliased named imports from `react` are recognized.
 - Render-time `.current` access remains rejected except for a direct or
@@ -302,7 +306,7 @@ same property is proved for arbitrary TypeScript.
   stable React return positions, and rejects opaque/dynamic/unstable evidence.
 - Dynamic/higher-order Hook calls, symbol-resolved dependency callback aliases,
   custom stability contracts, general/reassigned state-context aliases,
-  interprocedural region flow, module-scope/imported/prop callback refs,
+  interprocedural region flow, prop callback refs and unresolved/dynamic imports,
   general lazy-ref factory/constructor initialization and dominance, imperative
   handles,
   general/dynamic Suspense subtrees through wrappers or expressions, runtime

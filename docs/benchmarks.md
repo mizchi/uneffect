@@ -1162,3 +1162,15 @@ Program benchmark includes a warm TypeChecker lookup and custom-Hook fixed
 point but excludes Program construction; the generator excludes Quint
 execution. The workload has one proven thenable leaf and one excluded static
 leaf. Both measurements are observations, not regression budgets.
+
+After adding TypeChecker-resolved imported JSX callbacks, the 128-component
+React benchmark uses a second virtual module and a named imported event handler.
+Cold source parsing/classification measured 109.01 ms mean over 30 samples
+(0.77% relative margin of error), fresh two-file Program construction and
+analysis measured 247.24 ms over 30 samples (1.51%), and the TSX parse baseline
+measured 7.2173 ms over 139 samples (3.58%). Cached Program lookup remained
+below useful timer resolution. This run covers symbol resolution and the
+write-screened callback declaration lookup, but not a large import graph,
+callback-ref lifecycle contracts, or incremental Program replacement. It is an
+observation rather than a regression budget; earlier runs were environmentally
+noisy, so cross-run differences are not attributed to this feature.

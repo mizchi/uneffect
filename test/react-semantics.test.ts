@@ -1080,6 +1080,56 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("resolves imported JSX events and callback refs through TypeScript symbols", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-callback-imports-"));
+    const callbacksFile = join(directory, "callbacks.tsx"), barrelFile = join(directory, "barrel.ts");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(callbacksFile, `
+        interface ObserverHandle { readonly observer: unique symbol }
+        /* uneffect: react acquire Observer result */
+        declare function observe(node: Element | null): ObserverHandle
+        /* uneffect: react release Observer parameter 0 */
+        declare function disconnect(observer: ObserverHandle): void
+        export function refresh() { fetch("/refresh") }
+        export function unstable() { fetch("/unstable") }
+        unstable = () => console.log("changed")
+        export function attach(node: Element | null) {
+          const observer = observe(node)
+          return () => disconnect(observer)
+        }
+      `);
+      writeFileSync(barrelFile, `export { refresh, attach, unstable } from "./callbacks.js"`);
+      writeFileSync(appFile, `
+        import { refresh as handleRefresh } from "./barrel.js"
+        import * as callbacks from "./callbacks.js"
+        declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; onDoubleClick?: () => void; ref?: unknown } } }
+        /* uneffect: react component */
+        export function App() {
+          return <><button onClick={handleRefresh} /><button ref={callbacks.attach} /><button onDoubleClick={callbacks.unstable} /></>
+        }
+      `);
+      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "unknown-event-handler", phase: "event", operation: "callbacks.unstable" }),
+      ]);
+      expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+        { phase: "event", effects: ["Fetch"] },
+        { phase: "ref-callback", effects: ["Acquire<Observer>"] },
+        { phase: "cleanup", effects: ["Release<Observer>"] },
+      ]));
+      expect(result.components[0]!.replay.strictModeDevelopment.effects).toEqual(expect.arrayContaining([
+        expect.objectContaining({ phase: "ref-callback", setupEffects: ["Acquire<Observer>"], cleanupEffects: ["Release<Observer>"] }),
+      ]));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves barrel, namespace, and default custom Hook calls by TypeScript symbol", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-imports-"));
     const namedFile = join(directory, "named.tsx"), barrelFile = join(directory, "barrel.ts");
@@ -2441,6 +2491,9 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
     expect(result.diagnostics).toEqual([]);
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      { phase: "event", effects: ["Fetch"] },
+      { phase: "ref-callback", effects: ["Acquire<RemoteViewport>"] },
+      { phase: "cleanup", effects: ["Release<RemoteViewport>"] },
       { phase: "layout-effect", effects: ["DomWrite"] },
       { phase: "passive-effect", effects: ["Console"] },
     ]));

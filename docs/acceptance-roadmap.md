@@ -32,8 +32,10 @@ contract layer for existing TypeScript:
     factories/exposed methods, and cleanup capabilities without changing
     emitted code; a strictly null-guarded stable lazy-ref initialization is
     admitted while ordinary render ref access remains diagnostic; immutable
-    local event handlers and callback refs compose
-    through `const` aliases, annotated custom Hooks compose through resolved imports, and
+    local event handlers and callback refs compose through `const` aliases;
+    Program analysis also resolves write-screened JSX callbacks through named,
+    barrel, and namespace imports while retaining their declaration contracts;
+    annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity for
     inline, source-local immutable, or write-screened module-local function
     declaration component bodies reached through aliases. An
