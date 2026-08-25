@@ -8,7 +8,7 @@ error typescript/semantic fixtures/async/invalid-disposable.ts:7 in <typescript>
     |   ^
   because: The initializer of a 'using' declaration must be either an object with a '[Symbol.dispose]()' method, or be 'null' or 'undefined'.
   Property '[Symbol.dispose]' is missing in type '{ close(): void; }' but required in type 'Disposable'.
-  construct: TypeScript reported TS2850 at /Users/mz/ghq/github.com/mizchi/neo-effect/fixtures/async/invalid-disposable.ts:7
+  construct: TypeScript reported TS2850 at line 7
   hint: fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence
 
 error async/invalid-disposable fixtures/async/invalid-disposable.ts:7 in withResource

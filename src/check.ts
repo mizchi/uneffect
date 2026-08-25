@@ -59,7 +59,7 @@ function typescriptDiagnostic(
     typescriptCode: diagnostic.code,
     notes: [
       { label: "because", detail },
-      { label: "construct", detail: `TypeScript reported TS${diagnostic.code} at ${fileName}:${line}` },
+      { label: "construct", detail: `TypeScript reported TS${diagnostic.code} at line ${line}` },
     ],
   };
 }
