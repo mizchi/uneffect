@@ -148,7 +148,9 @@ Action. A direct `throw new ErrorType(...)` in a resolvable Action is retained
 as `Throw<ErrorType>` for the standard JavaScript Error constructors; other
 direct thrown values become `Throw<unknown>`. This evidence follows immutable
 local callback calls. Program-resolved imported Actions and optimistic reducers
-use their definition-module effects and helper graph; reassigned or unresolved
+use their definition-module effects and transitive statically imported helper graph;
+each helper is analyzed against its own module declarations instead of the caller's
+same-named bindings. Reassigned, dynamically imported, or unresolved
 exports remain opaque. This evidence is not attributed to ordinary JSX event callbacks.
 Progressive enhancement and Server Functions remain outside this projection.
 
@@ -165,7 +167,8 @@ inline fragment of the [React `useEffectEvent` contract](https://react.dev/refer
 Named, default-object, or namespace-qualified `useSyncExternalStore` calls resolve inline,
 module-local, immutable component/custom-Hook-local, and Program-resolved
 write-screened imported callback arguments. Imported callbacks retain the
-definition module's snapshot effects and subscription acquire/release contracts.
+definition module's snapshot effects, transitively imported helper effects, and
+subscription acquire/release contracts.
 Client and optional server snapshot capabilities are not charged as ordinary
 render violations: the Hook is the explicit external-read boundary. The
 subscribe callback forms an `external-store-subscribe` commit instance, and a

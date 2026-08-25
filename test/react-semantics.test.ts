@@ -688,11 +688,16 @@ describe("React Function Component semantics", () => {
   it("analyzes imported transition actions in their declaration environment", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-imports-"));
     const callbacksFile = join(directory, "callbacks.ts"), barrelFile = join(directory, "barrel.ts");
-    const appFile = join(directory, "app.tsx");
+    const helpersFile = join(directory, "helpers.ts"), appFile = join(directory, "app.tsx");
     try {
+      writeFileSync(helpersFile, `
+        /* uneffect: effect DeepTransition */ declare function auditDeepTransition(): void
+        export function auditDeep() { auditDeepTransition() }
+      `);
       writeFileSync(callbacksFile, `
+        import { auditDeep } from "./helpers.js"
         /* uneffect: effect RemoteTransition */ declare function auditTransition(): void
-        function fetchRemote() { auditTransition(); fetch("/remote") }
+        function fetchRemote() { auditTransition(); auditDeep(); fetch("/remote") }
         export function remoteAction() { fetchRemote() }
         export default function defaultAction() { fetchRemote() }
         export let unstableAction = () => auditTransition()
@@ -715,14 +720,14 @@ describe("React Function Component semantics", () => {
           }} />
         }
       `);
-      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
+      const program = ts.createProgram([helpersFile, callbacksFile, barrelFile, appFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
       });
       const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
       expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
-        expect.objectContaining({ phase: "passive-effect", effects: ["RemoteTransition", "Fetch"] }),
-        expect.objectContaining({ phase: "event", effects: ["RemoteTransition", "Fetch"] }),
+        expect.objectContaining({ phase: "passive-effect", effects: ["RemoteTransition", "DeepTransition", "Fetch"] }),
+        expect.objectContaining({ phase: "event", effects: ["RemoteTransition", "DeepTransition", "Fetch"] }),
       ]));
       expect(result.diagnostics).toEqual([
         expect.objectContaining({ kind: "unknown-transition-action", phase: "event", operation: "unstableAction" }),
@@ -1129,16 +1134,22 @@ describe("React Function Component semantics", () => {
 
   it("resolves imported JSX events and callback refs through TypeScript symbols", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-callback-imports-"));
-    const callbacksFile = join(directory, "callbacks.tsx"), barrelFile = join(directory, "barrel.ts");
+    const helpersFile = join(directory, "helpers.ts"), callbacksFile = join(directory, "callbacks.tsx");
+    const barrelFile = join(directory, "barrel.ts");
     const appFile = join(directory, "app.tsx");
     try {
+      writeFileSync(helpersFile, `
+        /* uneffect: effect DeepEvent */ declare function auditDeepEvent(): void
+        export function auditEvent() { auditDeepEvent() }
+      `);
       writeFileSync(callbacksFile, `
+        import { auditEvent } from "./helpers.js"
         interface ObserverHandle { readonly observer: unique symbol }
         /* uneffect: react acquire Observer result */
         declare function observe(node: Element | null): ObserverHandle
         /* uneffect: react release Observer parameter 0 */
         declare function disconnect(observer: ObserverHandle): void
-        export function refresh() { fetch("/refresh") }
+        export function refresh() { auditEvent(); fetch("/refresh") }
         export function unstable() { fetch("/unstable") }
         unstable = () => console.log("changed")
         export function attach(node: Element | null) {
@@ -1156,7 +1167,7 @@ describe("React Function Component semantics", () => {
           return <><button onClick={handleRefresh} /><button ref={callbacks.attach} /><button onDoubleClick={callbacks.unstable} /></>
         }
       `);
-      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
+      const program = ts.createProgram([helpersFile, callbacksFile, barrelFile, appFile], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
       });
@@ -1165,7 +1176,7 @@ describe("React Function Component semantics", () => {
         expect.objectContaining({ kind: "unknown-event-handler", phase: "event", operation: "callbacks.unstable" }),
       ]);
       expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
-        { phase: "event", effects: ["Fetch"] },
+        { phase: "event", effects: ["DeepEvent", "Fetch"] },
         { phase: "ref-callback", effects: ["Acquire<Observer>"] },
         { phase: "cleanup", effects: ["Release<Observer>"] },
       ]));
@@ -1179,10 +1190,16 @@ describe("React Function Component semantics", () => {
 
   it("resolves imported Effect and reviewed render callbacks through TypeScript symbols", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-callback-imports-"));
-    const callbacksFile = join(directory, "callbacks.ts"), barrelFile = join(directory, "barrel.ts");
+    const helpersFile = join(directory, "helpers.ts"), callbacksFile = join(directory, "callbacks.ts");
+    const barrelFile = join(directory, "barrel.ts");
     const appFile = join(directory, "app.tsx");
     try {
+      writeFileSync(helpersFile, `
+        /* uneffect: effect DeepSetup */ declare function auditDeepSetup(): void
+        export function auditSetup() { auditDeepSetup() }
+      `);
       writeFileSync(callbacksFile, `
+        import { auditSetup } from "./helpers.js"
         interface Connection { readonly id: unique symbol }
         /* uneffect: react acquire Connection result */
         declare function connect(): Connection
@@ -1190,6 +1207,7 @@ describe("React Function Component semantics", () => {
         declare function disconnect(connection: Connection): void
         function traceConnection() { console.log("connected") }
         export function installConnection() {
+          auditSetup()
           traceConnection()
           const connection = connect()
           return () => disconnect(connection)
@@ -1219,7 +1237,7 @@ describe("React Function Component semantics", () => {
           return label
         }
       `);
-      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
+      const program = ts.createProgram([helpersFile, callbacksFile, barrelFile, appFile], {
         target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
         moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
       });
@@ -1233,11 +1251,11 @@ describe("React Function Component semantics", () => {
       expect(result.diagnostics).toHaveLength(4);
       expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
         { phase: "render", effects: ["Console"] },
-        { phase: "passive-effect", effects: ["Console", "Acquire<Connection>"] },
+        { phase: "passive-effect", effects: ["DeepSetup", "Console", "Acquire<Connection>"] },
         { phase: "cleanup", effects: ["Release<Connection>"] },
       ]));
       expect(result.components[0]!.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
-        phase: "passive-effect", setupEffects: ["Console", "Acquire<Connection>"], cleanupEffects: ["Release<Connection>"],
+        phase: "passive-effect", setupEffects: ["DeepSetup", "Console", "Acquire<Connection>"], cleanupEffects: ["Release<Connection>"],
       }));
     } finally {
       rmSync(directory, { recursive: true, force: true });
