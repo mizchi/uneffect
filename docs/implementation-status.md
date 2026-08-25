@@ -169,13 +169,16 @@ same property is proved for arbitrary TypeScript.
   additionally prove exact-once cleanup for direct result bindings and local
   immutable identifier aliases.
 - Component and custom-Hook summaries expose production, development Strict
-  Mode initial-mount, and one bounded concurrent-interruption replay projection.
+  Mode initial-mount, one bounded concurrent-interruption, and dependency-change replay projections.
   These distinguish committed from discarded render attempts and model render multiplicity and
   Effect/callback-ref setup/cleanup cycles without claiming total host
   scheduling order. Source-derived instance paths preserve each setup's own
   cleanup effects through repeated and transitive custom-Hook calls.
+- Dependency-change replay assigns the old setup/cleanup to its original commit
+  generation and the replacement setup to the next generation. A lifecycle
+  transition cannot be justified by a different or uncommitted generation.
 - The replay IR generates reviewable production, development Strict Mode, or
-  interrupted-render Quint with per-instance setup/cleanup counters.
+  interrupted-render, or dependency-change Quint with per-instance setup/cleanup counters.
   `reactLifecycleSafe` rejects cleanup-before-setup, commit-side setup without a
   committed render, and counter-bound violations without imposing an order
   between different commit instances.

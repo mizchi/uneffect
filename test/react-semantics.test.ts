@@ -767,32 +767,43 @@ describe("React Function Component semantics", () => {
     expect(result.components[0]!.replay).toEqual({
       production: {
         renderInvocations: 1,
-        renderAttempts: [{ instance: "render@0", outcome: "committed" }],
+        renderAttempts: [{ instance: "render@0", outcome: "committed", commit: "commit@0" }],
         effects: [
-          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
-          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
       strictModeDevelopment: {
         renderInvocations: 2,
         renderAttempts: [
           { instance: "render@0", outcome: "discarded", reason: "strict-mode-replay" },
-          { instance: "render@1", outcome: "committed" },
+          { instance: "render@1", outcome: "committed", commit: "commit@0" },
         ],
         effects: [
-          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
-          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }, { transition: "cleanup", commit: "commit@0" }, { transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }, { transition: "cleanup", commit: "commit@0" }, { transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
       concurrentInterruption: {
         renderInvocations: 2,
         renderAttempts: [
           { instance: "render@0", outcome: "discarded", reason: "concurrent-interruption" },
-          { instance: "render@1", outcome: "committed" },
+          { instance: "render@1", outcome: "committed", commit: "commit@0" },
         ],
         effects: [
-          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
-          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+        ],
+      },
+      dependencyChange: {
+        renderInvocations: 2,
+        renderAttempts: [
+          { instance: "render@0", outcome: "committed", commit: "commit@0" },
+          { instance: "render@1", outcome: "committed", commit: "commit@1" },
+        ],
+        effects: [
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }, { transition: "cleanup", commit: "commit@0" }, { transition: "setup", commit: "commit@1" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }, { transition: "cleanup", commit: "commit@0" }, { transition: "setup", commit: "commit@1" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
     });
@@ -867,13 +878,51 @@ describe("React Function Component semantics", () => {
     const replay = result.components[0]!.replay.concurrentInterruption;
     expect(replay.renderAttempts).toEqual([
       { instance: "render@0", outcome: "discarded", reason: "concurrent-interruption" },
-      { instance: "render@1", outcome: "committed" },
+      { instance: "render@1", outcome: "committed", commit: "commit@0" },
     ]);
     const quint = generateReactLifecycleQuint("interrupted_render", result.components[0]!, "concurrentInterruption");
     expect(quint).toContain("action discard_render_0");
     expect(quint).toContain("action commit_render_1");
-    expect(quint).toContain("committed_render_count >= 1");
+    expect(quint).toContain("setup_0 >= 1 implies commit_generation_0 == 1");
     expect(quint).toContain("val reactLifecycleSafe");
+  });
+
+  it("associates dependency cleanup and setup with their owning commit generations", () => {
+    const result = analyzeReactSemantics("dependency-change.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Room({ roomId }: { roomId: string }) {
+        useEffect(() => { console.log("connect", roomId); return () => console.log("disconnect", roomId) }, [roomId])
+        return null
+      }
+    `);
+    const replay = result.components[0]!.replay.dependencyChange;
+    expect(replay.effects[0]!.lifecycle).toEqual([
+      { transition: "setup", commit: "commit@0" },
+      { transition: "cleanup", commit: "commit@0" },
+      { transition: "setup", commit: "commit@1" },
+    ]);
+    const quint = generateReactLifecycleQuint("dependency_change", result.components[0]!, "dependencyChange");
+    expect(quint).toContain("var commit_generation_0: int");
+    expect(quint).toContain("var commit_generation_1: int");
+    expect(quint).toContain("setup_0 >= 2 implies commit_generation_1 == 1");
+  });
+
+  it("rejects inconsistent externally supplied lifecycle replay IR", () => {
+    const result = analyzeReactSemantics("invalid-replay.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function App() { useEffect(() => {}, []); return null }
+    `);
+    const missingCommit = structuredClone(result.components[0]!);
+    delete missingCommit.replay.production.renderAttempts[0]!.commit;
+    expect(() => generateReactLifecycleQuint("missing_commit", missingCommit, "production"))
+      .toThrow("committed render render@0 has no commit generation");
+
+    const mismatchedLifecycle = structuredClone(result.components[0]!);
+    mismatchedLifecycle.replay.production.effects[0]!.transitions = ["cleanup"];
+    expect(() => generateReactLifecycleQuint("mismatched_lifecycle", mismatchedLifecycle, "production"))
+      .toThrow("transitions do not match lifecycle steps");
   });
 
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
@@ -942,7 +991,7 @@ describe("React Function Component semantics", () => {
       "concurrentInterruption",
     );
     expect(interrupted).toContain("action discard_render_0");
-    expect(interrupted).toContain("setup_0 == 0 or committed_render_count >= 1");
+    expect(interrupted).toContain("setup_0 >= 1 implies commit_generation_0 == 1");
 
     const leaking = analyzeReactSemantics(fileName, source.replace(
       "return () => unsubscribeFromTelemetry(subscription);",

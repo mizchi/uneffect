@@ -136,7 +136,8 @@ from event, callback-ref commit, layout/passive Effect, and cleanup phases,
 locally match acquired resource identities, reject selected snapshot/ref render
 violations, check inline Hook dependencies, and expose a Strict Mode replay
 projection plus one bounded interrupted-render projection that can generate a
-reviewable Quint lifecycle model. See
+reviewable Quint lifecycle model. Dependency-change replay associates old
+cleanup and new setup with their owning commit generations. See
 [React function component semantics](./docs/react-semantics.md).
 
 ## CLI

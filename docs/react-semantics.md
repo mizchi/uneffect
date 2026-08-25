@@ -201,7 +201,9 @@ Every component and custom-Hook summary exposes a zero-runtime `replay` model.
 The production initial-mount scenario has one render invocation and one setup
 transition for each present layout/passive/ref-callback phase. The development
 Strict Mode scenario has two render invocations and models each present Effect
-or inline callback-ref instance as `setup, cleanup, setup`. Every replay entry
+or inline callback-ref instance as `setup, cleanup, setup`. The dependency-change
+scenario commits two render generations and associates the old generation's
+`setup, cleanup` with the replacement generation's final `setup`. Every replay entry
 has a source-derived `instance` path and preserves that setup's own
 `cleanupEffects`. Custom-Hook composition prefixes the nested instance with
 each caller site, so repeated Hook calls remain distinct.
@@ -212,6 +214,12 @@ then commits a replacement attempt. Its Effect and callback-ref setup entries
 belong only to the committed result; discarded render work cannot authorize a
 commit-side effect. This is a minimal interruption law, not a React scheduler
 implementation.
+
+Committed render attempts carry a stable model-local generation such as
+`commit@0`. Each lifecycle entry stores both its transition and owning commit.
+Consequently, the identical transition spelling used by Strict Mode replay and
+dependency changes does not erase whether the final setup belongs to the same
+commit or its replacement.
 
 This is deliberately a lifecycle projection, not a claim about total ordering
 between all layout, passive, and callback-ref instances, browser tasks,
@@ -230,17 +238,24 @@ Program result once and includes the same diagnostics. The analysis is
 metadata-only and adds no runtime dependency.
 
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
-`production`, `strictModeDevelopment`, or `concurrentInterruption` replay into
-reviewable Quint. It uses separate attempted/committed/discarded render counts
-and one setup/cleanup counter pair per lifecycle instance. All modeled render
-attempts must finish and at least one must commit before initial setup, while
-different commit instances remain unordered. The
+`production`, `strictModeDevelopment`, `concurrentInterruption`, or
+`dependencyChange` replay into reviewable Quint. It uses separate
+attempted/committed/discarded render counts, one flag per commit generation,
+and one setup/cleanup counter pair per lifecycle instance. A lifecycle
+transition requires its owner generation to have committed, while different
+commit instances remain unordered. The
 `reactLifecycleSafe` invariant requires cleanup never to lead setup, setup to
 lead cleanup by at most one, and both counters to stay within the selected
-scenario's bounds. Test-only early-cleanup and setup-after-discard transitions
-demonstrate that the invariant is load-bearing under the Quint simulator. This
+scenario's bounds. Test-only early-cleanup, setup-after-discard, and
+wrong-generation setup transitions demonstrate that the invariant is
+load-bearing under the Quint simulator. This
 is bounded lifecycle evidence, not a proof of React's scheduler or host commit
 order.
+
+The public generator validates externally supplied replay IR before emitting a
+model. Render-attempt counts, committed/discarded generation ownership, and the
+legacy transition view must agree with the generation-aware lifecycle steps;
+inconsistent input is rejected rather than weakened into a model.
 
 ## Current limits
 
@@ -282,7 +297,9 @@ callback ref, matching cleanup, and an inline Fetch event. Its regression test
 removes Effect/ref cleanup, substitutes another resource, removes a dependency,
 and mutates props as independent negative controls. The same component also
 generates the bounded interrupted-render model and locks the rule that only a
-committed render authorizes its subscription/ref setup. The checked-in
+committed render authorizes its subscription/ref setup. Its dependency-change
+projection additionally distinguishes the generation owning old cleanup from
+the one owning replacement setup. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

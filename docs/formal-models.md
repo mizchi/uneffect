@@ -160,18 +160,19 @@ Z3 checks sequential preconditions, postconditions, and loop invariants. It is n
 
 ## React lifecycle projection
 
-An opted-in React component's production, development Strict Mode, or bounded
-concurrent-interruption replay can be passed to
+An opted-in React component's production, development Strict Mode, bounded
+concurrent-interruption, or dependency-change replay can be passed to
 `generateReactLifecycleQuint`. The generated model retains every
 layout/passive Effect and inline callback-ref instance with separate setup and
 cleanup counters. It separately counts attempted, committed, and discarded
-renders. Initial setup is enabled only after all modeled attempts finish and at
-least one render commits, but different commit instances are intentionally unordered.
+renders, and gives every committed render a generation. Each lifecycle
+transition requires its owning generation to have committed, but different
+commit instances are intentionally unordered.
 `reactLifecycleSafe` checks `cleanup <= setup <= cleanup + 1` and the selected
 scenario's counter bounds. The formal test tier runs positive models plus
-negative early-cleanup and setup-after-discard transitions, which Quint must
-reject. This does not model Suspense, Offscreen, hydration, or the browser
-scheduler.
+negative early-cleanup, setup-after-discard, and wrong-generation setup
+transitions, which Quint must reject. This does not model Suspense, Offscreen,
+hydration, or the browser scheduler.
 
 ## Verification ledger
 

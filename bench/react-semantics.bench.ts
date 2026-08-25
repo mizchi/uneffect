@@ -63,4 +63,8 @@ describe("React semantic analysis", () => {
   bench("generate interrupted-render Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`interrupted_${index}`, component, "concurrentInterruption"));
   }, { time: 500, iterations: 20 });
+
+  bench("generate dependency-change Quint for 128 summaries", () => {
+    analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`dependency_${index}`, component, "dependencyChange"));
+  }, { time: 500, iterations: 20 });
 });

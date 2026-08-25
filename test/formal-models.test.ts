@@ -105,4 +105,36 @@ describe("React lifecycle Quint projection", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  test("rejects dependency setup owned by an uncommitted generation", () => {
+    const analysis = analyzeReactSemantics("room.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Room({ id }: { id: string }) {
+        useEffect(() => { console.log("connect", id); return () => console.log("disconnect", id) }, [id])
+        return null
+      }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-generation-"));
+    const path = join(directory, "generation.qnt");
+    const run = (broken: boolean) => {
+      writeFileSync(path, generateReactLifecycleQuint("react_generation", analysis.components[0]!, "dependencyChange", {
+        allowSetupFromWrongCommit: broken,
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactLifecycleSafe", "--max-steps=6", "--max-samples=500",
+        "--seed=0x67656e6572617469", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run(false);
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      const broken = run(true);
+      expect(broken.error).toBeUndefined();
+      expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+      expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

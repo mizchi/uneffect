@@ -28,10 +28,15 @@ export interface ReactPhaseSummary {
 
 export type ReactEffectTransition = "setup" | "cleanup";
 export type ReactCommitPhase = "passive-effect" | "layout-effect" | "ref-callback";
+export interface ReactLifecycleStep {
+  transition: ReactEffectTransition;
+  commit: string;
+}
 export interface ReactReplayEffect {
   instance: string;
   phase: ReactCommitPhase;
   transitions: ReactEffectTransition[];
+  lifecycle: ReactLifecycleStep[];
   setupEffects: string[];
   cleanupEffects: string[];
 }
@@ -39,6 +44,7 @@ export interface ReactRenderAttempt {
   instance: string;
   outcome: "committed" | "discarded";
   reason?: "strict-mode-replay" | "concurrent-interruption";
+  commit?: string;
 }
 export interface ReactReplayScenario {
   renderInvocations: number;
@@ -49,6 +55,7 @@ export interface ReactReplayModel {
   production: ReactReplayScenario;
   strictModeDevelopment: ReactReplayScenario;
   concurrentInterruption: ReactReplayScenario;
+  dependencyChange: ReactReplayScenario;
 }
 
 export interface ReactComponentSummary {
@@ -120,28 +127,48 @@ interface CommitInstanceSummary {
 }
 
 function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayModel {
-  const effects = (transitions: ReactEffectTransition[]): ReactReplayEffect[] => instances.map((effect) => ({ ...effect, transitions }));
+  const effects = (lifecycle: ReactLifecycleStep[]): ReactReplayEffect[] => instances.map((effect) => ({
+    ...effect,
+    transitions: lifecycle.map(({ transition }) => transition),
+    lifecycle: lifecycle.map((step) => ({ ...step })),
+  }));
   return {
     production: {
       renderInvocations: 1,
-      renderAttempts: [{ instance: "render@0", outcome: "committed" }],
-      effects: effects(["setup"]),
+      renderAttempts: [{ instance: "render@0", outcome: "committed", commit: "commit@0" }],
+      effects: effects([{ transition: "setup", commit: "commit@0" }]),
     },
     strictModeDevelopment: {
       renderInvocations: 2,
       renderAttempts: [
         { instance: "render@0", outcome: "discarded", reason: "strict-mode-replay" },
-        { instance: "render@1", outcome: "committed" },
+        { instance: "render@1", outcome: "committed", commit: "commit@0" },
       ],
-      effects: effects(["setup", "cleanup", "setup"]),
+      effects: effects([
+        { transition: "setup", commit: "commit@0" },
+        { transition: "cleanup", commit: "commit@0" },
+        { transition: "setup", commit: "commit@0" },
+      ]),
     },
     concurrentInterruption: {
       renderInvocations: 2,
       renderAttempts: [
         { instance: "render@0", outcome: "discarded", reason: "concurrent-interruption" },
-        { instance: "render@1", outcome: "committed" },
+        { instance: "render@1", outcome: "committed", commit: "commit@0" },
       ],
-      effects: effects(["setup"]),
+      effects: effects([{ transition: "setup", commit: "commit@0" }]),
+    },
+    dependencyChange: {
+      renderInvocations: 2,
+      renderAttempts: [
+        { instance: "render@0", outcome: "committed", commit: "commit@0" },
+        { instance: "render@1", outcome: "committed", commit: "commit@1" },
+      ],
+      effects: effects([
+        { transition: "setup", commit: "commit@0" },
+        { transition: "cleanup", commit: "commit@0" },
+        { transition: "setup", commit: "commit@1" },
+      ]),
     },
   };
 }
@@ -1103,12 +1130,33 @@ export function generateReactLifecycleQuint(
   moduleName: string,
   component: ReactComponentSummary,
   scenario: ReactLifecycleScenario = "strictModeDevelopment",
-  options: { allowCleanupBeforeSetup?: boolean; allowCommitEffectsWithoutCommit?: boolean } = {},
+  options: { allowCleanupBeforeSetup?: boolean; allowCommitEffectsWithoutCommit?: boolean; allowSetupFromWrongCommit?: boolean } = {},
 ): string {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
   const replay = component.replay[scenario];
-  const strict = scenario === "strictModeDevelopment";
-  const variables = ["render_attempt_count", "committed_render_count", "discarded_render_count", ...replay.effects.flatMap((_effect, index) => [`setup_${index}`, `cleanup_${index}`])];
+  if (replay.renderInvocations !== replay.renderAttempts.length) {
+    throw new Error(`renderInvocations ${replay.renderInvocations} does not match ${replay.renderAttempts.length} render attempts`);
+  }
+  for (const attempt of replay.renderAttempts) {
+    if (attempt.outcome === "committed" && !attempt.commit) throw new Error(`committed render ${attempt.instance} has no commit generation`);
+    if (attempt.outcome === "discarded" && attempt.commit) throw new Error(`discarded render ${attempt.instance} cannot create commit generation ${attempt.commit}`);
+  }
+  const commitIds = [...new Set(replay.renderAttempts.flatMap(({ commit }) => commit ? [commit] : []))];
+  for (const effect of replay.effects) {
+    if (effect.transitions.length !== effect.lifecycle.length
+      || effect.transitions.some((transition, index) => transition !== effect.lifecycle[index]!.transition)) {
+      throw new Error(`effect ${effect.instance} transitions do not match lifecycle steps`);
+    }
+    for (const step of effect.lifecycle) {
+      if (!commitIds.includes(step.commit)) throw new Error(`effect ${effect.instance} refers to uncommitted generation ${step.commit}`);
+    }
+  }
+  const commitVariables = new Map(commitIds.map((commit, index) => [commit, `commit_generation_${index}`]));
+  const variables = [
+    "render_attempt_count", "committed_render_count", "discarded_render_count",
+    ...commitVariables.values(),
+    ...replay.effects.flatMap((_effect, index) => [`setup_${index}`, `cleanup_${index}`]),
+  ];
   const lines = [`module ${moduleName} {`, ...variables.map((name) => `  var ${name}: int`), "", "  action init = all {"];
   for (const name of variables) lines.push(`    ${name}' = 0,`);
   lines.push("  }");
@@ -1120,37 +1168,66 @@ export function generateReactLifecycleQuint(
   };
   replay.renderAttempts.forEach((attempt, index) => {
     const committed = attempt.outcome === "committed";
+    const commitVariable = attempt.commit ? commitVariables.get(attempt.commit) : undefined;
+    if (committed && !commitVariable) throw new Error(`committed render ${attempt.instance} has no commit generation`);
+    const updates = new Map([
+      ["render_attempt_count", "render_attempt_count + 1"],
+      [committed ? "committed_render_count" : "discarded_render_count", `${committed ? "committed_render_count" : "discarded_render_count"} + 1`],
+    ]);
+    if (commitVariable) updates.set(commitVariable, "1");
     action(
       `${committed ? "commit" : "discard"}_render_${index}`,
       [`render_attempt_count == ${index}`],
-      new Map([
-        ["render_attempt_count", "render_attempt_count + 1"],
-        [committed ? "committed_render_count" : "discarded_render_count", `${committed ? "committed_render_count" : "discarded_render_count"} + 1`],
-      ]),
-      [`instance: ${attempt.instance}`, `outcome: ${attempt.outcome}${attempt.reason ? ` (${attempt.reason})` : ""}`],
+      updates,
+      [`instance: ${attempt.instance}`, `outcome: ${attempt.outcome}${attempt.reason ? ` (${attempt.reason})` : ""}${attempt.commit ? `; generation: ${attempt.commit}` : ""}`],
     );
   });
+  const lifecycleActions: string[][] = replay.effects.map(() => []);
   replay.effects.forEach((effect, index) => {
     const comment = [
       `instance: ${effect.instance}`,
       `setup effects: ${effect.setupEffects.join(" | ") || "none"}`,
       `cleanup effects: ${effect.cleanupEffects.join(" | ") || "none"}`,
     ];
-    action(`setup_${index}_initial`, [`render_attempt_count == ${replay.renderInvocations}`, "committed_render_count >= 1", `setup_${index} == 0`, `cleanup_${index} == 0`], new Map([[`setup_${index}`, "1"]]), comment);
-    if (strict) {
-      action(`cleanup_${index}_strict_replay`, [`setup_${index} == 1`, `cleanup_${index} == 0`], new Map([[`cleanup_${index}`, "1"]]));
-      action(`setup_${index}_strict_replay`, [`setup_${index} == 1`, `cleanup_${index} == 1`], new Map([[`setup_${index}`, "2"]]));
-    }
+    let setupCount = 0, cleanupCount = 0;
+    effect.lifecycle.forEach((step, stepIndex) => {
+      const commitVariable = commitVariables.get(step.commit);
+      if (!commitVariable) throw new Error(`lifecycle step refers to unknown commit generation: ${step.commit}`);
+      const isSetup = step.transition === "setup";
+      if (isSetup) setupCount += 1;
+      else cleanupCount += 1;
+      const name = stepIndex === 0 && isSetup
+        ? `setup_${index}_initial`
+        : scenario === "strictModeDevelopment"
+          ? `${step.transition}_${index}_strict_replay`
+          : `${step.transition}_${index}_commit_${commitIds.indexOf(step.commit)}`;
+      const guards = isSetup
+        ? [`${commitVariable} == 1`, `setup_${index} == ${setupCount - 1}`, `cleanup_${index} == ${setupCount - 1}`]
+        : [`${commitVariable} == 1`, `setup_${index} == ${cleanupCount}`, `cleanup_${index} == ${cleanupCount - 1}`];
+      action(name, guards, new Map([[`${step.transition}_${index}`, String(isSetup ? setupCount : cleanupCount)]]), stepIndex === 0 ? comment : []);
+      lifecycleActions[index]!.push(name);
+    });
     if (options.allowCleanupBeforeSetup) action(`cleanup_${index}_before_setup`, [`setup_${index} == 0`, `cleanup_${index} == 0`], new Map([[`cleanup_${index}`, "1"]]));
     if (options.allowCommitEffectsWithoutCommit) action(`setup_${index}_after_discard`, ["discarded_render_count >= 1", "committed_render_count == 0", `setup_${index} == 0`], new Map([[`setup_${index}`, "1"]]));
+    if (options.allowSetupFromWrongCommit && setupCount >= 2 && cleanupCount >= 1) {
+      const firstCommit = commitVariables.get(effect.lifecycle[0]!.commit)!;
+      const lastSetup = [...effect.lifecycle].reverse().find(({ transition }) => transition === "setup")!;
+      const expectedCommit = commitVariables.get(lastSetup.commit)!;
+      action(
+        `setup_${index}_from_wrong_commit`,
+        [`${firstCommit} == 1`, `${expectedCommit} == 0`, `setup_${index} == 0`, `cleanup_${index} == 0`],
+        new Map([[`setup_${index}`, "2"], [`cleanup_${index}`, "1"]]),
+      );
+    }
   });
   lines.push("", "  action step = any {");
   replay.renderAttempts.forEach((attempt, index) => lines.push(`    ${attempt.outcome === "committed" ? "commit" : "discard"}_render_${index},`));
   replay.effects.forEach((_effect, index) => {
-    lines.push(`    setup_${index}_initial,`);
-    if (strict) lines.push(`    cleanup_${index}_strict_replay,`, `    setup_${index}_strict_replay,`);
+    for (const name of lifecycleActions[index]!) lines.push(`    ${name},`);
     if (options.allowCleanupBeforeSetup) lines.push(`    cleanup_${index}_before_setup,`);
     if (options.allowCommitEffectsWithoutCommit) lines.push(`    setup_${index}_after_discard,`);
+    if (options.allowSetupFromWrongCommit && replay.effects[index]!.lifecycle.filter(({ transition }) => transition === "setup").length >= 2
+      && replay.effects[index]!.lifecycle.some(({ transition }) => transition === "cleanup")) lines.push(`    setup_${index}_from_wrong_commit,`);
   });
   lines.push("  }");
   const bounds = [
@@ -1160,14 +1237,23 @@ export function generateReactLifecycleQuint(
     "0 <= discarded_render_count",
     "committed_render_count + discarded_render_count == render_attempt_count",
   ];
-  replay.effects.forEach((_effect, index) => bounds.push(
-    `0 <= cleanup_${index}`,
-    `cleanup_${index} <= setup_${index}`,
-    `setup_${index} <= cleanup_${index} + 1`,
-    `setup_${index} <= ${strict ? 2 : 1}`,
-    `cleanup_${index} <= ${strict ? 1 : 0}`,
-    `setup_${index} == 0 or committed_render_count >= 1`,
-  ));
+  replay.effects.forEach((effect, index) => {
+    const setupSteps = effect.lifecycle.filter(({ transition }) => transition === "setup");
+    const cleanupSteps = effect.lifecycle.filter(({ transition }) => transition === "cleanup");
+    bounds.push(
+      `0 <= cleanup_${index}`,
+      `cleanup_${index} <= setup_${index}`,
+      `setup_${index} <= cleanup_${index} + 1`,
+      `setup_${index} <= ${setupSteps.length}`,
+      `cleanup_${index} <= ${cleanupSteps.length}`,
+    );
+    setupSteps.forEach((step, stepIndex) => bounds.push(
+      `(setup_${index} >= ${stepIndex + 1} implies ${commitVariables.get(step.commit)} == 1)`,
+    ));
+    cleanupSteps.forEach((step, stepIndex) => bounds.push(
+      `(cleanup_${index} >= ${stepIndex + 1} implies ${commitVariables.get(step.commit)} == 1)`,
+    ));
+  });
   lines.push("", `  val reactLifecycleSafe = ${bounds.join(" and ")}`, "}", "");
   return lines.join("\n");
 }

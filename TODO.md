@@ -48,6 +48,7 @@ documentation are all updated.
 - [x] Preserve individual Effect/callback-ref lifecycle instances, including repeated and transitive cross-module custom-Hook call paths, so replay entries associate each setup with its own cleanup effects.
 - [x] Generate reviewable production/development-Strict-Mode Quint lifecycle models with per-instance setup/cleanup counters and a load-bearing early-cleanup invariant.
 - [x] Distinguish committed and discarded render attempts, model one bounded concurrent interruption, and reject commit-side Effect/ref setup derived only from discarded work.
+- [x] Associate lifecycle transitions with commit generations, model dependency-change cleanup/setup ownership, and reject setup attributed to an uncommitted generation.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select
