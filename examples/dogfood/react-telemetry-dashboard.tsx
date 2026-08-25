@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -20,6 +20,10 @@ interface TelemetryViewport {
   readonly node: Element | null;
 }
 
+interface TelemetryStatusSubscription {
+  readonly service: string;
+}
+
 /* uneffect: react acquire TelemetrySubscription result */
 declare function subscribeToTelemetry(service: string): TelemetrySubscription;
 /* uneffect: react release TelemetrySubscription parameter 0 */
@@ -28,6 +32,12 @@ declare function unsubscribeFromTelemetry(subscription: TelemetrySubscription): 
 declare function attachTelemetryViewport(node: Element | null): TelemetryViewport;
 /* uneffect: react release TelemetryViewport parameter 0 */
 declare function detachTelemetryViewport(viewport: TelemetryViewport): void;
+/* uneffect: react acquire TelemetryStatusSubscription result */
+declare function openTelemetryStatus(notify: () => void): TelemetryStatusSubscription;
+/* uneffect: react release TelemetryStatusSubscription parameter 0 */
+declare function closeTelemetryStatus(subscription: TelemetryStatusSubscription): void;
+/* uneffect: effect TelemetryStatusRead */
+declare function readTelemetryStatus(): boolean;
 /* uneffect: effect StyleWrite */
 declare function insertTelemetryStyles(): void;
 /* uneffect: effect StyleWrite */
@@ -39,6 +49,20 @@ function useTelemetryStyles(): void {
     insertTelemetryStyles();
     return () => removeTelemetryStyles();
   }, []);
+}
+
+function subscribeToTelemetryStatus(notify: () => void): () => void {
+  const subscription = openTelemetryStatus(notify);
+  return () => closeTelemetryStatus(subscription);
+}
+
+function getTelemetryStatusSnapshot(): boolean {
+  return readTelemetryStatus();
+}
+
+/* uneffect: react hook */
+function useTelemetryOnlineStatus(): boolean {
+  return useSyncExternalStore(subscribeToTelemetryStatus, getTelemetryStatusSnapshot);
 }
 
 /* uneffect: react hook */
@@ -54,6 +78,7 @@ function useTelemetrySubscription(service: string): void {
 /* uneffect: react component */
 export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[] }) {
   const [showFailures, setShowFailures] = useState(false);
+  const online = useTelemetryOnlineStatus();
   useTelemetryStyles();
   useTelemetrySubscription(props.service);
   const visibleRows = useMemo(
@@ -71,7 +96,7 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
     const viewport = attachTelemetryViewport(node);
     return () => detachTelemetryViewport(viewport);
   }}>
-    {visibleRows.length}
+    {online ? visibleRows.length : 0}
     <button onClick={refresh}>refresh</button>
   </output>;
 }

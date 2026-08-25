@@ -164,6 +164,75 @@ describe("React Function Component semantics", () => {
       && kind === "invalid-effect-event-call" && phase === "event")).toHaveLength(2);
   });
 
+  it("separates external-store snapshots from subscription lifecycle", () => {
+    const result = analyzeReactSemantics("external-store.tsx", `
+      import { useSyncExternalStore as useStore } from "react"
+      interface StoreSubscription { readonly id: string }
+      /* uneffect: effect StoreRead */
+      declare function readStore(): number
+      /* uneffect: effect ServerStoreRead */
+      declare function readServerStore(): number
+      /* uneffect: react acquire StoreSubscription result */
+      declare function openStoreSubscription(notify: () => void): StoreSubscription
+      /* uneffect: react release StoreSubscription parameter 0 */
+      declare function closeStoreSubscription(value: StoreSubscription): void
+      function subscribe(notify: () => void) {
+        const value = openStoreSubscription(notify)
+        return () => closeStoreSubscription(value)
+      }
+      function getSnapshot() { return readStore() }
+      const getServerSnapshot = () => readServerStore()
+      /* uneffect: react component */
+      function Counter() {
+        const count = useStore(subscribe, getSnapshot, getServerSnapshot)
+        return count
+      }
+      /* uneffect: react hook */
+      function useCounterStore() {
+        return useStore(subscribe, getSnapshot, getServerSnapshot)
+      }
+      /* uneffect: react component */
+      function Composed() { return useCounterStore() }
+      declare const unknownSubscribe: (notify: () => void) => () => void
+      /* uneffect: react component */
+      function Invalid() {
+        return useStore(unknownSubscribe, () => ({ value: 1 }))
+      }
+      /* uneffect: react component */
+      function MissingCleanup() {
+        return useStore((_notify) => {}, () => 0)
+      }
+    `);
+
+    const counter = result.components.find(({ name }) => name === "Counter")!;
+    expect(counter.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "external-store-snapshot", effects: ["StoreRead"] }),
+      expect.objectContaining({ phase: "server-snapshot", effects: ["ServerStoreRead"] }),
+      expect.objectContaining({ phase: "external-store-subscribe", effects: ["Acquire<StoreSubscription>"] }),
+      expect.objectContaining({ phase: "cleanup", effects: ["Release<StoreSubscription>"] }),
+    ]));
+    expect(counter.replay.production.effects).toContainEqual(expect.objectContaining({
+      phase: "external-store-subscribe",
+      setupEffects: ["Acquire<StoreSubscription>"],
+      cleanupEffects: ["Release<StoreSubscription>"],
+    }));
+    const quint = generateReactLifecycleQuint("external_store", counter);
+    expect(quint).toContain("phase: external-store-subscribe");
+    expect(quint).toContain("setup effects: Acquire<StoreSubscription>");
+    expect(result.diagnostics.filter(({ component }) => component === "Counter")).toEqual([]);
+    expect(result.components.find(({ name }) => name === "Composed")!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "external-store-snapshot", effects: ["StoreRead"] }),
+      expect.objectContaining({ phase: "external-store-subscribe", effects: ["Acquire<StoreSubscription>"] }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => component === "Invalid")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "unknown-external-store-callback", phase: "external-store-subscribe", operation: "unknownSubscribe" }),
+      expect.objectContaining({ kind: "uncached-external-store-snapshot", phase: "external-store-snapshot" }),
+    ]));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      component: "MissingCleanup", kind: "missing-external-store-cleanup", phase: "external-store-subscribe",
+    }));
+  });
+
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }

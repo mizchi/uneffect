@@ -28,12 +28,15 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into seven phases:
+The analyzer currently projects component work into ten phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
 | `render` | Replayable calculation of the next UI value | Must be idempotent and free of observable capabilities |
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
+| `external-store-snapshot` | `useSyncExternalStore` client `getSnapshot` read during replayable rendering | Read capabilities are recorded at the specialized boundary |
+| `server-snapshot` | Optional `getServerSnapshot` read during SSR or hydration | Capabilities remain distinct from the client snapshot |
+| `external-store-subscribe` | External-store subscription setup after mount | Acquisition and returned cleanup are paired without claiming exact host timing |
 | `insertion-effect` | `useInsertionEffect` setup during commit, before refs and layout/passive Effects | Capabilities are recorded; local state dispatch is rejected |
 | `layout-effect` | `useLayoutEffect` setup after commit | Capabilities are recorded separately |
 | `passive-effect` | `useEffect` setup after commit | Capabilities are recorded separately |
@@ -71,6 +74,20 @@ dependency requirements, while explicitly listing it produces
 or from a transition action produces `invalid-effect-event-call`; it is not
 silently treated as an ordinary event handler. This implements the local,
 inline fragment of the [React `useEffectEvent` contract](https://react.dev/reference/react/useEffectEvent).
+
+Named, default-object, or namespace-qualified `useSyncExternalStore` calls resolve inline,
+module-local, and immutable component/custom-Hook-local callback arguments.
+Client and optional server snapshot capabilities are not charged as ordinary
+render violations: the Hook is the explicit external-read boundary. The
+subscribe callback forms an `external-store-subscribe` commit instance, and a
+returned cleanup participates in the same resource identity checks and Quint
+lifecycle projection as Effects. Subscription and passive Effect phases have
+no imposed relative order because React's public API does not promise one.
+Opaque callbacks produce `unknown-external-store-callback`. A snapshot that
+directly returns a fresh object or array produces
+`uncached-external-store-snapshot`; a subscribe callback without a returned
+unsubscribe function produces `missing-external-store-cleanup`, following the
+[React external-store contract](https://react.dev/reference/react/useSyncExternalStore).
 
 Named imports of `useEffect`, `useLayoutEffect`, and `useInsertionEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
@@ -416,7 +433,10 @@ This is a tested initial fragment, not a complete React semantics:
   imported/interprocedural transition actions, Offscreen trees,
   server components, hydration,
   insertion Effect component-by-component cleanup/setup interleaving,
-  Effect Events passed through props/imports or higher-order containers, and React compiler assumptions are not
+  Effect Events passed through props/imports or higher-order containers,
+  external-store member callbacks, general cache/immutability proofs,
+  exact snapshot invocation counts, transition fallback-to-blocking behavior,
+  server/client snapshot equality, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
   concurrent scheduler refinement are not generated yet.

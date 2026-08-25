@@ -24,6 +24,9 @@ Effect with StyleWrite setup/cleanup so phase normalization and the local
 state-dispatch/ref prohibition scans remain in the measured path. The shared
 subscription Hook defines a local Effect Event, calls it from its passive
 Effect, and captures `label` without adding the Event binding to dependencies.
+Every component also composes a shared `useSyncExternalStore` custom Hook whose
+module-local client snapshot has a read capability and whose subscription has
+an identity-matched acquire/release lifecycle.
 The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
@@ -68,6 +71,13 @@ RME and 6.61%/22.38% parse-only RME. Increasing the three main paths from a
 (76.78/5.50/117.70 ms in the longer run) are recorded only as noisy evidence,
 not as a claimed regression. The committed longer sampling window makes a
 future quiet-machine rerun more likely to yield a defensible baseline.
+
+The next quiet run, after adding the external-store custom Hook, measured
+44.70 ms for source analysis (1.61% RME), 3.35 ms for parse-only (0.72% RME),
+and 63.22 ms for the reused Program (1.07% RME), using 30 main-path samples.
+This replaces the rejected Effect Event runs as the current expanded-workload
+baseline. It is close to the earlier insertion-only 44.23/3.10/63.98 ms run,
+but the workloads differ and the result is not claimed as a speedup.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded

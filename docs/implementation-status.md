@@ -164,6 +164,14 @@ same property is proved for arbitrary TypeScript.
   bindings are omitted from dependency requirements; explicit dependency-array
   entries and calls from render, JSX events, or transition actions are
   diagnosed. Prop/import/higher-order Effect Event flow remains unsupported.
+- `useSyncExternalStore` resolves inline, module-local, and immutable local
+  subscribe/client-snapshot/server-snapshot callbacks. Snapshot capabilities
+  occupy specialized client/server phases; subscribe setup and returned
+  cleanup form an identity-checked commit lifecycle that reaches Quint.
+  Opaque callbacks, missing returned unsubscribe functions, and direct fresh
+  object/array snapshots fail closed. Member
+  callbacks, general cache proofs, exact call counts, transition fallback, and
+  hydration equality remain unsupported.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase

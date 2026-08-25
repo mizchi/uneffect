@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "event" | "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
+export type ReactPhase = "render" | "event" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
@@ -14,6 +14,9 @@ export type ReactDiagnosticKind =
   | "insertion-effect-ref-access"
   | "invalid-effect-event-call"
   | "effect-event-dependency"
+  | "unknown-external-store-callback"
+  | "uncached-external-store-snapshot"
+  | "missing-external-store-cleanup"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -33,7 +36,7 @@ export interface ReactPhaseSummary {
 }
 
 export type ReactEffectTransition = "setup" | "cleanup";
-export type ReactCommitPhase = "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback";
+export type ReactCommitPhase = "insertion-effect" | "external-store-subscribe" | "passive-effect" | "layout-effect" | "ref-callback";
 export interface ReactLifecycleStep {
   transition: ReactEffectTransition;
   commit: string;
@@ -169,8 +172,8 @@ interface LifecycleSummary {
 interface CustomHookSummary {
   phases: Map<ReactPhase, Set<string>>;
   instances: CommitInstanceSummary[];
-  leaked: Array<{ phase: HookKind; capabilities: string[] }>;
-  lifecycleIssues: Array<LifecycleIssue & { phase: HookKind }>;
+  leaked: Array<{ phase: ReactCommitPhase; capabilities: string[] }>;
+  lifecycleIssues: Array<LifecycleIssue & { phase: ReactCommitPhase }>;
   suspensions: ReactSuspensionSource[];
 }
 
@@ -182,7 +185,7 @@ interface CommitInstanceSummary {
 }
 
 const reactCommitPhaseOrder = new Map<ReactCommitPhase, number>([
-  ["insertion-effect", 0], ["ref-callback", 1], ["layout-effect", 2], ["passive-effect", 3],
+  ["insertion-effect", 0], ["ref-callback", 1], ["layout-effect", 2], ["external-store-subscribe", 3], ["passive-effect", 3],
 ]);
 
 function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayModel {
@@ -328,7 +331,7 @@ function lifecycleDeclarations(source: ts.SourceFile, lifecycle: "acquire" | "re
 }
 
 function lifecycleSummary(
-  setup: ts.ArrowFunction | ts.FunctionExpression,
+  setup: LocalEventCallback,
   cleanup: ts.ArrowFunction | ts.FunctionExpression | undefined,
   acquisitions: ReadonlyMap<string, LifecycleContract>,
   releases: ReadonlyMap<string, LifecycleContract>,
@@ -720,7 +723,7 @@ function inlineCallback(call: ts.CallExpression, index: number | undefined): ts.
   return argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument)) ? argument : undefined;
 }
 
-type LocalEventCallback = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+type LocalEventCallback = (ts.FunctionDeclaration & { body: ts.Block }) | ts.ArrowFunction | ts.FunctionExpression;
 
 function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, LocalEventCallback> {
   if (!ts.isBlock(component.body)) return new Map();
@@ -728,7 +731,7 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
   const aliases = new Map<string, string>();
   const reassigned = new Set<string>();
   for (const statement of component.body.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement);
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
     if (!ts.isVariableStatement(statement)
       || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
     for (const declaration of statement.declarationList.declarations) {
@@ -761,6 +764,73 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
     if (callback) resolved.set(name, callback);
   }
   return resolved;
+}
+
+const sourceCallbackCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, LocalEventCallback>>();
+
+function sourceCallbacks(source: ts.SourceFile): ReadonlyMap<string, LocalEventCallback> {
+  const cached = sourceCallbackCache.get(source);
+  if (cached) return cached;
+  const callbacks = new Map<string, LocalEventCallback>();
+  const aliases = new Map<string, string>();
+  for (const statement of source.statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
+    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      const initializer = unwrapExpression(declaration.initializer);
+      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) callbacks.set(declaration.name.text, initializer);
+      else if (ts.isIdentifier(initializer)) aliases.set(declaration.name.text, initializer.text);
+    }
+  }
+  const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
+    if (seen.has(name)) return undefined;
+    const callback = callbacks.get(name);
+    if (callback) return callback;
+    const alias = aliases.get(name);
+    return alias ? resolve(alias, new Set(seen).add(name)) : undefined;
+  };
+  const resolved = new Map<string, LocalEventCallback>();
+  for (const name of [...callbacks.keys(), ...aliases.keys()]) {
+    const callback = resolve(name);
+    if (callback) resolved.set(name, callback);
+  }
+  sourceCallbackCache.set(source, resolved);
+  return resolved;
+}
+
+function callbackArgument(
+  argument: ts.Expression | undefined,
+  callbacks: ReadonlyMap<string, LocalEventCallback>,
+): LocalEventCallback | undefined {
+  if (!argument) return undefined;
+  const expression = unwrapExpression(argument);
+  if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression;
+  return ts.isIdentifier(expression) ? callbacks.get(expression.text) : undefined;
+}
+
+function isUseSyncExternalStoreCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "useSyncExternalStore";
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === "useSyncExternalStore"
+    && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
+}
+
+function returnsFreshSnapshot(callback: LocalEventCallback): ts.Expression | undefined {
+  if (!ts.isBlock(callback.body)) {
+    const expression = unwrapExpression(callback.body);
+    return ts.isObjectLiteralExpression(expression) || ts.isArrayLiteralExpression(expression) ? expression : undefined;
+  }
+  let fresh: ts.Expression | undefined;
+  const visit = (node: ts.Node): void => {
+    if (fresh || (node !== callback.body && ts.isFunctionLike(node))) return;
+    if (ts.isReturnStatement(node) && node.expression) {
+      const expression = unwrapExpression(node.expression);
+      if (ts.isObjectLiteralExpression(expression) || ts.isArrayLiteralExpression(expression)) fresh = expression;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(callback.body);
+  return fresh;
 }
 
 const localEffectEventCallbackCache = new WeakMap<ComponentNode, ReadonlyMap<string, ts.ArrowFunction | ts.FunctionExpression>>();
@@ -933,7 +1003,7 @@ function reactTransitionCallbacks(source: ts.SourceFile, boundary: ComponentNode
   return callbacks;
 }
 
-function returnedCleanup(callback: ts.ArrowFunction | ts.FunctionExpression): ts.ArrowFunction | ts.FunctionExpression | undefined {
+function returnedCleanup(callback: LocalEventCallback): ts.ArrowFunction | ts.FunctionExpression | undefined {
   if (!ts.isBlock(callback.body)) return undefined;
   for (const statement of callback.body.statements) {
     if (ts.isReturnStatement(statement) && statement.expression
@@ -1303,6 +1373,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues, suspensions };
     const transitionCallbacks = reactTransitionCallbacks(source, hook);
     const localCallbacks = localEventCallbacks(hook);
+    const callableCallbacks = new Map([...sourceCallbacks(source), ...localCallbacks]);
     const effectEvents = localEffectEventCallbacks(hook, source);
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
@@ -1330,6 +1401,28 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             expression: argument?.getText(source) ?? "<missing>",
             span: { start: node.getStart(source), end: node.getEnd() },
           });
+        }
+        if (isUseSyncExternalStoreCall(source, node.expression)) {
+          const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
+          const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
+          const serverSnapshot = callbackArgument(node.arguments[2], callableCallbacks);
+          if (snapshot) add("external-store-snapshot", directEffects(snapshot.body, declared, transitionCallbacks, localCallbacks));
+          if (serverSnapshot) add("server-snapshot", directEffects(serverSnapshot.body, declared, transitionCallbacks, localCallbacks));
+          if (subscribe) {
+            const setupEffects = directEffects(subscribe.body, declared, transitionCallbacks, localCallbacks);
+            const cleanup = returnedCleanup(subscribe);
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, localCallbacks) : [];
+            const lifecycle = lifecycleSummary(subscribe, cleanup, acquisitions, releases);
+            const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
+            const released = lifecycle.released.map((capability) => `Release<${capability}>`);
+            add("external-store-subscribe", [...setupEffects, ...acquired]);
+            if (cleanup) add("cleanup", cleanupEffects);
+            add("cleanup", released);
+            instances.push(commitInstance("external-store-subscribe", node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
+            if (lifecycle.missing.length > 0) leaked.push({ phase: "external-store-subscribe", capabilities: lifecycle.missing });
+            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({ ...issue, phase: "external-store-subscribe" as const })));
+          }
+          return;
         }
         const called = callName(node), builtinPhase = called ? hooks.get(called) : undefined;
         if (builtinPhase) {
@@ -1394,9 +1487,40 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const refs = renderRefBindings(hook, source);
     const stateUpdaters = stateUpdaterBindings(hook, source);
     const effectEvents = localEffectEventCallbacks(hook, source);
+    const callableCallbacks = new Map([...sourceCallbacks(source), ...localEventCallbacks(hook)]);
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
+        if (isUseSyncExternalStoreCall(source, node.expression)) {
+          const phases: ReactPhase[] = ["external-store-subscribe", "external-store-snapshot", "server-snapshot"];
+          for (const [index, phase] of phases.entries()) {
+            const argument = node.arguments[index];
+            if (index === 2 && !argument) continue;
+            if (!callbackArgument(argument, callableCallbacks)) reportHook(argument ?? node, {
+              kind: "unknown-external-store-callback", phase,
+              operation: argument?.getText(source) ?? `<argument ${index}>`,
+              message: `useSyncExternalStore argument ${index} is not an inline, module-local, or immutable Hook-local callback`,
+            });
+          }
+          const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
+          const fresh = snapshot && returnsFreshSnapshot(snapshot);
+          if (fresh) reportHook(fresh, {
+            kind: "uncached-external-store-snapshot", phase: "external-store-snapshot",
+            operation: fresh.getText(source),
+            message: "getSnapshot creates a fresh object or array on every read instead of returning a cached immutable snapshot",
+          });
+          const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
+          if (subscribe && !returnedCleanup(subscribe)) reportHook(node.arguments[0]!, {
+            kind: "missing-external-store-cleanup", phase: "external-store-subscribe",
+            operation: node.arguments[0]!.getText(source),
+            message: "useSyncExternalStore subscribe must return an unsubscribe cleanup function",
+          });
+          if (isConditionalWithin(node, hook)) reportHook(node, {
+            kind: "conditional-hook", phase: "render", hook: callName(node),
+            message: `${callName(node)} has control-flow-dependent call order`,
+          });
+          return;
+        }
         const called = callName(node), builtinHook = called ? hooks.has(called) : false, customHook = called ? customHooks.has(called) || externalHooks.has(called) : false;
         if (ts.isIdentifier(node.expression) && effectEvents.has(node.expression.text)) {
           reportHook(node, {
@@ -1495,6 +1619,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const refs = renderRefBindings(component, source);
     const stateUpdaters = stateUpdaterBindings(component, source);
     const eventCallbacks = localEventCallbacks(component);
+    const callableCallbacks = new Map([...sourceCallbacks(source), ...eventCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
     const visitRender = (node: ts.Node): void => {
@@ -1583,6 +1708,60 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           report(node, {
             kind: "invalid-effect-event-call", phase: "render", operation: node.expression.text,
             message: `${node.expression.text} is an Effect Event and may only be called from an Effect`,
+          });
+          return;
+        }
+        if (isUseSyncExternalStoreCall(source, node.expression)) {
+          const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
+          const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
+          const serverSnapshot = callbackArgument(node.arguments[2], callableCallbacks);
+          const callbackPhases: ReactPhase[] = ["external-store-subscribe", "external-store-snapshot", "server-snapshot"];
+          for (const [index, phase] of callbackPhases.entries()) {
+            const argument = node.arguments[index];
+            if (index === 2 && !argument) continue;
+            if (!callbackArgument(argument, callableCallbacks)) report(argument ?? node, {
+              kind: "unknown-external-store-callback", phase,
+              operation: argument?.getText(source) ?? `<argument ${index}>`,
+              message: `useSyncExternalStore argument ${index} is not an inline, module-local, or immutable component-local callback`,
+            });
+          }
+          if (snapshot) {
+            addPhase("external-store-snapshot", directEffects(snapshot.body, declared, transitionCallbacks, eventCallbacks));
+            const fresh = returnsFreshSnapshot(snapshot);
+            if (fresh) report(fresh, {
+              kind: "uncached-external-store-snapshot", phase: "external-store-snapshot",
+              operation: fresh.getText(source),
+              message: "getSnapshot creates a fresh object or array on every read instead of returning a cached immutable snapshot",
+            });
+          }
+          if (serverSnapshot) addPhase("server-snapshot", directEffects(serverSnapshot.body, declared, transitionCallbacks, eventCallbacks));
+          if (subscribe) {
+            const setupEffects = directEffects(subscribe.body, declared, transitionCallbacks, eventCallbacks);
+            const cleanup = returnedCleanup(subscribe);
+            if (!cleanup) report(node.arguments[0]!, {
+              kind: "missing-external-store-cleanup", phase: "external-store-subscribe",
+              operation: node.arguments[0]!.getText(source),
+              message: "useSyncExternalStore subscribe must return an unsubscribe cleanup function",
+            });
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks) : [];
+            const lifecycle = lifecycleSummary(subscribe, cleanup, acquisitions, releases);
+            const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
+            const released = lifecycle.released.map((capability) => `Release<${capability}>`);
+            addPhase("external-store-subscribe", [...setupEffects, ...acquired]);
+            if (cleanup) addPhase("cleanup", cleanupEffects);
+            addPhase("cleanup", released);
+            instances.push(commitInstance("external-store-subscribe", node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
+            if (lifecycle.missing.length > 0) report(node, {
+              kind: "missing-effect-cleanup", phase: "external-store-subscribe",
+              effect: lifecycle.missing.join(" | "), message: `external store subscription acquires ${lifecycle.missing.join(", ")} without a matching cleanup release`,
+            });
+            for (const issue of lifecycle.issues) report(issue.node, {
+              kind: issue.kind, phase: "external-store-subscribe", effect: issue.capability, message: issue.detail,
+            });
+          }
+          if (isConditionalWithin(node, component)) report(node, {
+            kind: "conditional-hook", phase: "render", hook: callName(node),
+            message: `${callName(node)} has control-flow-dependent call order`,
           });
           return;
         }
@@ -1846,6 +2025,7 @@ export function generateReactLifecycleQuint(
   replay.effects.forEach((effect, index) => {
     const comment = [
       `instance: ${effect.instance}`,
+      `phase: ${effect.phase}`,
       `setup effects: ${effect.setupEffects.join(" | ") || "none"}`,
       `cleanup effects: ${effect.cleanupEffects.join(" | ") || "none"}`,
     ];

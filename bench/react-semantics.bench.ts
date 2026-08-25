@@ -9,6 +9,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const [selection] = useState({ active: propsSnapshot.active })
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
+    const catalogVersion = useCatalogVersion()
     useInsertionEffect(() => { insertRule(); return () => removeRule() }, [])
     useCatalogSubscription(props.label)
     const refresh = () => fetch("/items/${index}")
@@ -17,12 +18,12 @@ const components = Array.from({ length: 128 }, (_, index) => `
     return <button
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
       onClick={handleClick}
-    >{props.label}{selectionSnapshot.active && preferences.dense}</button>
+    >{props.label}{catalogVersion}{selectionSnapshot.active && preferences.dense}</button>
   }
 `).join("\n");
 
 const source = `
-  import { startTransition, useContext, useEffect, useEffectEvent, useInsertionEffect, useState } from "react"
+  import { startTransition, useContext, useEffect, useEffectEvent, useInsertionEffect, useState, useSyncExternalStore } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
@@ -34,6 +35,22 @@ const source = `
   declare function insertRule(): void
   /* uneffect: effect StyleWrite */
   declare function removeRule(): void
+  interface CatalogVersionSubscription { readonly id: string }
+  /* uneffect: react acquire CatalogVersionSubscription result */
+  declare function openCatalogVersion(notify: () => void): CatalogVersionSubscription
+  /* uneffect: react release CatalogVersionSubscription parameter 0 */
+  declare function closeCatalogVersion(subscription: CatalogVersionSubscription): void
+  /* uneffect: effect CatalogVersionRead */
+  declare function readCatalogVersion(): number
+  function subscribeCatalogVersion(notify: () => void) {
+    const subscription = openCatalogVersion(notify)
+    return () => closeCatalogVersion(subscription)
+  }
+  function getCatalogVersionSnapshot() { return readCatalogVersion() }
+  /* uneffect: react hook */
+  function useCatalogVersion() {
+    return useSyncExternalStore(subscribeCatalogVersion, getCatalogVersionSnapshot)
+  }
   /* uneffect: react hook */
   function useCatalogSubscription(label: string) {
     const reportConnected = useEffectEvent(() => console.log(label))

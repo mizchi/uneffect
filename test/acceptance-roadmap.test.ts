@@ -73,7 +73,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { startTransition, useEffect, useEffectEvent, useInsertionEffect } from "react"
+      import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useSyncExternalStore } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -83,6 +83,22 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function insertFeedStyles(): void
       /* uneffect: effect StyleWrite */
       declare function removeFeedStyles(): void
+      interface TopicStatusSubscription { readonly topic: string }
+      /* uneffect: react acquire TopicStatusSubscription result */
+      declare function openTopicStatus(notify: () => void): TopicStatusSubscription
+      /* uneffect: react release TopicStatusSubscription parameter 0 */
+      declare function closeTopicStatus(subscription: TopicStatusSubscription): void
+      /* uneffect: effect TopicStatusRead */
+      declare function readTopicStatus(): boolean
+      function subscribeTopicStatus(notify: () => void) {
+        const subscription = openTopicStatus(notify)
+        return () => closeTopicStatus(subscription)
+      }
+      function getTopicStatusSnapshot() { return readTopicStatus() }
+      /* uneffect: react hook */
+      function useTopicStatus() {
+        return useSyncExternalStore(subscribeTopicStatus, getTopicStatusSnapshot)
+      }
       /* uneffect: react hook */
       function useSubscription(topic: string) {
         const reportConnected = useEffectEvent(() => console.log(topic))
@@ -94,6 +110,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       }
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
+        useTopicStatus()
         useSubscription(topic)
         useInsertionEffect(() => {
           insertFeedStyles()
@@ -115,6 +132,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
       expect.objectContaining({ phase: "ref-callback", effects: ["Console"] }),
       expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),
+      expect.objectContaining({ phase: "external-store-snapshot", effects: ["TopicStatusRead"] }),
+      expect.objectContaining({ phase: "external-store-subscribe", effects: ["Acquire<TopicStatusSubscription>"] }),
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));

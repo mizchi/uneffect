@@ -44,6 +44,7 @@ documentation are all updated.
 - [x] Resolve immutable component/custom-Hook-local transition actions through transitive `const` aliases and diagnose unresolved actions instead of dropping their capabilities.
 - [x] Model aliased `useInsertionEffect` setup/cleanup as a commit phase before refs, layout, and passive Effects; reject direct or transitively aliased local state dispatchers in its callback and preserve the order in Quint.
 - [x] Resolve local `useEffectEvent` callbacks and transitive `const` aliases into insertion/layout/passive setup and cleanup effects; reject render/JSX-event/transition calls and dependency-array entries.
+- [x] Split `useSyncExternalStore` into client/server snapshot and commit subscription phases, resolve inline/module/local callbacks, carry subscription resource cleanup into replay/Quint, and reject opaque or obviously uncached snapshots.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.
