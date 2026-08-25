@@ -655,6 +655,11 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
 /** Program-wide path used by the CLI/native frontend: all edges come from TypeChecker identities. */
 export function analyzeProgramEffects(program: ts.Program, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
   const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program), checker = program.getTypeChecker();
+  const invalidSources = new Set(
+    [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
+      .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.file !== undefined)
+      .map((diagnostic) => diagnostic.file!.fileName),
+  );
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
@@ -803,7 +808,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, actual, effect) });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
-    const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    const evidence: EvidenceStatus = invalidSources.has(source.fileName)
+      || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id)
+      ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });
   }
 
@@ -959,7 +966,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       notes: unusedEffectNotes("<module>", allowed, effects, effect),
     });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === "<module>");
-    const evidence: EvidenceStatus = unknown ? "unknown" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
+    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
       : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: "<module>", effects, evidence, id, fileName: source.fileName, span: { start: 0, end: source.end } });
   }

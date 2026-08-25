@@ -99,6 +99,20 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("does not issue proof-grade module evidence for an ill-typed source", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-ill-typed-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `export const count: number = "not-a-number"`);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("composes static side-effect imports through cyclic module evaluation", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-cycle-"));
     try {
@@ -335,18 +349,18 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function consumeOpaquePromiseAll(log: boolean) {
           void Promise.all(choosePartial(log))
         }
-        export function consumeIteratorParameter(iterator: Generator<string>) { iterator.next() }
+        export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
         export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
-        export function outerIteratorParameter(iterator: Generator<string>) { consumeIteratorParameter(iterator) }
-        export function consumePromiseIteratorParameter(iterator: Generator<string>) { void Promise.all(iterator) }
+        export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
+        export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
         export function consumeKnownPromiseIteratorParameter() { consumePromiseIteratorParameter(generate()) }
-        export function consumeIteratorProperty(holder: { iterator: Generator<string> }) { holder.iterator.next() }
-        export function consumeMixedIteratorParameter(iterator: Generator<string>, holder: { iterator: Generator<string> }) {
+        export function consumeIteratorProperty(holder: { iterator: IteratorObject<unknown> }) { holder.iterator.next() }
+        export function consumeMixedIteratorParameter(iterator: IteratorObject<unknown>, holder: { iterator: IteratorObject<unknown> }) {
           iterator.next()
           holder.iterator.next()
         }
-        export function consumeKnownMixedIteratorParameter(holder: { iterator: Generator<string> }) {
+        export function consumeKnownMixedIteratorParameter(holder: { iterator: IteratorObject<unknown> }) {
           consumeMixedIteratorParameter(generate(), holder)
         }
         export function consumeStandardIterator() {
@@ -355,28 +369,28 @@ describe("multi-file call graph and effect polymorphism", () => {
           forwarded.next()
         }
         export function consumeReassignedGenerator() {
-          let iterator = [1, 2, 3].values()
+          let iterator: IteratorObject<unknown> = [1, 2, 3].values()
           iterator = generate()
           iterator.next()
         }
         export function consumeReassignedPure() {
-          let iterator = generate()
+          let iterator: IteratorObject<unknown> = generate()
           iterator = [1, 2, 3].values()
           iterator.next()
         }
         export function consumeBranchReassignment(useGenerator: boolean) {
-          let iterator = [1, 2, 3].values()
+          let iterator: IteratorObject<unknown> = [1, 2, 3].values()
           if (useGenerator) iterator = generate()
           iterator.next()
         }
         export function consumeOpaqueReassignment() {
-          let iterator = [1, 2, 3].values()
+          let iterator: IteratorObject<unknown> = [1, 2, 3].values()
           iterator = choosePartial(false)
           iterator.next()
         }
         export function consumeMutableAliasReassignment() {
           const iterator = generate()
-          let forwarded = iterator
+          let forwarded: IteratorObject<unknown> = iterator
           forwarded = [1, 2, 3].values()
           forwarded.next()
         }
@@ -394,17 +408,17 @@ describe("multi-file call graph and effect polymorphism", () => {
           alias.iterator.next()
         }
         export function consumeReassignedObjectSlot() {
-          const holder = { iterator: [1, 2, 3].values() }
+          const holder: { iterator: IteratorObject<unknown> } = { iterator: [1, 2, 3].values() }
           holder.iterator = generate()
           holder.iterator.next()
         }
         export function consumePureObjectSlot() {
-          const holder = { iterator: generate() }
+          const holder: { iterator: IteratorObject<unknown> } = { iterator: generate() }
           holder.iterator = [1, 2, 3].values()
           holder.iterator.next()
         }
         export function consumeConditionalObjectSlot(flag: boolean) {
-          const holder = { iterator: [1, 2, 3].values() }
+          const holder: { iterator: IteratorObject<unknown> } = { iterator: [1, 2, 3].values() }
           if (flag) holder.iterator = generate()
           holder.iterator.next()
         }
@@ -417,7 +431,7 @@ describe("multi-file call graph and effect polymorphism", () => {
           holder[key].next()
         }
         export function consumeDynamicObjectWrite(key: "iterator") {
-          const holder = { iterator: generate() }
+          const holder: { iterator: IteratorObject<unknown> } = { iterator: generate() }
           holder[key] = choosePartial(false)
           holder.iterator.next()
         }
@@ -437,6 +451,7 @@ describe("multi-file call graph and effect polymorphism", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext,
         lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
       });
+      expect(program.getSemanticDiagnostics().map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
       const graph = buildProgramCallGraph(program);
       const construct = graph.nodes.find((node) => node.name === "constructOnly")!;
       const consumeNext = graph.nodes.find((node) => node.name === "consumeNext")!;

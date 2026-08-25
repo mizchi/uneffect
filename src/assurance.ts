@@ -3,7 +3,7 @@ import type { CheckResult } from "./check.js";
 export type AssuranceProfile = "no-unknown" | "declared";
 
 export interface AssuranceBlocker {
-  kind: "effect" | "contract" | "coverage";
+  kind: "effect" | "contract" | "coverage" | "typescript";
   fileName: string;
   functionName: string;
   message: string;
@@ -29,6 +29,7 @@ export interface AssuranceAssessment {
 }
 
 const commonClaims = [
+  "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
   "no emitted effect summary is unknown",
   "every emitted contract artifact is verified",
 ] as const;
@@ -46,7 +47,7 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources">>,
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics">>,
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
@@ -64,6 +65,10 @@ export function assessCheckAssurance(
   if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0) blockers.push({
     kind: "coverage", fileName: "<assessment>", functionName: "<coverage>",
     message: "no effect summary or contract artifact was emitted; the assurance claim would be vacuous",
+  });
+  for (const diagnostic of result.diagnostics ?? []) if ("domain" in diagnostic && diagnostic.domain === "typescript" && diagnostic.severity === "error") blockers.push({
+    kind: "typescript", fileName: diagnostic.fileName, functionName: diagnostic.functionName,
+    message: `${diagnostic.fileName}:${diagnostic.line}: ${diagnostic.message}`,
   });
   for (const fileName of uncoveredFiles) blockers.push({
     kind: "coverage", fileName, functionName: "<coverage>",

@@ -802,7 +802,7 @@ describe("Uneffect dogfood", () => {
           if (preferCache) return flushSteps()
           return failedFlushSteps()
         }
-        function consumeFlushSteps(iterator: Generator<string>) { Array.from(iterator) }
+        function consumeFlushSteps(iterator: IteratorObject<unknown>) { Array.from(iterator) }
         const flushDispatcher = {
           handlers: { success: flushSuccess, failure: flushFailure } as const,
           select(outcome: "success" | "failure") { return this.handlers[outcome] },
@@ -812,13 +812,13 @@ describe("Uneffect dogfood", () => {
           try { parseSettings() } catch { console.warn("using defaults") }
           void loadSettings().catch(() => console.warn("async defaults"))
           buildFlushSteps(true)
-          let reassignedSteps: Iterator<string> = ["fallback"].values()
+          let reassignedSteps: IteratorObject<unknown> = ["fallback"].values()
           reassignedSteps = buildFlushSteps(preferCache)
           try { Array.from(reassignedSteps) } catch { console.warn("skipping reassigned steps") }
-          let conditionalSteps: Iterator<string> = ["fallback"].values()
+          let conditionalSteps: IteratorObject<unknown> = ["fallback"].values()
           if (!preferCache) conditionalSteps = buildFlushSteps(preferCache)
           try { Array.from(conditionalSteps) } catch { console.warn("skipping conditional steps") }
-          const stepHolder: { iterator: Iterator<string> } = { iterator: ["fallback"].values() }
+          const stepHolder: { iterator: IteratorObject<unknown> } = { iterator: ["fallback"].values() }
           const stepHolderAlias = stepHolder
           stepHolder.iterator = buildFlushSteps(preferCache)
           try { Array.from(stepHolderAlias.iterator) } catch { console.warn("skipping stored steps") }

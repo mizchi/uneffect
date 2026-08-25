@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
-import type { CheckerDiagnostic } from "./diagnostics.js";
+import type { CheckerDiagnostic, TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 
@@ -43,12 +43,43 @@ export function createCheckHost(): ts.CompilerHost {
   return host;
 }
 
+function typescriptDiagnostic(
+  diagnostic: ts.Diagnostic,
+  kind: TypeScriptCheckerDiagnostic["kind"],
+): TypeScriptCheckerDiagnostic {
+  const fileName = diagnostic.file?.fileName ?? "<typescript-options>";
+  const line = diagnostic.file && diagnostic.start !== undefined
+    ? diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start).line + 1 : 1;
+  const category = diagnostic.category === ts.DiagnosticCategory.Warning ? "warning" : "error";
+  const label = kind === "syntax" ? "syntax errors" : kind === "semantic" ? "semantic errors" : "option errors";
+  return {
+    domain: "typescript", kind, severity: category, fileName, line, functionName: "<typescript>",
+    message: `TypeScript source has ${label}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n")}`,
+    typescriptCode: diagnostic.code,
+    notes: [{ label: "typescript", detail: `TS${diagnostic.code}` }],
+  };
+}
+
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = ts.createProgram([...fileNames], compilerOptions, options.host);
   const effects = analyzeProgramEffects(program, { mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true });
   const react = analyzeReactProgram(program);
-  const diagnostics: CheckerDiagnostic[] = [...effects.diagnostics];
+  const diagnostics: CheckerDiagnostic[] = [];
+  for (const fileName of fileNames) {
+    const source = program.getSourceFile(fileName);
+    if (!source) continue;
+    diagnostics.push(
+      ...program.getSyntacticDiagnostics(source).map((diagnostic) => typescriptDiagnostic(diagnostic, "syntax")),
+      ...program.getSemanticDiagnostics(source).map((diagnostic) => typescriptDiagnostic(diagnostic, "semantic")),
+    );
+  }
+  diagnostics.push(...program.getOptionsDiagnostics().map((diagnostic) => typescriptDiagnostic(diagnostic, "options")));
+  const invalidSources = new Set(diagnostics.filter((diagnostic): diagnostic is TypeScriptCheckerDiagnostic =>
+    "domain" in diagnostic && diagnostic.domain === "typescript" && diagnostic.severity === "error" && diagnostic.fileName !== "<typescript-options>")
+    .map((diagnostic) => diagnostic.fileName));
+  for (const summary of effects.summaries) if (summary.fileName && invalidSources.has(summary.fileName)) summary.evidence = "unknown";
+  diagnostics.push(...effects.diagnostics);
   const sources = new Map<string, string>(), artifacts: VerificationArtifact[] = [];
   for (const fileName of fileNames) {
     const text = await readFile(fileName, "utf8");

@@ -11,6 +11,7 @@ describe("assurance claim boundaries", () => {
     expect(assessment).toMatchObject({
       passed: true,
       claims: [
+        "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
         "no emitted effect summary is unknown",
         "every emitted contract artifact is verified",
         "every emitted function effect summary is declaration-checked",

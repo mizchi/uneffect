@@ -423,6 +423,9 @@ same property is proved for arbitrary TypeScript.
 - A bounded model check or simulation is not reported as an unbounded proof.
 - Unsupported syntax, unresolved calls, solver timeouts, and abstraction gaps
   must remain `unknown` or diagnostics; they must not be silently accepted.
+- TypeScript syntax, semantic, and compiler-option errors are source-attributed
+  Uneffect errors. Function and `<module>` summaries from an ill-typed source
+  are `unknown`; parser recovery is never presented as proof-grade evidence.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect

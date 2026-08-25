@@ -150,7 +150,7 @@ export { environmentSummary, formatEnvironmentReport, readPackageManifest, runEn
 export type { EnvironmentCheck, EnvironmentCheckOptions, EnvironmentStatus, PackageManifest } from "./environment.js";
 export type { CheckOptions, CheckResult } from "./check.js";
 export { diagnosticHint, formatCheckEvidence, formatDiagnostic, formatDiagnostics, reportDiagnostic } from "./diagnostics.js";
-export type { CheckerDiagnostic, DiagnosticFormatOptions, DiagnosticNote, DiagnosticSeverity, ReportedDiagnostic } from "./diagnostics.js";
+export type { CheckerDiagnostic, DiagnosticFormatOptions, DiagnosticNote, DiagnosticSeverity, ReportedDiagnostic, TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 export { describeObligation, evaluateLogic, explainCounterexample, failingConjunct, formatEvaluated, formatLogic, formatValue, obligationRule, parseModel, parseModelValue } from "./contract-explanations.js";
 export type { LogicModel, LogicValue } from "./contract-explanations.js";
 export { evaluateQuality, formatQualityReport, qualityCriteria, qualityThreshold, scoreDiagnostic } from "./diagnostic-quality.js";

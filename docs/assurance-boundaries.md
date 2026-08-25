@@ -27,6 +27,13 @@ for CI on a deliberately selected file boundary. They do not silently broaden
 that boundary to dependencies, dynamically loaded code, native addons, or host
 behavior not represented by the builtin contract registry.
 
+Both profiles also require every selected source to be free of TypeScript
+syntax, semantic, and compiler-option errors. A source with an error receives
+`unknown` function and module evidence, even when the effect analyzer could
+still walk its recovered AST. The default gradual check reports the same
+TypeScript errors and exits non-zero; Uneffect never upgrades an ill-typed
+source to proof-grade evidence.
+
 The public `AssuranceAssessment` also exposes `claims`, `exclusions`, and
 `coverage` as machine-readable fields. Coverage records the selected-file,
 effect-summary, and contract-artifact counts plus every selected file that

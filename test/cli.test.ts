@@ -106,6 +106,26 @@ describe("uneffect command line", () => {
     }
   });
 
+  it("fails closed on TypeScript syntax and semantic errors", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-typescript-errors-"));
+    const syntaxFile = join(directory, "syntax.ts"), semanticFile = join(directory, "semantic.ts");
+    try {
+      writeFileSync(syntaxFile, `export function broken( {`);
+      writeFileSync(semanticFile, `export const count: number = "not-a-number"`);
+
+      const syntax = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", syntaxFile], syntax)).toBe(exitCode.failed);
+      expect(syntax.stderr).toContain("error typescript/syntax");
+      expect(syntax.stderr).toContain("assurance no-unknown: failed");
+      expect(syntax.stderr).toContain("TypeScript source has syntax errors");
+
+      const semantic = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);
+      expect(semantic.stderr).toContain("error typescript/semantic");
+      expect(semantic.stderr).toContain("TypeScript source has semantic errors");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("reports missing or excess positional arguments per command", async () => {
     const missing = capture();
     expect(await runCli(["evidence"], missing)).toBe(exitCode.usage);

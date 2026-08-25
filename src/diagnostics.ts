@@ -8,7 +8,18 @@ import type { ReactSemanticDiagnostic } from "./react-semantics.js";
 export type DiagnosticSeverity = "error" | "warning";
 /** One explanation line under a diagnostic: `because`, `counterexample`, `evaluation`, `hint`, ... */
 export interface DiagnosticNote { label: string; detail: string }
-export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic;
+export interface TypeScriptCheckerDiagnostic {
+  domain: "typescript";
+  kind: "syntax" | "semantic" | "options";
+  severity: DiagnosticSeverity;
+  fileName: string;
+  line: number;
+  functionName: "<typescript>";
+  message: string;
+  typescriptCode: number;
+  notes?: DiagnosticNote[];
+}
+export type CheckerDiagnostic = EffectDiagnostic | ContractDiagnostic | AsyncSafetyDiagnostic | ReactSemanticDiagnostic | TypeScriptCheckerDiagnostic;
 
 export interface ReportedDiagnostic {
   code: string;
@@ -62,6 +73,9 @@ const hints: Readonly<Record<string, string>> = {
   "react/unknown-hook-closure": "inline the Hook callback so its captures can be checked, or keep this function outside the checked React boundary",
   "react/unknown-hook-dependencies": "use a finite inline dependency array; computed arrays are not accepted as stale-closure evidence",
   "react/unstable-hook-dependency": "bind the value outside the dependency array and stabilize its identity, or depend on the primitive/member values it reads",
+  "typescript/syntax": "fix the TypeScript syntax error before relying on Uneffect evidence",
+  "typescript/semantic": "fix the TypeScript type error or correct the project inputs before relying on TypeChecker-derived evidence",
+  "typescript/options": "fix the TypeScript compiler configuration before running Uneffect assurance",
 };
 
 export function diagnosticHint(code: string): string | undefined { return hints[code]; }
@@ -71,6 +85,7 @@ function severityOf(diagnostic: CheckerDiagnostic): DiagnosticSeverity {
 }
 
 function codeOf(diagnostic: CheckerDiagnostic): string {
+  if ("domain" in diagnostic && diagnostic.domain === "typescript") return `typescript/${diagnostic.kind}`;
   if ("component" in diagnostic) return `react/${diagnostic.kind}`;
   if ("effect" in diagnostic) return `effect/${diagnostic.kind}`;
   if ("clause" in diagnostic) return diagnostic.clause === "unsupported" ? "contract/unsupported" : `contract/${diagnostic.clause}`;

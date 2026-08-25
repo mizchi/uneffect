@@ -80,7 +80,8 @@ enabled checker found an error; it is not a whole-program proof and may retain
 explicit unknown evidence. CI can opt into `--assurance no-unknown` or the
 stronger effect-declaration gate `--assurance declared`. The command exits with
 1 when the selected checks or assurance profile fail, and 2 for invalid CLI
-usage. Assurance also fails when no proof-relevant evidence is emitted for any
+usage. TypeScript syntax, semantic, and compiler-option errors are fatal, and
+summaries from an ill-typed source remain `unknown`. Assurance also fails when no proof-relevant evidence is emitted for any
 explicitly selected file; a green result cannot be borrowed from a covered
 sibling file. See [Assurance boundaries](./docs/assurance-boundaries.md) before relying
 on a successful check as evidence.
