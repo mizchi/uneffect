@@ -386,7 +386,9 @@ same property is proved for arbitrary TypeScript.
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect
   summaries. Both profiles are scoped to explicit files and opted-in analyses,
-  and neither is described as a whole-program proof.
+  and neither is described as a whole-program proof. Their public assessment
+  objects carry machine-readable claims and exclusions; the CLI prints both on
+  success and marks claims as not established on failure.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

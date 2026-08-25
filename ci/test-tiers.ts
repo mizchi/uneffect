@@ -1,6 +1,7 @@
 export const ciTestTiers = {
   fast: [
     "test/annotations.test.ts",
+    "test/assurance.test.ts",
     "test/builtin-contracts.test.ts",
     "test/call-graph.test.ts",
     "test/capabilities.test.ts",

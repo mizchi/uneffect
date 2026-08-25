@@ -85,6 +85,8 @@ describe("uneffect command line", () => {
       const declared = capture();
       expect(await runCli(["check", "--assurance", "declared", declaredFile], declared)).toBe(exitCode.success);
       expect(declared.stderr).toContain("assurance declared: passed");
+      expect(declared.stderr).toContain("claim: every emitted function effect summary is declaration-checked");
+      expect(declared.stderr).toContain("excluded: unannotated semantic domains are not checked by this profile");
 
       const invalid = capture();
       expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);

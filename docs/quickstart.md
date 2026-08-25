@@ -178,7 +178,10 @@ npx uneffect check --assurance declared src/uneffect-example.ts
 ```
 
 These profiles cover emitted evidence for the explicit file boundary; they are
-not whole-program or assumption-free proofs. See
+not whole-program or assumption-free proofs. The CLI prints both the claims
+established by a passing profile and exclusions that remain outside it; API
+consumers receive the same data in `AssuranceAssessment.claims` and
+`.exclusions`. See
 [Assurance boundaries](./assurance-boundaries.md).
 
 Treat exit code 1 as a program diagnostic or assurance failure and exit code 2

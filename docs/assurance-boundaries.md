@@ -27,6 +27,13 @@ for CI on a deliberately selected file boundary. They do not silently broaden
 that boundary to dependencies, dynamically loaded code, native addons, or host
 behavior not represented by the builtin contract registry.
 
+The public `AssuranceAssessment` also exposes `claims` and `exclusions` as
+machine-readable fields. Claims are established only when `passed` is true;
+on failure the CLI labels them `claim (not established)`. Exclusions are
+reported even for a passing assessment and must not be removed or interpreted
+as warnings that can be waived. This keeps CI integrations from reducing an
+assurance result to a context-free green boolean.
+
 ## Evidence vocabulary
 
 - `verified`: the exact emitted obligation passed its checker, or an explicit
