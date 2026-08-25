@@ -41,7 +41,8 @@ assurance result to a context-free green boolean.
 - `inferred`: Uneffect computed a useful effect inventory, but no explicit
   upper-bound declaration was checked.
 - `trusted`: the result depends on a reviewed external or builtin semantic
-  contract. Trusted evidence is auditable input, not a derived proof.
+  contract or an explicit user-owned boundary such as dispatch sealing. Trusted
+  evidence is auditable input, not a derived proof.
 - `unknown`: resolution, control flow, solver behavior, or language coverage
   was insufficient. Unknown evidence must not authorize optimization or a
   safety claim.

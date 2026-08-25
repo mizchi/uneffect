@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -1388,6 +1388,7 @@ describe("annotated refinement bindings", () => {
     `;
     try {
       writeFileSync(runtimeFile, `
+        /* uneffect: trust dispatch-sealing application owns the complete class graph */
         export class Runtime {
           sent = 0
           attempted = 0
@@ -1401,6 +1402,22 @@ describe("annotated refinement bindings", () => {
       });
       const spec = parseSpec(mainFile, source).temporal;
       expect(validateRefinementActionBodiesInProgram(program, mainFile, "telemetry", spec)).toEqual([]);
+      writeFileSync(runtimeFile, readFileSync(runtimeFile, "utf8").replace("/* uneffect: trust dispatch-sealing application owns the complete class graph */", ""));
+      const unsealedProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(unsealedProgram, mainFile, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+      writeFileSync(runtimeFile, `
+        /* uneffect: trust dispatch-sealing application owns the complete class graph */
+        export class Runtime {
+          sent = 0
+          attempted = 0
+          record() { this.attempted++; this.sent++ }
+        }
+      `);
       expect(validateRefinementActionBodies(mainFile, source, "telemetry", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
       );

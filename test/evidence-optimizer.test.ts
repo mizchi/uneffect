@@ -87,6 +87,10 @@ describe("evidence and optimizer obligations", () => {
       /* uneffect: trust_owner runtime-team */
       /* uneffect: trust_expires 2026-12-31 */
       function start() {}
+      /* uneffect: trust dispatch-sealing application owns the complete class graph */
+      /* uneffect: trust_owner runtime-team */
+      /* uneffect: trust_expires 2027-02-28 */
+      export class Runtime { run() {} }
     `;
     const result = await verifyUneffectProject({
       files: { [fileName]: source },
@@ -102,6 +106,7 @@ describe("evidence and optimizer obligations", () => {
       expect.objectContaining({ domain: "typed-array", reason: "validated by the wire-format review", owner: "binary-platform", expiresOn: "2027-01-31", scope: expect.objectContaining({ fileName, functionName: "decode", span: expect.any(Object) }) }),
       expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("reviewed builtin"), owner: "@mizchi/uneffect", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
       expect.objectContaining({ domain: "temporal-summary", owner: "runtime-team", expiresOn: "2026-12-31", scope: expect.objectContaining({ functionName: "start" }) }),
+      expect.objectContaining({ domain: "dispatch-sealing", reason: "application owns the complete class graph", owner: "runtime-team", expiresOn: "2027-02-28", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
     ]));
     expect(result.assumptions.violations).toEqual([]);
 
@@ -112,6 +117,15 @@ describe("evidence and optimizer obligations", () => {
     expect(missingOwner.assumptions.violations).toContainEqual(expect.objectContaining({ rule: "owner-required", domain: "typed-array" }));
     expect(missingOwner.diagnostics).toContainEqual(expect.objectContaining({ kind: "assumption-policy", rule: "owner-required" }));
 
+    const missingDispatchOwner = await verifyUneffectProject({
+      files: { [fileName]: source.replaceAll("/* uneffect: trust_owner runtime-team */", "") },
+      assumptionPolicy: { requireOwner: true, asOf: "2026-08-21" },
+    });
+    expect(missingDispatchOwner.assumptions.violations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rule: "owner-required", domain: "temporal-summary" }),
+      expect.objectContaining({ rule: "owner-required", domain: "dispatch-sealing" }),
+    ]));
+
     const expired = await verifyUneffectProject({
       files: { [fileName]: source },
       assumptionPolicy: { denyExpired: true, asOf: "2028-01-01" },
@@ -119,6 +133,7 @@ describe("evidence and optimizer obligations", () => {
     expect(expired.assumptions.violations).toEqual(expect.arrayContaining([
       expect.objectContaining({ rule: "expired", domain: "typed-array" }),
       expect.objectContaining({ rule: "expired", domain: "temporal-summary" }),
+      expect.objectContaining({ rule: "expired", domain: "dispatch-sealing" }),
     ]));
   });
 

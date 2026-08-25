@@ -432,6 +432,11 @@ benchmark measured 0.0614 ms mean over 8,148 samples (0.32% RME). The increase
 is retained as a regression signal for the additional closed-world scan; one
 result is cached per resolved runtime class during a validation pass.
 
+Requiring and parsing the exported class's explicit dispatch-sealing trust
+marker measured 0.0638 ms mean over 7,839 samples (0.59% RME) in the same warm
+Program benchmark. Assumption-ledger construction and policy evaluation are not
+part of this timing.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this

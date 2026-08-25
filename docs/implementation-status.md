@@ -84,8 +84,12 @@ same property is proved for arbitrary TypeScript.
   declaration. A same-shaped interface is not accepted. This remains exact
   declaration-body specialization, not proof of closed-world dynamic method
   dispatch. A subclass declaration known to the source or Program disables the
-  specialization (using TypeChecker symbol identity in Program mode). Unscanned
-  external subclasses, proxies, and prototype mutation remain excluded.
+  specialization (using TypeChecker symbol identity in Program mode). An
+  exported runtime class additionally requires an explicit
+  `trust dispatch-sealing <reason>` marker. That dependency enters the
+  cross-domain assumption ledger with `trusted` evidence and optional enforced
+  owner/expiration metadata; it never upgrades dispatch to `verified`.
+  Unscanned external subclasses, proxies, and prototype mutation remain excluded.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

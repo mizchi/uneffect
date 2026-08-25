@@ -86,7 +86,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       export function record(runtime: Runtime) { const state = runtime; state.record() }
     `;
     try {
-      writeFileSync(runtimeFile, `export class Runtime { sent = 0; record() { this.sent++ } }`);
+      writeFileSync(runtimeFile, `/* uneffect: trust dispatch-sealing application owns the complete class graph */\nexport class Runtime { sent = 0; record() { this.sent++ } }`);
       writeFileSync(mainFile, source);
       const program = ts.createProgram([mainFile, runtimeFile], {
         target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,

@@ -611,6 +611,14 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "importedTelemetry", temporal)).toEqual([]);
     expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "importedTelemetry", temporal)).toEqual([]);
     expect(validateRefinementStateProjectionInProgram(program, fileName, "importedTelemetry", temporal)).toEqual([]);
+    const audit = await verifyUneffectProject({
+      files: { [fileName]: source, [runtimeFile]: runtimeSource },
+      assumptionPolicy: { requireOwner: true, requireExpiration: true, denyExpired: true, asOf: "2026-08-26" },
+    });
+    expect(audit.assumptions.entries).toContainEqual(expect.objectContaining({
+      domain: "dispatch-sealing", owner: "telemetry-platform", expiresOn: "2027-08-31",
+    }));
+    expect(audit.assumptions.violations).toEqual([]);
 
     const directory = mkdtempSync(join(tmpdir(), "uneffect-imported-runtime-dogfood-"));
     try {

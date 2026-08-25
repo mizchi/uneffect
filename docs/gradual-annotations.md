@@ -435,7 +435,11 @@ be attached to a function or directly before a statement. The narrower
 obligation on that statement. Used assumptions record `trusted` evidence and
 remain visible in the cross-domain ledger; they never become `verified`.
 Statement-level `trust_owner` and `trust_expires` metadata travel with the exact
-source span. Other proof domains do not yet expose a general-purpose `sorry`.
+source span. An exported runtime class whose method body participates in
+refinement must use `trust dispatch-sealing <reason>`: this declares that the
+application owns the relevant class graph. It is recorded as `trusted`, never
+`verified`, and does not hide Program-visible subclasses. Other proof domains
+do not yet expose a general-purpose `sorry`.
 
 ## Adoption levels
 

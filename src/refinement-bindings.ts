@@ -694,6 +694,14 @@ function validateRefinementActionBodiesInSource(
   };
 
   const knownSubclassCache = new Map<ts.ClassDeclaration, boolean>();
+  const hasDispatchSealingTrust = (runtimeClass: ts.ClassDeclaration): boolean => {
+    const exported = runtimeClass.modifiers?.some((modifier) =>
+      modifier.kind === ts.SyntaxKind.ExportKeyword || modifier.kind === ts.SyntaxKind.DefaultKeyword) ?? false;
+    if (!exported) return true;
+    const classSource = runtimeClass.getSourceFile();
+    const leading = classSource.text.slice(runtimeClass.getFullStart(), runtimeClass.getStart(classSource));
+    return extractAnnotations(leading, "trust").some((value) => /^dispatch-sealing\s+\S/.test(value.trim()));
+  };
   const hasKnownSubclass = (runtimeClass: ts.ClassDeclaration): boolean => {
     const cached = knownSubclassCache.get(runtimeClass);
     if (cached !== undefined) return cached;
@@ -730,12 +738,12 @@ function validateRefinementActionBodiesInSource(
     if (!type || !ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return undefined;
     if (!checker) {
       const runtimeClass = classes.get(type.typeName.text);
-      return runtimeClass && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
+      return runtimeClass && hasDispatchSealingTrust(runtimeClass) && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
     }
     let symbol = checker.getSymbolAtLocation(type.typeName);
     if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
     const runtimeClass = symbol?.declarations?.find(ts.isClassDeclaration);
-    return runtimeClass && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
+    return runtimeClass && hasDispatchSealingTrust(runtimeClass) && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
   };
 
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {

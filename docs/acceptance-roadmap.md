@@ -207,8 +207,12 @@ same-shaped interfaces, computed or polymorphic methods, and reassigned or
 escaping receivers are not proved. This body comparison also does not prove
 closed-world dispatch. A locally or Program-visible subclass makes method
 specialization fail closed, including the dogfood's wrong override oracle.
-Unscanned external subclasses, prototype replacement, proxies, and runtime
-monkey-patching remain outside the refinement claim.
+Exported runtime classes also require `trust dispatch-sealing <reason>`; the
+dogfoods attach owner and expiration metadata, and project verification records
+the dependency as a `trusted` assumption rather than proof. Removing the marker
+makes the method action unsupported. Unscanned external subclasses, prototype
+replacement, proxies, and runtime monkey-patching remain outside the refinement
+claim.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and

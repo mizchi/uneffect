@@ -5,7 +5,7 @@ import { builtinContractRegistry, findBuiltinContract } from "./builtin-contract
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 
-export type AssumptionDomain = "builtin" | "typed-array" | "temporal-summary";
+export type AssumptionDomain = "builtin" | "typed-array" | "temporal-summary" | "dispatch-sealing";
 
 export interface AssumptionScope {
   fileName: string;
@@ -120,6 +120,19 @@ export function collectAssumptionLedger(
     }
     const functions = new Map(source.statements.flatMap((statement) =>
       ts.isFunctionDeclaration(statement) && statement.name ? [[statement.name.text, statement] as const] : []));
+    for (const declaration of source.statements.filter(ts.isClassDeclaration)) {
+      const leading = source.text.slice(declaration.getFullStart(), declaration.getStart(source));
+      const trusted = extractAnnotations(leading, "trust")
+        .map((value) => /^dispatch-sealing\s+(.+)$/.exec(value.trim()))
+        .find((match) => !!match);
+      if (!trusted?.[1]) continue;
+      entries.push(entry({
+        domain: "dispatch-sealing",
+        reason: trusted[1].trim(),
+        ...metadata(source, declaration),
+        scope: { fileName, span: { start: declaration.getStart(source), end: declaration.getEnd() } },
+      }));
+    }
     for (const obligation of typedArrays.files[fileName]?.obligations ?? []) {
       if (obligation.result !== "trusted") continue;
       const declaration = functions.get(obligation.functionName);

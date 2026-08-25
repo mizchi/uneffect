@@ -47,6 +47,9 @@ export interface TelemetryRoutingState {
   auditArmed: boolean;
 }
 
+/* uneffect: trust dispatch-sealing application owns the complete class graph */
+/* uneffect: trust_owner telemetry-platform */
+/* uneffect: trust_expires 2027-08-31 */
 export class TelemetryRoutingAccounting {
   delivered = 0;
   dropped = 0;

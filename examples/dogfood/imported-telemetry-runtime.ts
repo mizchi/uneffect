@@ -1,3 +1,6 @@
+/* uneffect: trust dispatch-sealing application owns the complete class graph */
+/* uneffect: trust_owner telemetry-platform */
+/* uneffect: trust_expires 2027-08-31 */
 export class ImportedTelemetryRuntime {
   sent: number;
   attempted: number;

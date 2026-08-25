@@ -164,7 +164,11 @@ lint feedback.
 Typed-array obligations currently support an explicit
 `trust typed-array <reason>` directive. It records trusted evidence with a source
 span and reason; it does not become verified evidence. Other proof domains do
-not yet expose a general-purpose `sorry` directive.
+not generally expose a `sorry` directive. Exported runtime classes have the
+narrower `trust dispatch-sealing <reason>` assumption for declaration-body
+method refinement. Give it an owner and expiration, audit it in CI, and do not
+interpret it as proof against externally loaded subclasses or prototype
+mutation.
 
 At unsupported boundaries, prefer:
 
