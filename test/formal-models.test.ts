@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -41,6 +41,36 @@ describe("async invalidation Quint model", () => {
 });
 
 describe("React lifecycle Quint projection", () => {
+  test("serializes queued Actions and cancels the tail after failure", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-actions-"));
+    const path = join(directory, "actions.qnt");
+    const run = (fault: "none" | "concurrent" | "after-failure" | "pending") => {
+      writeFileSync(path, generateReactActionQueueQuint("react_actions", {
+        maxQueuedActions: 3,
+        allowConcurrentStart: fault === "concurrent",
+        allowStartAfterFailure: fault === "after-failure",
+        allowPendingMismatch: fault === "pending",
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactActionQueueSafe", "--max-steps=8", "--max-samples=10000",
+        "--seed=0x7265616374616374", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run("none");
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      expect(valid.stdout + valid.stderr).toContain("No violation found");
+      for (const fault of ["concurrent", "after-failure", "pending"] as const) {
+        const broken = run(fault);
+        expect(broken.error).toBeUndefined();
+        expect(broken.status, `${fault}: ${broken.stdout}${broken.stderr}`).toBe(1);
+        expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("preserves setup/cleanup order and exposes an early-cleanup counterexample", () => {
     const analysis = analyzeReactSemantics("panel.tsx", `
       import { useEffect } from "react"

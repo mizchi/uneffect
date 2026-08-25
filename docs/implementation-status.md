@@ -169,9 +169,12 @@ same property is proved for arbitrary TypeScript.
   side-effecting Action callbacks from pure optimistic reducers. JSX
   `action`/`formAction` accepts a directly returned Action dispatcher, while
   direct render/event calls to Action and optimistic setters are rejected
-  unless nested in a recognized transition Action. Action queue ordering,
-  pending-state transitions, progressive enhancement, and Error Boundary
-  failure routing are not modeled.
+  unless nested in a recognized transition Action. A separate bounded Quint
+  projection proves single-active sequential queue ordering, pending-state
+  consistency, and cancellation of queued tail work after failure. It is not
+  automatically derived from dispatcher call cardinality and does not model
+  state values, optimistic rollback, progressive enhancement, or Error
+  Boundary failure routing.
 - Local named/aliased `useEffectEvent` callbacks and transitive `const` aliases
   compose into insertion/layout/passive setup and cleanup phases. Their
   bindings are omitted from dependency requirements; explicit dependency-array

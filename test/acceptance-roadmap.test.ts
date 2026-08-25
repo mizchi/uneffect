@@ -66,6 +66,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("separates replayable React render from event, Effect, and cleanup capabilities", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
+    const generateReactActionQueue = futureApi("generateReactActionQueueQuint");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
@@ -155,6 +156,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));
+    const actionQueueQuint = generateReactActionQueue("feed_actions", { maxQueuedActions: 3 }) as string;
+    expect(actionQueueQuint).toContain("val reactActionQueueSafe");
+    expect(actionQueueQuint).toContain("cancelled == 1 implies active == 0 and pending == 0");
     const lifecycleQuint = generateReactLifecycle("feed_lifecycle", result.components[0]) as string;
     expect(lifecycleQuint).toContain("val reactLifecycleSafe");
     expect(lifecycleQuint).toContain("action cleanup_0_strict_replay");

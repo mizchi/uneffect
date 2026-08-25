@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -121,6 +121,10 @@ describe("React semantic analysis", () => {
 
   bench("generate Strict Mode Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`component_${index}`, component));
+  }, { time: 500, iterations: 20 });
+
+  bench("generate 128 bounded React Action queues", () => {
+    analyzed.components.forEach((_component, index) => generateReactActionQueueQuint(`action_queue_${index}`, { maxQueuedActions: 3 }));
   }, { time: 500, iterations: 20 });
 
   bench("generate interrupted-render Quint for 128 summaries", () => {

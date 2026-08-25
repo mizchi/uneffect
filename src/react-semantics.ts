@@ -2318,6 +2318,81 @@ export function analyzeReactSemantics(fileName: string, text: string): ReactSema
 
 export type ReactLifecycleScenario = keyof ReactReplayModel;
 
+export interface ReactActionQueueOptions {
+  /** Finite exploration bound; this is not a runtime queue limit. */
+  maxQueuedActions: number;
+  /** Test-only fault injection that starts a second Action while one is active. */
+  allowConcurrentStart?: boolean;
+  /** Test-only fault injection that starts queued work after a failed Action cancelled the queue. */
+  allowStartAfterFailure?: boolean;
+  /** Test-only fault injection that clears isPending while work remains queued. */
+  allowPendingMismatch?: boolean;
+}
+
+/** Generate a bounded sequential queue model for one useActionState dispatcher. */
+export function generateReactActionQueueQuint(moduleName: string, options: ReactActionQueueOptions): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const bound = options.maxQueuedActions;
+  if (!Number.isSafeInteger(bound) || bound < 1 || bound > 64) {
+    throw new Error("maxQueuedActions must be a safe integer between 1 and 64");
+  }
+  if ((options.allowConcurrentStart || options.allowStartAfterFailure) && bound < 2) {
+    throw new Error("concurrent/failure queue fault injection requires maxQueuedActions of at least 2");
+  }
+  const variables = ["enqueued", "started", "settled", "active", "pending", "failed", "cancelled"] as const;
+  const lines = [
+    `module ${moduleName} {`,
+    ...variables.map((name) => `  var ${name}: int`),
+    "",
+    "  action init = all {",
+    ...variables.map((name) => `    ${name}' = 0,`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comments: readonly string[] = []): void => {
+    actions.push(name);
+    lines.push("", ...comments.map((comment) => `  // ${comment}`), `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("enqueue_action", [`cancelled == 0`, `enqueued < ${bound}`], new Map([
+    ["enqueued", "enqueued + 1"], ["pending", "1"],
+  ]), ["dispatch appends one Action and marks the queue pending"]);
+  action("start_next_action", ["cancelled == 0", "active == 0", "started < enqueued"], new Map([
+    ["started", "started + 1"], ["active", "1"],
+  ]), ["only one queued reducerAction may execute at a time"]);
+  action("resolve_active_action", ["cancelled == 0", "active == 1"], new Map([
+    ["settled", "settled + 1"], ["active", "0"],
+    ["pending", "if (settled + 1 < enqueued) 1 else 0"],
+  ]), ["a successful Action exposes its state before the next Action starts"]);
+  action("fail_active_action", ["cancelled == 0", "active == 1"], new Map([
+    ["settled", "settled + 1"], ["active", "0"], ["pending", "0"],
+    ["failed", "1"], ["cancelled", "1"],
+  ]), ["a thrown Action cancels the remaining queued Actions"]);
+  if (options.allowConcurrentStart) action("start_action_concurrently", [
+    "cancelled == 0", "active == 1", "started < enqueued",
+  ], new Map([["started", "started + 1"]]), ["fault injection: overlap two reducerActions"]);
+  if (options.allowStartAfterFailure) action("start_action_after_failure", [
+    "cancelled == 1", "active == 0", "started < enqueued",
+  ], new Map([["started", "started + 1"], ["active", "1"]]), ["fault injection: run the cancelled tail"]);
+  if (options.allowPendingMismatch) action("clear_pending_early", [
+    "cancelled == 0", "pending == 1", "settled < enqueued",
+  ], new Map([["pending", "0"]]), ["fault injection: clear isPending with outstanding work"]);
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const safety = [
+    "0 <= settled", "settled <= started", "started <= enqueued", `enqueued <= ${bound}`,
+    "0 <= active", "active <= 1", "active == started - settled", "started <= settled + 1",
+    "0 <= pending", "pending <= 1", "(pending == 1 iff (enqueued > settled and cancelled == 0))",
+    "0 <= failed", "failed <= 1", "0 <= cancelled", "cancelled <= 1", "cancelled == failed",
+    "(cancelled == 1 implies active == 0 and pending == 0)",
+  ];
+  lines.push("", `  val reactActionQueueSafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
 /** Generate an instance-preserving bounded lifecycle model without imposing an order between commit instances. */
 export function generateReactLifecycleQuint(
   moduleName: string,

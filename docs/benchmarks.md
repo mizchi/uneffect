@@ -109,6 +109,15 @@ contains 256 additional callbacks and 128 async bodies; the result is recorded
 as a regression target, not accepted as isolated per-Hook overhead. Parse-only
 noise also prevents attributing the full delta to Uneffect.
 
+The follow-up run for the bounded Action-queue generator measured 75.78 ms
+source analysis (0.77% RME), 5.20 ms parse-only (0.60% RME), and 105.00 ms for
+the reused Program (0.64% RME). The new generator emitted 128 three-entry
+queue models in 0.294 ms total (0.36% RME). This quieter run supersedes the
+134.47/10.76/180.19 ms observation as the current expanded-workload baseline,
+while the gap from the earlier 59.54/4.15/92.92 ms wrapper workload remains a
+regression target. The generator cost is small relative to source analysis;
+the run does not establish why the analysis means vary between invocations.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

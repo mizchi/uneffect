@@ -31,7 +31,9 @@ contract layer for existing TypeScript:
     React Actions, pure optimistic reducers, Effect setup, external-store reads/subscriptions, imperative-handle
     factories/exposed methods, and cleanup capabilities without changing
     emitted code; annotated custom Hooks compose through resolved imports, and
-    direct React memo/forwardRef wrappers preserve component identity.
+    direct React memo/forwardRef wrappers preserve component identity. An
+    explicit bounded Quint projection checks one Action dispatcher's
+    sequential queue, pending flag, and failure cancellation laws.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a

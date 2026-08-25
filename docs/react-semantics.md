@@ -103,9 +103,11 @@ JSX Action prop; a direct render/event call is
 fail closed. These rules follow the official
 [useActionState](https://react.dev/reference/react/useActionState) and
 [useOptimistic](https://react.dev/reference/react/useOptimistic) contracts.
-They do not yet model the sequential Action queue, pending-flag transitions,
-progressive enhancement, cancellation after a thrown Action, or Error Boundary
-routing.
+The source phase analysis does not infer queue traces. An optional bounded
+Quint projection described below models sequential queue execution,
+pending-flag consistency, and cancellation of the queued tail after a thrown
+Action. Progressive enhancement, Server Functions, and Error Boundary routing
+remain outside that projection.
 
 Named or aliased `useEffectEvent` creates a dedicated local callback class.
 Calls from insertion, layout, or passive Effect setup/cleanup expand the Event's
@@ -433,6 +435,19 @@ TypeScript-resolved cross-file composition. `uneffect check` computes the
 Program result once and includes the same diagnostics. The analysis is
 metadata-only and adds no runtime dependency.
 
+`generateReactActionQueueQuint(moduleName, { maxQueuedActions })` generates a
+bounded model for one `useActionState` dispatcher. Dispatch appends work and
+raises `pending`; at most one reducerAction is active; successful settlement
+precedes the next start; a thrown Action settles the active item, clears
+pending, and cancels the queued tail. `reactActionQueueSafe` checks count
+ordering, the single-active-action law, pending consistency, and terminal
+cancellation. Test-only switches inject concurrent start, post-failure start,
+and early pending-clear transitions, each producing a simulator
+counterexample. The bound controls exploration only; it is not a claimed
+React runtime queue limit. This model is explicit rather than automatically
+synthesized from call-site cardinality, does not model values or optimistic
+state layers, and does not connect thrown values to an Error Boundary.
+
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
 `production`, `strictModeDevelopment`, `concurrentInterruption`,
 `dependencyChange`, `suspenseRetry`, or `repeatedSuspenseRetry` replay into
@@ -474,9 +489,11 @@ This is a tested initial fragment, not a complete React semantics:
 - Action extraction covers inline/module/immutable-local callbacks, direct JSX
   Action dispatchers, and direct local setter calls. Dispatchers returned
   through custom Hooks, general callback data flow, updater functions passed
-  to an optimistic setter, exact sequential queue ordering, pending-state
-  transitions, progressive enhancement/permalinks, Server Functions, and
-  Action failure/Error Boundary composition remain unsupported;
+  to an optimistic setter, automatic queue extraction, value-level state
+  updates, optimistic-layer rollback, progressive enhancement/permalinks,
+  Server Functions, and Action failure/Error Boundary composition remain
+  unsupported. Sequential queue/pending/cancellation behavior is available
+  only through the explicit bounded Quint projection;
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
   aliases. Reassigned bindings, mutation through calls, properties stored in

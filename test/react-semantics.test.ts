@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -513,6 +513,23 @@ describe("React Function Component semantics", () => {
       expect.objectContaining({ component: "InvalidDispatch", kind: "action-dispatch-outside-action", phase: "event", operation: "update" }),
     ]));
     expect(result.diagnostics.filter(({ component }) => ["useSave", "Editor", "Namespaced", "TransitionDispatch"].includes(component))).toEqual([]);
+  });
+
+  it("generates and validates a bounded sequential React Action queue", () => {
+    const quint = generateReactActionQueueQuint("save_actions", { maxQueuedActions: 3 });
+    expect(quint).toContain("action enqueue_action");
+    expect(quint).toContain("action start_next_action");
+    expect(quint).toContain("action resolve_active_action");
+    expect(quint).toContain("action fail_active_action");
+    expect(quint).toContain("started <= settled + 1");
+    expect(quint).toContain("cancelled == 1 implies active == 0 and pending == 0");
+    expect(quint).toContain("val reactActionQueueSafe");
+    expect(() => generateReactActionQueueQuint("bad-name", { maxQueuedActions: 2 })).toThrow("invalid Quint module name");
+    expect(() => generateReactActionQueueQuint("bad_bound", { maxQueuedActions: 0 })).toThrow("maxQueuedActions");
+    expect(() => generateReactActionQueueQuint("bad_fault", {
+      maxQueuedActions: 1,
+      allowConcurrentStart: true,
+    })).toThrow("at least 2");
   });
 
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
