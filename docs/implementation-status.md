@@ -183,10 +183,13 @@ same property is proved for arbitrary TypeScript.
   direct render/event calls to Action and optimistic setters are rejected
   unless nested in a recognized transition Action. A separate bounded Quint
   projection proves single-active sequential queue ordering, pending-state
-  consistency, and cancellation of queued tail work after failure. It is not
-  automatically derived from dispatcher call cardinality and does not model
-  state values, optimistic rollback, progressive enhancement, or Error
-  Boundary failure routing.
+  consistency, and cancellation of queued tail work after failure. Direct
+  Action throws retain `Throw<ErrorType>` or `Throw<unknown>` evidence. A
+  companion projection composes failure cancellation, Hook rethrow, fallback
+  render, and fallback commit for explicitly selected action/fallback
+  component summaries. It is not automatically derived from dispatcher call
+  cardinality or JSX Error Boundary ownership and does not model state values,
+  optimistic rollback, or progressive enhancement.
 - Local named/aliased `useEffectEvent` callbacks and transitive `const` aliases
   compose into insertion/layout/passive setup and cleanup phases. Their
   bindings are omitted from dependency requirements; explicit dependency-array

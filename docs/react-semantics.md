@@ -116,8 +116,11 @@ fail closed. These rules follow the official
 The source phase analysis does not infer queue traces. An optional bounded
 Quint projection described below models sequential queue execution,
 pending-flag consistency, and cancellation of the queued tail after a thrown
-Action. Progressive enhancement, Server Functions, and Error Boundary routing
-remain outside that projection.
+Action. A direct `throw new ErrorType(...)` in a resolvable Action is retained
+as `Throw<ErrorType>` for the standard JavaScript Error constructors; other
+direct thrown values become `Throw<unknown>`. This evidence follows immutable
+local callback calls but is not attributed to ordinary JSX event callbacks.
+Progressive enhancement and Server Functions remain outside this projection.
 
 Named or aliased `useEffectEvent` creates a dedicated local callback class.
 Calls from insertion, layout, or passive Effect setup/cleanup expand the Event's
@@ -456,7 +459,23 @@ and early pending-clear transitions, each producing a simulator
 counterexample. The bound controls exploration only; it is not a claimed
 React runtime queue limit. This model is explicit rather than automatically
 synthesized from call-site cardinality, does not model values or optimistic
-state layers, and does not connect thrown values to an Error Boundary.
+state layers.
+
+`generateReactActionErrorBoundaryQuintFromAnalysis` composes a named analyzed
+Action component with an explicitly selected nearest Error Boundary fallback.
+The model follows the documented `useActionState` failure route: the throwing
+active Action cancels its queued tail and clears pending, the Hook rethrows
+during render, the boundary renders fallback, and fallback commits in place of
+the failed subtree. `reactActionErrorBoundarySafe` checks queue accounting and
+the order of those stages. Fault switches retain pending, execute cancelled
+tail work, or commit fallback before rethrow, and each produces a
+counterexample. This is a safety model; it does not prove eventual fallback
+commit. Uneffect does not yet infer third-party/class Error Boundary ownership
+from JSX, so callers must select the fallback component. Event-handler and
+arbitrary async callback errors are deliberately excluded because React Error
+Boundaries do not catch them. See the official
+[useActionState error handling](https://react.dev/reference/react/useActionState#handling-errors)
+and [Error Boundary semantics](https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary).
 
 `generateReactTransitionQuint(moduleName, { maxActions })` generates a separate
 bounded model for `useTransition`. It permits multiple Actions to settle in any
@@ -536,9 +555,10 @@ This is a tested initial fragment, not a complete React semantics:
   through custom Hooks, general callback data flow, updater functions passed
   to an optimistic setter, automatic queue extraction, value-level state
   updates, optimistic-layer rollback, progressive enhancement/permalinks,
-  Server Functions, and Action failure/Error Boundary composition remain
-  unsupported. Sequential queue/pending/cancellation behavior is available
-  only through the explicit bounded Quint projection;
+  Server Functions, automatic Error Boundary ownership, and general
+  event/async failure routing remain unsupported. Sequential queue and
+  selected Action/Error Boundary behavior are available only through explicit
+  bounded Quint projections;
 - immutable snapshot tracking is local and syntactic. It covers destructured
   props, direct named-import state/context Hook results, and transitive `const`
   aliases. Reassigned bindings, mutation through calls, properties stored in

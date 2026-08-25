@@ -1114,6 +1114,59 @@ function directEffects(
   return [...new Set(effects)];
 }
 
+const standardErrorConstructors = new Set([
+  "Error", "EvalError", "RangeError", "ReferenceError", "SyntaxError", "TypeError", "URIError", "AggregateError",
+]);
+
+function directThrowEffects(
+  node: ts.Node,
+  immediateCallbacks: ReadonlySet<string> = new Set(),
+  localCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+  invokedCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+): string[] {
+  const effects: string[] = [];
+  const activeCallbacks = new Set<LocalEventCallback>();
+  const visit = (current: ts.Node): void => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (ts.isThrowStatement(current)) {
+      const expression = current.expression;
+      const errorName = ts.isNewExpression(expression) && ts.isIdentifier(expression.expression)
+        && standardErrorConstructors.has(expression.expression.text) ? expression.expression.text : "unknown";
+      effects.push(`Throw<${errorName}>`);
+    }
+    if (ts.isCallExpression(current) && immediateCallbacks.has(callName(current) ?? "")) {
+      const argument = current.arguments[0];
+      const callback = argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
+        ? argument : argument && ts.isIdentifier(argument) ? localCallbacks.get(argument.text) : undefined;
+      if (callback?.body) visit(callback.body);
+    }
+    if (ts.isCallExpression(current) && ts.isIdentifier(current.expression)) {
+      const callback = invokedCallbacks.get(current.expression.text);
+      if (callback && !activeCallbacks.has(callback)) {
+        activeCallbacks.add(callback);
+        visit(callback.body);
+        activeCallbacks.delete(callback);
+      }
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return [...new Set(effects)];
+}
+
+function actionEffects(
+  node: ts.Node,
+  declared: ReadonlyMap<string, string[]>,
+  immediateCallbacks: ReadonlySet<string> = new Set(),
+  localCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+  invokedCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+): string[] {
+  return [...new Set([
+    ...directEffects(node, declared, immediateCallbacks, localCallbacks, invokedCallbacks),
+    ...directThrowEffects(node, immediateCallbacks, localCallbacks, invokedCallbacks),
+  ])];
+}
+
 function unknownImmediateActions(
   node: ts.Node,
   immediateCallbacks: ReadonlySet<string>,
@@ -1650,7 +1703,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         }
         if (isUseActionStateCall(source, node.expression)) {
           const action = callbackArgument(node.arguments[0], callableCallbacks);
-          add("action", action ? directEffects(action.body, declared, transitionCallbacks, localCallbacks) : []);
+          add("action", action ? actionEffects(action.body, declared, transitionCallbacks, localCallbacks, localCallbacks) : []);
           return;
         }
         if (isUseOptimisticCall(source, node.expression)) {
@@ -1993,11 +2046,11 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression) {
         const expression = unwrapExpression(node.initializer.expression);
         if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
-          addPhase("action", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks));
+          addPhase("action", actionEffects(expression.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
         } else if (ts.isIdentifier(expression) && actionDispatchers.has(expression.text)) {
           addPhase("action");
         } else if (ts.isIdentifier(expression) && callableCallbacks.has(expression.text)) {
-          addPhase("action", directEffects(callableCallbacks.get(expression.text)!.body, declared, transitionCallbacks, eventCallbacks));
+          addPhase("action", actionEffects(callableCallbacks.get(expression.text)!.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
         } else {
           report(expression, {
             kind: "unknown-action-handler", phase: "action", operation: expression.getText(source),
@@ -2112,7 +2165,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             kind: "unknown-action-callback", phase: "action", operation: node.arguments[0]?.getText(source) ?? "<argument 0>",
             message: "useActionState reducerAction is not an inline, module-local, or immutable component-local callback",
           });
-          else addPhase("action", directEffects(action.body, declared, transitionCallbacks, eventCallbacks));
+          else addPhase("action", actionEffects(action.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
           if (isConditionalWithin(node, component)) report(node, {
             kind: "conditional-hook", phase: "render", hook: "useActionState",
             message: "useActionState has control-flow-dependent call order",
@@ -2450,6 +2503,128 @@ export function generateReactActionQueueQuint(moduleName: string, options: React
   ];
   lines.push("", `  val reactActionQueueSafe = ${safety.join(" and ")}`, "}", "");
   return lines.join("\n");
+}
+
+export interface ReactActionErrorBoundaryOptions {
+  /** Finite exploration bound; this is not a runtime queue limit. */
+  maxQueuedActions: number;
+  /** Test-only fault injection that keeps isPending true after failure. */
+  allowPendingAfterFailure?: boolean;
+  /** Test-only fault injection that starts an Action from the cancelled tail. */
+  allowTailStartAfterFailure?: boolean;
+  /** Test-only fault injection that commits fallback before the Hook rethrows. */
+  allowFallbackBeforeRethrow?: boolean;
+}
+
+/**
+ * Compose one throwing useActionState reducer with the nearest selected Error
+ * Boundary fallback. Event-handler and arbitrary async errors are outside this
+ * projection because React Error Boundaries do not catch them.
+ */
+export function generateReactActionErrorBoundaryQuint(
+  moduleName: string,
+  actionComponent: ReactComponentSummary,
+  fallbackComponent: ReactComponentSummary,
+  options: ReactActionErrorBoundaryOptions,
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const bound = options.maxQueuedActions;
+  if (!Number.isSafeInteger(bound) || bound < 1 || bound > 64) {
+    throw new Error("maxQueuedActions must be a safe integer between 1 and 64");
+  }
+  const throwEffects = actionComponent.phases.find(({ phase }) => phase === "action")?.effects
+    .filter((effect) => effect.startsWith("Throw<")) ?? [];
+  if (throwEffects.length === 0) {
+    throw new Error(`React action component ${actionComponent.name} has no tracked Throw effect`);
+  }
+  const variables = [
+    "queued", "started", "settled", "active", "pending", "cancelled", "failure_stage",
+    "fallback_rendered", "fallback_committed", "primary_visible",
+  ] as const;
+  const initial = new Map<string, string>([["primary_visible", "1"]]);
+  const lines = [
+    `module ${moduleName} {`,
+    `  // action component: ${actionComponent.name}`,
+    `  // action throws: ${throwEffects.join(" | ")}`,
+    `  // nearest Error Boundary fallback: ${fallbackComponent.name}`,
+    ...variables.map((name) => `  var ${name}: int`),
+    "",
+    "  action init = all {",
+    ...variables.map((name) => `    ${name}' = ${initial.get(name) ?? "0"},`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comment: string): void => {
+    actions.push(name);
+    lines.push("", `  // ${comment}`, `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("enqueue_action", ["failure_stage == 0", `queued < ${bound}`], new Map([
+    ["queued", "queued + 1"], ["pending", "1"],
+  ]), "dispatch appends one useActionState Action");
+  action("start_next_action", ["failure_stage == 0", "active == 0", "started < queued"], new Map([
+    ["started", "started + 1"], ["active", "1"],
+  ]), "the reducer Action queue executes sequentially");
+  action("resolve_action", ["failure_stage == 0", "active == 1"], new Map([
+    ["settled", "settled + 1"], ["active", "0"],
+    ["pending", "if (settled + 1 < queued) 1 else 0"],
+  ]), "a successful Action publishes state before the next starts");
+  action("fail_action_and_cancel_tail", ["failure_stage == 0", "active == 1"], new Map([
+    ["active", "0"], ["pending", "0"], ["cancelled", "queued - settled - 1"], ["failure_stage", "1"],
+  ]), "a thrown reducer cancels every queued Action after the active one");
+  action("rethrow_from_use_action_state", ["failure_stage == 1"], new Map([
+    ["failure_stage", "2"],
+  ]), "useActionState rethrows the unknown error during render");
+  action("render_error_fallback", ["failure_stage == 2"], new Map([
+    ["failure_stage", "3"], ["fallback_rendered", "1"],
+  ]), "the selected nearest Error Boundary renders its fallback");
+  action("commit_error_fallback", ["failure_stage == 3"], new Map([
+    ["failure_stage", "4"], ["fallback_committed", "1"], ["primary_visible", "0"],
+  ]), "commit fallback in place of the failed subtree");
+  if (options.allowPendingAfterFailure) action("retain_pending_after_failure", ["failure_stage >= 1"], new Map([
+    ["pending", "1"],
+  ]), "fault injection: retain pending after queue cancellation");
+  if (options.allowTailStartAfterFailure) action("start_cancelled_tail", [
+    "failure_stage >= 1", "started < queued",
+  ], new Map([
+    ["started", "started + 1"], ["active", "1"],
+  ]), "fault injection: execute an Action from the cancelled tail");
+  if (options.allowFallbackBeforeRethrow) action("commit_fallback_before_rethrow", ["failure_stage == 1"], new Map([
+    ["fallback_rendered", "1"], ["fallback_committed", "1"], ["primary_visible", "0"],
+  ]), "fault injection: commit fallback before the Hook rethrows");
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const safety = [
+    "0 <= settled", "settled <= started", "started <= queued", `queued <= ${bound}`,
+    "0 <= active", "active <= 1", "active == (if (failure_stage == 0) started - settled else 0)",
+    "0 <= pending", "pending <= 1", "(pending == 1 iff queued > settled and failure_stage == 0)",
+    "0 <= cancelled", "cancelled <= queued", "0 <= failure_stage", "failure_stage <= 4",
+    "(failure_stage == 0 implies cancelled == 0 and started <= settled + 1)",
+    "(failure_stage >= 1 implies pending == 0 and cancelled == queued - settled - 1)",
+    "(fallback_rendered == 1 iff failure_stage >= 3)",
+    "(fallback_committed == 1 iff failure_stage == 4)",
+    "primary_visible + fallback_committed == 1",
+  ];
+  lines.push("", `  val reactActionErrorBoundarySafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
+/** Compose named analyzed components into the bounded Action/Error Boundary model. */
+export function generateReactActionErrorBoundaryQuintFromAnalysis(
+  moduleName: string,
+  analysis: ReactSemanticsResult,
+  actionComponentName: string,
+  fallbackComponentName: string,
+  options: ReactActionErrorBoundaryOptions,
+): string {
+  const actionComponent = analysis.components.find(({ name }) => name === actionComponentName);
+  if (!actionComponent) throw new Error(`React action component ${actionComponentName} is not available`);
+  const fallbackComponent = analysis.components.find(({ name }) => name === fallbackComponentName);
+  if (!fallbackComponent) throw new Error(`React Error Boundary fallback ${fallbackComponentName} is not available`);
+  return generateReactActionErrorBoundaryQuint(moduleName, actionComponent, fallbackComponent, options);
 }
 
 export interface ReactTransitionOptions {

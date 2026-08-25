@@ -179,6 +179,15 @@ which Quint must reject. This component-local projection does not model Suspense
 rejected thenables, unbounded retries, Offscreen,
 hydration, or the browser scheduler.
 
+`generateReactActionErrorBoundaryQuintFromAnalysis` consumes two explicitly
+selected component summaries: one with a tracked Action-phase `Throw` effect
+and one used as the nearest Error Boundary fallback. Its bounded safety model
+orders active-Action failure, queued-tail cancellation, pending clear,
+`useActionState` render rethrow, fallback render, and fallback commit. Negative
+controls retain pending, start cancelled work, or commit fallback before the
+rethrow. JSX Error Boundary ownership and eventual fallback progress are not
+inferred or proved.
+
 `generateReactSuspenseBoundaryQuint` accepts explicitly selected primary and
 fallback summaries and generates a separate `suspenseBoundarySafe` model. It
 keeps component instances disjoint, requires resolution before primary reveal,

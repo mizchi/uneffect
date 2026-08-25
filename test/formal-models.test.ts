@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseFallbackQuint, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuint, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseFallbackQuint, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuint } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -41,6 +41,46 @@ describe("async invalidation Quint model", () => {
 });
 
 describe("React lifecycle Quint projection", () => {
+  test("routes a failed Action through Hook rethrow to an Error Boundary fallback", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-action-error-"));
+    const path = join(directory, "action-error.qnt");
+    const analysis = analyzeReactSemantics("checkout.tsx", `
+      import { useActionState } from "react"
+      /* uneffect: react component */ function Checkout() {
+        useActionState(() => { throw new Error("failed") }, 0)
+        return null
+      }
+      /* uneffect: react component */ function CheckoutError() { return null }
+    `);
+    const action = analysis.components.find(({ name }) => name === "Checkout")!;
+    const fallback = analysis.components.find(({ name }) => name === "CheckoutError")!;
+    const run = (fault: "none" | "pending" | "tail" | "early-fallback") => {
+      writeFileSync(path, generateReactActionErrorBoundaryQuint("react_action_error", action, fallback, {
+        maxQueuedActions: 3,
+        allowPendingAfterFailure: fault === "pending",
+        allowTailStartAfterFailure: fault === "tail",
+        allowFallbackBeforeRethrow: fault === "early-fallback",
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactActionErrorBoundarySafe", "--max-steps=12", "--max-samples=10000",
+        "--seed=0x6572726f72626e64", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run("none");
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      expect(valid.stdout + valid.stderr).toContain("No violation found");
+      for (const fault of ["pending", "tail", "early-fallback"] as const) {
+        const broken = run(fault);
+        expect(broken.error).toBeUndefined();
+        expect(broken.status, `${fault}: ${broken.stdout}${broken.stderr}`).toBe(1);
+        expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("permits fallback only after a new or urgent Suspense update suspends", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-fallback-eligible-"));
     const path = join(directory, "fallback-eligible.qnt");

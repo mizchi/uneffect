@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -105,6 +105,14 @@ causalHost.getSourceFile = (fileName, languageVersion, onError, fresh) => fileNa
   : causalOriginalGetSourceFile(fileName, languageVersion, onError, fresh);
 const causalProgram = ts.createProgram(["causal.tsx"], causalOptions, causalHost);
 const causalResults = analyzeReactProgram(causalProgram);
+const actionError = analyzeReactSemantics("checkout.tsx", `
+  import { useActionState } from "react"
+  /* uneffect: react component */ function Checkout() {
+    useActionState(() => { throw new Error("failed") }, 0)
+    return null
+  }
+  /* uneffect: react component */ function CheckoutError() { return null }
+`);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -125,6 +133,12 @@ describe("React semantic analysis", () => {
 
   bench("generate 128 bounded React Action queues", () => {
     analyzed.components.forEach((_component, index) => generateReactActionQueueQuint(`action_queue_${index}`, { maxQueuedActions: 3 }));
+  }, { time: 500, iterations: 20 });
+
+  bench("generate Action/Error Boundary Quint", () => {
+    generateReactActionErrorBoundaryQuintFromAnalysis(
+      "action_error", actionError, "Checkout", "CheckoutError", { maxQueuedActions: 3 },
+    );
   }, { time: 500, iterations: 20 });
 
   bench("generate 128 bounded React Transitions", () => {

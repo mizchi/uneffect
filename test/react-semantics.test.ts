@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionErrorBoundaryQuintFromAnalysis, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -530,6 +530,36 @@ describe("React Function Component semantics", () => {
       maxQueuedActions: 1,
       allowConcurrentStart: true,
     })).toThrow("at least 2");
+  });
+
+  it("tracks direct Action throws without treating event throws as Error Boundary inputs", () => {
+    const result = analyzeReactSemantics("action-error.tsx", `
+      import { useActionState } from "react"
+      /* uneffect: react component */
+      function Checkout() {
+        const fail = () => { throw new TypeError("invalid") }
+        const [, submit] = useActionState(async (previous: number, value: number) => {
+          if (value < 0) fail()
+          if (value === 0) throw "zero"
+          return previous + value
+        }, 0)
+        return <button onClick={() => { throw new RangeError("event") }} formAction={submit} />
+      }
+      /* uneffect: react component */ function CheckoutError() { return null }
+    `);
+    const checkout = result.components.find(({ name }) => name === "Checkout")!;
+    expect(checkout.phases).toEqual(expect.arrayContaining([
+      { phase: "action", effects: ["Throw<TypeError>", "Throw<unknown>"] },
+      { phase: "event", effects: [] },
+    ]));
+    const quint = generateReactActionErrorBoundaryQuintFromAnalysis(
+      "checkout_error", result, "Checkout", "CheckoutError", { maxQueuedActions: 3 },
+    );
+    expect(quint).toContain("action throws: Throw<TypeError> | Throw<unknown>");
+    expect(quint).toContain("nearest Error Boundary fallback: CheckoutError");
+    expect(() => generateReactActionErrorBoundaryQuintFromAnalysis(
+      "missing", result, "CheckoutError", "Checkout", { maxQueuedActions: 3 },
+    )).toThrow("has no tracked Throw effect");
   });
 
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
@@ -2202,6 +2232,23 @@ describe("React Function Component semantics", () => {
       scenario: "urgentUpdate",
     });
     expect(urgent).toContain("initial content: visible");
+  });
+
+  it("dogfoods useActionState failure routing into a selected Error Boundary fallback", () => {
+    const fileName = "examples/dogfood/react-action-error-boundary.tsx";
+    const result = analyzeReactSemantics(fileName, readFileSync(fileName, "utf8"));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.components.find(({ name }) => name === "Checkout")!.phases).toContainEqual({
+      phase: "action", effects: ["Fetch", "Throw<TypeError>"],
+    });
+    const quint = generateReactActionErrorBoundaryQuintFromAnalysis(
+      "checkout_error_dogfood", result, "Checkout", "CheckoutError", { maxQueuedActions: 3 },
+    );
+    expect(quint).toContain("action component: Checkout");
+    expect(quint).toContain("action throws: Throw<TypeError>");
+    expect(quint).toContain("nearest Error Boundary fallback: CheckoutError");
+    expect(quint).toContain("action fail_action_and_cancel_tail");
+    expect(quint).toContain("val reactActionErrorBoundarySafe");
   });
 
   it("dogfoods nearest-boundary ownership in a checked-in Suspense tree", () => {

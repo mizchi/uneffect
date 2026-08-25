@@ -67,6 +67,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const generateReactActionQueue = futureApi("generateReactActionQueueQuint");
+    const generateActionErrorBoundary = futureApi("generateReactActionErrorBoundaryQuintFromAnalysis");
     const generateReactTransition = futureApi("generateReactTransitionQuint");
     const generateTransitionSuspense = futureApi("generateReactTransitionSuspenseQuintFromAnalysis");
     const generateSuspenseFallback = futureApi("generateReactSuspenseFallbackQuintFromAnalysis");
@@ -167,6 +168,28 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const actionQueueQuint = generateReactActionQueue("feed_actions", { maxQueuedActions: 3 }) as string;
     expect(actionQueueQuint).toContain("val reactActionQueueSafe");
     expect(actionQueueQuint).toContain("cancelled == 1 implies active == 0 and pending == 0");
+    const failingAction = analyzeReact("src/checkout.tsx", `
+      import { useActionState } from "react"
+      /* uneffect: react component */
+      function Checkout() {
+        const [, submit] = useActionState(async (previous: number, quantity: number) => {
+          if (!Number.isFinite(quantity)) throw new Error("invalid quantity")
+          return previous + quantity
+        }, 0)
+        return <form action={submit} />
+      }
+      /* uneffect: react component */ function CheckoutError() { return <p>Action failed</p> }
+    `) as typeof result;
+    expect(failingAction.components.find(({ name }) => name === "Checkout")!.phases).toContainEqual({
+      phase: "action", effects: ["Throw<Error>"],
+    });
+    const actionErrorQuint = generateActionErrorBoundary("checkout_error", failingAction, "Checkout", "CheckoutError", {
+      maxQueuedActions: 3,
+    }) as string;
+    expect(actionErrorQuint).toContain("action fail_action_and_cancel_tail");
+    expect(actionErrorQuint).toContain("action rethrow_from_use_action_state");
+    expect(actionErrorQuint).toContain("action commit_error_fallback");
+    expect(actionErrorQuint).toContain("failure_stage >= 1 implies pending == 0 and cancelled == queued - settled - 1");
     const transitionQuint = generateReactTransition("feed_transition", { maxActions: 3 }) as string;
     expect(transitionQuint).toContain("val reactTransitionSafe");
     expect(transitionQuint).toContain("action interrupt_render");

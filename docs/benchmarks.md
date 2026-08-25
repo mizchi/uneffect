@@ -148,6 +148,14 @@ RME). The new number covers string generation from an analyzed boundary only;
 it excludes TSX analysis and Quint execution. These figures are observations,
 not pass/fail budgets or a cross-run speed claim.
 
+The explicit Action/Error Boundary generator measured 0.0044 ms mean over
+114,693 samples (0.35% RME) on 2026-08-25. In the same run, source analysis of
+128 opted-in components measured 93.07 ms (1.12% RME), parse-only measured
+5.22 ms (0.71% RME), and the reused Program measured 134.12 ms (1.10% RME).
+The generator benchmark consumes two already analyzed component summaries and
+excludes TSX analysis and Quint execution. These figures are observations, not
+a performance budget or evidence of a cross-run regression.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render
