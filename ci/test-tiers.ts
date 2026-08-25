@@ -107,7 +107,7 @@ export function shouldRetryIsolatedSolverFailure(output: string): boolean {
   const wasmHeapCorruption = output.includes("z3-solver/build/z3-built.js")
     && output.includes("corrupted its heap memory area (address zero)");
   const z3InternalAssertion = output.includes("ASSERTION VIOLATION")
-    && output.includes("src/ast/for_each_expr.h")
+    && output.includes("File: ../src/ast/")
     && output.includes("UNEXPECTED CODE WAS REACHED")
     && /Z3 \d+\.\d+\.\d+/.test(output);
   const knownLeaseTimeout = output.includes("test/node-lease.test.ts")
