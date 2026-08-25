@@ -22,7 +22,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
 `).join("\n");
 
 const source = `
-  import { startTransition, useContext, useEffect, useInsertionEffect, useState } from "react"
+  import { startTransition, useContext, useEffect, useEffectEvent, useInsertionEffect, useState } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
@@ -36,7 +36,9 @@ const source = `
   declare function removeRule(): void
   /* uneffect: react hook */
   function useCatalogSubscription(label: string) {
+    const reportConnected = useEffectEvent(() => console.log(label))
     useEffect(() => {
+      reportConnected()
       const subscription = subscribe(label)
       return () => unsubscribe(subscription)
     }, [label])
@@ -85,15 +87,15 @@ const causalResults = analyzeReactProgram(causalProgram);
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
     analyzeReactSemantics("catalog.tsx", source);
-  }, { time: 500, iterations: 20 });
+  }, { time: 1_000, iterations: 30 });
 
   bench("TypeScript TSX parse baseline", () => {
     ts.createSourceFile("catalog.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  }, { time: 500, iterations: 20 });
+  }, { time: 1_000, iterations: 30 });
 
   bench("classify one reused TypeScript Program", () => {
     analyzeReactProgram(program);
-  }, { time: 500, iterations: 20 });
+  }, { time: 1_000, iterations: 30 });
 
   bench("generate Strict Mode Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`component_${index}`, component));

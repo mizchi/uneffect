@@ -129,6 +129,41 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("setup_2 <= setup_1");
   });
 
+  it("composes Effect Events only into Effect phases and rejects invalid uses", () => {
+    const result = analyzeReactSemantics("effect-event.tsx", `
+      import { startTransition, useEffect, useEffectEvent as useEvent, useLayoutEffect } from "react"
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      /* uneffect: react component */
+      function Safe({ roomId }: { roomId: string }) {
+        const onConnected = useEvent(() => console.log(roomId))
+        const notify = onConnected
+        useEffect(() => notify(), [])
+        useLayoutEffect(() => onConnected(), [])
+        return null
+      }
+      /* uneffect: react component */
+      function Invalid() {
+        const onConnected = useEvent(() => console.log("connected"))
+        onConnected()
+        useEffect(() => {}, [onConnected])
+        return <button onClick={() => { onConnected(); startTransition(() => onConnected()) }} />
+      }
+    `);
+
+    expect(result.components.find(({ name }) => name === "Safe")!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "passive-effect", effects: ["Console"] }),
+      expect.objectContaining({ phase: "layout-effect", effects: ["Console"] }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => component === "Safe")).toEqual([]);
+    expect(result.diagnostics.filter(({ component }) => component === "Invalid")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: "invalid-effect-event-call", phase: "render", operation: "onConnected" }),
+      expect.objectContaining({ kind: "effect-event-dependency", phase: "passive-effect", operation: "onConnected" }),
+      expect.objectContaining({ kind: "invalid-effect-event-call", phase: "event", operation: "onConnected" }),
+    ]));
+    expect(result.diagnostics.filter(({ component, kind, phase }) => component === "Invalid"
+      && kind === "invalid-effect-event-call" && phase === "event")).toHaveLength(2);
+  });
+
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -1610,7 +1645,7 @@ describe("React Function Component semantics", () => {
       name: "TelemetryDashboard",
       phases: expect.arrayContaining([
         expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
-        expect.objectContaining({ phase: "passive-effect", effects: ["Acquire<TelemetrySubscription>"] }),
+        expect.objectContaining({ phase: "passive-effect", effects: expect.arrayContaining(["Console", "Acquire<TelemetrySubscription>"]) }),
         expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),
         expect.objectContaining({ phase: "cleanup", effects: expect.arrayContaining(["Release<TelemetrySubscription>", "Release<TelemetryViewport>"]) }),
       ]),

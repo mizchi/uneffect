@@ -159,6 +159,11 @@ same property is proved for arbitrary TypeScript.
   the enclosing phase, including transitive `const` aliases.
   This preserves nested capabilities but does not claim a transition scheduler
   model. Imported, reassigned, and otherwise opaque actions fail closed.
+- Local named/aliased `useEffectEvent` callbacks and transitive `const` aliases
+  compose into insertion/layout/passive setup and cleanup phases. Their
+  bindings are omitted from dependency requirements; explicit dependency-array
+  entries and calls from render, JSX events, or transition actions are
+  diagnosed. Prop/import/higher-order Effect Event flow remains unsupported.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase

@@ -62,6 +62,16 @@ Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
 otherwise opaque actions produce `unknown-transition-action` rather than losing
 their capabilities silently.
 
+Named or aliased `useEffectEvent` creates a dedicated local callback class.
+Calls from insertion, layout, or passive Effect setup/cleanup expand the Event's
+capabilities into the calling phase, including transitive `const` aliases and
+Effect-Event-to-Effect-Event calls. The binding is exempt from captured
+dependency requirements, while explicitly listing it produces
+`effect-event-dependency`. Calling it during render, from a JSX event callback,
+or from a transition action produces `invalid-effect-event-call`; it is not
+silently treated as an ordinary event handler. This implements the local,
+inline fragment of the [React `useEffectEvent` contract](https://react.dev/reference/react/useEffectEvent).
+
 Named imports of `useEffect`, `useLayoutEffect`, and `useInsertionEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
 function is not treated as a built-in Hook boundary. Annotated custom Hooks
@@ -405,7 +415,8 @@ This is a tested initial fragment, not a complete React semantics:
   rejected thenables, unbounded retries, transition priority/pending state,
   imported/interprocedural transition actions, Offscreen trees,
   server components, hydration,
-  insertion Effect component-by-component cleanup/setup interleaving, and React compiler assumptions are not
+  insertion Effect component-by-component cleanup/setup interleaving,
+  Effect Events passed through props/imports or higher-order containers, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
   concurrent scheduler refinement are not generated yet.

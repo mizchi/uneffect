@@ -21,7 +21,10 @@ JSX event-handler reference. Each component also builds immutable props, state, 
 facts through local `const` aliases and contains an identity-checked inline
 callback ref with returned cleanup. Each component also has an insertion
 Effect with StyleWrite setup/cleanup so phase normalization and the local
-state-dispatch/ref prohibition scans remain in the measured path. The paired baseline
+state-dispatch/ref prohibition scans remain in the measured path. The shared
+subscription Hook defines a local Effect Event, calls it from its passive
+Effect, and captures `label` without adding the Event binding to dependencies.
+The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
 
@@ -56,6 +59,15 @@ generation measured 1.477 ms. This is a deliberately larger workload than the
 29.11/2.67/39.52 ms referenced-action baseline: it adds 128 Hook callbacks,
 their setup/cleanup calls, dispatcher/ref scans, and ordering obligations, so
 the delta is not attributed solely to phase sorting.
+
+After adding the shared `useEffectEvent` callback, three runs on 2026-08-25
+were rejected as replacement baselines. The first two had 7.05%/10.41% source
+RME and 6.61%/22.38% parse-only RME. Increasing the three main paths from a
+500 ms/20-iteration minimum to 1,000 ms/30 iterations still produced
+7.58% source, 5.59% parse-only, and 5.31% reused-Program RME. Their means
+(76.78/5.50/117.70 ms in the longer run) are recorded only as noisy evidence,
+not as a claimed regression. The committed longer sampling window makes a
+future quiet-machine rerun more likely to yield a defensible baseline.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded

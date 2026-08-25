@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useInsertionEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useMemo, useState } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -43,7 +43,9 @@ function useTelemetryStyles(): void {
 
 /* uneffect: react hook */
 function useTelemetrySubscription(service: string): void {
+  const reportConnected = useEffectEvent(() => console.log("telemetry connected", service));
   useEffect(() => {
+    reportConnected();
     const subscription = subscribeToTelemetry(service);
     return () => unsubscribeFromTelemetry(subscription);
   }, [service]);

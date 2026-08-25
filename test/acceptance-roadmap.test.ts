@@ -73,7 +73,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { startTransition, useEffect, useInsertionEffect } from "react"
+      import { startTransition, useEffect, useEffectEvent, useInsertionEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -85,7 +85,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function removeFeedStyles(): void
       /* uneffect: react hook */
       function useSubscription(topic: string) {
+        const reportConnected = useEffectEvent(() => console.log(topic))
         useEffect(() => {
+          reportConnected()
           subscribe()
           return () => unsubscribe()
         }, [topic])
