@@ -41,6 +41,7 @@ documentation are all updated.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
 - [x] Resolve immutable component-local function/arrow callbacks and transitive `const` aliases used by JSX event attributes, while diagnosing reassigned or otherwise opaque handlers.
 - [x] Treat inline actions passed to named/default/namespace `startTransition` and the setter returned by `useTransition` as immediately executed in the enclosing React phase, so nested capabilities are not lost.
+- [x] Resolve immutable component/custom-Hook-local transition actions through transitive `const` aliases and diagnose unresolved actions instead of dropping their capabilities.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.

@@ -39,6 +39,12 @@ remaining delta includes the extra immediate-action traversal and the larger
 synthetic source, so it is retained as a regression baseline rather than
 attributed entirely to one operation.
 
+Replacing each inline transition action with an immutable local callback and
+one `const` alias measured 29.11 ms for the source path, 2.67 ms for
+parse-only, and 39.52 ms for the reused Program. A preceding run had a 70 ms
+source outlier and 14.85% RME and was discarded; the recorded run had 1.18%
+RME. The workload exercises local callback and transitive-alias lookup.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

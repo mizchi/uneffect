@@ -49,7 +49,7 @@ capabilities belong to the `event` phase, not render. Reassigned identifiers,
 member expressions, imported callbacks, and other unresolved handler shapes
 produce `unknown-event-handler` instead of being silently treated as pure.
 
-Inline action callbacks passed to named or aliased `startTransition`,
+Inline or immutable component/custom-Hook-local action callbacks passed to named or aliased `startTransition`,
 `React.startTransition`, a React namespace object, or the second tuple element
 returned by `useTransition` execute in the caller's current phase. Uneffect
 therefore retains capabilities inside the action: a Fetch nested under
@@ -57,6 +57,9 @@ therefore retains capabilities inside the action: a Fetch nested under
 call during render is a `render-effect` error. This is effect tracking for the
 synchronous action invocation. It does not yet model transition priority,
 pending state, interruption, or the eventual rendering work as a scheduler.
+Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
+otherwise opaque actions produce `unknown-transition-action` rather than losing
+their capabilities silently.
 
 Named imports of `useEffect` and `useLayoutEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
@@ -389,7 +392,7 @@ This is a tested initial fragment, not a complete React semantics:
 - Intrinsic/component wrapper subtrees, expression-valued children, dynamic
   component selection, reachability/pending-state proof for `use`, suspension originating in a boundary or fallback,
   rejected thenables, unbounded retries, transition priority/pending state,
-  referenced transition actions, Offscreen trees,
+  imported/interprocedural transition actions, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;

@@ -9,6 +9,7 @@ export type ReactDiagnosticKind =
   | "render-ref-access"
   | "unknown-ref-callback"
   | "unknown-event-handler"
+  | "unknown-transition-action"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -693,7 +694,12 @@ function effectsForCall(call: ts.CallExpression, declared: ReadonlyMap<string, s
   return name ? declared.get(name) ?? [] : [];
 }
 
-function directEffects(node: ts.Node, declared: ReadonlyMap<string, string[]>, immediateCallbacks: ReadonlySet<string> = new Set()): string[] {
+function directEffects(
+  node: ts.Node,
+  declared: ReadonlyMap<string, string[]>,
+  immediateCallbacks: ReadonlySet<string> = new Set(),
+  localCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+): string[] {
   const effects: string[] = [];
   const visit = (current: ts.Node): void => {
     if (current !== node && ts.isFunctionLike(current)) return;
@@ -701,7 +707,9 @@ function directEffects(node: ts.Node, declared: ReadonlyMap<string, string[]>, i
       effects.push(...effectsForCall(current, declared));
       if (immediateCallbacks.has(callName(current) ?? "")) {
         const action = current.arguments[0];
-        if (action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))) visit(action.body);
+        const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
+          ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+        if (callback?.body) visit(callback.body);
       }
     }
     if (ts.isBinaryExpression(current) && current.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
@@ -711,6 +719,27 @@ function directEffects(node: ts.Node, declared: ReadonlyMap<string, string[]>, i
   };
   visit(node);
   return [...new Set(effects)];
+}
+
+function unknownImmediateActions(
+  node: ts.Node,
+  immediateCallbacks: ReadonlySet<string>,
+  localCallbacks: ReadonlyMap<string, LocalEventCallback>,
+): ts.Expression[] {
+  const unknown: ts.Expression[] = [];
+  const visit = (current: ts.Node): void => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (ts.isCallExpression(current) && immediateCallbacks.has(callName(current) ?? "")) {
+      const action = current.arguments[0];
+      const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
+        ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+      if (callback?.body) visit(callback.body);
+      else if (action) unknown.push(action);
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return unknown;
 }
 
 const reactTransitionCallbackCache = new WeakMap<ComponentNode, ReadonlySet<string>>();
@@ -1109,6 +1138,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const hook = customHooks.get(hookName);
     if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues, suspensions };
     const transitionCallbacks = reactTransitionCallbacks(source, hook);
+    const localCallbacks = localEventCallbacks(hook);
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
       const target = phases.get(phase) ?? new Set<string>();
@@ -1124,7 +1154,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isCallExpression(node)) {
         if (transitionCallbacks.has(callName(node) ?? "")) {
           const action = node.arguments[0];
-          if (action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))) visit(action.body);
+          const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
+            ? action : action && ts.isIdentifier(action) ? localCallbacks.get(action.text) : undefined;
+          if (callback?.body) visit(callback.body);
         }
         if (isReactUseCall(source, node.expression)) {
           const argument = node.arguments[0];
@@ -1138,15 +1170,15 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         if (builtinPhase) {
           if (builtinPhase === "render-hook") {
             const callback = inlineCallback(node, called ? renderCallbacks.get(called) : undefined);
-            if (callback) add("render", directEffects(callback.body, declared, transitionCallbacks));
+            if (callback) add("render", directEffects(callback.body, declared, transitionCallbacks, localCallbacks));
             return;
           }
           const callback = node.arguments[0];
           if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-            const setupEffects = directEffects(callback.body, declared, transitionCallbacks);
+            const setupEffects = directEffects(callback.body, declared, transitionCallbacks, localCallbacks);
             add(builtinPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks) : [];
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, localCallbacks) : [];
             if (cleanup) add("cleanup", cleanupEffects);
             const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
@@ -1281,10 +1313,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         const callback = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
         if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-          const setupEffects = directEffects(callback.body, declared, transitionCallbacks);
+          const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks);
           addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
-          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks) : [];
+          const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks) : [];
           if (cleanup) addPhase("cleanup", cleanupEffects);
           const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
           const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
@@ -1311,10 +1343,20 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       }
       if (ts.isJsxAttribute(node) && node.name.getText(source).startsWith("on") && node.initializer && ts.isJsxExpression(node.initializer)) {
         const expression = node.initializer.expression;
-        if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) addPhase("event", directEffects(expression.body, declared, transitionCallbacks));
+        const reportUnknownAction = (action: ts.Expression): void => report(action, {
+          kind: "unknown-transition-action", phase: "event", operation: action.getText(source),
+          message: `${action.getText(source)} is not an inline or immutable locally resolved transition action`,
+        });
+        if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) {
+          addPhase("event", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks));
+          for (const action of unknownImmediateActions(expression.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
+        }
         else if (expression && ts.isIdentifier(expression)) {
           const callback = eventCallbacks.get(expression.text);
-          if (callback?.body) addPhase("event", directEffects(callback.body, declared, transitionCallbacks));
+          if (callback?.body) {
+            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, eventCallbacks));
+            for (const action of unknownImmediateActions(callback.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
+          }
           else report(expression, {
             kind: "unknown-event-handler", phase: "event", operation: expression.text,
             message: `${expression.text} is not an immutable locally resolved event callback`,
@@ -1330,7 +1372,13 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       if (ts.isCallExpression(node)) {
         if (transitionCallbacks.has(callName(node) ?? "")) {
           const action = node.arguments[0];
-          if (action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))) visitRender(action.body);
+          const callback = action && (ts.isArrowFunction(action) || ts.isFunctionExpression(action))
+            ? action : action && ts.isIdentifier(action) ? eventCallbacks.get(action.text) : undefined;
+          if (callback?.body) visitRender(callback.body);
+          else if (action) report(action, {
+            kind: "unknown-transition-action", phase: "render", operation: action.getText(source),
+            message: `${action.getText(source)} is not an inline or immutable locally resolved transition action`,
+          });
         }
         if (isReactUseCall(source, node.expression)) {
           const argument = node.arguments[0];
@@ -1371,10 +1419,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           }
           const callback = node.arguments[0];
           if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
-            const setupEffects = directEffects(callback.body, declared, transitionCallbacks);
+            const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks);
             addPhase(hookPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks) : [];
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks) : [];
             if (cleanup) addPhase("cleanup", cleanupEffects);
             const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);

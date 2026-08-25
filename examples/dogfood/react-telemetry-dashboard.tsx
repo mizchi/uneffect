@@ -45,11 +45,12 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
     () => showFailures ? props.rows.filter((row) => row.failures > 0) : props.rows,
     [props.rows, showFailures],
   );
+  const requestRefresh = () => {
+    fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+  };
   const refresh = () => {
     setShowFailures(!showFailures);
-    startTransition(() => {
-      fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
-    });
+    startTransition(requestRefresh);
   };
   return <output ref={(node) => {
     const viewport = attachTelemetryViewport(node);

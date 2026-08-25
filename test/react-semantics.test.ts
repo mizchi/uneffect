@@ -111,12 +111,17 @@ describe("React Function Component semantics", () => {
     const result = analyzeReactSemantics("transitions.tsx", `
       import React, { startTransition as defer, useTransition } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      declare const externalAction: () => void
       /* uneffect: react component */
       function Panel() {
         const [, schedule] = useTransition()
+        const refresh = () => fetch("/refresh")
+        const refreshAlias = refresh
+        function logSchedule() { console.log("scheduled") }
         const handleClick = () => {
-          defer(() => fetch("/refresh"))
-          schedule(() => console.log("scheduled"))
+          defer(refreshAlias)
+          schedule(logSchedule)
+          defer(externalAction)
         }
         return <button onClick={handleClick} />
       }
@@ -126,7 +131,11 @@ describe("React Function Component semantics", () => {
         return null
       }
       /* uneffect: react hook */
-      function useInvalidTransition() { defer(() => console.log("hook-render")) }
+      function useInvalidTransition() {
+        const log = () => console.log("hook-render")
+        const logAlias = log
+        defer(logAlias)
+      }
       /* uneffect: react component */
       function InvalidHookRender() { useInvalidTransition(); return null }
     `);
@@ -135,6 +144,7 @@ describe("React Function Component semantics", () => {
       expect.objectContaining({ phase: "event", effects: ["Fetch", "Console"] }),
     ]));
     expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "Panel", kind: "unknown-transition-action", phase: "event", operation: "externalAction" }),
       expect.objectContaining({ component: "InvalidRender", kind: "render-effect", effect: "Fetch" }),
       expect.objectContaining({ component: "InvalidHookRender", kind: "render-effect", effect: "Console" }),
     ]);

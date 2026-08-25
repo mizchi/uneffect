@@ -89,7 +89,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
         useSubscription(topic)
-        const handleClick = () => startTransition(() => fetch(\`/topics/\${topic}\`))
+        const refresh = () => fetch(\`/topics/\${topic}\`)
+        const handleClick = () => startTransition(refresh)
         return <button
           ref={(node) => { console.log(node); return () => console.log("detach") }}
           onClick={handleClick}

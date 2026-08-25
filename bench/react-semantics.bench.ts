@@ -10,7 +10,9 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
     useCatalogSubscription(props.label)
-    const handleClick = () => startTransition(() => fetch("/items/${index}"))
+    const refresh = () => fetch("/items/${index}")
+    const refreshAlias = refresh
+    const handleClick = () => startTransition(refreshAlias)
     return <button
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
       onClick={handleClick}
