@@ -937,3 +937,12 @@ ms and parsing/classifying 128 opted-in components measured 18.1963 ms. These
 sub-microbenchmark differences are dominated by workload and runtime noise and
 must not be read as a speedup. The tree measurement excludes parsing, Program
 symbol resolution, and Quint execution and is not a regression budget.
+
+After adding TypeChecker-backed React `use(thenable)` causality, analysis of one
+reused tiny Suspense Program measured 0.0740 ms mean over 6,761 samples (0.55%
+relative margin of error). Generation of its already-analyzed causal tree model
+measured 0.0011 ms over 448,931 samples (1.92% relative margin of error). The
+Program benchmark includes a warm TypeChecker lookup and custom-Hook fixed
+point but excludes Program construction; the generator excludes Quint
+execution. The workload has one proven thenable leaf and one excluded static
+leaf. Both measurements are observations, not regression budgets.

@@ -269,7 +269,23 @@ the leaf reveal. The older nested-chain generator remains available. Suspension
 while rendering a boundary or fallback and dynamic boundary selection are not
 inferred.
 
-Uneffect does not yet prove that a render actually throws a thenable or
+Each component summary also exposes `suspensions`. A named, aliased,
+default-object, or namespace-object React `use(value)` call is recorded as
+`react-use` evidence. Source-only analysis retains `certainty: "unknown"`:
+syntax alone cannot distinguish a Context or arbitrary value from a thenable.
+Program analysis promotes the evidence to `certainty: "thenable"` only when
+every member of the TypeScript argument type has a callable `then` property.
+Mixed unions therefore remain unknown. The evidence carries its definition
+file and composes through local or symbol-resolved cross-file custom Hooks.
+
+Passing `{ requireKnownSuspension: true }` to either Suspense-tree generator
+removes leaves without proven thenable evidence and fails closed if none
+remain. The default remains the explicitly conservative any-leaf model for
+callers that want to explore hypothetical suspension. This proves a typed
+may-suspend cause, not that React will reach the call, that the thenable is
+currently pending, or that it will fulfill rather than reject.
+
+Uneffect does not yet prove that a render reaches a pending thenable or
 distinguish a user cleanup callback from an empty phase teardown barrier. The
 generator is therefore bounded lifecycle evidence for the extracted direct
 relationship, not a general React tree or suspension proof.
@@ -344,7 +360,7 @@ This is a tested initial fragment, not a complete React semantics:
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
 - Intrinsic/component wrapper subtrees, expression-valued children, dynamic
-  component selection, suspension originating in a boundary or fallback,
+  component selection, reachability/pending-state proof for `use`, suspension originating in a boundary or fallback,
   rejected thenables, unbounded retries, transition priority, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
@@ -374,7 +390,9 @@ component tags, then resolves them through a barrel to default and named
 component exports before generating the same model. The checked-in
 `react-nested-suspense.tsx` fixture combines a Fragment sibling with a nested
 boundary and generates the tree ownership model, distinguishing the outer
-navigation leaf from the inner account leaf. The checked-in
+navigation leaf from the inner account leaf. Its account component calls
+`use(accountPromise)`; Program analysis proves the argument thenable and the
+causal model excludes the static navigation leaf. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

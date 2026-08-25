@@ -67,8 +67,17 @@ export interface ReactComponentSummary {
   span: { start: number; end: number };
   phases: ReactPhaseSummary[];
   replay: ReactReplayModel;
+  suspensions: ReactSuspensionSource[];
 }
 export interface ReactHookSummary extends ReactComponentSummary {}
+
+export interface ReactSuspensionSource {
+  kind: "react-use";
+  certainty: "unknown" | "thenable";
+  fileName: string;
+  expression: string;
+  span: { start: number; end: number };
+}
 
 export interface ReactSemanticDiagnostic {
   fileName: string;
@@ -155,6 +164,7 @@ interface CustomHookSummary {
   instances: CommitInstanceSummary[];
   leaked: Array<{ phase: HookKind; capabilities: string[] }>;
   lifecycleIssues: Array<LifecycleIssue & { phase: HookKind }>;
+  suspensions: ReactSuspensionSource[];
 }
 
 interface CommitInstanceSummary {
@@ -728,6 +738,12 @@ function isReactSuspenseTag(source: ts.SourceFile, tag: ts.JsxTagNameExpression)
     && ts.isIdentifier(tag.expression) && reactNamespaceImportNames(source).has(tag.expression.text);
 }
 
+function isReactUseCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "use";
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === "use"
+    && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
+}
+
 /** Immutable render snapshots are distinct from stable identities such as setters and refs. */
 const immutableSnapshotCache = new WeakMap<ComponentNode, ReadonlySet<string>>();
 
@@ -1012,8 +1028,9 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const phases = new Map<ReactPhase, Set<string>>([["render", new Set()]]), instances: CommitInstanceSummary[] = [];
     const leaked: CustomHookSummary["leaked"] = [];
     const lifecycleIssues: CustomHookSummary["lifecycleIssues"] = [];
+    const suspensions: ReactSuspensionSource[] = [];
     const hook = customHooks.get(hookName);
-    if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues };
+    if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues, suspensions };
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
       const target = phases.get(phase) ?? new Set<string>();
@@ -1023,6 +1040,14 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const visit = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
+        if (isReactUseCall(source, node.expression)) {
+          const argument = node.arguments[0];
+          suspensions.push({
+            kind: "react-use", certainty: "unknown", fileName,
+            expression: argument?.getText(source) ?? "<missing>",
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+        }
         const called = callName(node), builtinPhase = called ? hooks.get(called) : undefined;
         if (builtinPhase) {
           if (builtinPhase === "render-hook") {
@@ -1059,6 +1084,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           })));
           leaked.push(...child.leaked);
           lifecycleIssues.push(...child.lifecycleIssues);
+          suspensions.push(...child.suspensions);
           return;
         }
         add("render", effectsForCall(node, declared));
@@ -1069,7 +1095,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       ts.forEachChild(node, visit);
     };
     visit(hook.body);
-    const summary = { phases, instances, leaked, lifecycleIssues };
+    const summary = { phases, instances, leaked, lifecycleIssues, suspensions };
     customHookCache.set(hookName, summary);
     return summary;
   };
@@ -1146,6 +1172,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     if (!extractAnnotations(leadingText(source, component), "react").some((value) => value.trim() === "component")) continue;
     const name = componentName(component), phaseEffects = new Map<ReactPhase, Set<string>>([["render", new Set()]]);
     const instances: CommitInstanceSummary[] = [];
+    const suspensions: ReactSuspensionSource[] = [];
     const addPhase = (phase: ReactPhase, effects: readonly string[] = []): void => {
       const target = phaseEffects.get(phase) ?? new Set<string>();
       for (const effect of effects) target.add(effect);
@@ -1196,6 +1223,13 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         return;
       }
       if (ts.isCallExpression(node)) {
+        if (isReactUseCall(source, node.expression)) {
+          const argument = node.arguments[0];
+          suspensions.push({
+            kind: "react-use", certainty: "unknown", fileName, expression: argument?.getText(source) ?? "<missing>",
+            span: { start: node.getStart(source), end: node.getEnd() },
+          });
+        }
         const called = callName(node), hookPhase = called ? hooks.get(called) : undefined;
         const customHook = called ? customHookCache.get(called) : undefined;
         if (customHook) {
@@ -1211,6 +1245,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             kind: "missing-effect-cleanup", phase: leak.phase, effect: leak.capabilities.join(" | "),
             message: `${called} acquires ${leak.capabilities.join(", ")} without a matching cleanup release`,
           });
+          suspensions.push(...customHook.suspensions);
           return;
         }
         if (hookPhase) {
@@ -1287,6 +1322,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       name, span: { start: component.getStart(source), end: component.getEnd() },
       phases: [...phaseEffects].map(([phase, effects]) => ({ phase, effects: [...effects] })),
       replay: replayModel(instances),
+      suspensions,
     });
   }
   const publicHooks = [...customHooks.keys()].map((name): ReactHookSummary => {
@@ -1295,6 +1331,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       name, span: { start: node.getStart(source), end: node.getEnd() },
       phases: [...summary.phases].map(([phase, effects]) => ({ phase, effects: [...effects] })),
       replay: replayModel(summary.instances),
+      suspensions: [...summary.suspensions],
     };
   });
   const suspense = suspenseBoundaryFacts(source, components);
@@ -1521,6 +1558,8 @@ export interface ReactNestedSuspenseOptions {
 export interface ReactSuspenseTreeOptions {
   /** Test-only fault injection proving that fallback ownership is load-bearing. */
   allowWrongFallbackOwner?: boolean;
+  /** Fail closed unless a leaf has Program-proven thenable evidence from React use(). */
+  requireKnownSuspension?: boolean;
 }
 
 function validateBoundaryComponent(role: "primary" | "fallback", component: ReactComponentSummary): void {
@@ -1762,7 +1801,7 @@ export function generateReactSuspenseTreeQuintFromAnalysis(
   if (!root) throw new Error(`Suspense tree root ${rootBoundaryIndex} is not available`);
   const byInstance = new Map(analysis.suspenseBoundaries.map((boundary) => [boundary.instance, boundary]));
   const boundaries: ReactSuspenseBoundarySummary[] = [];
-  const leaves: Array<{ displayName: string; componentKey: string; owner: number }> = [];
+  const leaves: Array<{ displayName: string; componentKey: string; owner: number; cause?: ReactSuspensionSource }> = [];
   const visiting = new Set<string>();
   const visited = new Set<string>();
   const walk = (boundary: ReactSuspenseBoundarySummary): void => {
@@ -1774,10 +1813,14 @@ export function generateReactSuspenseTreeQuintFromAnalysis(
     if (boundary.primaryNodes.length === 0) throw new Error(`Suspense boundary ${boundary.instance} has no primary nodes`);
     for (const primary of boundary.primaryNodes) {
       if (primary.kind === "component") {
-        if (!analysis.components.some(({ name }) => name === primary.displayName)) {
+        const component = analysis.components.find(({ name }) => name === primary.displayName);
+        if (!component) {
           throw new Error(`Suspense primary ${primary.displayName} is not available`);
         }
-        leaves.push({ displayName: primary.displayName, componentKey: primary.componentKey, owner });
+        const cause = component.suspensions.find(({ certainty }) => certainty === "thenable");
+        if (!options.requireKnownSuspension || cause) {
+          leaves.push({ displayName: primary.displayName, componentKey: primary.componentKey, owner, ...(cause ? { cause } : {}) });
+        }
       } else {
         const child = byInstance.get(primary.instance);
         if (!child) throw new Error(`Suspense child boundary ${primary.instance} is not available`);
@@ -1789,7 +1832,9 @@ export function generateReactSuspenseTreeQuintFromAnalysis(
     visited.add(boundary.instance);
   };
   walk(root);
-  if (leaves.length === 0) throw new Error(`Suspense tree ${root.instance} has no component leaves`);
+  if (leaves.length === 0) throw new Error(options.requireKnownSuspension
+    ? `Suspense tree ${root.instance} has no leaf with a known thenable suspension cause`
+    : `Suspense tree ${root.instance} has no component leaves`);
   for (const boundary of boundaries) if (!analysis.components.some(({ name }) => name === boundary.fallback)) {
     throw new Error(`Suspense fallback ${boundary.fallback} is not available`);
   }
@@ -1802,7 +1847,8 @@ export function generateReactSuspenseTreeQuintFromAnalysis(
   leaves.forEach((leaf, index) => {
     const name = `suspend_leaf_${index}`;
     actions.push(name);
-    lines.push("", `  // leaf ${index}: ${leaf.displayName}; owner boundary ${leaf.owner}`, `  action ${name} = all {`,
+    const cause = leaf.cause ? `; cause react-use(${leaf.cause.expression})` : "";
+    lines.push("", `  // leaf ${index}: ${leaf.displayName}; owner boundary ${leaf.owner}${cause}`, `  action ${name} = all {`,
       "    suspension_leaf == 0,", `    suspension_leaf' = ${index + 1},`, `    suspension_owner' = ${leaf.owner + 1},`,
       "    fallback_owner' = fallback_owner,", "    suspension_resolved' = suspension_resolved,", "    leaf_committed' = leaf_committed,", "  }");
   });
@@ -2069,6 +2115,42 @@ function resolveProgramSuspenseBoundaries(
   return results;
 }
 
+function isDefinitelyThenableType(checker: ts.TypeChecker, type: ts.Type, location: ts.Node): boolean {
+  const members = type.isUnion() ? type.types : [type];
+  return members.length > 0 && members.every((member) => {
+    const then = member.getProperty("then");
+    return then !== undefined && checker.getTypeOfSymbolAtLocation(then, location).getCallSignatures().length > 0;
+  });
+}
+
+function resolveProgramSuspensionSources(
+  program: ts.Program,
+  results: Map<string, ReactSemanticsResult>,
+): Map<string, ReactSemanticsResult> {
+  const checker = program.getTypeChecker();
+  const calls = new Map<string, ts.CallExpression>();
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isCallExpression(node) && isReactUseCall(source, node.expression)) {
+        calls.set(`${source.fileName}:${node.getStart(source)}`, node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  for (const result of results.values()) for (const summary of [...result.components, ...result.hooks]) {
+    summary.suspensions = summary.suspensions.map((suspension) => {
+      const call = calls.get(`${suspension.fileName}:${suspension.span.start}`);
+      const argument = call?.arguments[0];
+      return argument && isDefinitelyThenableType(checker, checker.getTypeAtLocation(argument), argument)
+        ? { ...suspension, certainty: "thenable" }
+        : suspension;
+    });
+  }
+  return results;
+}
+
 function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanticsResult> {
   const checker = program.getTypeChecker();
   const sources = program.getSourceFiles().filter((candidate) => !candidate.isDeclarationFile);
@@ -2089,15 +2171,18 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
       summary.instances,
       summary.leaked,
       summary.lifecycleIssues.map(({ kind, capability, phase, detail }) => ({ kind, capability, phase, detail })),
+      summary.suspensions,
     ]).sort(([left], [right]) => String(left).localeCompare(String(right))));
     if (fingerprint(next) === fingerprint(summaries)) {
-      return resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, nextResults, nextHookNodes));
+      return resolveProgramSuspensionSources(program,
+        resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, nextResults, nextHookNodes)));
     }
     summaries = next;
     results = nextResults;
     hookNodes = nextHookNodes;
   }
-  return resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, results, hookNodes));
+  return resolveProgramSuspensionSources(program,
+    resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, results, hookNodes)));
 }
 
 /** Analyze every implementation source while computing the custom-Hook fixed point only once. */

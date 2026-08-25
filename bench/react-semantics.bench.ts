@@ -58,6 +58,21 @@ const suspenseTree = analyzeReactSemantics("tree.tsx", `
   /* uneffect: react component */ function OuterFallback() { return null }
   function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><><InnerLeafA /><InnerLeafB /></></Suspense></></Suspense> }
 `);
+const causalSource = `
+  import { Suspense, use } from "react"
+  const data = Promise.resolve("ready")
+  /* uneffect: react component */ function Data() { use(data); return null }
+  /* uneffect: react component */ function Static() { return null }
+  /* uneffect: react component */ function Fallback() { return null }
+  function App() { return <Suspense fallback={<Fallback />}><><Static /><Data /></></Suspense> }
+`;
+const causalOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
+const causalHost = ts.createCompilerHost(causalOptions), causalOriginalGetSourceFile = causalHost.getSourceFile.bind(causalHost);
+causalHost.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName === "causal.tsx"
+  ? ts.createSourceFile(fileName, causalSource, languageVersion, true, ts.ScriptKind.TSX)
+  : causalOriginalGetSourceFile(fileName, languageVersion, onError, fresh);
+const causalProgram = ts.createProgram(["causal.tsx"], causalOptions, causalHost);
+const causalResults = analyzeReactProgram(causalProgram);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -104,5 +119,13 @@ describe("React semantic analysis", () => {
 
   bench("generate Fragment/multi-child Suspense-tree Quint", () => {
     generateReactSuspenseTreeQuintFromAnalysis("suspense_tree", suspenseTree);
+  }, { time: 500, iterations: 20 });
+
+  bench("classify one reused causal Suspense Program", () => {
+    analyzeReactProgram(causalProgram);
+  }, { time: 500, iterations: 20 });
+
+  bench("generate known-thenable Suspense-tree Quint", () => {
+    generateReactSuspenseTreeQuintFromAnalysis("causal_tree", causalResults.get("causal.tsx")!, 0, { requireKnownSuspension: true });
   }, { time: 500, iterations: 20 });
 });

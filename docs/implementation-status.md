@@ -195,6 +195,10 @@ same property is proved for arbitrary TypeScript.
   canonical component keys and parent/child boundary identities. A bounded
   one-suspension Quint model permits only the selected leaf's nearest fallback
   to commit. A fallback in an ancestor or sibling branch violates the invariant.
+  React `use(value)` records a suspension source; Program analysis promotes it
+  only when every argument-type constituent has callable `then`, including
+  evidence composed through resolved custom Hooks. An opt-in causal generator
+  excludes unknown and non-suspending leaves.
 - The replay IR generates reviewable production, development Strict Mode,
   interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.
@@ -209,8 +213,9 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  general/dynamic Suspense subtrees through wrappers or expressions, suspension
-  originating in a boundary or fallback, rejected thenables, transition/Offscreen
+  general/dynamic Suspense subtrees through wrappers or expressions, runtime
+  reachability and thenable pending/fulfillment/rejection state, suspension
+  originating in a boundary or fallback, transition/Offscreen
   scheduling, server components, and Z3 lifecycle projection remain unsupported
   rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

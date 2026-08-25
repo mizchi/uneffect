@@ -2,8 +2,9 @@ import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -284,19 +285,29 @@ describe("React lifecycle Quint projection", () => {
   });
 
   test("rejects a fallback owned by a different branch of a Suspense tree", () => {
-    const analysis = analyzeReactSemantics("suspense-tree.tsx", `
-      import { Suspense } from "react"
+    const sourceText = `
+      import { Suspense, use } from "react"
+      const innerPromise = Promise.resolve("inner")
       /* uneffect: react component */ function OuterLeaf() { return null }
-      /* uneffect: react component */ function InnerLeaf() { return null }
+      /* uneffect: react component */ function InnerLeaf() { use(innerPromise); return null }
       /* uneffect: react component */ function OuterFallback() { return null }
       /* uneffect: react component */ function InnerFallback() { return null }
       function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><InnerLeaf /></Suspense></></Suspense> }
-    `);
+    `;
+    const sourceAnalysis = analyzeReactSemantics("suspense-tree.tsx", sourceText);
+    const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
+    const host = ts.createCompilerHost(compilerOptions), originalGetSourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName === "suspense-tree.tsx"
+      ? ts.createSourceFile(fileName, sourceText, languageVersion, true, ts.ScriptKind.TSX)
+      : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+    const programResult = analyzeReactProgram(ts.createProgram(["suspense-tree.tsx"], compilerOptions, host)).get("suspense-tree.tsx")!;
+    expect(sourceAnalysis.suspenseBoundaries).toHaveLength(programResult.suspenseBoundaries.length);
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-tree-"));
     const path = join(directory, "suspense-tree.qnt");
     const run = (broken: boolean) => {
-      writeFileSync(path, generateReactSuspenseTreeQuintFromAnalysis("react_suspense_tree", analysis, 0, {
+      writeFileSync(path, generateReactSuspenseTreeQuintFromAnalysis("react_suspense_tree", programResult, 0, {
         allowWrongFallbackOwner: broken,
+        requireKnownSuspension: true,
       }));
       return spawnSync("pnpm", ["exec", "quint", "run", path,
         "--invariant=suspenseTreeSafe", "--max-steps=6", "--max-samples=800",

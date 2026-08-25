@@ -203,6 +203,11 @@ its nearest boundary owner, and `suspenseTreeSafe` rejects an ancestor or
 sibling fallback commit. A fixed-seed fault injection demonstrates that this
 ownership equality is load-bearing. Wrapper/expression subtrees and suspension
 originating while rendering a boundary or fallback remain outside the proof.
+With `requireKnownSuspension`, the source set is narrowed to component leaves
+whose direct or composed React `use` argument is proven thenable by the
+TypeScript Program. Source-only and mixed-union evidence remains unknown and
+cannot authorize a causal trace. Pending/fulfillment/rejection state is not
+derived from the static thenable type.
 
 ## Verification ledger
 

@@ -1117,6 +1117,116 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("val suspenseTreeSafe");
   });
 
+  it("uses Program types to restrict a Suspense tree to leaves with known thenable use calls", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-causality-"));
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(appFile, `
+        import { Suspense, use as consume } from "react"
+        declare const profilePromise: Promise<{ name: string }>
+        declare const maybePromise: Promise<string> | { current: string }
+        /* uneffect: react component */ function Profile() { const profile = consume(profilePromise); return <p>{profile.name}</p> }
+        /* uneffect: react component */ function MaybeProfile() { consume(maybePromise); return null }
+        /* uneffect: react component */ function Navigation() { return <nav>Navigation</nav> }
+        /* uneffect: react component */ function Spinner() { return <p>Loading</p> }
+        function App() { return <Suspense fallback={<Spinner />}><><Navigation /><MaybeProfile /><Profile /></></Suspense> }
+      `);
+      const program = ts.createProgram([appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const app = results.get(appFile)!;
+      expect(app.diagnostics).toEqual([]);
+      expect(app.components.find(({ name }) => name === "Profile")!.suspensions).toEqual([
+        expect.objectContaining({ kind: "react-use", certainty: "thenable", expression: "profilePromise" }),
+      ]);
+      expect(app.components.find(({ name }) => name === "Navigation")!.suspensions).toEqual([]);
+      expect(app.components.find(({ name }) => name === "MaybeProfile")!.suspensions).toEqual([
+        expect.objectContaining({ kind: "react-use", certainty: "unknown", expression: "maybePromise" }),
+      ]);
+      const quint = generateReactSuspenseTreeQuintFromProgram("causal_tree", results, appFile, 0, {
+        requireKnownSuspension: true,
+      });
+      expect(quint).toContain("leaf 0: Profile; owner boundary 0; cause react-use(profilePromise)");
+      expect(quint).not.toContain("Navigation; owner boundary");
+      expect(quint).not.toContain("MaybeProfile; owner boundary");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not promote a source-only React use call to known thenable evidence", () => {
+    const result = analyzeReactSemantics("unknown-use.tsx", `
+      import { Suspense, use } from "react"
+      declare const input: unknown
+      /* uneffect: react component */ function Primary() { use(input); return null }
+      /* uneffect: react component */ function Fallback() { return null }
+      function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
+    `);
+    expect(result.components.find(({ name }) => name === "Primary")!.suspensions).toEqual([
+      expect.objectContaining({ certainty: "unknown", expression: "input" }),
+    ]);
+    expect(() => generateReactSuspenseTreeQuintFromAnalysis("unknown_cause", result, 0, {
+      requireKnownSuspension: true,
+    })).toThrow("has no leaf with a known thenable suspension cause");
+  });
+
+  it("recognizes React use through default and namespace objects but not unrelated properties", () => {
+    const defaultResult = analyzeReactSemantics("default-use.tsx", `
+      import React from "react"
+      declare const promise: Promise<string>
+      /* uneffect: react component */ function DefaultUse() { React.use(promise); return null }
+    `);
+    const namespaceResult = analyzeReactSemantics("namespace-use.tsx", `
+      import * as R from "react"
+      declare const promise: Promise<string>
+      /* uneffect: react component */ function NamespaceUse() { R.use(promise); return null }
+    `);
+    const unrelated = analyzeReactSemantics("unrelated-use.tsx", `
+      declare const UI: { use(value: unknown): unknown }
+      /* uneffect: react component */ function Unrelated() { UI.use(1); return null }
+    `);
+    expect(defaultResult.components[0]!.suspensions).toHaveLength(1);
+    expect(namespaceResult.components[0]!.suspensions).toHaveLength(1);
+    expect(unrelated.components[0]!.suspensions).toEqual([]);
+  });
+
+  it("composes a known React use suspension through a cross-file custom Hook", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspending-hook-"));
+    const hookFile = join(directory, "hook.ts");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(hookFile, `
+        import { use } from "react"
+        /* uneffect: react hook */
+        export function useProfile<T>(promise: Promise<T>): T { return use(promise) }
+      `);
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        import { useProfile } from "./hook.js"
+        declare const profilePromise: Promise<{ name: string }>
+        /* uneffect: react component */ function Profile() { const profile = useProfile(profilePromise); return <p>{profile.name}</p> }
+        /* uneffect: react component */ function Spinner() { return null }
+        function App() { return <Suspense fallback={<Spinner />}><Profile /></Suspense> }
+      `);
+      const program = ts.createProgram([hookFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const profile = results.get(appFile)!.components.find(({ name }) => name === "Profile")!;
+      expect(profile.suspensions).toEqual([
+        expect.objectContaining({ kind: "react-use", certainty: "thenable", expression: "promise", fileName: hookFile }),
+      ]);
+      expect(generateReactSuspenseTreeQuintFromProgram("hook_causal_tree", results, appFile, 0, {
+        requireKnownSuspension: true,
+      })).toContain("cause react-use(promise)");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not recognize an unrelated namespace property named Suspense", () => {
     const result = analyzeReactSemantics("unrelated-suspense.tsx", `
       declare const UI: { Suspense: unknown }
@@ -1390,6 +1500,18 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("leaf 0: AccountNavigation; owner boundary 0");
     expect(quint).toContain("leaf 1: AccountPanel; owner boundary 1");
     expect(quint).toContain("fallback_owner == suspension_owner");
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+    });
+    const results = analyzeReactProgram(program);
+    expect(results.get(fileName)!.components.find(({ name }) => name === "AccountPanel")!.suspensions)
+      .toContainEqual(expect.objectContaining({ certainty: "thenable", expression: "accountPromise" }));
+    const causal = generateReactSuspenseTreeQuintFromProgram("account_causal_tree", results, fileName, 0, {
+      requireKnownSuspension: true,
+    });
+    expect(causal).toContain("leaf 0: AccountPanel; owner boundary 1; cause react-use(accountPromise)");
+    expect(causal).not.toContain("AccountNavigation; owner boundary");
   });
 
   it("dogfoods checked-in symbol-resolved React modules", async () => {

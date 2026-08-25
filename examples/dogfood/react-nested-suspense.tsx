@@ -1,12 +1,15 @@
-import { Suspense, useEffect } from "react";
+import { Suspense, use, useEffect } from "react";
+
+declare const accountPromise: Promise<{ name: string }>;
 
 /* uneffect: react component */
 export function AccountPanel() {
+  const account = use(accountPromise);
   useEffect(() => {
     console.log("account visible");
     return () => console.log("account hidden");
   }, []);
-  return <section>Account</section>;
+  return <section>{account.name}</section>;
 }
 
 /* uneffect: react component */

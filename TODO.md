@@ -57,6 +57,7 @@ documentation are all updated.
 - [x] Resolve React namespace Suspense tags and namespace-qualified primary/fallback component tags in Program analysis.
 - [x] Extract direct nested Suspense chains, preserve parent/child boundary identity through Program symbol resolution, and generate a bounded nearest-boundary ownership model.
 - [x] Flatten transparent JSX/React Fragments and multiple direct component/boundary children into a Program-resolved Suspense tree, with one-suspension fallback ownership checked by Quint.
+- [x] Track named/default/namespace React `use(thenable)` through direct and cross-file custom-Hook calls, promote only TypeChecker-proven callable-`then` inputs, and optionally restrict Suspense-tree traces to causally supported leaves.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

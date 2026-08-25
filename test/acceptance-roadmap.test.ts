@@ -70,6 +70,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
     const generateSuspenseTree = futureApi("generateReactSuspenseTreeQuintFromAnalysis");
+    const analyzeReactProgram = futureApi("analyzeReactProgram");
+    const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -161,6 +163,28 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(treeQuint).toContain("leaf 0: A; owner boundary 0");
     expect(treeQuint).toContain("leaf 1: B; owner boundary 0");
     expect(treeQuint).toContain("val suspenseTreeSafe");
+    const causalFile = "causal-suspense.tsx";
+    const causalSource = `
+      import { Suspense, use } from "react"
+      const data = Promise.resolve("ready")
+      /* uneffect: react component */ function Data() { return <p>{use(data)}</p> }
+      /* uneffect: react component */ function Static() { return <nav>Static</nav> }
+      /* uneffect: react component */ function Fallback() { return <p>Loading</p> }
+      function App() { return <Suspense fallback={<Fallback />}><><Static /><Data /></></Suspense> }
+    `;
+    const causalOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, jsx: ts.JsxEmit.Preserve, noEmit: true };
+    const causalHost = ts.createCompilerHost(causalOptions);
+    const originalGetSourceFile = causalHost.getSourceFile.bind(causalHost);
+    causalHost.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName === causalFile
+      ? ts.createSourceFile(fileName, causalSource, languageVersion, true, ts.ScriptKind.TSX)
+      : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+    const causalProgram = ts.createProgram([causalFile], causalOptions, causalHost);
+    const causalResults = analyzeReactProgram(causalProgram) as ReadonlyMap<string, unknown>;
+    const causalQuint = generateSuspenseTreeFromProgram("causal_tree", causalResults, causalFile, 0, {
+      requireKnownSuspension: true,
+    }) as string;
+    expect(causalQuint).toContain("leaf 0: Data; owner boundary 0; cause react-use(data)");
+    expect(causalQuint).not.toContain("Static; owner boundary");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"
