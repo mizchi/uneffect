@@ -115,6 +115,9 @@ const finiteTelemetryBatchSpec = parseSpec(finiteTelemetryBatchFile, finiteTelem
 const labeledTelemetryFile = "examples/dogfood/labeled-telemetry-delivery.ts";
 const labeledTelemetrySource = readFileSync(labeledTelemetryFile, "utf8");
 const labeledTelemetrySpec = parseSpec(labeledTelemetryFile, labeledTelemetrySource).temporal;
+const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
+const generatedMigrationSource = readFileSync(generatedMigrationFile, "utf8");
+const generatedMigrationSpec = parseSpec(generatedMigrationFile, generatedMigrationSource).temporal;
 const leaseAuthorityProgram = ts.createProgram([leaseAuthorityFile], {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.NodeNext,
@@ -967,6 +970,15 @@ describe("typed-array static verification", () => {
       labeledTelemetrySource,
       "labeledDelivery",
       labeledTelemetrySpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("reduce exact zero-shot and one-shot while refinements", () => {
+    validateRefinementActionBodies(
+      generatedMigrationFile,
+      generatedMigrationSource,
+      "generatedMigration",
+      generatedMigrationSpec,
     );
   }, { time: 500, iterations: 20 });
 

@@ -1770,6 +1770,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("refines statically zero-shot and one-shot while forms without claiming a general loop proof", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state attempted: int
+       * state completed: int
+       * init attempted = 0
+       * init completed = 0
+       * action runOnce: attempted' = attempted + 1, completed' = completed + 1
+       */
+      interface Runtime { attempted: number; completed: number }
+      /* uneffect: refinement staticLoop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement staticLoop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement staticLoop@1 action runOnce */
+      export function runOnce(runtime: Runtime) {
+        while (false) runtime.attempted += 100
+        do {
+          runtime.attempted++
+          runtime.completed++
+        } while (false)
+      }
+    `;
+    const specification = parseSpecification("static-loop.ts", source) as { temporal: unknown };
+    expect(validateActions("static-loop.ts", source, "staticLoop", specification.temporal)).toEqual([]);
+  });
+
   it("compares native Promise, Uneffect annotations, and Effect TS against the same observable contract", async () => {
     const compareImplementations = futureApi("compareEffectImplementations");
     const result = await compareImplementations({ fixture: "fetch-and-recover" }) as { implementations: string[]; sameResult: boolean; sameDeclaredAuthority: boolean; effectTsRecovery: { unhandledFailures: number }; limitations: string[] };

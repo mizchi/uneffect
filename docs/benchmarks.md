@@ -325,6 +325,13 @@ Both measurements are retained as regression signals. They cover the
 syntax-only refinement comparison and exclude Z3, labeled loops, nested labels,
 and `continue`.
 
+On 2026-08-26, parsing and validating the generated-migration fixture's exact
+zero-shot `while (false)` and one-shot `do...while (false)` shells measured
+0.1584 ms mean over 3,156 samples (2.33% RME). This includes source parsing,
+the exact execution-count reduction, and action comparison. It excludes Z3,
+Program construction, dynamic conditions, loop transfers, and loop-invariant
+reasoning; it is an observation rather than a regression budget.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

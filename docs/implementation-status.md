@@ -73,7 +73,8 @@ same property is proved for arbitrary TypeScript.
   their temporal actions and invariant predicates. Supported forms include
   scalar and nested-record updates, selected native Set/Map operations,
   conditionals, scalar switch fallthrough and direct return/throw entries,
-  bounded ascending loops, finite numeric/boolean literal `for...of` loops, and
+  bounded ascending loops, finite numeric/boolean literal `for...of` loops,
+  exact zero-shot `while (false)` and one-shot `do...while (false)`, and
   acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
   through lexical, non-escaping `const` alias chains; mutable, escaping,
   member, destructured, or cyclic aliases remain unsupported. A reviewed local
@@ -90,6 +91,8 @@ same property is proved for arbitrary TypeScript.
   cross-domain assumption ledger with `trusted` evidence and optional enforced
   owner/expiration metadata; it never upgrades dispatch to `verified`.
   Unscanned external subclasses, proxies, and prototype mutation remain excluded.
+  Literal-false while reductions are syntactic execution-count facts only;
+  dynamic conditions, loop transfers, and general loop invariants remain unsupported.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

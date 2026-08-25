@@ -1159,6 +1159,27 @@ function validateRefinementActionBodiesInSource(
           escapingThrow, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
         );
       }
+      if (ts.isWhileStatement(statement)) {
+        // This is an exact zero-iteration reduction, not a loop invariant or
+        // fixed-point proof. Any non-literal condition remains unsupported.
+        if (statement.expression.kind !== ts.SyntaxKind.FalseKeyword) return undefined;
+        continue;
+      }
+      if (ts.isDoStatement(statement)) {
+        // `do S while (false)` executes S exactly once. Keep the loop body in
+        // its own lexical environment and compose abrupt completion with the
+        // outer continuation just like a bare block.
+        if (statement.expression.kind !== ts.SyntaxKind.FalseKeyword) return undefined;
+        const completion = collect(
+          asBlock(statement.statement), receiver, runtimeClass, substitutions,
+          updates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        );
+        if (!completion) return undefined;
+        if (completion === "normal") continue;
+        return applyContinuation(
+          completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+        );
+      }
       if (ts.isForStatement(statement)) {
         const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
           && (statement.initializer.flags & ts.NodeFlags.Let) !== 0

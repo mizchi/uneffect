@@ -17,6 +17,21 @@ import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } fr
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("refines generated zero-shot and one-shot migration control shells", async () => {
+    const fileName = "examples/dogfood/generated-one-shot-migration.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "generatedMigration", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "generatedMigration", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "generatedMigration", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesWithZ3(fileName, source, "generatedMigration", temporal)).toEqual([]);
+
+    const dynamicLoop = source.replace("while (false) runtime.migrated += 1_000", "while (runtime.migrated < 2) runtime.migrated++");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicLoop, "generatedMigration", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "migrate" }),
+    );
+  });
+
   it("accepts mandatory finally release of a loop-local upload session alias", () => {
     const fileName = "examples/dogfood/upload-session-finally.ts";
     const source = readFileSync(fileName, "utf8");

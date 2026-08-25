@@ -214,6 +214,13 @@ makes the method action unsupported. Unscanned external subclasses, prototype
 replacement, proxies, and runtime monkey-patching remain outside the refinement
 claim.
 
+The action mapper also accepts the exact execution-count cases `while (false)`
+and `do { ... } while (false)`, reducing them to zero and one body execution
+respectively. This is not a loop-invariant proof. State-dependent conditions,
+`break`/`continue`, and general repeated execution remain fail-closed. The
+generated-migration dogfood retains both exact shells and a dynamic-condition
+negative control.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

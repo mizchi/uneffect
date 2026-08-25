@@ -2422,4 +2422,35 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unexpected-action-guard", modelName: "increment", expected: "<none>", actual: "armed && value > 0" }),
     ]);
   });
+
+  it("only lowers while forms whose iteration count is statically exact", () => {
+    const model = `/* uneffect:
+      state value: int
+      state enabled: bool
+      init value = 0
+      init enabled = false
+      action run: value' = value + 1
+    */`;
+    const exact = `${model}
+      interface Runtime { value: number; enabled: boolean }
+      /* uneffect: refinement loop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement loop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement loop@1 action run */
+      export function run(runtime: Runtime) {
+        while (false) runtime.value += 100
+        do { runtime.value++ } while (false)
+      }
+    `;
+    expect(validateRefinementActionBodies("exact-loop.ts", exact, "loop", parseSpec("exact-loop.ts", exact).temporal)).toEqual([]);
+
+    const dynamic = exact.replace("while (false) runtime.value += 100", "while (runtime.enabled) runtime.value += 100");
+    expect(validateRefinementActionBodies("dynamic-loop.ts", dynamic, "loop", parseSpec("dynamic-loop.ts", dynamic).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
+
+    const repeated = exact.replace("} while (false)", "} while (runtime.enabled)");
+    expect(validateRefinementActionBodies("repeated-loop.ts", repeated, "loop", parseSpec("repeated-loop.ts", repeated).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
+  });
 });
