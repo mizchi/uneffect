@@ -41,6 +41,10 @@ For the React row, callback refs also include immutable component-local
 function/arrow callbacks reached through transitive `const` aliases. The open
 "referenced callback ref" boundary means module-scope/imported, prop, member, reassigned,
 or dynamically selected references, not these locally proven bindings.
+The same row's lazy-ref support means only a direct/aliased `useRef(null)`, one
+strict null guard without `else`, and one same-ref assignment from the stable
+literal/object/array fragment. General factory/constructor purity and
+control-flow dominance remain open.
 
 ## Verification confidence
 

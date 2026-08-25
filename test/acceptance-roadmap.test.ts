@@ -112,7 +112,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useState, useSyncExternalStore, useTransition } from "react"
+      import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useRef, useState, useSyncExternalStore, useTransition } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown }; form: { action?: unknown; children?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -153,6 +153,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       }
       /* uneffect: react component */
       export const Feed = memo(function Feed({ topic, ref }: { topic: string; ref: unknown }) {
+        const renderCache = useRef<{ topic: string } | null>(null)
+        const cacheAlias = renderCache
+        if (cacheAlias.current === null) {
+          cacheAlias.current = { topic }
+        }
         const [savedTopic, saveTopicAction] = useActionState(async (previous: string) => {
           await saveTopic(topic)
           return previous === topic ? previous : topic

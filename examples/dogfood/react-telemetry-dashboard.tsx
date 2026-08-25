@@ -1,4 +1,4 @@
-import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useOptimistic, useState, useSyncExternalStore } from "react";
+import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useOptimistic, useRef, useState, useSyncExternalStore } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -84,6 +84,11 @@ function useTelemetrySubscription(service: string): void {
 
 /* uneffect: react component */
 export const TelemetryDashboard = memo(function TelemetryDashboard(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
+  const requestOptions = useRef<{ method: "POST" } | null>(null);
+  const optionsAlias = requestOptions;
+  if (optionsAlias.current === null) {
+    optionsAlias.current = { method: "POST" };
+  }
   const [showFailures, setShowFailures] = useState(false);
   const online = useTelemetryOnlineStatus();
   const [savedService, saveService, saving] = useActionState(async (previous: string) => {
@@ -103,7 +108,7 @@ export const TelemetryDashboard = memo(function TelemetryDashboard(props: { serv
     [props.rows, showFailures],
   );
   const requestRefresh = () => {
-    fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+    fetch(`/telemetry/${props.service}/refresh`, optionsAlias.current ?? undefined);
   };
   const refresh = () => {
     setShowFailures(!showFailures);

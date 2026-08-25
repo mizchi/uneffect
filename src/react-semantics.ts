@@ -1418,12 +1418,18 @@ function immutableSnapshotBindings(boundary: ComponentNode, source: ts.SourceFil
   return immutable;
 }
 
-const renderRefBindingCache = new WeakMap<ComponentNode, ReadonlySet<string>>();
+interface RenderRefBindingInfo {
+  all: ReadonlySet<string>;
+  nullInitialized: ReadonlySet<string>;
+}
 
-function renderRefBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+const renderRefBindingCache = new WeakMap<ComponentNode, RenderRefBindingInfo>();
+
+function renderRefBindingInfo(boundary: ComponentNode, source: ts.SourceFile): RenderRefBindingInfo {
   const cached = renderRefBindingCache.get(boundary);
   if (cached) return cached;
   const refs = new Set<string>();
+  const nullInitialized = new Set<string>();
   const imports = reactImportNames(source);
   const declarations: ts.VariableDeclaration[] = [];
   const collect = (node: ts.Node): void => {
@@ -1443,14 +1449,30 @@ function renderRefBindings(boundary: ComponentNode, source: ts.SourceFile): Read
       const directRef = ts.isCallExpression(initializer) && ts.isIdentifier(initializer.expression)
         && imports.get(initializer.expression.text) === "useRef";
       const alias = ts.isIdentifier(initializer) && refs.has(initializer.text);
+      const directNullRef = directRef && initializer.arguments.length === 1
+        && initializer.arguments[0]!.kind === ts.SyntaxKind.NullKeyword;
+      const nullAlias = ts.isIdentifier(initializer) && nullInitialized.has(initializer.text);
       if ((directRef || alias) && !refs.has(declaration.name.text)) {
         refs.add(declaration.name.text);
         changed = true;
       }
+      if ((directNullRef || nullAlias) && !nullInitialized.has(declaration.name.text)) {
+        nullInitialized.add(declaration.name.text);
+        changed = true;
+      }
     }
   }
-  renderRefBindingCache.set(boundary, refs);
-  return refs;
+  const result = { all: refs, nullInitialized };
+  renderRefBindingCache.set(boundary, result);
+  return result;
+}
+
+function renderRefBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return renderRefBindingInfo(boundary, source).all;
+}
+
+function renderNullRefBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return renderRefBindingInfo(boundary, source).nullInitialized;
 }
 
 function refCurrentAccess(node: ts.Node, refs: ReadonlySet<string>): ts.Expression | undefined {
@@ -1464,6 +1486,63 @@ function refCurrentAccess(node: ts.Node, refs: ReadonlySet<string>): ts.Expressi
     if (root && refs.has(root)) return node;
   }
   return undefined;
+}
+
+function predictableRefInitializer(expression: ts.Expression): boolean {
+  const value = unwrapExpression(expression);
+  if (ts.isIdentifier(value) || ts.isPropertyAccessExpression(value) || ts.isElementAccessExpression(value)
+    || ts.isStringLiteral(value) || ts.isNumericLiteral(value)
+    || value.kind === ts.SyntaxKind.TrueKeyword || value.kind === ts.SyntaxKind.FalseKeyword
+    || value.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isPrefixUnaryExpression(value)
+    && (value.operator === ts.SyntaxKind.PlusToken || value.operator === ts.SyntaxKind.MinusToken)
+    && ts.isNumericLiteral(value.operand)) return true;
+  if (ts.isArrayLiteralExpression(value)) return value.elements.every(
+    (element) => !ts.isSpreadElement(element) && predictableRefInitializer(element as ts.Expression),
+  );
+  if (ts.isObjectLiteralExpression(value)) return value.properties.every((property) => {
+    if (ts.isShorthandPropertyAssignment(property)) return property.objectAssignmentInitializer === undefined;
+    return ts.isPropertyAssignment(property) && !ts.isComputedPropertyName(property.name)
+      && predictableRefInitializer(property.initializer);
+  });
+  return false;
+}
+
+function isPredictableLazyRefAccess(
+  access: ts.Expression,
+  refs: ReadonlySet<string>,
+  nullRefs: ReadonlySet<string>,
+  boundary: ComponentNode,
+): boolean {
+  const currentRoot = (expression: ts.Expression): string | undefined => {
+    const current = refCurrentAccess(expression, refs);
+    return current ? expressionRoot(current) : undefined;
+  };
+  for (let node: ts.Node | undefined = access.parent; node && node !== boundary.body; node = node.parent) {
+    if (node !== access && ts.isFunctionLike(node)) return false;
+    if (ts.isIfStatement(node) && node.elseStatement === undefined) {
+      const condition = unwrapExpression(node.expression);
+      if (ts.isBinaryExpression(condition) && condition.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken) {
+        const leftNull = condition.left.kind === ts.SyntaxKind.NullKeyword;
+        const rightNull = condition.right.kind === ts.SyntaxKind.NullKeyword;
+        const guardAccess = leftNull && ts.isExpression(condition.right) ? condition.right
+          : rightNull && ts.isExpression(condition.left) ? condition.left : undefined;
+        const statement = ts.isBlock(node.thenStatement) && node.thenStatement.statements.length === 1
+          ? node.thenStatement.statements[0] : node.thenStatement;
+        const assignment = statement && ts.isExpressionStatement(statement)
+          && ts.isBinaryExpression(statement.expression)
+          && statement.expression.operatorToken.kind === ts.SyntaxKind.EqualsToken
+          ? statement.expression : undefined;
+        const guardRoot = guardAccess ? currentRoot(guardAccess) : undefined;
+        const assignmentRoot = assignment ? currentRoot(assignment.left) : undefined;
+        if (guardAccess && guardRoot && nullRefs.has(guardRoot) && assignment && assignmentRoot === guardRoot
+          && predictableRefInitializer(assignment.right)) {
+          return refCurrentAccess(guardAccess, refs) === access || refCurrentAccess(assignment.left, refs) === access;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function mutationTarget(node: ts.Node): ts.Expression | undefined {
@@ -1806,6 +1885,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const immutableSnapshots = immutableSnapshotBindings(hook, source);
     const refs = renderRefBindings(hook, source);
+    const nullRefs = renderNullRefBindings(hook, source);
     const stateUpdaters = stateUpdaterBindings(hook, source);
     const effectEvents = localEffectEventCallbacks(hook, source);
     const callableCallbacks = new Map([...sourceCallbacks(source), ...localEventCallbacks(hook)]);
@@ -1956,7 +2036,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         message: "React Hook inputs, state, and context are immutable render snapshots",
       });
       const refAccess = refCurrentAccess(node, refs);
-      if (refAccess) reportHook(refAccess, {
+      if (refAccess && !isPredictableLazyRefAccess(refAccess, refs, nullRefs, hook)) reportHook(refAccess, {
         kind: "render-ref-access", phase: "render", operation: refAccess.getText(source),
         message: `${refAccess.getText(source)} is read or written during replayable custom Hook render`,
       });
@@ -1992,6 +2072,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const immutableSnapshots = immutableSnapshotBindings(component, source);
     const refs = renderRefBindings(component, source);
+    const nullRefs = renderNullRefBindings(component, source);
     const stateUpdaters = stateUpdaterBindings(component, source);
     const transitionStateUpdaters = transitionStateUpdaterBindings(component, source);
     const actionDispatchers = actionDispatcherBindings(component, source);
@@ -2386,7 +2467,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
         message: "React component inputs, state, and context are immutable render snapshots",
       });
       const refAccess = refCurrentAccess(node, refs);
-      if (refAccess) report(refAccess, {
+      if (refAccess && !isPredictableLazyRefAccess(refAccess, refs, nullRefs, component)) report(refAccess, {
         kind: "render-ref-access", phase: "render", operation: refAccess.getText(source),
         message: `${refAccess.getText(source)} is read or written during replayable render`,
       });

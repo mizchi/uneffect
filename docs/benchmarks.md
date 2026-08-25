@@ -41,6 +41,16 @@ React phase and formal-model features, so this is not an isolated callback-ref
 cost. Program construction is excluded only from the second measurement; both
 figures are observations rather than regression budgets.
 
+After adding one null-guarded lazy-ref initialization (through a `const` alias)
+to every benchmark component, the 2026-08-25 run measured 100.14 ms mean over
+30 samples (0.64% relative margin of error) for cold source analysis and
+140.19 ms over 30 samples (0.46%) for a reused Program. The parse-only baseline
+was 6.2463 ms over 161 samples (0.74%). This deliberately expands each of the
+128 components by a ref declaration, alias, guard, assignment, and event-side
+read; it does not isolate the checker branch and must not be interpreted as a
+like-for-like regression from the preceding workload. These are observations,
+not budgets.
+
 After replacing the 128 inline event callbacks with immutable local callback
 references on the same date, the source path measured 24.35 ms mean and the
 parse-only baseline 2.40 ms (about 10.16x). The reused-Program path measured

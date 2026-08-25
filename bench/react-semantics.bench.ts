@@ -5,6 +5,9 @@ import { analyzeReactProgram, analyzeReactSemantics, generateReactActionErrorBou
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
   export const Item${index} = memo(function Item${index}(props: { label: string; active: boolean; ref: unknown }) {
+    const options = useRef<{ method: "POST" } | null>(null)
+    const optionsAlias = options
+    if (optionsAlias.current === null) optionsAlias.current = { method: "POST" }
     const propsSnapshot = props
     const [selection] = useState({ active: propsSnapshot.active })
     const selectionSnapshot = selection
@@ -15,7 +18,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     useImperativeHandle(props.ref, () => ({ refresh() { fetch("/items/${index}/imperative") } }), [])
     useInsertionEffect(() => { insertRule(); return () => removeRule() }, [])
     useCatalogSubscription(props.label)
-    const refresh = () => fetch("/items/${index}")
+    const refresh = () => fetch("/items/${index}", optionsAlias.current ?? undefined)
     const refreshAlias = refresh
     const handleClick = () => startTransition(refreshAlias)
     const attach = () => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }
@@ -28,7 +31,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
 `).join("\n");
 
 const source = `
-  import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useState, useSyncExternalStore } from "react"
+  import { memo, startTransition, useActionState, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useRef, useState, useSyncExternalStore } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }

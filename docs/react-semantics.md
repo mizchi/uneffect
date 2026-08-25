@@ -191,9 +191,14 @@ The tested fragment reports:
   position of directly imported `useState`/`useReducer`, directly imported
   `useContext` results, and transitive local `const` aliases;
 - reads or writes of `.current` through a direct named-import `useRef` result
-  or transitive local `const` alias during render. Passing the ref object as
-  `ref={host}` is not a `.current` access, and event/Effect/ref callbacks are
-  separate phases;
+  or transitive local `const` alias during render. One exception recognizes a
+  null-initialized ref under an exact `ref.current === null` (or reversed)
+  guard, with no `else`, whose sole body statement assigns the same ref from a
+  literal/object/array expression containing only stable identifier/member and
+  literal leaves. Calls, constructors, spreads, computed properties, compound
+  guards, extra statements, and later render reads remain diagnostic. Passing
+  the ref object as `ref={host}` is not a `.current` access, and
+  event/Effect/ref callbacks are separate phases;
 - recognized Hooks called below a condition, loop, switch arm, short-circuit
   expression, or nested function.
 - annotated custom Hook arguments are checked as immutable snapshots, and
@@ -207,6 +212,11 @@ The tested fragment reports:
   of producing a pure summary.
 - local and cross-module indirect custom-Hook cycles are diagnosed on every
   participating call edge.
+
+The lazy-ref exception is intentionally narrower than the construction example
+in React's [`useRef` reference](https://react.dev/reference/react/useRef#avoiding-recreating-the-ref-contents):
+Uneffect does not assume that an arbitrary `new` expression or factory call is
+pure merely because it is guarded.
 
 ## Dependency and stale-closure checks
 
@@ -566,8 +576,10 @@ This is a tested initial fragment, not a complete React semantics:
   ownership analysis;
 - callback-ref extraction covers inline JSX functions plus immutable
   component-local function/arrow callbacks and transitive `const` aliases.
-  Module-scope/imported handlers, ref props, reassigned/member/dynamic callbacks, and the predictable lazy-initialization
-  exception for render-time `.current` access are not modeled;
+  Module-scope/imported handlers, ref props, and reassigned/member/dynamic
+  callbacks are not modeled. Lazy initialization is limited to the exact
+  null-guarded stable-expression fragment above; factory/constructor purity
+  and general control-flow dominance are not inferred;
 - dependency completeness is checked for the documented inline lexical
   fragment; referenced callbacks, custom stability contracts, module mutation,
   and TypeScript-symbol-level aliasing remain unsupported;

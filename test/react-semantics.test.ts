@@ -768,6 +768,64 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("allows only a guarded predictable lazy ref initialization during render", () => {
+    const result = analyzeReactSemantics("lazy-ref.tsx", `
+      import { useRef } from "react"
+      /* uneffect: react component */
+      function Cache(props: { key: string }) {
+        const cache = useRef<{ key: string } | null>(null)
+        const alias = cache
+        if (alias.current === null) {
+          alias.current = { key: props.key }
+        }
+        return null
+      }
+      /* uneffect: react component */
+      function MissingGuard() {
+        const cache = useRef<object | null>(null)
+        cache.current = {}
+        return null
+      }
+      /* uneffect: react component */
+      function UnstableInitializer() {
+        const cache = useRef<{ now: number } | null>(null)
+        if (cache.current === null) cache.current = { now: Date.now() }
+        return null
+      }
+      /* uneffect: react component */
+      function ExtraBranch(flag: boolean) {
+        const cache = useRef<object | null>(null)
+        if (cache.current === null) {
+          cache.current = {}
+        } else if (flag) {
+          cache.current = {}
+        }
+        return null
+      }
+      /* uneffect: react component */
+      function NonNullInitial() {
+        const cache = useRef<object | null>({})
+        if (cache.current === null) cache.current = {}
+        return null
+      }
+      /* uneffect: react hook */
+      function useStableCache(key: string) {
+        const cache = useRef<{ key: string } | null>(null)
+        if (null === cache.current) cache.current = { key }
+        return cache
+      }
+    `);
+    expect(result.diagnostics.filter(({ component }) => component === "Cache")).toEqual([]);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: "MissingGuard", kind: "render-ref-access", operation: "cache.current" }),
+      expect.objectContaining({ component: "UnstableInitializer", kind: "render-ref-access", operation: "cache.current" }),
+      expect.objectContaining({ component: "UnstableInitializer", kind: "non-idempotent-render", operation: "Date.now" }),
+      expect.objectContaining({ component: "ExtraBranch", kind: "render-ref-access", operation: "cache.current" }),
+      expect.objectContaining({ component: "NonNullInitial", kind: "render-ref-access", operation: "cache.current" }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => component === "useStableCache")).toEqual([]);
+  });
+
   it("requires callback-ref acquisitions to return matching cleanup", () => {
     const result = analyzeReactSemantics("leaking-ref.tsx", `
       declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
@@ -2227,6 +2285,16 @@ describe("React Function Component semantics", () => {
     ));
     expect(opaqueRef.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "TelemetryDashboard", kind: "unknown-ref-callback", phase: "ref-callback", operation: "props.handleRef",
+    }));
+
+    const eagerRefWrite = analyzeReactSemantics(fileName, source.replace(
+      `if (optionsAlias.current === null) {
+    optionsAlias.current = { method: "POST" };
+  }`,
+      `optionsAlias.current = { method: "POST" };`,
+    ));
+    expect(eagerRefWrite.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "TelemetryDashboard", kind: "render-ref-access", phase: "render", operation: "optionsAlias.current",
     }));
   });
 

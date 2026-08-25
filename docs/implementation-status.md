@@ -163,6 +163,11 @@ same property is proved for arbitrary TypeScript.
   prop, member, or dynamic callback refs remain explicit unknowns. Reassigned
   or opaque referenced event handlers are rejected rather than assumed pure.
   Aliased named imports from `react` are recognized.
+- Render-time `.current` access remains rejected except for a direct or
+  transitively aliased `useRef(null)` binding guarded by one strict null test
+  and assigned once, without `else`, from the supported stable literal/object/
+  array expression fragment. This is a syntactic predictable-initialization
+  proof; constructor/factory purity and general dominance are not claimed.
 - Insertion Effect setup is ordered before callback refs, layout Effects, and
   passive Effects in replay and Quint. Direct `useState`/`useReducer`
   dispatchers and their transitive local `const` aliases are rejected inside
@@ -285,8 +290,9 @@ same property is proved for arbitrary TypeScript.
   stable React return positions, and rejects opaque/dynamic/unstable evidence.
 - Dynamic/higher-order Hook calls, symbol-resolved dependency callback aliases,
   custom stability contracts, general/reassigned state-context aliases,
-  interprocedural region flow, referenced/prop callback refs, imperative
-  handles, lazy ref initialization,
+  interprocedural region flow, module-scope/imported/prop callback refs,
+  general lazy-ref factory/constructor initialization and dominance, imperative
+  handles,
   general/dynamic Suspense subtrees through wrappers or expressions, runtime
   reachability and thenable pending/fulfillment/rejection state, suspension
   originating in a boundary or fallback, transition/Offscreen
