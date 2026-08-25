@@ -1063,6 +1063,17 @@ function validateRefinementActionBodiesInSource(
         }
         return "throw";
       }
+      if (ts.isBlock(statement)) {
+        const completion = collect(
+          statement, receiver, runtimeClass, substitutions,
+          updates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        );
+        if (!completion) return undefined;
+        if (completion === "normal") continue;
+        return applyContinuation(
+          completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+        );
+      }
       if (ts.isLabeledStatement(statement)) {
         const labeledBlock = rewriteLabeledBreaks(statement);
         if (!labeledBlock) return undefined;

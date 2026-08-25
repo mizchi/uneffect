@@ -83,7 +83,9 @@ same property is proved for arbitrary TypeScript.
   after its mandatory `finally` work and then executes the outer continuation.
   An unconditional supported `return` or `throw` terminates collection of its
   lexical suffix; preceding updates remain visible, while unreachable writes
-  cannot satisfy a temporal action.
+  cannot satisfy a temporal action. Bare lexical blocks propagate the same
+  normal/return/throw completion state into the enclosing sequence, but their
+  local constants and receiver aliases do not escape the block.
   Labeled loops, `continue`, nested/cross-label transfers, and real returns
   inside that labeled fragment remain unsupported. The action-control subset
   keeps return and throw completion predicates distinct,

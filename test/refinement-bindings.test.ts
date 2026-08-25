@@ -1093,6 +1093,40 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("unreachable-completion.ts", source, "completion", parseSpec("unreachable-completion.ts", source).temporal)).toEqual([]);
   });
 
+  it("propagates nested lexical-block completion without leaking local aliases", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state completed: int
+      state continued: int
+      state stop: bool
+      init attempted = 0
+      init completed = 0
+      init continued = 0
+      init stop = false
+      action run: attempted' = attempted + 1, completed' = stop ? completed : completed + 1, continued' = stop ? continued : continued + 1
+    */
+      interface Runtime { attempted: number; completed: number; continued: number; stop: boolean }
+      /* uneffect: refinement blocks@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement blocks@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement blocks@1 action run */
+      export function run(runtime: Runtime) {
+        {
+          const state = runtime
+          state.attempted++
+          if (state.stop) return
+          state.completed++
+        }
+        runtime.continued++
+      }
+    `;
+    expect(validateRefinementActionBodies("nested-block.ts", source, "blocks", parseSpec("nested-block.ts", source).temporal)).toEqual([]);
+
+    const leaked = source.replace("runtime.continued++", "state.continued++");
+    expect(validateRefinementActionBodies("leaked-block-alias.ts", leaked, "blocks", parseSpec("leaked-block-alias.ts", leaked).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
+  });
+
   it("merges multiple nested member writes independent of model field order", () => {
     const source = `/* uneffect:
       state lease: { owner: int, epoch: int }

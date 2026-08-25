@@ -59,7 +59,7 @@ describe("Uneffect dogfood", () => {
     const temporal = parseSpec(fileName, source).temporal;
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "labeledDelivery", temporal)).toEqual([]);
 
-    const invertedBreak = source.replace("if (runtime.skip) {", "if (!runtime.skip) {");
+    const invertedBreak = source.replace("if (delivery.skip) {", "if (!delivery.skip) {");
     expect(await validateRefinementActionBodiesWithZ3(fileName, invertedBreak, "labeledDelivery", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "delivered" }),
     );

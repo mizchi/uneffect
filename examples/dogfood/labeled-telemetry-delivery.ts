@@ -31,11 +31,14 @@ export function observeDelivery(runtime: DeliveryAccounting): DeliveryAccounting
 export function deliver(runtime: DeliveryAccounting): void {
   attempt: {
     try {
-      if (runtime.skip) {
-        break attempt;
-        runtime.delivered += 100; // unreachable after the local completion
+      {
+        const delivery = runtime;
+        if (delivery.skip) {
+          break attempt;
+          delivery.delivered += 100; // unreachable after the local completion
+        }
+        delivery.delivered++;
       }
-      runtime.delivered++;
     } finally {
       runtime.finalized++;
     }

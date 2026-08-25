@@ -186,6 +186,13 @@ fail closed; this rule does not infer general reachability through arbitrary
 loops or dynamic dispatch. The labeled-delivery dogfood retains a deliberately
 unreachable write after its local break so this behavior is load-bearing.
 
+Bare lexical blocks participate in the same completion sequence. State updates
+escape normally, return/throw predicates control the outer continuation, and
+the block receives a copy of the local-value and receiver-alias environment.
+Consequently a `const state = runtime` alias works inside the block but its use
+after `}` is an unsupported body rather than an inferred runtime reference.
+The labeled-delivery dogfood nests this scoped alias block inside try/finally.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

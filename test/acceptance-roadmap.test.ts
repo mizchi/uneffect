@@ -108,6 +108,39 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("unreachable-recovery.ts", source, "recovery", specification.temporal)).toEqual([]);
   });
 
+  it("composes a lexical block completion while keeping aliases block-scoped", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state started: int
+       * state finished: int
+       * state audited: int
+       * state cancel: bool
+       * init started = 0
+       * init finished = 0
+       * init audited = 0
+       * init cancel = false
+       * action execute: started' = started + 1, finished' = cancel ? finished : finished + 1, audited' = cancel ? audited : audited + 1
+       */
+      interface Runtime { started: number; finished: number; audited: number; cancel: boolean }
+      /* uneffect: refinement lexical@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement lexical@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lexical@1 action execute */
+      export function execute(runtime: Runtime) {
+        {
+          const state = runtime
+          state.started++
+          if (state.cancel) return
+          state.finished++
+        }
+        runtime.audited++
+      }
+    `;
+    const specification = parseSpecification("lexical-completion.ts", source) as { temporal: unknown };
+    expect(validateActions("lexical-completion.ts", source, "lexical", specification.temporal)).toEqual([]);
+  });
+
   it("refines finite TypeScript iteration with abrupt completion and finally cleanup", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
