@@ -198,7 +198,9 @@ same property is proved for arbitrary TypeScript.
   React `use(value)` records a suspension source; Program analysis promotes it
   only when every argument-type constituent has callable `then`, including
   evidence composed through resolved custom Hooks. An opt-in causal generator
-  excludes unknown and non-suspending leaves.
+  excludes unknown and non-suspending leaves. Direct and custom-Hook-composed
+  render throws use the same TypeChecker-backed classification while retaining
+  `non-thenable` evidence for ordinary errors.
 - The replay IR generates reviewable production, development Strict Mode,
   interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.

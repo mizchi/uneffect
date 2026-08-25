@@ -278,12 +278,22 @@ every member of the TypeScript argument type has a callable `then` property.
 Mixed unions therefore remain unknown. The evidence carries its definition
 file and composes through local or symbol-resolved cross-file custom Hooks.
 
+A value thrown directly during opted-in component or custom-Hook render is
+recorded as `throw-thenable` evidence. Program analysis classifies a type whose
+every constituent has a callable `then` as `thenable`, a type where none of
+the constituents does as `non-thenable`, and mixed, `any`, or `unknown` types as
+`unknown`. Consequently, an ordinary thrown `Error` is not admitted as a
+Suspense cause, while a thrown `Promise<T>` is. Source-only analysis remains
+unknown and does not pretend that syntax proves the runtime value.
+
 Passing `{ requireKnownSuspension: true }` to either Suspense-tree generator
 removes leaves without proven thenable evidence and fails closed if none
 remain. The default remains the explicitly conservative any-leaf model for
 callers that want to explore hypothetical suspension. This proves a typed
 may-suspend cause, not that React will reach the call, that the thenable is
-currently pending, or that it will fulfill rather than reject.
+currently pending, that a branch containing it is reachable, or that it will
+fulfill rather than reject. It also does not replace React error-boundary
+semantics for non-thenable throws.
 
 Uneffect does not yet prove that a render reaches a pending thenable or
 distinguish a user cleanup callback from an empty phase teardown barrier. The

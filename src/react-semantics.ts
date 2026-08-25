@@ -72,8 +72,8 @@ export interface ReactComponentSummary {
 export interface ReactHookSummary extends ReactComponentSummary {}
 
 export interface ReactSuspensionSource {
-  kind: "react-use";
-  certainty: "unknown" | "thenable";
+  kind: "react-use" | "throw-thenable";
+  certainty: "unknown" | "thenable" | "non-thenable";
   fileName: string;
   expression: string;
   span: { start: number; end: number };
@@ -1039,6 +1039,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const visit = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
+      if (ts.isThrowStatement(node) && node.expression) suspensions.push({
+        kind: "throw-thenable", certainty: "unknown", fileName,
+        expression: node.expression.getText(source), span: { start: node.getStart(source), end: node.getEnd() },
+      });
       if (ts.isCallExpression(node)) {
         if (isReactUseCall(source, node.expression)) {
           const argument = node.arguments[0];
@@ -1185,6 +1189,10 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const refs = renderRefBindings(component, source);
     const visitRender = (node: ts.Node): void => {
       if (node !== component.body && ts.isFunctionLike(node)) return;
+      if (ts.isThrowStatement(node) && node.expression) suspensions.push({
+        kind: "throw-thenable", certainty: "unknown", fileName,
+        expression: node.expression.getText(source), span: { start: node.getStart(source), end: node.getEnd() },
+      });
       if (ts.isJsxAttribute(node) && node.name.getText(source) === "ref") {
         const callback = node.initializer && ts.isJsxExpression(node.initializer)
           ? node.initializer.expression : undefined;
@@ -1847,7 +1855,7 @@ export function generateReactSuspenseTreeQuintFromAnalysis(
   leaves.forEach((leaf, index) => {
     const name = `suspend_leaf_${index}`;
     actions.push(name);
-    const cause = leaf.cause ? `; cause react-use(${leaf.cause.expression})` : "";
+    const cause = leaf.cause ? `; cause ${leaf.cause.kind}(${leaf.cause.expression})` : "";
     lines.push("", `  // leaf ${index}: ${leaf.displayName}; owner boundary ${leaf.owner}${cause}`, `  action ${name} = all {`,
       "    suspension_leaf == 0,", `    suspension_leaf' = ${index + 1},`, `    suspension_owner' = ${leaf.owner + 1},`,
       "    fallback_owner' = fallback_owner,", "    suspension_resolved' = suspension_resolved,", "    leaf_committed' = leaf_committed,", "  }");
@@ -2115,12 +2123,16 @@ function resolveProgramSuspenseBoundaries(
   return results;
 }
 
-function isDefinitelyThenableType(checker: ts.TypeChecker, type: ts.Type, location: ts.Node): boolean {
+function thenableTypeCertainty(checker: ts.TypeChecker, type: ts.Type, location: ts.Node): ReactSuspensionSource["certainty"] {
   const members = type.isUnion() ? type.types : [type];
-  return members.length > 0 && members.every((member) => {
+  if (members.some((member) => (member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0)) return "unknown";
+  const thenable = members.map((member) => {
     const then = member.getProperty("then");
     return then !== undefined && checker.getTypeOfSymbolAtLocation(then, location).getCallSignatures().length > 0;
   });
+  if (thenable.length > 0 && thenable.every(Boolean)) return "thenable";
+  if (thenable.every((value) => !value)) return "non-thenable";
+  return "unknown";
 }
 
 function resolveProgramSuspensionSources(
@@ -2128,12 +2140,16 @@ function resolveProgramSuspensionSources(
   results: Map<string, ReactSemanticsResult>,
 ): Map<string, ReactSemanticsResult> {
   const checker = program.getTypeChecker();
-  const calls = new Map<string, ts.CallExpression>();
+  const expressions = new Map<string, ts.Expression>();
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const visit = (node: ts.Node): void => {
       if (ts.isCallExpression(node) && isReactUseCall(source, node.expression)) {
-        calls.set(`${source.fileName}:${node.getStart(source)}`, node);
+        const argument = node.arguments[0];
+        if (argument) expressions.set(`${source.fileName}:${node.getStart(source)}`, argument);
+      }
+      if (ts.isThrowStatement(node) && node.expression) {
+        expressions.set(`${source.fileName}:${node.getStart(source)}`, node.expression);
       }
       ts.forEachChild(node, visit);
     };
@@ -2141,11 +2157,12 @@ function resolveProgramSuspensionSources(
   }
   for (const result of results.values()) for (const summary of [...result.components, ...result.hooks]) {
     summary.suspensions = summary.suspensions.map((suspension) => {
-      const call = calls.get(`${suspension.fileName}:${suspension.span.start}`);
-      const argument = call?.arguments[0];
-      return argument && isDefinitelyThenableType(checker, checker.getTypeAtLocation(argument), argument)
-        ? { ...suspension, certainty: "thenable" }
-        : suspension;
+      const expression = expressions.get(`${suspension.fileName}:${suspension.span.start}`);
+      if (!expression) return suspension;
+      const certainty = thenableTypeCertainty(checker, checker.getTypeAtLocation(expression), expression);
+      return suspension.kind === "react-use" && certainty === "non-thenable"
+        ? suspension
+        : { ...suspension, certainty };
     });
   }
   return results;

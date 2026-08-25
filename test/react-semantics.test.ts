@@ -1227,6 +1227,82 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("distinguishes a thrown thenable from an ordinary thrown Error in render", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-thrown-thenable-"));
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        declare const pending: Promise<string>
+        /* uneffect: react component */ function Pending() { throw pending }
+        /* uneffect: react component */ function Broken() { throw new Error("broken") }
+        /* uneffect: react component */ function Spinner() { return null }
+        function App() { return <Suspense fallback={<Spinner />}><><Broken /><Pending /></></Suspense> }
+      `);
+      const program = ts.createProgram([appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const app = results.get(appFile)!;
+      expect(app.components.find(({ name }) => name === "Pending")!.suspensions).toEqual([
+        expect.objectContaining({ kind: "throw-thenable", certainty: "thenable", expression: "pending" }),
+      ]);
+      expect(app.components.find(({ name }) => name === "Broken")!.suspensions).toEqual([
+        expect.objectContaining({ kind: "throw-thenable", certainty: "non-thenable", expression: 'new Error("broken")' }),
+      ]);
+      const quint = generateReactSuspenseTreeQuintFromProgram("thrown_causal_tree", results, appFile, 0, {
+        requireKnownSuspension: true,
+      });
+      expect(quint).toContain("leaf 0: Pending; owner boundary 0; cause throw-thenable(pending)");
+      expect(quint).not.toContain("Broken; owner boundary");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps a source-only thrown value uncertain", () => {
+    const result = analyzeReactSemantics("unknown-throw.tsx", `
+      declare const pending: unknown
+      /* uneffect: react component */ function Pending() { throw pending }
+    `);
+    expect(result.components[0]!.suspensions).toEqual([
+      expect.objectContaining({ kind: "throw-thenable", certainty: "unknown", expression: "pending" }),
+    ]);
+  });
+
+  it("composes a thrown thenable through a cross-file custom Hook", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-throw-"));
+    const hookFile = join(directory, "hook.ts");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(hookFile, `
+        declare const pending: Promise<string>
+        /* uneffect: react hook */ export function useLegacyResource() { throw pending }
+      `);
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        import { useLegacyResource } from "./hook.js"
+        /* uneffect: react component */ function Profile() { useLegacyResource(); return null }
+        /* uneffect: react component */ function Spinner() { return null }
+        function App() { return <Suspense fallback={<Spinner />}><Profile /></Suspense> }
+      `);
+      const program = ts.createProgram([appFile, hookFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      expect(results.get(appFile)!.components.find(({ name }) => name === "Profile")!.suspensions).toEqual([
+        expect.objectContaining({ kind: "throw-thenable", certainty: "thenable", expression: "pending" }),
+      ]);
+      expect(generateReactSuspenseTreeQuintFromProgram("hook_throw_tree", results, appFile, 0, {
+        requireKnownSuspension: true,
+      })).toContain("cause throw-thenable(pending)");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not recognize an unrelated namespace property named Suspense", () => {
     const result = analyzeReactSemantics("unrelated-suspense.tsx", `
       declare const UI: { Suspense: unknown }
