@@ -114,6 +114,11 @@ same property is proved for arbitrary TypeScript.
   `void`, global `undefined`, and immutable aliases select a supported `??`
   right side; nullable unions and shadowed identifiers remain unknown.
   Arbitrary expressions still retain a conservative possible-throw catch entry.
+- Standard-library identity recognizes a direct
+  `Promise.{all,allSettled,race,any}(values.map(async ...))` pipeline as
+  transferring every mapped callback rejection to the aggregate Promise.
+  Detached maps, intermediate aliases, user-defined collectors, and exotic
+  proxy/accessor iteration remain unproved or diagnostic.
 - Promise ownership loop closure preserves a directly awaited generation across
   a retry `try` with statically primitive local preparation, a direct expression
   or variable-initializer `await`, non-reassigning post-await work, and a catch

@@ -621,6 +621,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
   - [x] Add `consumes_callback_rejection` for Promise-returning callback ownership and diagnose unsafe async callbacks such as `forEach(async ...)`.
   - [x] Recognize standard Promise reaction callback assimilation by TypeScript declaration identity.
+  - [x] Transfer rejection ownership from a standard `Array`/`ReadonlyArray.map(async ...)` result passed directly to standard `Promise.all`, `allSettled`, `race`, or `any`; keep detached, aliased, and user-defined aggregation fail-closed.
   - [x] Propagate callback ownership through direct unconditional higher-order wrappers, including named async callbacks.
   - [x] Add literal-guarded `consumes_rejection_when` and `consumes_callback_rejection_when`; only a proven `true` call-site guard becomes must-consume.
   - [x] Prove ownership guards from TypeScript boolean narrowing and local `requires guard` / `requires guard === true` preconditions.

@@ -110,6 +110,16 @@ this also works for named async callback arguments. Conditional wrappers do not
 inherit it, because consuming on only one path cannot satisfy a must-consume
 obligation.
 
+A standard `Array` or `ReadonlyArray` `map` with a Promise-returning callback is
+also accepted when its result is the direct first argument of the standard
+`Promise.all`, `Promise.allSettled`, `Promise.race`, or `Promise.any`. The
+TypeScript declarations of both calls must resolve to the standard library.
+This recognizes the direct rejection-observing pipeline without treating an
+arbitrary collector as an owner. An intermediate binding, a detached `map`, or
+a user-defined aggregate remains `floating-callback-promise`. Exotic array
+iteration behavior through proxies and accessors is outside this source-level
+builtin contract.
+
 Thenable assimilation also resolves direct local factory calls when every
 explicit return is an analyzable object-literal thenable. Getter failure and
 first-call-wins settlement facts are retained at the receiving Promise. Direct

@@ -503,6 +503,44 @@ function isPromiseReturningCallback(checker: ts.TypeChecker, expression: ts.Expr
     Boolean(checker.getPropertyOfType(signature.getReturnType(), "then")));
 }
 
+const standardArrayOwners = new Set(["Array", "ReadonlyArray"]);
+const standardMapMethods = new Set(["map"]);
+const standardPromiseConstructorOwners = new Set(["PromiseConstructor"]);
+const standardPromiseAggregateMethods = new Set(["all", "allSettled", "race", "any"]);
+
+function isStandardLibraryMethodCall(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  owners: ReadonlySet<string>,
+  methods: ReadonlySet<string>,
+): boolean {
+  const declaration = checker.getResolvedSignature(call)?.declaration;
+  if (!declaration || declaration.kind === ts.SyntaxKind.JSDocSignature
+    || !/(?:^|[/\\])lib\.[^/\\]+\.d\.ts$/.test(declaration.getSourceFile().fileName)) return false;
+  const named = declaration as ts.SignatureDeclaration & { name?: ts.PropertyName };
+  if (!named.name || !methods.has(named.name.getText(declaration.getSourceFile()))) return false;
+  return ts.isInterfaceDeclaration(declaration.parent) && owners.has(declaration.parent.name.text);
+}
+
+function callbackRejectionTransferredToPromiseAggregate(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  callbackIndex: number,
+): boolean {
+  if (callbackIndex !== 0 || !isStandardLibraryMethodCall(
+    checker, call, standardArrayOwners, standardMapMethods,
+  )) return false;
+  let result: ts.Expression = call;
+  while (ts.isParenthesizedExpression(result.parent) || ts.isAsExpression(result.parent)
+    || ts.isTypeAssertionExpression(result.parent) || ts.isSatisfiesExpression(result.parent)
+    || ts.isNonNullExpression(result.parent)) result = result.parent;
+  const aggregate = result.parent;
+  return ts.isCallExpression(aggregate) && aggregate.arguments[0] === result
+    && isStandardLibraryMethodCall(
+      checker, aggregate, standardPromiseConstructorOwners, standardPromiseAggregateMethods,
+    );
+}
+
 function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.VariableDeclaration, source: ts.SourceFile): { scopeId: string; scopeDepth: number; scopeEnd: number; catchesFailure: boolean } {
   let scope: ts.Node = declaration;
   while (scope.parent !== ownerNode && !ts.isBlock(scope)) scope = scope.parent;
@@ -536,7 +574,8 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     if (ts.isCallExpression(node)) {
       const consumed = callbackRejectionConsumerParameters(checker, node);
       node.arguments.forEach((argument, index) => {
-        if (!consumed.has(index) && isPromiseReturningCallback(checker, argument)) diagnostics.push({
+        if (!consumed.has(index) && !callbackRejectionTransferredToPromiseAggregate(checker, node, index)
+          && isPromiseReturningCallback(checker, argument)) diagnostics.push({
           fileName: source.fileName, functionName: enclosingFunctionName(node), line: lineAt(source, argument.getStart(source)), kind: "floating-callback-promise", severity: "error",
           message: `${node.expression.getText(source)} does not declare ownership of the Promise returned by callback argument ${index}`,
           notes: [{ label: "because", detail: `${node.expression.getText(source)} carries no /* uneffect: consumes_callback_rejection ... */ for argument ${index}, so a rejection from that callback reaches no observer` }],

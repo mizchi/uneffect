@@ -128,6 +128,34 @@ describe("async error and explicit resource safety", () => {
     ]);
   });
 
+  it("transfers mapped callback rejections to a directly enclosing Promise aggregate", () => {
+    const result = analyzeAsyncSafety("aggregate-map-ownership.ts", `
+      async function read(value: number) { return value }
+      async function all(values: number[]) {
+        return Promise.all(values.map(async (value) => read(value)))
+      }
+      async function settled(values: number[]) {
+        await Promise.allSettled(values.map(async (value) => read(value)))
+      }
+      async function raced(values: number[]) {
+        return Promise.race(values.map(async (value) => read(value)))
+      }
+      async function any(values: number[]) {
+        return Promise.any(values.map(async (value) => read(value)))
+      }
+      function detached(values: number[]) {
+        values.map(async (value) => read(value))
+      }
+      function userDefined(values: number[], collect: (items: Promise<number>[]) => Promise<number[]>) {
+        return collect(values.map(async (value) => read(value)))
+      }
+    `);
+    expect(result.diagnostics.filter(({ kind }) => kind === "floating-callback-promise")).toEqual([
+      expect.objectContaining({ functionName: "detached", message: expect.stringContaining("values.map") }),
+      expect.objectContaining({ functionName: "userDefined", message: expect.stringContaining("values.map") }),
+    ]);
+  });
+
   it("discharges conditional ownership only when the call proves its guard", async () => {
     const result = analyzeAsyncSafety("conditional-ownership.ts", `
       declare const flag: boolean

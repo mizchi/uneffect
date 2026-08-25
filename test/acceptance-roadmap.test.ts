@@ -586,6 +586,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         function syncHandled() { try { parse("") } catch (error) {} }
         async function asyncHandled() { try { await Promise.reject(new ParseError()) } catch (error) {} }
         async function floating() { Promise.reject(new ParseError()) }
+        async function aggregateHandled(values: string[]) {
+          return Promise.all(values.map(async (value) => Promise.resolve(value)))
+        }
+        function detachedMap(values: string[]) {
+          values.map(async (value) => Promise.resolve(value))
+        }
         async function caughtBinding() {
           const pending = Promise.reject(new ParseError())
           try { throw new Error("route") } catch { await pending }
@@ -605,9 +611,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(result.summaries).toContainEqual(expect.objectContaining({ functionName: "syncHandled", effects: [] }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "syncHandled" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "asyncHandled" }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "aggregateHandled" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "caughtBinding" }));
     expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ functionName: "caughtNeverCall" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "floating" }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-callback-promise", functionName: "detachedMap" }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "floating-promise", functionName: "conditionalBinding" }));
   });
 
