@@ -33,6 +33,7 @@ documentation are all updated.
 - [x] Upgrade the SHA-pinned `pnpm/action-setup` workflow dependency to Node 24-native v6.0.9 and retain `actions/setup-node` pnpm-store caching.
 - [x] Isolate every solver-bearing test file in its own Vitest process so a Z3 WASM heap failure cannot poison later suites in the same CI tier.
 - [x] Enforce a parent-process deadline for explicitly isolated solver tests so synchronous Z3 WASM cannot block Vitest's in-process timeout indefinitely, with only bounded whole-process retries.
+- [x] Route `just dogfood` through the manifest-validated isolated tier runner, including validated single-file tier selection, so a Z3 WASM failure cannot poison the remaining dogfood cases.
 - [x] Explain diagnostics instead of reporting solver verdicts: replay contract counterexamples over the invariant IR, trace effects to the operation that produces them, and locate unsupported constructs where they appear.
 - [x] Commit a `fixtures/` corpus that pairs each input with its generated `.diag` report, and score every diagnostic against a committed quality rubric that CI holds at its current level.
 - [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
@@ -490,8 +491,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
   - [x] Export identifier-named methods of top-level classes and resolve direct cross-file method calls by checker symbol identity; reject explicitly annotated computed methods as uncovered instead of accepting empty parity.
+  - [x] Export source-ordered named-function overload candidates and resolve call-site selections through Corsa signature identity using literal/base/union argument type alternatives; compare candidate text and selected index independently of normalized effect parity.
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
-    - [ ] Extend the checker-backed exporter beyond identifier-named methods of top-level classes to computed/polymorphic methods, nested callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
+    - [ ] Extend the checker-backed exporter beyond named-function overloads and identifier-named methods of top-level classes to method/generic edge-case overloads, computed/polymorphic methods, nested callbacks/timing, Promise/resource records, and the complete neutral IR.
     - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.

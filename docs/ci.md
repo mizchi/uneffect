@@ -24,6 +24,13 @@ test may launch a child Vitest process with an explicit `.test.ts` path. That
 explicit selection takes precedence over an inherited tier, preventing the
 parent CI filter from hiding generated tests.
 
+`just dogfood` selects only `test/dogfood.test.ts` from the `integration` tier,
+but still uses the same manifest validation, per-test process isolation,
+deadlines, and bounded solver-crash recovery as CI. The runner rejects a file
+that does not belong to the selected tier. A successful dogfood run therefore
+means that every discovered dogfood case completed successfully; it does not
+promote those finite examples into a whole-program proof.
+
 The GitHub workflow installs `just` and the Quint evaluator from versioned
 official release assets with SHA-256 verification. JavaScript actions are
 pinned by full commit SHA. Superseded runs on the same ref are cancelled so a

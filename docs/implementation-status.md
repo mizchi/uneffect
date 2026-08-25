@@ -355,7 +355,8 @@ same property is proved for arbitrary TypeScript.
   real corsa-bind exporter covers a fail-closed multi-file top-level function
   declaration, single immutable arrow/function-expression binding, and
   identifier-named top-level class method direct-call/type/trivia slice with
-  project-wide byte coordinates; broader
+  named-function overload candidate/selection facts and project-wide byte
+  coordinates; broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test

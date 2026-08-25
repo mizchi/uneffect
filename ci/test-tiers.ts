@@ -53,6 +53,14 @@ export const ciTestTiers = {
 
 export type CiTestTier = keyof typeof ciTestTiers;
 
+export function resolveCiTierFiles(tier: CiTestTier, requestedFile?: string): readonly (string | undefined)[] {
+  if (!requestedFile) return tier === "fast" ? [undefined] : ciTestTiers[tier];
+  if (!(ciTestTiers[tier] as readonly string[]).includes(requestedFile)) {
+    throw new Error(`${requestedFile} is not assigned to ${tier} CI tier`);
+  }
+  return [requestedFile];
+}
+
 export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = {
   "test/node-lease.test.ts": [
     "dogfoods synthesized subset authority and catches an unchecked request",

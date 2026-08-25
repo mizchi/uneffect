@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Node } from "@oxlint/plugins";
-import { OxlintUtils, definePlugin } from "corsa-oxlint";
+import { OxlintUtils, SignatureKind, definePlugin, type CorsaSignature, type CorsaType, type CorsaTypeCheckerShape } from "corsa-oxlint";
 
 export interface CorsaCheckerFactExportOptions {
   files: Record<string, string>;
@@ -34,6 +34,7 @@ interface PendingFunction {
   symbolId: string;
   name: string;
   typeRepr: string;
+  overloads: Array<{ id: string; text: string }>;
   start: number;
   end: number;
 }
@@ -41,6 +42,7 @@ interface PendingFunction {
 interface PendingCall {
   callerSymbolId: string;
   calleeSymbolId: string;
+  overloadSignatureId: string | null;
   start: number;
   end: number;
 }
@@ -106,6 +108,7 @@ export const corsaCheckerFactRule = createRule({
           symbolId: symbol.id,
           name: symbol.name,
           typeRepr: type ? checker.typeToString(type) : "unknown",
+          overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, node.range[0]),
           end: byteOffset(text, node.range[1]),
         };
@@ -135,6 +138,7 @@ export const corsaCheckerFactRule = createRule({
           // but expose the immutable binding name as the source callable.
           name: node.id.name,
           typeRepr: type ? checker.typeToString(type) : "unknown",
+          overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, wrapper.range[0]),
           end: byteOffset(text, wrapper.range[1]),
         };
@@ -159,6 +163,7 @@ export const corsaCheckerFactRule = createRule({
           symbolId: symbol.id,
           name: `${classNode.id.name}.${node.key.name}`,
           typeRepr: type ? checker.typeToString(type) : "unknown",
+          overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, node.range[0]),
           end: byteOffset(text, node.range[1]),
         };
@@ -183,6 +188,7 @@ export const corsaCheckerFactRule = createRule({
         calls.push({
           callerSymbolId: caller.symbolId,
           calleeSymbolId: callee.id,
+          overloadSignatureId: type ? selectedCallSignatureId(checker, type, node) : null,
           start: byteOffset(text, node.range[0]),
           end: byteOffset(text, node.range[1]),
         });
@@ -286,12 +292,13 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
     allFunctions.forEach((item, index) => ids.set(item.symbolId, index + 1));
     const nameCounts = new Map<string, number>();
     for (const item of allFunctions) nameCounts.set(item.name, (nameCounts.get(item.name) ?? 0) + 1);
+    const functionsBySymbol = new Map(allFunctions.map((item) => [item.symbolId, item]));
     const symbols = allFunctions.map((item) => ({
       id: ids.get(item.symbolId)!,
       name: projectFunctionDisplayName(item.fileName, item.name, nameCounts),
       kind: "function",
       typeRepr: item.typeRepr,
-      overloads: [],
+      overloads: item.overloads.map((overload) => overload.text),
       effectParameters: [],
       span: {
         start: coordinates.base(item.fileName) + item.start,
@@ -311,10 +318,20 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
       return raw.calls.flatMap((item) => {
         const caller = ids.get(item.callerSymbolId), callee = ids.get(item.calleeSymbolId);
         if (!caller || !callee) return [];
+        const target = functionsBySymbol.get(item.calleeSymbolId)!;
+        let overloadIndex: number | null = null;
+        if (target.overloads.length > 0) {
+          overloadIndex = item.overloadSignatureId === null
+            ? -1
+            : target.overloads.findIndex((overload) => overload.id === item.overloadSignatureId);
+          if (overloadIndex < 0) {
+            throw new Error(`corsa-oxlint did not resolve an exported overload for call to ${target.name}`);
+          }
+        }
         return [{
           caller,
           callee,
-          overloadIndex: null,
+          overloadIndex,
           callbackTiming: "none",
           span: {
             start: coordinates.base(fileName) + item.start,
@@ -369,4 +386,41 @@ function leadingUneffectTrivia(text: string, before: number): { text: string; st
   const modifiers = prefix.slice(end);
   if (!comment.includes("uneffect:") || !/^\s*(?:(?:export|default|async)\s+)*$/.test(modifiers)) return null;
   return { text: comment, start, end };
+}
+
+function overloadFacts(checker: CorsaTypeCheckerShape, type: CorsaType): Array<{ id: string; text: string }> {
+  const signatures = [...checker.getSignaturesOfType(type, SignatureKind.Call)].sort((left, right) => {
+    const leftNode = left.declaration ? checker.getNode(left.declaration) : undefined;
+    const rightNode = right.declaration ? checker.getNode(right.declaration) : undefined;
+    return (leftNode?.range[0] ?? Number.MAX_SAFE_INTEGER) - (rightNode?.range[0] ?? Number.MAX_SAFE_INTEGER);
+  });
+  if (signatures.length <= 1) return [];
+  return signatures.map((signature) => ({ id: signature.id, text: corsaSignatureText(checker, signature) }));
+}
+
+function selectedCallSignatureId(checker: CorsaTypeCheckerShape, type: CorsaType, node: any): string | null {
+  const argumentTypeTexts = (node.arguments ?? []).map((argument: Node) => {
+    const argumentType = checker.getTypeAtLocation(argument);
+    if (!argumentType) return ["unknown"];
+    const base = checker.getBaseTypeOfLiteralType(argumentType);
+    return [...new Set([
+      checker.typeToString(argumentType),
+      ...(base ? [checker.typeToString(base)] : []),
+      ...checker.getTypesOfType(argumentType).map((item) => checker.typeToString(item)),
+    ])];
+  });
+  const explicitTypeArgumentTexts = (node.typeArguments ?? []).map((argument: Node) => {
+    const argumentType = checker.getTypeAtLocation(argument);
+    return argumentType ? checker.typeToString(argumentType) : "unknown";
+  });
+  return checker.getCallSignatureFacts(type, SignatureKind.Call, argumentTypeTexts, explicitTypeArgumentTexts).signature?.id ?? null;
+}
+
+function corsaSignatureText(checker: CorsaTypeCheckerShape, signature: CorsaSignature): string {
+  const parameters = signature.parameterSymbols?.map((symbol, index) => {
+    const alternatives = signature.parameterTypeTexts?.[index];
+    return `${symbol.name}: ${alternatives?.length ? alternatives.join(" | ") : "unknown"}`;
+  }) ?? signature.parameters.map((_, index) => `arg${index}: unknown`);
+  const result = checker.getReturnTypeOfSignature(signature);
+  return `(${parameters.join(", ")}): ${result ? checker.typeToString(result) : "unknown"}`;
 }

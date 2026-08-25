@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
   it("assigns every TypeScript test file to exactly one tier", () => {
@@ -19,6 +19,12 @@ describe("CI test tier manifest", () => {
   it("lets an explicitly selected generated test escape an inherited parent tier", () => {
     expect(resolveCiTestIncludes("z3", ["vitest", "run"])).toEqual(ciTestTiers.z3);
     expect(resolveCiTestIncludes("z3", ["vitest", "run", "/tmp/generated.uneffect.test.ts"])).toBeUndefined();
+  });
+
+  it("runs one requested tier member through the same isolated runner", () => {
+    expect(resolveCiTierFiles("integration", "test/dogfood.test.ts")).toEqual(["test/dogfood.test.ts"]);
+    expect(resolveCiTierFiles("fast")).toEqual([undefined]);
+    expect(() => resolveCiTierFiles("z3", "test/dogfood.test.ts")).toThrow(/not assigned to z3/);
   });
 
   it("does not place direct verifier subprocesses in a tier lacking that verifier", () => {
@@ -46,13 +52,14 @@ describe("CI test tier manifest", () => {
     expect(packageJson.scripts.check).toContain("tsx ci/run-test-tiers.ts");
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
-    expect(runner).toContain('tier === "fast" ? [undefined] : ciTestTiers[tier]');
+    expect(runner).toContain("resolveCiTierFiles(tier, requestedFile)");
     expect(runner).toContain("ciIsolatedTestNames[file]");
     expect(runner).toContain("const maxSolverAttempts = 3");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts z3");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts quint");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts integration");
+    expect(justfile).toContain("tsx ci/run-test-tiers.ts integration test/dogfood.test.ts");
   });
 
   it("retries transport failures while preserving checksum-pinned CI tool downloads", () => {

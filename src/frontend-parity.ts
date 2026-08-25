@@ -83,9 +83,13 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
       const id = nextId++, leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
       const symbol = checker.getSymbolAtLocation(callable.nameNode);
       if (symbol) ids.set(symbol, id);
+      const overloads = symbol?.declarations
+        ?.filter((item): item is ts.FunctionDeclaration | ts.MethodDeclaration =>
+          (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body)
+        .map((item) => checker.signatureToString(checker.getSignatureFromDeclaration(item)!)) ?? [];
       declarations.push({ source, sourceName, callable, id });
       const type = checker.getTypeAtLocation(callable.nameNode);
-      symbols.push({ id, name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), kind: "function", typeRepr: checker.typeToString(type), overloads: [], effectParameters: [], span: { start: coordinates.offset(sourceName, callable.declaration.getStart(source)), end: coordinates.offset(sourceName, callable.declaration.getEnd()) } });
+      symbols.push({ id, name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), kind: "function", typeRepr: checker.typeToString(type), overloads, effectParameters: [], span: { start: coordinates.offset(sourceName, callable.declaration.getStart(source)), end: coordinates.offset(sourceName, callable.declaration.getEnd()) } });
       if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: coordinates.offset(sourceName, callable.declaration.getFullStart()), end: coordinates.offset(sourceName, callable.declaration.getStart(source)) } });
     }
   }
@@ -96,7 +100,13 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
         let symbol = checker.getSymbolAtLocation(lookup);
         if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
         const callee = symbol ? ids.get(symbol) : undefined;
-        if (callee) calls.push({ caller, callee, overloadIndex: null, callbackTiming: "none", span: { start: coordinates.offset(sourceName, child.getStart(source)), end: coordinates.offset(sourceName, child.getEnd()) } });
+        if (callee) {
+          const overloadDeclarations = symbol?.declarations?.filter((item): item is ts.FunctionDeclaration | ts.MethodDeclaration =>
+            (ts.isFunctionDeclaration(item) || ts.isMethodDeclaration(item)) && !item.body) ?? [];
+          const selected = checker.getResolvedSignature(child)?.declaration;
+          const selectedIndex = selected ? overloadDeclarations.indexOf(selected as ts.FunctionDeclaration | ts.MethodDeclaration) : -1;
+          calls.push({ caller, callee, overloadIndex: selectedIndex >= 0 ? selectedIndex : null, callbackTiming: "none", span: { start: coordinates.offset(sourceName, child.getStart(source)), end: coordinates.offset(sourceName, child.getEnd()) } });
+        }
       }
       ts.forEachChild(child, visit);
     };
@@ -167,6 +177,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   functions.sort((left, right) => left.name.localeCompare(right.name));
   const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
   const input = options.corsaFacts ?? referenceInput;
+  if (options.corsaFacts) coverageFailures.push(...checkerMetadataParityFailures(referenceInput, input));
   const provenance: FrontendFactProvenance = {
     ...input.provenance,
     compilerRevision: input.compilerRevision,
@@ -254,6 +265,33 @@ function checkerCoverageFailures(program: ts.Program, files: Readonly<Record<str
         });
       }
     }
+  }
+  return failures;
+}
+
+function checkerMetadataParityFailures(reference: any, actual: any): FrontendSchemaDrift[] {
+  const failures: FrontendSchemaDrift[] = [];
+  const referenceNames = new Map(reference.symbols.map((symbol: any) => [symbol.id, symbol.name]));
+  const actualNames = new Map(actual.symbols.map((symbol: any) => [symbol.id, symbol.name]));
+  const actualByName = new Map(actual.symbols.map((symbol: any) => [symbol.name, symbol]));
+  for (const expected of reference.symbols) {
+    const observed: any = actualByName.get(expected.name);
+    if (!observed) continue;
+    if (JSON.stringify(expected.overloads) !== JSON.stringify(observed.overloads)) failures.push({
+      frontend: "corsa",
+      message: `checker-backed overload candidates differ for ${expected.name}`,
+    });
+  }
+  const callKey = (call: any, names: Map<any, any>): string =>
+    `${names.get(call.caller)}\0${names.get(call.callee)}\0${call.span.start}\0${call.span.end}`;
+  const actualCalls = new Map(actual.calls.map((call: any) => [callKey(call, actualNames), call]));
+  for (const expected of reference.calls) {
+    const observed: any = actualCalls.get(callKey(expected, referenceNames));
+    if (!observed) continue;
+    if (expected.overloadIndex !== observed.overloadIndex) failures.push({
+      frontend: "corsa",
+      message: `checker-backed selected overload differs for ${referenceNames.get(expected.callee)}`,
+    });
   }
   return failures;
 }

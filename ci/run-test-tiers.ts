@@ -1,14 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
 const maxSolverAttempts = 3;
 const requested = process.argv[2] as CiTestTier | undefined;
+const requestedFile = process.argv[3];
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
+if (requestedFile && !requested) throw new Error("a requested test file requires an explicit CI tier");
 const tiers: readonly CiTestTier[] = requested ? [requested] : allTiers;
 for (const tier of tiers) {
-  const files: readonly (string | undefined)[] = tier === "fast" ? [undefined] : ciTestTiers[tier];
+  const files = resolveCiTierFiles(tier, requestedFile);
   for (const file of files) {
     let testNames: readonly (string | undefined)[] = file && ciIsolatedTestNames[file] ? ciIsolatedTestNames[file] : [undefined];
     if (file && ciIsolatedTestFiles.includes(file)) {

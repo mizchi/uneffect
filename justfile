@@ -111,4 +111,4 @@ evidence file:
 
 dogfood:
     pnpm tsx src/cli.ts check --infer --assurance no-unknown src/*.ts
-    pnpm vitest run test/dogfood.test.ts
+    pnpm tsx ci/run-test-tiers.ts integration test/dogfood.test.ts

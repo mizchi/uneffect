@@ -224,4 +224,34 @@ describe("corsa-bind checker fact exporter", () => {
       message: expect.stringContaining("annotated computed method"),
     }));
   });
+
+  it("exports checker-backed overload candidates and the selected call signature", async () => {
+    const files = {
+      "fixture.ts": `
+        /* uneffect: effect Console */
+        export function parse(value: string): string;
+        export function parse(value: number): number;
+        export function parse(value: string | number): string | number {
+          console.log(value);
+          return value;
+        }
+        export function main() { return parse("x") }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const parse = facts.symbols.find((symbol) => symbol.name === "parse")!;
+    const call = facts.calls[0]!;
+
+    expect(parse.overloads).toHaveLength(2);
+    expect(call.overloadIndex, JSON.stringify(parse.overloads)).toBe(0);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify({ schemaDrift: compared.schemaDrift, facts }, null, 2)).toBe(true);
+
+    call.overloadIndex = 1;
+    const mismatched = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(mismatched).toMatchObject({ equivalent: false, semanticEquivalent: true });
+    expect(mismatched.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("selected overload differs"),
+    }));
+  });
 });
