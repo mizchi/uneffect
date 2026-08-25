@@ -166,9 +166,14 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
     ts.isCallExpression(parent) && parent.arguments[0] === expression && isStandardLibraryCall(parent)
     && ["Promise.all", "Promise.allSettled", "Promise.any", "Promise.race"].includes(parent.expression.getText());
   const iteratorParameterCache = new Map<ts.FunctionLikeDeclaration, IteratorEffectParameter[]>();
+  const iteratorParameterVisiting = new Set<ts.FunctionLikeDeclaration>();
   const iteratorParametersOf = (declaration: ts.FunctionLikeDeclaration): IteratorEffectParameter[] => {
     const cached = iteratorParameterCache.get(declaration);
     if (cached) return cached;
+    // Recursive forwarding without a fixed-point proof stays opaque. Returning
+    // no contract here lets the ordinary unknown-consumption edge fail closed.
+    if (iteratorParameterVisiting.has(declaration)) return [];
+    iteratorParameterVisiting.add(declaration);
     const parameterIndices = new Map<ts.Symbol, number>();
     declaration.parameters.forEach((parameter, index) => {
       if (ts.isIdentifier(parameter.name)) {
@@ -194,6 +199,16 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         && iterableConsumerArgument(node, node.arguments[0])) record(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
         );
+      if (ts.isCallExpression(node)) {
+        const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
+        const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
+        if (target && target !== declaration) {
+          for (const contract of iteratorParametersOf(target)) {
+            const argument = node.arguments[contract.index];
+            if (argument) record(argument, contract.convertsThrowToRejection);
+          }
+        }
+      }
       if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
         && node.expression.name.text === "next") record(node.expression.expression);
       ts.forEachChild(node, visit);
@@ -202,6 +217,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
     const result = [...consumed].map(([index, convertsThrowToRejection]) => ({
       index, name: declaration.parameters[index]!.name.getText(), convertsThrowToRejection,
     }));
+    iteratorParameterVisiting.delete(declaration);
     iteratorParameterCache.set(declaration, result);
     return result;
   };

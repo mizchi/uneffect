@@ -452,7 +452,10 @@ same property is proved for arbitrary TypeScript.
   the lazy body effects, while opaque arguments remain unknown. `no-unknown`
   accepts the represented parameter but reports that it is not a closed
   concrete effect set; `declared` still rejects it because the current ordinary
-  effect annotation syntax cannot bind the parameter.
+  effect annotation syntax cannot bind the parameter. Symbol-resolved wrapper
+  calls forward the parameter transitively and retain Promise iterable
+  `Throw`-to-rejection conversion; dynamic dispatch and escaped iterator aliases
+  remain explicit unsupported boundaries.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

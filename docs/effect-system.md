@@ -121,6 +121,10 @@ standard pure iterator contributes no effect, and an opaque argument remains
 unknown. Parameter-derived unknown evidence is tracked separately from intrinsic
 unknown consumption, so specializing every iterator parameter never hides an
 unrelated property escape or dynamic factory inside the consumer.
+Direct, symbol-resolved wrapper calls forward these iterator-effect parameters
+transitively, including whether a Promise iterable consumer converts a yielded
+`Throw` into rejection. Recursive or dynamically dispatched forwarding that
+cannot establish the contract remains outside this inference.
 The effect summary exposes the same contract as `iteratorEffectParameters` and
 uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not
 a closed proof that the function is effect-free: its lazy effects are supplied
