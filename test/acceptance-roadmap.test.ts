@@ -73,12 +73,16 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { startTransition, useEffect } from "react"
+      import { startTransition, useEffect, useInsertionEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
       /* uneffect: react release Subscription */
       declare function unsubscribe(): void
+      /* uneffect: effect StyleWrite */
+      declare function insertFeedStyles(): void
+      /* uneffect: effect StyleWrite */
+      declare function removeFeedStyles(): void
       /* uneffect: react hook */
       function useSubscription(topic: string) {
         useEffect(() => {
@@ -89,6 +93,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       /* uneffect: react component */
       export function Feed({ topic }: { topic: string }) {
         useSubscription(topic)
+        useInsertionEffect(() => {
+          insertFeedStyles()
+          return () => removeFeedStyles()
+        }, [])
         const refresh = () => fetch(\`/topics/\${topic}\`)
         const handleClick = () => startTransition(refresh)
         return <button
@@ -104,6 +112,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect.objectContaining({ phase: "render", effects: [] }),
       expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
       expect.objectContaining({ phase: "ref-callback", effects: ["Console"] }),
+      expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));
@@ -128,7 +137,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     `) as typeof result;
     const boundaryQuint = generateSuspenseBoundary("feed_boundary", result.components[0], fallback.components[0]) as string;
     expect(boundaryQuint).toContain("action commit_fallback");
-    expect(boundaryQuint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
+    expect(boundaryQuint).toMatch(/primary_setup_\d+ == 1 implies fallback_cleanup_0 == 1/u);
     const extracted = analyzeReact("src/extracted-boundary.tsx", `
       import { Suspense, useEffect } from "react"
       /* uneffect: react component */ function Primary() { useEffect(() => () => console.log("hide"), []); return null }

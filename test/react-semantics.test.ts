@@ -74,6 +74,61 @@ describe("React Function Component semantics", () => {
     expect(result.diagnostics).toEqual([]);
   });
 
+  it("models insertion Effects before layout/passive work and rejects state updates", () => {
+    const result = analyzeReactSemantics("insertion.tsx", `
+      import {
+        useEffect,
+        useInsertionEffect as insert,
+        useLayoutEffect,
+        useRef,
+        useState,
+      } from "react"
+      /* uneffect: effect StyleWrite */
+      declare function insertRule(): void
+      /* uneffect: effect StyleWrite */
+      declare function removeRule(): void
+      /* uneffect: react component */
+      function Styled() {
+        const [, setReady] = useState(false)
+        const updateReady = setReady
+        const styleRef = useRef<HTMLStyleElement | null>(null)
+        useEffect(() => console.log("passive"), [])
+        useLayoutEffect(() => console.log("layout"), [])
+        insert(() => {
+          insertRule()
+          updateReady(true)
+          void styleRef.current
+          return () => { removeRule(); updateReady(false) }
+        }, [])
+        return null
+      }
+    `);
+
+    expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),
+      expect.objectContaining({ phase: "cleanup", effects: ["StyleWrite"] }),
+    ]));
+    expect(result.components[0]!.replay.production.effects.map(({ phase }) => phase)).toEqual([
+      "insertion-effect",
+      "layout-effect",
+      "passive-effect",
+    ]);
+    expect(result.diagnostics.filter(({ kind }) => kind === "insertion-effect-state-update")).toEqual([
+      expect.objectContaining({ component: "Styled", phase: "insertion-effect", operation: "updateReady" }),
+      expect.objectContaining({ component: "Styled", phase: "insertion-effect", operation: "updateReady" }),
+    ]);
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      component: "Styled",
+      kind: "insertion-effect-ref-access",
+      phase: "insertion-effect",
+      operation: "styleRef.current",
+    }));
+
+    const quint = generateReactLifecycleQuint("insertion_order", result.components[0]!);
+    expect(quint).toContain("setup_1 <= setup_0");
+    expect(quint).toContain("setup_2 <= setup_1");
+  });
+
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -933,14 +988,14 @@ describe("React Function Component semantics", () => {
     `);
 
     expect(result.components[0]!.replay.production.effects).toEqual([
+      expect.objectContaining({ phase: "ref-callback", setupEffects: ["Acquire<Host>"], cleanupEffects: ["Release<Host>"] }),
       expect.objectContaining({ phase: "layout-effect", setupEffects: ["Acquire<Layout>"], cleanupEffects: ["Release<Layout>"] }),
       expect.objectContaining({ phase: "passive-effect", setupEffects: ["Acquire<Subscription>"], cleanupEffects: ["Release<Subscription>"] }),
-      expect.objectContaining({ phase: "ref-callback", setupEffects: ["Acquire<Host>"], cleanupEffects: ["Release<Host>"] }),
     ]);
     expect(result.components[0]!.replay.production.effects.map((effect) => effect.instance)).toEqual([
+      expect.stringMatching(/^ref-callback@/),
       expect.stringMatching(/^layout-effect@/),
       expect.stringMatching(/^passive-effect@/),
-      expect.stringMatching(/^ref-callback@/),
     ]);
   });
 

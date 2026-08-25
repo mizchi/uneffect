@@ -19,7 +19,9 @@ whose passive Effect has a result/parameter identity contract and matching
 acquire/release cleanup, a checked `[label]` dependency, and an immutable local
 JSX event-handler reference. Each component also builds immutable props, state, and context region
 facts through local `const` aliases and contains an identity-checked inline
-callback ref with returned cleanup. The paired baseline
+callback ref with returned cleanup. Each component also has an insertion
+Effect with StyleWrite setup/cleanup so phase normalization and the local
+state-dispatch/ref prohibition scans remain in the measured path. The paired baseline
 parses the same source with the TypeScript TSX parser but performs no Uneffect
 classification.
 
@@ -44,6 +46,16 @@ one `const` alias measured 29.11 ms for the source path, 2.67 ms for
 parse-only, and 39.52 ms for the reused Program. A preceding run had a 70 ms
 source outlier and 14.85% RME and was discarded; the recorded run had 1.18%
 RME. The workload exercises local callback and transitive-alias lookup.
+
+After adding one `useInsertionEffect` setup/cleanup to every component and
+normalizing commit instances into insertion/ref/layout/passive order, the
+source path measured 44.23 ms mean (1.31% RME), the parse-only baseline 3.10
+ms (1.05% RME), and the reused-Program path 63.98 ms (1.11% RME). Strict Mode
+Quint generation for all 128 summaries measured 1.390 ms and dependency-change
+generation measured 1.477 ms. This is a deliberately larger workload than the
+29.11/2.67/39.52 ms referenced-action baseline: it adds 128 Hook callbacks,
+their setup/cleanup calls, dispatcher/ref scans, and ordering obligations, so
+the delta is not attributed solely to phase sorting.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded

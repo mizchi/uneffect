@@ -9,6 +9,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
     const [selection] = useState({ active: propsSnapshot.active })
     const selectionSnapshot = selection
     const preferences = useContext(PreferencesContext) as { dense: boolean }
+    useInsertionEffect(() => { insertRule(); return () => removeRule() }, [])
     useCatalogSubscription(props.label)
     const refresh = () => fetch("/items/${index}")
     const refreshAlias = refresh
@@ -21,7 +22,7 @@ const components = Array.from({ length: 128 }, (_, index) => `
 `).join("\n");
 
 const source = `
-  import { startTransition, useContext, useEffect, useState } from "react"
+  import { startTransition, useContext, useEffect, useInsertionEffect, useState } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }
@@ -29,6 +30,10 @@ const source = `
   declare function subscribe(label: string): Subscription
   /* uneffect: react release Subscription parameter 0 */
   declare function unsubscribe(subscription: Subscription): void
+  /* uneffect: effect StyleWrite */
+  declare function insertRule(): void
+  /* uneffect: effect StyleWrite */
+  declare function removeRule(): void
   /* uneffect: react hook */
   function useCatalogSubscription(label: string) {
     useEffect(() => {

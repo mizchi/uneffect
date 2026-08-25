@@ -28,12 +28,13 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into six phases:
+The analyzer currently projects component work into seven phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
 | `render` | Replayable calculation of the next UI value | Must be idempotent and free of observable capabilities |
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
+| `insertion-effect` | `useInsertionEffect` setup during commit, before refs and layout/passive Effects | Capabilities are recorded; local state dispatch is rejected |
 | `layout-effect` | `useLayoutEffect` setup after commit | Capabilities are recorded separately |
 | `passive-effect` | `useEffect` setup after commit | Capabilities are recorded separately |
 | `ref-callback` | Inline JSX callback ref invoked during commit | Setup capabilities are separate from render |
@@ -61,7 +62,7 @@ Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
 otherwise opaque actions produce `unknown-transition-action` rather than losing
 their capabilities silently.
 
-Named imports of `useEffect` and `useLayoutEffect` from `react`, including
+Named imports of `useEffect`, `useLayoutEffect`, and `useInsertionEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
 function is not treated as a built-in Hook boundary. Annotated custom Hooks
 compose their render, Effect, and cleanup summaries into callers. The
@@ -70,6 +71,16 @@ TypeScript symbol to the annotated declaration. Named aliases, barrel
 re-exports, namespace properties, and default imports therefore share one
 resolution path across files. Hook summaries reach a fixed point once for the
 Program.
+
+Insertion Effect instances are normalized ahead of callback refs, layout
+Effects, and passive Effects even when source order differs. The Quint
+lifecycle projection requires each later phase's setup count not to exceed the
+preceding phase's setup count. Calls through the local dispatcher returned by
+`useState` or `useReducer`, including transitive `const` aliases, produce
+`insertion-effect-state-update`; local `useRef` `.current` access and its
+transitive aliases produce `insertion-effect-ref-access`. These checks follow
+the [React `useInsertionEffect` contract](https://react.dev/reference/react/useInsertionEffect).
+Uneffect does not claim whether host DOM mutation has already occurred.
 
 ## Render obligations
 
@@ -394,7 +405,7 @@ This is a tested initial fragment, not a complete React semantics:
   rejected thenables, unbounded retries, transition priority/pending state,
   imported/interprocedural transition actions, Offscreen trees,
   server components, hydration,
-  insertion effects, and React compiler assumptions are not
+  insertion Effect component-by-component cleanup/setup interleaving, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
   concurrent scheduler refinement are not generated yet.

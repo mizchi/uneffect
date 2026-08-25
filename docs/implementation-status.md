@@ -144,10 +144,16 @@ same property is proved for arbitrary TypeScript.
   check without changing runtime output.
 - The initial phase projection distinguishes replayable render, inline JSX
   event callbacks, immutable component-local referenced/aliased event
-  callbacks, `useLayoutEffect` setup, `useEffect` setup, and returned
+  callbacks, `useInsertionEffect`, `useLayoutEffect`, `useEffect` setup, and returned
   cleanup functions. Inline JSX callback refs form a separate commit setup and
   returned-cleanup phase. Reassigned or opaque referenced event handlers are
   rejected rather than assumed pure. Aliased named imports from `react` are recognized.
+- Insertion Effect setup is ordered before callback refs, layout Effects, and
+  passive Effects in replay and Quint. Direct `useState`/`useReducer`
+  dispatchers and their transitive local `const` aliases are rejected inside
+  insertion callbacks, as is local `useRef.current` access before ref
+  attachment. Host DOM mutation timing and cross-component
+  insertion-cleanup/setup interleaving are not claimed.
 - Inline and immutable local actions passed to named/default/namespace
   `startTransition` or the setter returned by `useTransition` are traversed in
   the enclosing phase, including transitive `const` aliases.
@@ -213,8 +219,8 @@ same property is proved for arbitrary TypeScript.
   per-instance setup/cleanup counters.
   `reactLifecycleSafe` rejects cleanup-before-setup, commit-side setup without a
   committed render, retry-before-resolution, and counter-bound violations
-  without imposing an order between different commit instances.
-- Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
+  and preserves insertion/ref/layout/passive setup order.
+- Inline dependency arrays for `useEffect`, `useInsertionEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common
   stable React return positions, and rejects opaque/dynamic/unstable evidence.

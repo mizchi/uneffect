@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "event" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
+export type ReactPhase = "render" | "event" | "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
@@ -10,6 +10,8 @@ export type ReactDiagnosticKind =
   | "unknown-ref-callback"
   | "unknown-event-handler"
   | "unknown-transition-action"
+  | "insertion-effect-state-update"
+  | "insertion-effect-ref-access"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -29,7 +31,7 @@ export interface ReactPhaseSummary {
 }
 
 export type ReactEffectTransition = "setup" | "cleanup";
-export type ReactCommitPhase = "passive-effect" | "layout-effect" | "ref-callback";
+export type ReactCommitPhase = "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback";
 export interface ReactLifecycleStep {
   transition: ReactEffectTransition;
   commit: string;
@@ -139,7 +141,7 @@ export interface ReactUnsupportedSuspenseBoundary {
 
 type ComponentNode = (ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction) & { body: ts.ConciseBody };
 type AnnotatableFunction = ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction;
-type HookKind = "passive-effect" | "layout-effect";
+type HookKind = "insertion-effect" | "passive-effect" | "layout-effect";
 type BuiltinHookKind = HookKind | "render-hook";
 interface DependencyHook { callback: number; dependencies: number; phase: ReactPhase }
 interface DependencyIssue {
@@ -176,8 +178,13 @@ interface CommitInstanceSummary {
   cleanupEffects: string[];
 }
 
+const reactCommitPhaseOrder = new Map<ReactCommitPhase, number>([
+  ["insertion-effect", 0], ["ref-callback", 1], ["layout-effect", 2], ["passive-effect", 3],
+]);
+
 function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayModel {
-  const effects = (lifecycle: ReactLifecycleStep[]): ReactReplayEffect[] => instances.map((effect) => ({
+  const ordered = [...instances].sort((left, right) => reactCommitPhaseOrder.get(left.phase)! - reactCommitPhaseOrder.get(right.phase)!);
+  const effects = (lifecycle: ReactLifecycleStep[]): ReactReplayEffect[] => ordered.map((effect) => ({
     ...effect,
     transitions: lifecycle.map(({ transition }) => transition),
     lifecycle: lifecycle.map((step) => ({ ...step })),
@@ -440,6 +447,7 @@ function importedHooks(source: ts.SourceFile): Map<string, BuiltinHookKind> {
       const imported = element.propertyName?.text ?? element.name.text;
       if (imported === "useEffect") hooks.set(element.name.text, "passive-effect");
       else if (imported === "useLayoutEffect") hooks.set(element.name.text, "layout-effect");
+      else if (imported === "useInsertionEffect") hooks.set(element.name.text, "insertion-effect");
       else if (/^use[A-Z0-9]/u.test(imported)) hooks.set(element.name.text, "render-hook");
     }
   }
@@ -471,6 +479,7 @@ function importedDependencyHooks(source: ts.SourceFile): Map<string, DependencyH
       const imported = element.propertyName?.text ?? element.name.text;
       if (imported === "useEffect") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "passive-effect" });
       else if (imported === "useLayoutEffect") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "layout-effect" });
+      else if (imported === "useInsertionEffect") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "insertion-effect" });
       else if (imported === "useMemo" || imported === "useCallback") hooks.set(element.name.text, { callback: 0, dependencies: 1, phase: "render" });
     }
   }
@@ -506,6 +515,69 @@ function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bi
   };
   visit(boundary.body);
   return { bindings, stable };
+}
+
+/** State dispatchers are stable identities, but are forbidden inside insertion Effects. */
+function stateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  const updaters = new Set<string>();
+  const aliases: Array<{ name: string; target: string }> = [];
+  const imports = reactImportNames(source);
+  const visit = (node: ts.Node): void => {
+    if (node !== boundary.body && ts.isFunctionLike(node)) return;
+    if (ts.isVariableDeclaration(node)
+      && ts.isVariableDeclarationList(node.parent)
+      && (node.parent.flags & ts.NodeFlags.Const) !== 0
+      && node.initializer) {
+      const initializer = unwrapExpression(node.initializer);
+      if (ts.isCallExpression(initializer)
+        && ts.isIdentifier(initializer.expression)
+        && (imports.get(initializer.expression.text) === "useState" || imports.get(initializer.expression.text) === "useReducer")
+        && ts.isArrayBindingPattern(node.name)) {
+        const dispatcher = node.name.elements[1];
+        if (dispatcher && !ts.isOmittedExpression(dispatcher)) {
+          for (const name of bindingNames(dispatcher.name)) updaters.add(name);
+        }
+      } else if (ts.isIdentifier(node.name) && ts.isIdentifier(initializer)) {
+        aliases.push({ name: node.name.text, target: initializer.text });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(boundary.body);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const alias of aliases) if (updaters.has(alias.target) && !updaters.has(alias.name)) {
+      updaters.add(alias.name);
+      changed = true;
+    }
+  }
+  return updaters;
+}
+
+function stateUpdates(node: ts.Node, updaters: ReadonlySet<string>): ts.CallExpression[] {
+  const calls: ts.CallExpression[] = [];
+  const visit = (candidate: ts.Node): void => {
+    if (candidate !== node && ts.isFunctionLike(candidate)) return;
+    if (ts.isCallExpression(candidate) && ts.isIdentifier(candidate.expression) && updaters.has(candidate.expression.text)) {
+      calls.push(candidate);
+    }
+    ts.forEachChild(candidate, visit);
+  };
+  visit(node);
+  return calls;
+}
+
+function refAccesses(node: ts.Node, refs: ReadonlySet<string>): ts.Expression[] {
+  const accesses: ts.Expression[] = [];
+  const visit = (candidate: ts.Node): void => {
+    if (candidate !== node && ts.isFunctionLike(candidate)) return;
+    const access = refCurrentAccess(candidate, refs);
+    if (access) accesses.push(access);
+    ts.forEachChild(candidate, visit);
+  };
+  visit(node);
+  return accesses;
 }
 
 function isReferenceIdentifier(node: ts.Identifier): boolean {
@@ -1227,6 +1299,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const immutableSnapshots = immutableSnapshotBindings(hook, source);
     const refs = renderRefBindings(hook, source);
+    const stateUpdaters = stateUpdaterBindings(hook, source);
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -1236,6 +1309,24 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, hook, source)) reportHook(issue.node, {
             kind: issue.kind, phase: dependencyHook.phase, hook: called, dependencies: issue.dependencies, message: issue.detail,
           });
+          if (dependencyHook?.phase === "insertion-effect") {
+            const callback = node.arguments[dependencyHook.callback];
+            if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+              const cleanup = returnedCleanup(callback);
+              for (const body of cleanup ? [callback.body, cleanup.body] : [callback.body]) {
+                for (const update of stateUpdates(body, stateUpdaters)) reportHook(update, {
+                  kind: "insertion-effect-state-update", phase: "insertion-effect",
+                  operation: update.expression.getText(source),
+                  message: "React forbids scheduling state updates from useInsertionEffect setup or cleanup",
+                });
+                for (const access of refAccesses(body, refs)) reportHook(access, {
+                  kind: "insertion-effect-ref-access", phase: "insertion-effect",
+                  operation: access.getText(source),
+                  message: "React refs are not attached while useInsertionEffect runs",
+                });
+              }
+            }
+          }
           if (called && recursiveLocalEdges.has(`${hookName}->${called}`)) reportHook(node, {
             kind: "recursive-hook", phase: "render", hook: called,
             message: `${hookName} -> ${called} participates in a recursive Hook cycle, so Hook order and phase summaries are not finite`,
@@ -1301,6 +1392,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     };
     const immutableSnapshots = immutableSnapshotBindings(component, source);
     const refs = renderRefBindings(component, source);
+    const stateUpdaters = stateUpdaterBindings(component, source);
     const eventCallbacks = localEventCallbacks(component);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
     const visitRender = (node: ts.Node): void => {
@@ -1410,6 +1502,24 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           if (called && dependencyHook) for (const issue of dependencyIssues(node, called, dependencyHook, component, source)) report(issue.node, {
             kind: issue.kind, phase: dependencyHook.phase, hook: called, dependencies: issue.dependencies, message: issue.detail,
           });
+          if (dependencyHook?.phase === "insertion-effect") {
+            const callback = node.arguments[dependencyHook.callback];
+            if (callback && (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) {
+              const cleanup = returnedCleanup(callback);
+              for (const body of cleanup ? [callback.body, cleanup.body] : [callback.body]) {
+                for (const update of stateUpdates(body, stateUpdaters)) report(update, {
+                  kind: "insertion-effect-state-update", phase: "insertion-effect",
+                  operation: update.expression.getText(source),
+                  message: "React forbids scheduling state updates from useInsertionEffect setup or cleanup",
+                });
+                for (const access of refAccesses(body, refs)) report(access, {
+                  kind: "insertion-effect-ref-access", phase: "insertion-effect",
+                  operation: access.getText(source),
+                  message: "React refs are not attached while useInsertionEffect runs",
+                });
+              }
+            }
+          }
           if (isConditionalWithin(node, component)) report(node, { kind: "conditional-hook", phase: "render", hook: called, message: `${called} has control-flow-dependent call order` });
           if (hookPhase === "render-hook") {
             addPhase("render");
@@ -1696,6 +1806,13 @@ export function generateReactLifecycleQuint(
       `(cleanup_${index} >= ${stepIndex + 1} implies ${commitVariables.get(step.commit)} == 1)`,
     ));
   });
+  for (let index = 1; index < replay.effects.length; index += 1) {
+    const previous = replay.effects[index - 1]!;
+    const current = replay.effects[index]!;
+    if (reactCommitPhaseOrder.get(previous.phase)! < reactCommitPhaseOrder.get(current.phase)!) {
+      bounds.push(`setup_${index} <= setup_${index - 1}`);
+    }
+  }
   lines.push("", `  val reactLifecycleSafe = ${bounds.join(" and ")}`, "}", "");
   return lines.join("\n");
 }

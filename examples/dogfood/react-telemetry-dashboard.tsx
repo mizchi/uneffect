@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useInsertionEffect, useMemo, useState } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -28,6 +28,18 @@ declare function unsubscribeFromTelemetry(subscription: TelemetrySubscription): 
 declare function attachTelemetryViewport(node: Element | null): TelemetryViewport;
 /* uneffect: react release TelemetryViewport parameter 0 */
 declare function detachTelemetryViewport(viewport: TelemetryViewport): void;
+/* uneffect: effect StyleWrite */
+declare function insertTelemetryStyles(): void;
+/* uneffect: effect StyleWrite */
+declare function removeTelemetryStyles(): void;
+
+/* uneffect: react hook */
+function useTelemetryStyles(): void {
+  useInsertionEffect(() => {
+    insertTelemetryStyles();
+    return () => removeTelemetryStyles();
+  }, []);
+}
 
 /* uneffect: react hook */
 function useTelemetrySubscription(service: string): void {
@@ -40,6 +52,7 @@ function useTelemetrySubscription(service: string): void {
 /* uneffect: react component */
 export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[] }) {
   const [showFailures, setShowFailures] = useState(false);
+  useTelemetryStyles();
   useTelemetrySubscription(props.service);
   const visibleRows = useMemo(
     () => showFailures ? props.rows.filter((row) => row.failures > 0) : props.rows,
