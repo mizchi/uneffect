@@ -1339,6 +1339,129 @@ export function generateReactLifecycleQuint(
   return lines.join("\n");
 }
 
+export interface ReactSuspenseBoundaryOptions {
+  /** Test-only fault injection proving that the cross-component cleanup invariant is load-bearing. */
+  allowPrimarySetupBeforeFallbackCleanup?: boolean;
+  /** Test-only fault injection proving that resolution is required before reveal. */
+  allowRevealBeforeResolution?: boolean;
+}
+
+function validateBoundaryComponent(role: "primary" | "fallback", component: ReactComponentSummary): void {
+  const replay = component.replay.production;
+  if (replay.renderInvocations !== replay.renderAttempts.length) {
+    throw new Error(`${role} renderInvocations ${replay.renderInvocations} does not match ${replay.renderAttempts.length} render attempts`);
+  }
+  const commits = new Set<string>();
+  for (const attempt of replay.renderAttempts) {
+    if (attempt.outcome === "committed" && !attempt.commit) throw new Error(`${role} committed render ${attempt.instance} has no commit generation`);
+    if (attempt.outcome !== "committed" && attempt.commit) throw new Error(`${role} ${attempt.outcome} render ${attempt.instance} cannot create commit generation ${attempt.commit}`);
+    if (attempt.commit) commits.add(attempt.commit);
+  }
+  for (const effect of replay.effects) {
+    if (effect.transitions.length !== effect.lifecycle.length
+      || effect.transitions.some((transition, index) => transition !== effect.lifecycle[index]!.transition)) {
+      throw new Error(`${role} effect ${effect.instance} transitions do not match lifecycle steps`);
+    }
+    for (const step of effect.lifecycle) {
+      if (!commits.has(step.commit)) throw new Error(`${role} effect ${effect.instance} refers to uncommitted generation ${step.commit}`);
+    }
+  }
+}
+
+/** Generate a bounded two-component Suspense fallback/reveal lifecycle projection. */
+export function generateReactSuspenseBoundaryQuint(
+  moduleName: string,
+  primary: ReactComponentSummary,
+  fallback: ReactComponentSummary,
+  options: ReactSuspenseBoundaryOptions = {},
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  validateBoundaryComponent("primary", primary);
+  validateBoundaryComponent("fallback", fallback);
+  const primaryEffects = primary.replay.production.effects;
+  const fallbackEffects = fallback.replay.production.effects;
+  const variables = [
+    "primary_suspended", "primary_suspension_resolved", "fallback_committed", "primary_committed",
+    ...fallbackEffects.flatMap((_effect, index) => [`fallback_setup_${index}`, `fallback_cleanup_${index}`]),
+    ...primaryEffects.map((_effect, index) => `primary_setup_${index}`),
+  ];
+  const lines = [`module ${moduleName} {`, ...variables.map((name) => `  var ${name}: int`), "", "  action init = all {"];
+  for (const variable of variables) lines.push(`    ${variable}' = 0,`);
+  lines.push("  }");
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comments: readonly string[] = []): void => {
+    actions.push(name);
+    lines.push("", ...comments.map((comment) => `  // ${comment.replaceAll(/[\r\n]/gu, " ")}`), `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("suspend_primary", ["primary_suspended == 0"], new Map([["primary_suspended", "1"]]), [`component: ${primary.name}`]);
+  action("commit_fallback", ["primary_suspended == 1", "fallback_committed == 0"], new Map([["fallback_committed", "1"]]), [`component: ${fallback.name}`]);
+  action("resolve_primary_suspension", ["primary_suspended == 1", "primary_suspension_resolved == 0"], new Map([["primary_suspension_resolved", "1"]]));
+  action("reveal_primary", ["fallback_committed == 1", "primary_suspension_resolved == 1", "primary_committed == 0"], new Map([["primary_committed", "1"]]));
+  if (options.allowRevealBeforeResolution) {
+    action("reveal_primary_before_resolution", ["fallback_committed == 1", "primary_suspension_resolved == 0", "primary_committed == 0"], new Map([["primary_committed", "1"]]));
+  }
+  fallbackEffects.forEach((effect, index) => {
+    action(`setup_fallback_${index}`, ["fallback_committed == 1", `fallback_setup_${index} == 0`], new Map([[`fallback_setup_${index}`, "1"]]), [
+      `instance: fallback/${effect.instance}`,
+      `phase: ${effect.phase}`,
+      `setup effects: ${effect.setupEffects.join(" | ") || "none"}`,
+    ]);
+    action(`cleanup_fallback_${index}`, ["primary_committed == 1", `fallback_setup_${index} == 1`, `fallback_cleanup_${index} == 0`], new Map([[`fallback_cleanup_${index}`, "1"]]), [
+      `instance: fallback/${effect.instance}`,
+      `cleanup effects: ${effect.cleanupEffects.join(" | ") || "none"}`,
+    ]);
+  });
+  primaryEffects.forEach((effect, index) => {
+    const matchingFallback = fallbackEffects
+      .map((candidate, fallbackIndex) => ({ candidate, fallbackIndex }))
+      .filter(({ candidate }) => candidate.phase === effect.phase);
+    action(`setup_primary_${index}`, [
+      "primary_committed == 1",
+      `primary_setup_${index} == 0`,
+      ...matchingFallback.map(({ fallbackIndex }) => `fallback_cleanup_${fallbackIndex} == 1`),
+    ], new Map([[`primary_setup_${index}`, "1"]]), [
+      `instance: primary/${effect.instance}`,
+      `phase: ${effect.phase}`,
+      `setup effects: ${effect.setupEffects.join(" | ") || "none"}`,
+    ]);
+    if (options.allowPrimarySetupBeforeFallbackCleanup && matchingFallback.length > 0) {
+      action(`setup_primary_${index}_before_fallback_cleanup`, [
+        "primary_committed == 1",
+        `primary_setup_${index} == 0`,
+        ...matchingFallback.map(({ fallbackIndex }) => `fallback_cleanup_${fallbackIndex} == 0`),
+      ], new Map([[`primary_setup_${index}`, "1"]]));
+    }
+  });
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const bounds = [
+    "0 <= primary_suspended", "primary_suspended <= 1",
+    "0 <= primary_suspension_resolved", "primary_suspension_resolved <= primary_suspended",
+    "0 <= fallback_committed", "fallback_committed <= primary_suspended",
+    "0 <= primary_committed", "primary_committed <= fallback_committed",
+    "(primary_committed == 1 implies primary_suspension_resolved == 1)",
+  ];
+  fallbackEffects.forEach((_effect, index) => bounds.push(
+    `0 <= fallback_cleanup_${index}`,
+    `fallback_cleanup_${index} <= fallback_setup_${index}`,
+    `fallback_setup_${index} <= 1`,
+    `(fallback_setup_${index} == 1 implies fallback_committed == 1)`,
+    `(fallback_cleanup_${index} == 1 implies primary_committed == 1)`,
+  ));
+  primaryEffects.forEach((effect, index) => {
+    bounds.push(`0 <= primary_setup_${index}`, `primary_setup_${index} <= 1`, `(primary_setup_${index} == 1 implies primary_committed == 1)`);
+    fallbackEffects.forEach((candidate, fallbackIndex) => {
+      if (candidate.phase === effect.phase) bounds.push(`(primary_setup_${index} == 1 implies fallback_cleanup_${fallbackIndex} == 1)`);
+    });
+  });
+  lines.push("", `  val suspenseBoundarySafe = ${bounds.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
 function declarationKey(node: AnnotatableFunction): string {
   return `${node.getSourceFile().fileName}:${componentName(node)}`;
 }

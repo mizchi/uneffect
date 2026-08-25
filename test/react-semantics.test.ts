@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint } from "../src/react-semantics.js";
+import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -946,6 +946,9 @@ describe("React Function Component semantics", () => {
     mismatchedLifecycle.replay.production.effects[0]!.transitions = ["cleanup"];
     expect(() => generateReactLifecycleQuint("mismatched_lifecycle", mismatchedLifecycle, "production"))
       .toThrow("transitions do not match lifecycle steps");
+
+    expect(() => generateReactSuspenseBoundaryQuint("invalid_boundary", missingCommit, result.components[0]!))
+      .toThrow("primary committed render render@0 has no commit generation");
   });
 
   it("models Suspense resolution as a prerequisite for retry commit", () => {
@@ -982,6 +985,28 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("action resolve_suspension_1");
     expect(quint).toContain("suspension_1 == 1 implies resolved_suspension_0 == 1");
     expect(quint).toContain("commit_generation_0 == 1 implies resolved_suspension_1 == 1");
+  });
+
+  it("composes fallback commit and cleanup with primary reveal", () => {
+    const primary = analyzeReactSemantics("profile.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => { console.log("profile"); return () => console.log("hide profile") }, []); return null }
+    `).components[0]!;
+    const fallback = analyzeReactSemantics("spinner.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Spinner() { useEffect(() => { console.log("spinner"); return () => console.log("hide spinner") }, []); return null }
+    `).components[0]!;
+
+    const quint = generateReactSuspenseBoundaryQuint("profile_boundary", primary, fallback);
+    expect(quint).toContain("action suspend_primary");
+    expect(quint).toContain("action commit_fallback");
+    expect(quint).toContain("action resolve_primary_suspension");
+    expect(quint).toContain("action reveal_primary");
+    expect(quint).toContain("fallback_cleanup_0 == 1 implies primary_committed == 1");
+    expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
+    expect(quint).toContain("val suspenseBoundarySafe");
   });
 
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
@@ -1099,6 +1124,20 @@ describe("React Function Component semantics", () => {
     expect(leakingRef.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "TelemetryDashboard", kind: "missing-effect-cleanup", phase: "ref-callback", effect: "TelemetryViewport",
     }));
+  });
+
+  it("dogfoods a separate primary and fallback component boundary", () => {
+    const fileName = "examples/dogfood/react-suspense-boundary.tsx";
+    const result = analyzeReactSemantics(fileName, readFileSync(fileName, "utf8"));
+    expect(result.diagnostics).toEqual([]);
+    const primary = result.components.find(({ name }) => name === "Profile")!;
+    const fallback = result.components.find(({ name }) => name === "ProfileSpinner")!;
+    expect(primary).toBeDefined();
+    expect(fallback).toBeDefined();
+    const quint = generateReactSuspenseBoundaryQuint("profile_dogfood", primary, fallback);
+    expect(quint).toContain("component: Profile");
+    expect(quint).toContain("component: ProfileSpinner");
+    expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
   });
 
   it("dogfoods checked-in symbol-resolved React modules", async () => {

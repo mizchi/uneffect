@@ -229,6 +229,24 @@ occur before the second suspension resolves. Commit-side Effect and ref setup
 still occurs only once, for the final successful generation. This is a finite
 causal trace, not an unbounded retry or thenable model.
 
+`generateReactSuspenseBoundaryQuint(moduleName, primary, fallback)` composes
+two separately analyzed component summaries. Its bounded trace permits the
+primary render to suspend, commits and sets up the fallback, resolves the
+primary suspension, authorizes the primary reveal commit, tears down fallback
+instances, and sets up primary instances. Within each commit phase, every
+primary setup requires all fallback instances in that phase to have crossed
+their cleanup barrier. The model preserves `primary/` and `fallback/` instance
+names and their effect metadata instead of merging the components' effects.
+Fault-injection tests show that reveal-before-resolution and primary
+setup-before-fallback-cleanup violate `suspenseBoundarySafe`.
+
+The caller currently selects the primary and fallback summaries explicitly.
+Uneffect does not yet infer a boundary graph from `<Suspense fallback={...}>`,
+prove that a render actually throws a thenable, or distinguish a user cleanup
+callback from an empty phase teardown barrier. The generator is therefore
+bounded lifecycle evidence for the supplied relationship, not evidence that
+the relationship was extracted from React code.
+
 Committed render attempts carry a stable model-local generation such as
 `commit@0`. Each lifecycle entry stores both its transition and owning commit.
 Consequently, the identical transition spelling used by Strict Mode replay and
@@ -298,7 +316,8 @@ This is a tested initial fragment, not a complete React semantics:
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
 - Suspense fallback trees, nested boundaries, rejected thenables, unbounded
-  retries, transition priority, Offscreen trees, server components, hydration,
+  retries, automatic JSX boundary extraction, transition priority, Offscreen
+  trees, server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
@@ -319,6 +338,9 @@ committed render authorizes its subscription/ref setup. Its dependency-change
 projection additionally distinguishes the generation owning old cleanup from
 the one owning replacement setup. Its Suspense projections lock both the
 single and repeated suspend-resolve-retry ordering. The checked-in
+`react-suspense-boundary.tsx` fixture additionally supplies separate primary
+and fallback summaries to the bounded boundary generator; it does not claim
+automatic JSX relationship inference. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

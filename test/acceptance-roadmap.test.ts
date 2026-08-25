@@ -66,6 +66,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
   it("separates replayable React render from event, Effect, and cleanup capabilities", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
+    const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -113,6 +114,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const repeatedSuspenseQuint = generateReactLifecycle("feed_repeated_suspense", result.components[0], "repeatedSuspenseRetry") as string;
     expect(repeatedSuspenseQuint).toContain("suspension_1 == 1 implies resolved_suspension_0 == 1");
     expect(repeatedSuspenseQuint).toContain("commit_generation_0 == 1 implies resolved_suspension_1 == 1");
+    const fallback = analyzeReact("src/feed-spinner.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function FeedSpinner() { useEffect(() => { console.log("show"); return () => console.log("hide") }, []); return null }
+    `) as typeof result;
+    const boundaryQuint = generateSuspenseBoundary("feed_boundary", result.components[0], fallback.components[0]) as string;
+    expect(boundaryQuint).toContain("action commit_fallback");
+    expect(boundaryQuint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

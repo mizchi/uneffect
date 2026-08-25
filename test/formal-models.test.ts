@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { analyzeReactSemantics, generateReactLifecycleQuint } from "../src/react-semantics.js";
+import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -191,6 +191,40 @@ describe("React lifecycle Quint projection", () => {
       expect(broken.error).toBeUndefined();
       expect(broken.status, broken.stdout + broken.stderr).toBe(1);
       expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects primary Effect setup before matching fallback cleanup", () => {
+    const analyze = (name: string) => analyzeReactSemantics(`${name}.tsx`, `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function ${name}() { useEffect(() => { console.log("setup"); return () => console.log("cleanup") }, []); return null }
+    `).components[0]!;
+    const primary = analyze("Profile");
+    const fallback = analyze("Spinner");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-fallback-"));
+    const path = join(directory, "fallback.qnt");
+    const run = (fault: "none" | "setup" | "reveal") => {
+      writeFileSync(path, generateReactSuspenseBoundaryQuint("react_fallback", primary, fallback, {
+        allowPrimarySetupBeforeFallbackCleanup: fault === "setup",
+        allowRevealBeforeResolution: fault === "reveal",
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=suspenseBoundarySafe", "--max-steps=10", "--max-samples=1000",
+        "--seed=0x66616c6c6261636b", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run("none");
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      for (const fault of ["setup", "reveal"] as const) {
+        const broken = run(fault);
+        expect(broken.error).toBeUndefined();
+        expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+        expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+      }
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

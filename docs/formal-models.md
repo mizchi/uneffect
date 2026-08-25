@@ -179,6 +179,14 @@ which Quint must reject. This does not model Suspense fallback-tree commits,
 nested boundary propagation, rejected thenables, unbounded retries, Offscreen,
 hydration, or the browser scheduler.
 
+`generateReactSuspenseBoundaryQuint` accepts explicitly selected primary and
+fallback summaries and generates a separate `suspenseBoundarySafe` model. It
+keeps component instances disjoint, requires resolution before primary reveal,
+and requires same-phase fallback cleanup barriers before primary setup. Fixed
+seed negative controls inject early reveal and early primary setup actions.
+The source analyzer does not yet extract the boundary edge from JSX, so this
+proves the supplied bounded relationship rather than discovering it.
+
 ## Verification ledger
 
 | Claim | Source of truth | Machine status | Regression lock |

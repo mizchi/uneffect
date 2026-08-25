@@ -51,6 +51,7 @@ documentation are all updated.
 - [x] Associate lifecycle transitions with commit generations, model dependency-change cleanup/setup ownership, and reject setup attributed to an uncommitted generation.
 - [x] Model one bounded Suspense suspension-resolution-retry trace and reject retry commits that precede resolution.
 - [x] Model a bounded retry that suspends again and reject each retry before its immediately preceding suspension resolves.
+- [x] Compose explicitly selected primary/fallback component summaries into a bounded Suspense fallback-commit, cleanup, and reveal model.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

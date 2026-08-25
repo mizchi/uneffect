@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -74,5 +74,11 @@ describe("React semantic analysis", () => {
 
   bench("generate repeated-Suspense-retry Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`repeated_suspense_${index}`, component, "repeatedSuspenseRetry"));
+  }, { time: 500, iterations: 20 });
+
+  bench("generate Suspense fallback-boundary Quint for 64 pairs", () => {
+    for (let index = 0; index < analyzed.components.length; index += 2) {
+      generateReactSuspenseBoundaryQuint(`fallback_boundary_${index}`, analyzed.components[index]!, analyzed.components[index + 1]!);
+    }
   }, { time: 500, iterations: 20 });
 });
