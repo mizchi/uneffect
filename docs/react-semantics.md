@@ -240,12 +240,20 @@ names and their effect metadata instead of merging the components' effects.
 Fault-injection tests show that reveal-before-resolution and primary
 setup-before-fallback-cleanup violate `suspenseBoundarySafe`.
 
-The caller currently selects the primary and fallback summaries explicitly.
-Uneffect does not yet infer a boundary graph from `<Suspense fallback={...}>`,
-prove that a render actually throws a thenable, or distinguish a user cleanup
-callback from an empty phase teardown barrier. The generator is therefore
-bounded lifecycle evidence for the supplied relationship, not evidence that
-the relationship was extracted from React code.
+For the supported direct JSX fragment, the analyzer recognizes a named React
+`Suspense` import (including a local import alias), a `fallback` containing one
+direct annotated component element, and exactly one direct annotated primary
+component child. It records the edge in `suspenseBoundaries`, while recognized
+Suspense elements with missing, indirect, expression-valued, fragment, or
+multiple children are retained in `unsupportedSuspenseBoundaries` with a
+reason. `generateReactSuspenseBoundaryQuintFromAnalysis` resolves one extracted
+edge back to exactly one summary per side and fails closed otherwise. The
+lower-level explicit-summary generator remains available.
+
+Uneffect does not yet prove that a render actually throws a thenable or
+distinguish a user cleanup callback from an empty phase teardown barrier. The
+generator is therefore bounded lifecycle evidence for the extracted direct
+relationship, not a general React tree or suspension proof.
 
 Committed render attempts carry a stable model-local generation such as
 `commit@0`. Each lifecycle entry stores both its transition and owning commit.
@@ -263,7 +271,8 @@ transition list.
 
 `analyzeReactSemantics(fileName, source)` returns opted-in component and custom
 Hook summaries, phase-local effect sets, per-instance replay entries, and
-diagnostics.
+diagnostics. It also returns supported and unsupported direct JSX Suspense
+boundary facts.
 `analyzeReactProgram(program)` and `analyzeReactSemanticsInProgram` add
 TypeScript-resolved cross-file composition. `uneffect check` computes the
 Program result once and includes the same diagnostics. The analysis is
@@ -315,9 +324,10 @@ This is a tested initial fragment, not a complete React semantics:
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
-- Suspense fallback trees, nested boundaries, rejected thenables, unbounded
-  retries, automatic JSX boundary extraction, transition priority, Offscreen
-  trees, server components, hydration,
+- General Suspense trees, fragments, expression-valued or multiple children,
+  namespace imports, cross-file component edges, nested-boundary propagation,
+  rejected thenables, unbounded retries, transition priority, Offscreen trees,
+  server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
@@ -338,9 +348,8 @@ committed render authorizes its subscription/ref setup. Its dependency-change
 projection additionally distinguishes the generation owning old cleanup from
 the one owning replacement setup. Its Suspense projections lock both the
 single and repeated suspend-resolve-retry ordering. The checked-in
-`react-suspense-boundary.tsx` fixture additionally supplies separate primary
-and fallback summaries to the bounded boundary generator; it does not claim
-automatic JSX relationship inference. The checked-in
+`react-suspense-boundary.tsx` fixture additionally exercises automatic direct
+JSX edge extraction and the bounded boundary generator. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

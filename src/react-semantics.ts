@@ -90,6 +90,28 @@ export interface ReactSemanticsResult {
   components: ReactComponentSummary[];
   hooks: ReactHookSummary[];
   diagnostics: ReactSemanticDiagnostic[];
+  suspenseBoundaries: ReactSuspenseBoundarySummary[];
+  unsupportedSuspenseBoundaries: ReactUnsupportedSuspenseBoundary[];
+}
+
+export interface ReactSuspenseBoundarySummary {
+  instance: string;
+  primary: string;
+  fallback: string;
+  span: { start: number; end: number };
+}
+
+export type ReactUnsupportedSuspenseBoundaryReason =
+  | "missing-fallback"
+  | "fallback-must-be-one-direct-component"
+  | "primary-must-be-one-direct-component"
+  | "unannotated-primary"
+  | "unannotated-fallback";
+
+export interface ReactUnsupportedSuspenseBoundary {
+  instance: string;
+  reason: ReactUnsupportedSuspenseBoundaryReason;
+  span: { start: number; end: number };
 }
 
 type ComponentNode = (ts.FunctionDeclaration | ts.FunctionExpression | ts.ArrowFunction) & { body: ts.ConciseBody };
@@ -790,6 +812,54 @@ interface InternalReactAnalysis {
   hookNodes: Map<string, ComponentNode>;
 }
 
+function directJsxComponentName(node: ts.Node | undefined): string | undefined {
+  if (!node) return undefined;
+  const expression = ts.isJsxExpression(node) ? node.expression : node;
+  if (!expression) return undefined;
+  const unwrapped = ts.isExpression(expression) ? unwrapExpression(expression) : expression;
+  const tag = ts.isJsxElement(unwrapped)
+    ? unwrapped.openingElement.tagName
+    : ts.isJsxSelfClosingElement(unwrapped) ? unwrapped.tagName : undefined;
+  return tag && ts.isIdentifier(tag) && /^[A-Z]/u.test(tag.text) ? tag.text : undefined;
+}
+
+function suspenseBoundaryFacts(
+  source: ts.SourceFile,
+  components: readonly ReactComponentSummary[],
+): { boundaries: ReactSuspenseBoundarySummary[]; unsupported: ReactUnsupportedSuspenseBoundary[] } {
+  const imports = reactImportNames(source);
+  const componentNames = new Set(components.map(({ name }) => name));
+  const boundaries: ReactSuspenseBoundarySummary[] = [];
+  const unsupported: ReactUnsupportedSuspenseBoundary[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxElement(node) && ts.isIdentifier(node.openingElement.tagName)
+      && imports.get(node.openingElement.tagName.text) === "Suspense") {
+      const instance = `suspense@${node.getStart(source)}`;
+      const span = { start: node.getStart(source), end: node.getEnd() };
+      const fail = (reason: ReactUnsupportedSuspenseBoundaryReason): void => { unsupported.push({ instance, reason, span }); };
+      const fallbackAttribute = node.openingElement.attributes.properties.find(
+        (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute)
+          && ts.isIdentifier(attribute.name) && attribute.name.text === "fallback",
+      );
+      if (!fallbackAttribute?.initializer) fail("missing-fallback");
+      else {
+        const fallback = directJsxComponentName(fallbackAttribute.initializer);
+        const children = node.children.filter((child) => !(ts.isJsxText(child) && child.text.trim() === "")
+          && !(ts.isJsxExpression(child) && child.expression === undefined));
+        const primary = children.length === 1 ? directJsxComponentName(children[0]) : undefined;
+        if (!fallback) fail("fallback-must-be-one-direct-component");
+        else if (!primary) fail("primary-must-be-one-direct-component");
+        else if (!componentNames.has(primary)) fail("unannotated-primary");
+        else if (!componentNames.has(fallback)) fail("unannotated-fallback");
+        else boundaries.push({ instance, primary, fallback, span });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return { boundaries, unsupported };
+}
+
 function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map()): InternalReactAnalysis {
   const fileName = source.fileName;
   const hooks = importedHooks(source), renderCallbacks = importedRenderCallbacks(source);
@@ -1135,7 +1205,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
       replay: replayModel(summary.instances),
     };
   });
-  return { result: { components, hooks: publicHooks, diagnostics }, hookSummaries: customHookCache, hookNodes: customHooks };
+  const suspense = suspenseBoundaryFacts(source, components);
+  return {
+    result: { components, hooks: publicHooks, diagnostics, suspenseBoundaries: suspense.boundaries, unsupportedSuspenseBoundaries: suspense.unsupported },
+    hookSummaries: customHookCache,
+    hookNodes: customHooks,
+  };
 }
 
 /** Analyze one source string without requiring React at runtime. */
@@ -1462,6 +1537,22 @@ export function generateReactSuspenseBoundaryQuint(
   return lines.join("\n");
 }
 
+/** Generate a boundary model from a source-extracted direct JSX Suspense edge. */
+export function generateReactSuspenseBoundaryQuintFromAnalysis(
+  moduleName: string,
+  analysis: ReactSemanticsResult,
+  boundaryIndex = 0,
+  options: ReactSuspenseBoundaryOptions = {},
+): string {
+  const boundary = analysis.suspenseBoundaries[boundaryIndex];
+  if (!boundary) throw new Error(`Suspense boundary ${boundaryIndex} is not available`);
+  const primary = analysis.components.filter(({ name }) => name === boundary.primary);
+  const fallback = analysis.components.filter(({ name }) => name === boundary.fallback);
+  if (primary.length !== 1) throw new Error(`Suspense primary ${boundary.primary} does not resolve to exactly one component summary`);
+  if (fallback.length !== 1) throw new Error(`Suspense fallback ${boundary.fallback} does not resolve to exactly one component summary`);
+  return generateReactSuspenseBoundaryQuint(moduleName, primary[0]!, fallback[0]!, options);
+}
+
 function declarationKey(node: AnnotatableFunction): string {
   return `${node.getSourceFile().fileName}:${componentName(node)}`;
 }
@@ -1598,5 +1689,7 @@ export function analyzeReactProgram(program: ts.Program): Map<string, ReactSeman
 
 /** Program-backed path: composes annotated custom Hooks through resolved named imports and aliases. */
 export function analyzeReactSemanticsInProgram(program: ts.Program, source: ts.SourceFile): ReactSemanticsResult {
-  return analyzeReactProgram(program).get(source.fileName) ?? { components: [], hooks: [], diagnostics: [] };
+  return analyzeReactProgram(program).get(source.fileName) ?? {
+    components: [], hooks: [], diagnostics: [], suspenseBoundaries: [], unsupportedSuspenseBoundaries: [],
+  };
 }

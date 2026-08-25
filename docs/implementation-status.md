@@ -185,7 +185,9 @@ same property is proved for arbitrary TypeScript.
 - An explicit two-component Suspense boundary projection preserves primary and
   fallback lifecycle instances separately, requires resolution before reveal,
   and requires same-phase fallback teardown before primary setup. Boundary
-  selection is caller-supplied; JSX relationship inference is not implemented.
+  selection can be caller-supplied. The analyzer also extracts named/aliased
+  React Suspense edges when fallback and primary are single direct annotated
+  component elements, and reports recognized unsupported child shapes.
 - The replay IR generates reviewable production, development Strict Mode,
   interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.
@@ -200,7 +202,7 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  inferred Suspense fallback/nested-boundary graphs, transition/Offscreen
+  general Suspense fallback/nested-boundary graphs and propagation, transition/Offscreen
   scheduling, server components, and Z3 lifecycle projection remain unsupported
   rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

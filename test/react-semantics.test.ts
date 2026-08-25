@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
+import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -1009,6 +1009,40 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("val suspenseBoundarySafe");
   });
 
+  it("extracts a direct Suspense primary/fallback edge through a named import alias", () => {
+    const result = analyzeReactSemantics("boundary.tsx", `
+      import { Suspense as AsyncBoundary, useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => { console.log("profile"); return () => console.log("hide") }, []); return null }
+      /* uneffect: react component */
+      function Spinner() { useEffect(() => { console.log("spinner"); return () => console.log("hide") }, []); return null }
+      function App() { return <AsyncBoundary fallback={<Spinner />}><Profile /></AsyncBoundary> }
+    `);
+    expect(result.suspenseBoundaries).toEqual([
+      expect.objectContaining({ instance: expect.stringMatching(/^suspense@\d+$/), primary: "Profile", fallback: "Spinner" }),
+    ]);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+    const quint = generateReactSuspenseBoundaryQuintFromAnalysis("extracted_boundary", result);
+    expect(quint).toContain("component: Profile");
+    expect(quint).toContain("component: Spinner");
+  });
+
+  it("reports unsupported Suspense child shapes without claiming a boundary", () => {
+    const result = analyzeReactSemantics("unsupported-boundary.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function First() { return null }
+      /* uneffect: react component */ function Second() { return null }
+      /* uneffect: react component */ function Spinner() { return null }
+      function App() { return <Suspense fallback={<Spinner />}><First /><Second /></Suspense> }
+    `);
+    expect(result.suspenseBoundaries).toEqual([]);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([
+      expect.objectContaining({ reason: "primary-must-be-one-direct-component" }),
+    ]);
+    expect(() => generateReactSuspenseBoundaryQuintFromAnalysis("missing_boundary", result))
+      .toThrow("Suspense boundary 0 is not available");
+  });
+
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -1134,7 +1168,11 @@ describe("React Function Component semantics", () => {
     const fallback = result.components.find(({ name }) => name === "ProfileSpinner")!;
     expect(primary).toBeDefined();
     expect(fallback).toBeDefined();
-    const quint = generateReactSuspenseBoundaryQuint("profile_dogfood", primary, fallback);
+    expect(result.suspenseBoundaries).toEqual([
+      expect.objectContaining({ primary: "Profile", fallback: "ProfileSpinner" }),
+    ]);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+    const quint = generateReactSuspenseBoundaryQuintFromAnalysis("profile_dogfood", result);
     expect(quint).toContain("component: Profile");
     expect(quint).toContain("component: ProfileSpinner");
     expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");

@@ -52,6 +52,7 @@ documentation are all updated.
 - [x] Model one bounded Suspense suspension-resolution-retry trace and reject retry commits that precede resolution.
 - [x] Model a bounded retry that suspends again and reject each retry before its immediately preceding suspension resolves.
 - [x] Compose explicitly selected primary/fallback component summaries into a bounded Suspense fallback-commit, cleanup, and reveal model.
+- [x] Extract direct named/aliased React Suspense primary/fallback edges from JSX, report unsupported shapes, and generate their boundary models.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

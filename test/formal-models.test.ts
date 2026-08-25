@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
+import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -225,6 +225,28 @@ describe("React lifecycle Quint projection", () => {
         expect(broken.status, broken.stdout + broken.stderr).toBe(1);
         expect(broken.stdout + broken.stderr).toContain("Invariant violated");
       }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("runs the source-extracted Suspense boundary projection", () => {
+    const analysis = analyzeReactSemantics("extracted-boundary.tsx", `
+      import { Suspense, useEffect } from "react"
+      /* uneffect: react component */ function Primary() { useEffect(() => () => console.log("hide"), []); return null }
+      /* uneffect: react component */ function Fallback() { useEffect(() => () => console.log("hide"), []); return null }
+      function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-extracted-fallback-"));
+    const path = join(directory, "extracted-fallback.qnt");
+    try {
+      writeFileSync(path, generateReactSuspenseBoundaryQuintFromAnalysis("react_extracted_fallback", analysis));
+      const result = spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=suspenseBoundarySafe", "--max-steps=10", "--max-samples=1000",
+        "--seed=0x6578747261637465", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stdout + result.stderr).toContain("No violation found");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

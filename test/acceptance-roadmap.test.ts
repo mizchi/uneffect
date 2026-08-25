@@ -67,6 +67,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
+    const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -122,6 +123,15 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const boundaryQuint = generateSuspenseBoundary("feed_boundary", result.components[0], fallback.components[0]) as string;
     expect(boundaryQuint).toContain("action commit_fallback");
     expect(boundaryQuint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
+    const extracted = analyzeReact("src/extracted-boundary.tsx", `
+      import { Suspense, useEffect } from "react"
+      /* uneffect: react component */ function Primary() { useEffect(() => () => console.log("hide"), []); return null }
+      /* uneffect: react component */ function Fallback() { useEffect(() => () => console.log("hide"), []); return null }
+      function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
+    `) as typeof result;
+    const extractedBoundaryQuint = generateExtractedSuspenseBoundary("extracted_boundary", extracted) as string;
+    expect(extractedBoundaryQuint).toContain("component: Primary");
+    expect(extractedBoundaryQuint).toContain("component: Fallback");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

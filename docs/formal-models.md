@@ -184,8 +184,10 @@ fallback summaries and generates a separate `suspenseBoundarySafe` model. It
 keeps component instances disjoint, requires resolution before primary reveal,
 and requires same-phase fallback cleanup barriers before primary setup. Fixed
 seed negative controls inject early reveal and early primary setup actions.
-The source analyzer does not yet extract the boundary edge from JSX, so this
-proves the supplied bounded relationship rather than discovering it.
+The source analyzer extracts the documented direct named/aliased JSX fragment,
+and `generateReactSuspenseBoundaryQuintFromAnalysis` fails closed if the chosen
+edge or either unique component summary is unavailable. General tree and
+thenable causality remain outside this bounded proof.
 
 ## Verification ledger
 
