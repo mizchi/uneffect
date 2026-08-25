@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { extractAnnotations, extractLocatedAnnotations, validateUneffectAnnotations } from "../src/annotations.js";
 
 describe("Uneffect annotation marker", () => {
+  it("accepts module-level effect upper bounds without using JSDoc semantics", () => {
+    const source = `/* uneffect: module_effect Console | Env<\"PLUGIN\"> */\nawait main()`;
+    expect(extractAnnotations(source, "module_effect")).toEqual([`Console | Env<"PLUGIN">`]);
+    expect(validateUneffectAnnotations(source)).toEqual([]);
+  });
+
   it("extracts a canonical single-line directive", () => {
     expect(extractAnnotations("/* uneffect: effect Console | app.Audit */", "effect"))
       .toEqual(["Console | app.Audit"]);

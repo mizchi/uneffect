@@ -1,5 +1,5 @@
 import { bench, describe } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import ts from "typescript";
 import { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { parseSpec } from "../src/spec-ir.js";
@@ -13,7 +13,7 @@ import { verifyUneffectProject } from "../src/project-verification.js";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-patterns.js";
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
-import { analyzeEffectsInProgram } from "../src/effects.js";
+import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -116,6 +116,11 @@ const labeledTelemetryFile = "examples/dogfood/labeled-telemetry-delivery.ts";
 const labeledTelemetrySource = readFileSync(labeledTelemetryFile, "utf8");
 const labeledTelemetrySpec = parseSpec(labeledTelemetryFile, labeledTelemetrySource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
+const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
+const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
+  target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+  moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+});
 const generatedMigrationSource = readFileSync(generatedMigrationFile, "utf8");
 const generatedMigrationSpec = parseSpec(generatedMigrationFile, generatedMigrationSource).temporal;
 const leaseAuthorityProgram = ts.createProgram([leaseAuthorityFile], {
@@ -200,6 +205,10 @@ describe("DOM property effect inference", () => {
 });
 
 describe("typed-array static verification", () => {
+  bench("summarize function and module effects across uneffect src", () => {
+    analyzeProgramEffects(uneffectEffectProgram, { requireAnnotations: false });
+  }, { time: 3_000, iterations: 3 });
+
   bench("empty source", async () => {
     await verifyTypedArraySafety("empty.ts", "export {}\n");
   }, { time: 500, iterations: 20 });

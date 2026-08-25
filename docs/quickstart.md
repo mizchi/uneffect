@@ -170,6 +170,17 @@ have no unresolved effect summaries, add an explicit assurance gate:
 npx uneffect check --assurance no-unknown src/uneffect-example.ts
 ```
 
+Executable top-level code may declare its own authority upper bound in the file
+header. It is checked independently from function declarations:
+
+```ts
+/* uneffect: module_effect Console | FsRead */
+await main()
+```
+
+The module summary is a may-effect set. It does not prove exact ESM or
+top-level-await ordering.
+
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
 

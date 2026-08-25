@@ -21,6 +21,17 @@ function deposit(state: Account, amount: Nat): Nat {
 }
 ```
 
+Executable module initialization has a separate file-header upper bound:
+
+```ts
+/* uneffect: module_effect Console | FsRead */
+await start()
+```
+
+The current `<module>` summary is an authority may-set across static local
+imports. It does not claim exact ESM or top-level-await temporal order;
+unresolved calls and dynamic imports remain unknown.
+
 ## Marker
 
 Only comments containing the exact `uneffect:` marker are interpreted. Earlier design spellings such as `@effect`, bare `effect`, and `with` are not accepted.
@@ -32,6 +43,7 @@ annotation = "/*", annotation_body, "*/" ;
 annotation_body = "uneffect:", { directive } ;
 
 directive = effect_decl
+          | module_effect_decl
           | requires_decl
           | ensures_decl
           | invariant_decl
@@ -50,6 +62,7 @@ cannot write it.
 Temporal expressions are a restricted TypeScript expression subset. For example, write `phase === 0 && !cancelled`, not Quint's `phase == 0 and not(cancelled)`. Uneffect retains a neutral expression AST that can be lowered to a verifier expression or compiled into an optional runtime assertion.
 
 effect_decl    = "effect", effect_union ;
+module_effect_decl = "module_effect", effect_union ;
 requires_decl  = "requires", expression ;
 ensures_decl   = "ensures", expression ;
 invariant_decl = "invariant", expression ;

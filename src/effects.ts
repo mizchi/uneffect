@@ -768,6 +768,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
   const names = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode.name]));
+  const graphNodesById = new Map(graph.nodes.map((graphNode) => [graphNode.id, graphNode]));
   const basename = (fileName: string): string => fileName.slice(fileName.lastIndexOf("/") + 1);
   /** Walk one effect back to the operation that produces it, through the call edges that carried it. */
   const origin = (id: string, effect: string, from: string): string | undefined => {
@@ -804,6 +805,163 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const evidence: EvidenceStatus = unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id) || unknownGeneratorParameterEvidence.has(graphNode.id) ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span });
+  }
+
+  // Module evaluation is a separate owner from every function body. Keeping a
+  // source-attributed pseudo-summary prevents function evidence in a sibling
+  // file from making executable top-level code disappear from assurance.
+  const moduleRecords = new Map<string, {
+    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; dependencies: string[];
+  }>();
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const executable = source.statements.filter((statement) => {
+      if (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+        || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)
+        || ts.isFunctionDeclaration(statement)) return false;
+      if (ts.isClassDeclaration(statement)) return statement.members.some((member) =>
+        ts.isClassStaticBlockDeclaration(member)
+        || (ts.isPropertyDeclaration(member) && member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword) && member.initializer !== undefined));
+      if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.some((item) => {
+        const value = item.initializer;
+        return value !== undefined && !ts.isArrowFunction(value) && !ts.isFunctionExpression(value);
+      });
+      return !ts.isEmptyStatement(statement) && !ts.isModuleDeclaration(statement);
+    });
+    const id = `${source.fileName}:<module>`, effects: Effect[] = [];
+    const moduleLocals = new Set<string>();
+    for (const statement of source.statements) if (ts.isVariableStatement(statement)) {
+      for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
+    }
+    let unknown = false;
+    const visit = (node: ts.Node, catches: boolean): void => {
+      if (ts.isFunctionLike(node)) return;
+      if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+        for (const member of node.members) {
+          if (ts.isClassStaticBlockDeclaration(member)) visit(member.body, catches);
+          else if (ts.isPropertyDeclaration(member)
+            && member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)
+            && member.initializer) visit(member.initializer, catches);
+        }
+        return;
+      }
+      if (ts.isTryStatement(node)) {
+        visit(node.tryBlock, catches || node.catchClause !== undefined);
+        if (node.catchClause) visit(node.catchClause.block, catches);
+        if (node.finallyBlock) visit(node.finallyBlock, catches);
+        return;
+      }
+      if (ts.isThrowStatement(node) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
+      if (adapter.mayInvokeUserCode(node)) unknown = true;
+      if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
+        if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if (ts.isElementAccessExpression(node)) for (const effect of effectsForDynamicDomProperty(node, adapter)) {
+        if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind)
+        && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))) {
+        const effect = mutateEffect(node.left);
+        if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+        && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+        && (ts.isPropertyAccessExpression(node.operand) || ts.isElementAccessExpression(node.operand))) {
+        const effect = mutateEffect(node.operand);
+        if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+      }
+      if (ts.isCallExpression(node)) {
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) unknown = true;
+        const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter);
+        for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        const target = checker.getResolvedSignature(node)?.declaration;
+        let targetId: string | undefined;
+        if (target && ts.isFunctionLike(target)) {
+          targetId = `${target.getSourceFile().fileName}:${target.getStart(target.getSourceFile())}`;
+          if (!inferred.has(targetId)) {
+            let symbol = checker.getSymbolAtLocation(node.expression);
+            if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+            targetId = symbol?.declarations?.filter(ts.isFunctionLike)
+              .map((declaration) => `${declaration.getSourceFile().fileName}:${declaration.getStart(declaration.getSourceFile())}`)
+              .find((candidate) => inferred.has(candidate)) ?? targetId;
+          }
+          for (const effect of inferred.get(targetId) ?? []) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+          if (!inferred.has(targetId) && adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
+        } else if (adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
+        const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
+        const operation = resolvedBuiltin?.operation;
+        const builtinCallback = operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
+          ? operation.callbackArgument
+          : operation?.kind === "fs" && operation.callbackArgumentFromEnd
+            ? node.arguments.length - operation.callbackArgumentFromEnd
+            : operation?.kind === "deferred-callback"
+              ? node.arguments.length - operation.callbackArgumentFromEnd : undefined;
+        if (builtinCallback !== undefined) callbackIndices.add(builtinCallback);
+        for (const index of callbackIndices) {
+          const callback = node.arguments[index];
+          if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) { unknown = true; continue; }
+          const callbackId = `${callback.getSourceFile().fileName}:${callback.getStart(callback.getSourceFile())}`;
+          const callbackEffects = inferred.get(callbackId);
+          if (!callbackEffects) { unknown = true; continue; }
+          for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        }
+      }
+      ts.forEachChild(node, (child) => visit(child, catches));
+    };
+    for (const statement of executable) visit(statement, false);
+
+    const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
+    const allowed = extractAnnotations(moduleHeader, "module_effect")
+      .flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
+    const dependencies: string[] = [];
+    for (const statement of source.statements) {
+      if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier) continue;
+      const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+      const dependency = symbol?.declarations?.find(ts.isSourceFile)?.getSourceFile().fileName;
+      if (dependency && dependency !== source.fileName && !dependencies.includes(dependency)) dependencies.push(dependency);
+    }
+    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, dependencies });
+  }
+
+  // Static module evaluation precedes the importing module. A monotone union
+  // reaches a fixed point for cycles without inventing an evaluation order;
+  // an unknown member makes every importing module unknown.
+  let changedModules = true;
+  while (changedModules) {
+    changedModules = false;
+    for (const record of moduleRecords.values()) for (const dependencyName of record.dependencies) {
+      const dependency = moduleRecords.get(dependencyName);
+      if (!dependency) continue;
+      if (dependency.unknown && !record.unknown) { record.unknown = true; changedModules = true; }
+      for (const effect of dependency.effects) if (!record.effects.some((item) => formatEffect(item) === formatEffect(effect))) {
+        record.effects.push(effect);
+        changedModules = true;
+      }
+    }
+  }
+
+  for (const { source, id, effects, allowed, unknown } of moduleRecords.values()) {
+    const line = 1;
+    for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({
+      fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unknown",
+      severity: options.mode === "strict" ? "error" : "warning", line,
+      message: `<module> declares unknown effect ${formatEffect(effect)}`,
+      notes: unknownEffectNotes(allowed, effect),
+    });
+    for (const effect of effects) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) diagnostics.push({
+      fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "missing", severity: "error", line,
+      message: `<module> requires /* uneffect: module_effect ${formatEffect(effect)} */`,
+      notes: missingEffectNotes(allowed, effect),
+    });
+    for (const effect of allowed) if (!effects.some((item) => permits([effect], item))) diagnostics.push({
+      fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unused", severity: "warning", line,
+      message: `<module> declares unused effect ${formatEffect(effect)}`,
+      notes: unusedEffectNotes("<module>", allowed, effects, effect),
+    });
+    const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === "<module>");
+    const evidence: EvidenceStatus = unknown ? "unknown" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
+      : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    summaries.push({ functionName: "<module>", effects, evidence, id, fileName: source.fileName, span: { start: 0, end: source.end } });
   }
   return { diagnostics, summaries };
 }

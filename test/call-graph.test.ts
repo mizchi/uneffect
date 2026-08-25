@@ -5,9 +5,128 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { buildProgramCallGraph, instantiateCallbackEffects } from "../src/call-graph.js";
 import { analyzeProgramEffects } from "../src/effects.js";
-import { parseEffectExpression } from "../src/capabilities.js";
+import { formatEffect, parseEffectExpression } from "../src/capabilities.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
+  it("summarizes direct and imported module-initialization effects", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-effects-"));
+    try {
+      const library = join(directory, "library.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(library, `
+        /* uneffect: effect Console */
+        export function report(value: string): void
+        export function report(value: number): void
+        export function report(value: string | number) { console.log(value) }
+      `);
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console */
+        import { report } from "./library.js"
+        report("entry")
+      `);
+      const program = ts.createProgram([library, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>" && item.fileName === entry);
+
+      expect(module).toMatchObject({ evidence: "verified", span: { start: 0, end: expect.any(Number) } });
+      expect(module?.effects.map((effect) => effect.kind === "capability" ? effect.name : effect.kind)).toEqual(["Console"]);
+      expect(result.diagnostics.filter((item) => item.functionName === "<module>")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("checks module effect upper bounds instead of trusting their text", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-bound-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect Dom */
+        console.log("entry")
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "<module>", kind: "missing", effect: "Console" }),
+        expect.objectContaining({ functionName: "<module>", kind: "unused", effect: "Dom" }),
+      ]));
+      expect(result.summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("includes top-level inline callback effects for known callback owners", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-callback-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console | Timer */
+        function invoke(callback: () => void) { callback() }
+        invoke(() => console.log("inline"))
+        setTimeout(() => console.log("later"), 0)
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>");
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect)).toEqual(["Console", "Timer"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps unresolved and dynamic module initialization unknown", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-unknown-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        declare const callback: () => void
+        callback()
+        if (process.env.PLUGIN) await import(process.env.PLUGIN)
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+      expect(result.summaries.find((item) => item.functionName === "<module>" && item.fileName === entry)).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("composes static side-effect imports through cyclic module evaluation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-cycle-"));
+    try {
+      const a = join(directory, "a.ts"), b = join(directory, "b.ts");
+      writeFileSync(a, `
+        /* uneffect: module_effect Console */
+        import "./b.js"
+        console.log("a")
+      `);
+      writeFileSync(b, `
+        /* uneffect: module_effect Console */
+        import "./a.js"
+      `);
+      const program = ts.createProgram([a, b], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const modules = result.summaries.filter((item) => item.functionName === "<module>");
+
+      expect(modules).toHaveLength(2);
+      expect(modules).toEqual(expect.arrayContaining([
+        expect.objectContaining({ fileName: a, evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] }),
+        expect.objectContaining({ fileName: b, evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("resolves aliases, re-exports, methods, arrows, overloads, and callbacks", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-graph-"));
     const a = join(directory, "a.ts"), barrel = join(directory, "barrel.ts"), b = join(directory, "b.ts");

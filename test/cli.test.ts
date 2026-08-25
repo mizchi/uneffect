@@ -91,12 +91,12 @@ describe("uneffect command line", () => {
       expect(declared.stderr).toContain("excluded: unannotated semantic domains are not checked by this profile");
 
       const empty = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.failed);
-      expect(empty.stderr).toContain("no effect summary or contract artifact was emitted");
+      expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.success);
+      expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 1 selected file");
 
       const mixed = capture();
-      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.failed);
-      expect(mixed.stderr).toContain(`${emptyFile}: no proof-relevant evidence was emitted for this selected file`);
+      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.success);
+      expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 2 selected files");
 
       const invalid = capture();
       expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);

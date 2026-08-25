@@ -87,12 +87,14 @@ Never replace an unknown with a broad declaration merely to make CI green. A
 broad effect may describe authority, but it cannot repair unresolved control
 flow or turn an unmodeled API into verified semantics.
 
-Function effect summaries do not yet cover top-level module initialization or
-imported-module evaluation order. Therefore an executable entry module with no
-function/contract artifact is uncovered and fails assurance. Uneffect's own
-dogfood currently asserts the 58-file library-function boundary and explicitly
-excludes `src/cli.ts`; this is a recorded limitation, not evidence that the CLI
-entrypoint is effect-verified.
+Every checked TypeScript source now emits a source-attributed `<module>`
+may-effect summary. It includes direct operations, TypeChecker-resolved
+function/overload calls, known inline callback effects, and the transitive
+static-local-import closure. Cycles use a monotone effect-set fixed point;
+unresolved calls and dynamic imports remain `unknown`. This establishes an
+authority upper set, not exact ESM evaluation order or top-level-await temporal
+ordering. Uneffect's dogfood includes all 59 `src/*.ts` files, including the
+CLI entrypoint, while printing that temporal exclusion.
 
 A type-only or otherwise evidence-free file intentionally cannot pass an
 assurance profile by itself. Keep it outside the asserted runtime boundary, or

@@ -29,6 +29,10 @@ effects are errors; declared but unused effects are warnings. A function may
 use fewer effects than its declaration. No `yield`, wrapper function, or
 runtime handler is required.
 
+Executable file initialization uses a separate header bound such as
+`/* uneffect: module_effect Console | FsRead */`. Its `<module>` evidence is a
+may-effect set; exact ESM and top-level-await ordering are not yet proved.
+
 A `Mutate` region names the member path a write touches, so `state.calls = 1`
 infers `Mutate<typeof state.calls>`. Containment is prefix-based: declaring
 `Mutate<typeof state>` covers every member below it, while declaring a sibling

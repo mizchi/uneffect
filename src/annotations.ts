@@ -1,5 +1,5 @@
 export type UneffectDirective =
-  | "effect" | "effect_schema" | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate"
+  | "effect" | "module_effect" | "effect_schema" | "requires" | "ensures" | "invariant" | "decreases" | "assert" | "validate"
   | "trust" | "trust_owner" | "trust_expires"
   | "refinement"
   | "abstraction"
@@ -71,7 +71,7 @@ export function extractLocatedAnnotations(
 }
 
 const directives = new Set<UneffectDirective>([
-  "effect", "effect_schema", "requires", "ensures", "invariant", "decreases", "assert", "validate", "trust", "trust_owner", "trust_expires", "refinement", "abstraction", "react", "returns",
+  "effect", "module_effect", "effect_schema", "requires", "ensures", "invariant", "decreases", "assert", "validate", "trust", "trust_owner", "trust_expires", "refinement", "abstraction", "react", "returns",
   "state", "clock", "init", "action", "action_when", "action_fair", "temporal",
   "temporal_requires", "temporal_ensures", "temporal_modifies",
   "temporal_throws",

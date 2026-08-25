@@ -1,5 +1,14 @@
 # Benchmarks
 
+On 2026-08-26, a warm TypeScript Program covering all 59 `src/*.ts` inputs was
+analyzed for function effects plus source-attributed module initialization
+may-effects in 1,106.22 ms mean over 3 samples (1.92% RME). This includes
+TypeChecker-resolved top-level calls/overloads, known inline callbacks, and the
+static local-import fixed point over 2,948 emitted summaries. Program
+construction is outside the timed body. The small sample is an expensive-path
+regression observation, not a latency budget; exact ESM/TLA ordering, dynamic
+imports, and external-package initialization remain outside the claim.
+
 Performance-sensitive static-analysis changes use Vitest Bench:
 
 ```sh

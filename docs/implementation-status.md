@@ -432,10 +432,12 @@ same property is proved for arbitrary TypeScript.
   success and marks claims as not established on failure. Machine-readable
   coverage counts prevent empty results and per-file coverage gaps from passing
   vacuously; a selected file with neither an effect summary nor a contract
-  artifact is an assurance blocker. Top-level module initialization effects and
-  imported-module evaluation order are not yet summarized. The library
-  dogfood consequently excludes the executable `src/cli.ts` entrypoint and
-  reports that exclusion rather than borrowing evidence from sibling files.
+  artifact is an assurance blocker. Each TypeScript source now contributes a
+  `<module>` may-effect summary covering direct operations, resolved calls and
+  known inline callbacks, plus static local import closure. Cycles converge by
+  effect-set fixed point; unresolved calls and dynamic imports are unknown.
+  Exact ESM/TLA temporal ordering and external-package initialization remain
+  explicit non-claims. Dogfood includes the executable `src/cli.ts` entrypoint.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.
