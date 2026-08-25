@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -42,6 +42,13 @@ host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName ===
   : originalGetSourceFile(fileName, languageVersion, onError, fresh);
 const program = ts.createProgram(["catalog.tsx"], compilerOptions, host);
 const analyzed = analyzeReactSemantics("catalog.tsx", source);
+const nested = analyzeReactSemantics("nested.tsx", `
+  import { Suspense } from "react"
+  /* uneffect: react component */ function Primary() { return null }
+  /* uneffect: react component */ function InnerFallback() { return null }
+  /* uneffect: react component */ function OuterFallback() { return null }
+  function App() { return <Suspense fallback={<OuterFallback />}><Suspense fallback={<InnerFallback />}><Primary /></Suspense></Suspense> }
+`);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -80,5 +87,9 @@ describe("React semantic analysis", () => {
     for (let index = 0; index < analyzed.components.length; index += 2) {
       generateReactSuspenseBoundaryQuint(`fallback_boundary_${index}`, analyzed.components[index]!, analyzed.components[index + 1]!);
     }
+  }, { time: 500, iterations: 20 });
+
+  bench("generate nested-Suspense ownership Quint", () => {
+    generateReactNestedSuspenseQuintFromAnalysis("nested_boundary", nested);
   }, { time: 500, iterations: 20 });
 });

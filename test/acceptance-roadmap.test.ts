@@ -68,6 +68,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
+    const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -132,6 +133,22 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const extractedBoundaryQuint = generateExtractedSuspenseBoundary("extracted_boundary", extracted) as string;
     expect(extractedBoundaryQuint).toContain("component: Primary");
     expect(extractedBoundaryQuint).toContain("component: Fallback");
+    const nested = analyzeReact("src/nested-boundary.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function Primary() { return null }
+      /* uneffect: react component */ function InnerFallback() { return null }
+      /* uneffect: react component */ function OuterFallback() { return null }
+      function App() {
+        return <Suspense fallback={<OuterFallback />}>
+          <Suspense fallback={<InnerFallback />}><Primary /></Suspense>
+        </Suspense>
+      }
+    `) as typeof result & { suspenseBoundaries: Array<{ parentBoundary?: string; primaryBoundary?: string }> };
+    expect(nested.suspenseBoundaries).toHaveLength(2);
+    const nestedQuint = generateNestedSuspense("nested_boundary", nested) as string;
+    expect(nestedQuint).toContain("action commit_fallback_1");
+    expect(nestedQuint).not.toContain("action commit_fallback_0");
+    expect(nestedQuint).toContain("fallback_committed_0 == 0");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

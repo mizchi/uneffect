@@ -55,6 +55,7 @@ documentation are all updated.
 - [x] Extract direct named/aliased React Suspense primary/fallback edges from JSX, report unsupported shapes, and generate their boundary models.
 - [x] Resolve direct Suspense primary/fallback components through TypeScript symbols across named aliases, barrels, and default exports.
 - [x] Resolve React namespace Suspense tags and namespace-qualified primary/fallback component tags in Program analysis.
+- [x] Extract direct nested Suspense chains, preserve parent/child boundary identity through Program symbol resolution, and generate a bounded nearest-boundary ownership model.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

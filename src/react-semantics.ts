@@ -100,6 +100,10 @@ export interface ReactSuspenseBoundarySummary {
   fallback: string;
   primaryKey: string;
   fallbackKey: string;
+  /** Direct child boundary when this boundary's primary is another Suspense node. */
+  primaryBoundary?: string;
+  /** Direct primary-owning boundary. Fallback-subtree boundaries are deliberately not linked here. */
+  parentBoundary?: string;
   span: { start: number; end: number };
 }
 
@@ -863,6 +867,7 @@ function suspenseBoundaryFacts(
   const componentNames = new Set(components.map(({ name }) => name));
   const boundaries: ReactSuspenseBoundarySummary[] = [];
   const unsupported: ReactUnsupportedSuspenseBoundary[] = [];
+  const parents = new WeakMap<ts.JsxElement, string>();
   const visit = (node: ts.Node): void => {
     if (ts.isJsxElement(node) && isReactSuspenseTag(source, node.openingElement.tagName)) {
       const instance = `suspense@${node.getStart(source)}`;
@@ -877,15 +882,22 @@ function suspenseBoundaryFacts(
         const fallback = directJsxComponentName(fallbackAttribute.initializer);
         const children = node.children.filter((child) => !(ts.isJsxText(child) && child.text.trim() === "")
           && !(ts.isJsxExpression(child) && child.expression === undefined));
-        const primary = children.length === 1 ? directJsxComponentName(children[0]) : undefined;
+        const directChild = children.length === 1 ? children[0] : undefined;
+        const primaryNode = directChild && ts.isJsxElement(directChild) ? directChild : undefined;
+        const primaryBoundary = primaryNode && isReactSuspenseTag(source, primaryNode.openingElement.tagName)
+          ? `suspense@${primaryNode.getStart(source)}` : undefined;
+        if (primaryNode && primaryBoundary) parents.set(primaryNode, instance);
+        const primary = primaryBoundary ?? directJsxComponentName(directChild);
         if (!fallback) fail("fallback-must-be-one-direct-component");
         else if (!primary) fail("primary-must-be-one-direct-component");
-        else if (!componentNames.has(primary)) fail("unannotated-primary");
+        else if (!primaryBoundary && !componentNames.has(primary)) fail("unannotated-primary");
         else if (!componentNames.has(fallback)) fail("unannotated-fallback");
         else boundaries.push({
           instance, primary, fallback,
-          primaryKey: `${source.fileName}:${primary}`,
+          primaryKey: primaryBoundary ? `boundary:${primaryBoundary}` : `${source.fileName}:${primary}`,
           fallbackKey: `${source.fileName}:${fallback}`,
+          ...(primaryBoundary ? { primaryBoundary } : {}),
+          ...(parents.get(node) ? { parentBoundary: parents.get(node)! } : {}),
           span,
         });
       }
@@ -1457,6 +1469,11 @@ export interface ReactSuspenseBoundaryOptions {
   allowRevealBeforeResolution?: boolean;
 }
 
+export interface ReactNestedSuspenseOptions {
+  /** Test-only fault injection proving nearest-boundary ownership is load-bearing. */
+  allowAncestorFallbackCommit?: boolean;
+}
+
 function validateBoundaryComponent(role: "primary" | "fallback", component: ReactComponentSummary): void {
   const replay = component.replay.production;
   if (replay.renderInvocations !== replay.renderAttempts.length) {
@@ -1571,6 +1588,116 @@ export function generateReactSuspenseBoundaryQuint(
   });
   lines.push("", `  val suspenseBoundarySafe = ${bounds.join(" and ")}`, "}", "");
   return lines.join("\n");
+}
+
+/**
+ * Generate a bounded ownership projection for a direct chain of nested Suspense boundaries.
+ * A suspension originating in the leaf primary is caught by the nearest boundary, so ancestor
+ * fallbacks remain uncommitted. This does not model suspension while rendering a boundary or fallback.
+ */
+export function generateReactNestedSuspenseQuintFromAnalysis(
+  moduleName: string,
+  analysis: ReactSemanticsResult,
+  rootBoundaryIndex = 0,
+  options: ReactNestedSuspenseOptions = {},
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const roots = analysis.suspenseBoundaries.filter(({ parentBoundary }) => parentBoundary === undefined);
+  const root = roots[rootBoundaryIndex];
+  if (!root) throw new Error(`nested Suspense root ${rootBoundaryIndex} is not available`);
+  const byInstance = new Map(analysis.suspenseBoundaries.map((boundary) => [boundary.instance, boundary]));
+  const chain: ReactSuspenseBoundarySummary[] = [];
+  const visited = new Set<string>();
+  let current: ReactSuspenseBoundarySummary | undefined = root;
+  while (current) {
+    if (visited.has(current.instance)) throw new Error(`nested Suspense cycle at ${current.instance}`);
+    visited.add(current.instance);
+    chain.push(current);
+    current = current.primaryBoundary ? byInstance.get(current.primaryBoundary) : undefined;
+    if (chain.at(-1)!.primaryBoundary && !current) {
+      throw new Error(`nested Suspense child ${chain.at(-1)!.primaryBoundary} is not available`);
+    }
+  }
+  if (chain.length < 2) throw new Error(`Suspense root ${root.instance} is not a nested boundary chain`);
+  const leaf = chain.at(-1)!;
+  if (leaf.primaryBoundary) throw new Error(`nested Suspense leaf ${leaf.instance} does not resolve to a component`);
+  if (!analysis.components.some(({ name }) => name === leaf.primary)) {
+    throw new Error(`nested Suspense leaf primary ${leaf.primary} is not available`);
+  }
+  for (const boundary of chain) if (!analysis.components.some(({ name }) => name === boundary.fallback)) {
+    throw new Error(`nested Suspense fallback ${boundary.fallback} is not available`);
+  }
+
+  const nearest = chain.length - 1;
+  const variables = [
+    "leaf_suspended", "leaf_suspension_resolved", "leaf_committed",
+    ...chain.flatMap((_boundary, index) => [`fallback_committed_${index}`, `fallback_cleaned_${index}`]),
+  ];
+  const lines = [`module ${moduleName} {`, ...variables.map((name) => `  var ${name}: int`), "", "  action init = all {"];
+  for (const variable of variables) lines.push(`    ${variable}' = 0,`);
+  lines.push("  }", "", `  // leaf component: ${leaf.primary}`, "  action suspend_leaf_primary = all {", "    leaf_suspended == 0,");
+  for (const variable of variables) lines.push(`    ${variable}' = ${variable === "leaf_suspended" ? "1" : variable},`);
+  lines.push("  }", "", `  // nearest boundary fallback: ${chain[nearest]!.fallback}`, `  action commit_fallback_${nearest} = all {`,
+    "    leaf_suspended == 1,", `    fallback_committed_${nearest} == 0,`);
+  for (const variable of variables) lines.push(`    ${variable}' = ${variable === `fallback_committed_${nearest}` ? "1" : variable},`);
+  lines.push("  }", "", "  action resolve_leaf_suspension = all {", "    leaf_suspended == 1,", "    leaf_suspension_resolved == 0,");
+  for (const variable of variables) lines.push(`    ${variable}' = ${variable === "leaf_suspension_resolved" ? "1" : variable},`);
+  lines.push("  }", "", "  action reveal_leaf_primary = all {", "    leaf_suspension_resolved == 1,", `    fallback_committed_${nearest} == 1,`, "    leaf_committed == 0,");
+  for (const variable of variables) {
+    const update = variable === "leaf_committed" || variable === `fallback_cleaned_${nearest}` ? "1" : variable;
+    lines.push(`    ${variable}' = ${update},`);
+  }
+  lines.push("  }");
+  const ancestorActions: string[] = [];
+  if (options.allowAncestorFallbackCommit) for (let index = 0; index < nearest; index++) {
+    const name = `commit_ancestor_fallback_${index}`;
+    ancestorActions.push(name);
+    lines.push("", `  // fault injection: ancestor fallback ${chain[index]!.fallback}`, `  action ${name} = all {`,
+      "    leaf_suspended == 1,", `    fallback_committed_${index} == 0,`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${variable === `fallback_committed_${index}` ? "1" : variable},`);
+    lines.push("  }");
+  }
+  lines.push("", "  action step = any {", "    suspend_leaf_primary,", `    commit_fallback_${nearest},`,
+    "    resolve_leaf_suspension,", "    reveal_leaf_primary,", ...ancestorActions.map((name) => `    ${name},`), "  }");
+  const safety = [
+    "0 <= leaf_suspension_resolved", "leaf_suspension_resolved <= leaf_suspended", "leaf_suspended <= 1",
+    "0 <= leaf_committed", "leaf_committed <= leaf_suspension_resolved",
+    ...chain.flatMap((_boundary, index) => [
+      `0 <= fallback_cleaned_${index}`,
+      `fallback_cleaned_${index} <= fallback_committed_${index}`,
+      `fallback_committed_${index} <= 1`,
+      ...(index === nearest ? [`(leaf_committed == 1 implies fallback_cleaned_${index} == 1)`] : [`fallback_committed_${index} == 0`]),
+    ]),
+  ];
+  lines.push("", `  val nestedSuspenseSafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
+/** Generate the nested-boundary ownership projection with Program-resolved components. */
+export function generateReactNestedSuspenseQuintFromProgram(
+  moduleName: string,
+  results: ReadonlyMap<string, ReactSemanticsResult>,
+  sourceFileName: string,
+  rootBoundaryIndex = 0,
+  options: ReactNestedSuspenseOptions = {},
+): string {
+  const analysis = results.get(sourceFileName);
+  if (!analysis) throw new Error(`React analysis is not available in ${sourceFileName}`);
+  const components = new Map<string, ReactComponentSummary>();
+  for (const [fileName, result] of results) for (const component of result.components) {
+    components.set(`${fileName}:${component.name}`, component);
+  }
+  const projected: ReactComponentSummary[] = [];
+  const add = (key: string, displayName: string): void => {
+    const component = components.get(key);
+    if (!component) throw new Error(`nested Suspense component summary ${key} is not available`);
+    if (!projected.some(({ name }) => name === displayName)) projected.push({ ...component, name: displayName });
+  };
+  for (const boundary of analysis.suspenseBoundaries) {
+    add(boundary.fallbackKey, boundary.fallback);
+    if (!boundary.primaryBoundary) add(boundary.primaryKey, boundary.primary);
+  }
+  return generateReactNestedSuspenseQuintFromAnalysis(moduleName, { ...analysis, components: projected }, rootBoundaryIndex, options);
 }
 
 /** Generate a boundary model from a source-extracted direct JSX Suspense edge. */
@@ -1726,8 +1853,10 @@ function resolveProgramSuspenseBoundaries(
     if (!result) continue;
     const imports = reactImportNames(source);
     if (![...imports.values()].includes("Suspense") && reactNamespaceImportNames(source).size === 0) continue;
+    const parents = new WeakMap<ts.JsxElement, string>();
     const visit = (node: ts.Node): void => {
       if (ts.isJsxElement(node) && isReactSuspenseTag(source, node.openingElement.tagName)) {
+        const instance = `suspense@${node.getStart(source)}`;
         const fallbackAttribute = node.openingElement.attributes.properties.find(
           (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute)
             && ts.isIdentifier(attribute.name) && attribute.name.text === "fallback",
@@ -1735,20 +1864,28 @@ function resolveProgramSuspenseBoundaries(
         const children = node.children.filter((child) => !(ts.isJsxText(child) && child.text.trim() === "")
           && !(ts.isJsxExpression(child) && child.expression === undefined));
         const fallbackTag = fallbackAttribute?.initializer ? directJsxComponentTag(fallbackAttribute.initializer) : undefined;
-        const primaryTag = children.length === 1 ? directJsxComponentTag(children[0]) : undefined;
-        if (primaryTag && fallbackTag) {
-          const primaryDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primaryTag.location));
+        const directChild = children.length === 1 ? children[0] : undefined;
+        const primaryNode = directChild && ts.isJsxElement(directChild) ? directChild : undefined;
+        const primaryBoundary = primaryNode && isReactSuspenseTag(source, primaryNode.openingElement.tagName)
+          ? `suspense@${primaryNode.getStart(source)}` : undefined;
+        if (primaryNode && primaryBoundary) parents.set(primaryNode, instance);
+        const primaryTag = primaryBoundary ? undefined : directJsxComponentTag(directChild);
+        if ((primaryTag || primaryBoundary) && fallbackTag) {
+          const primaryDeclaration = primaryTag
+            ? functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primaryTag.location)) : undefined;
           const fallbackDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(fallbackTag.location));
-          const primaryKey = primaryDeclaration ? declarationKey(primaryDeclaration) : undefined;
+          const primaryKey = primaryBoundary ? `boundary:${primaryBoundary}`
+            : primaryDeclaration ? declarationKey(primaryDeclaration) : undefined;
           const fallbackKey = fallbackDeclaration ? declarationKey(fallbackDeclaration) : undefined;
-          if (primaryKey && fallbackKey && componentKeys.has(primaryKey) && componentKeys.has(fallbackKey)) {
-            const instance = `suspense@${node.getStart(source)}`;
+          if (primaryKey && fallbackKey && (primaryBoundary || componentKeys.has(primaryKey)) && componentKeys.has(fallbackKey)) {
             const boundary: ReactSuspenseBoundarySummary = {
               instance,
-              primary: primaryTag.displayName,
+              primary: primaryBoundary ?? primaryTag!.displayName,
               fallback: fallbackTag.displayName,
               primaryKey,
               fallbackKey,
+              ...(primaryBoundary ? { primaryBoundary } : {}),
+              ...(parents.get(node) ? { parentBoundary: parents.get(node)! } : {}),
               span: { start: node.getStart(source), end: node.getEnd() },
             };
             const existing = result.suspenseBoundaries.findIndex((candidate) => candidate.instance === instance);

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -247,6 +247,37 @@ describe("React lifecycle Quint projection", () => {
       expect(result.error).toBeUndefined();
       expect(result.status, result.stdout + result.stderr).toBe(0);
       expect(result.stdout + result.stderr).toContain("No violation found");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps a leaf suspension at its nearest nested Suspense boundary", () => {
+    const analysis = analyzeReactSemantics("nested-boundary.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function Primary() { return null }
+      /* uneffect: react component */ function InnerFallback() { return null }
+      /* uneffect: react component */ function OuterFallback() { return null }
+      function App() { return <Suspense fallback={<OuterFallback />}><Suspense fallback={<InnerFallback />}><Primary /></Suspense></Suspense> }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-nested-boundary-"));
+    const path = join(directory, "nested-boundary.qnt");
+    const run = (broken: boolean) => {
+      writeFileSync(path, generateReactNestedSuspenseQuintFromAnalysis("react_nested_boundary", analysis, 0, {
+        allowAncestorFallbackCommit: broken,
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=nestedSuspenseSafe", "--max-steps=6", "--max-samples=500",
+        "--seed=0x6e65737465645f62", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run(false);
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      const broken = run(true);
+      expect(broken.error).toBeUndefined();
+      expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+      expect(broken.stdout + broken.stderr).toContain("Invariant violated");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

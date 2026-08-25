@@ -919,3 +919,12 @@ regression budget. It does not cover a possibly throwing operation before the
 tracked `await`, replacement of the tracked generation before a later throw,
 irreducible loops, or dynamically dispatched exception edges; those shapes
 retain the conservative catch entry.
+
+On 2026-08-25, generation of the bounded two-level nested-Suspense ownership
+projection measured 0.0024 ms mean over 211,823 samples (0.24% relative margin
+of error). The same warm run measured 18.1290 ms for parsing and classifying
+128 opted-in React components and 22.1804 ms for classifying one reused
+TypeScript Program. The nested measurement covers model text generation from
+an already analyzed direct chain only; it excludes parsing, symbol resolution,
+Quint execution, siblings/fragments, and suspension originating in a boundary
+or fallback. It is an observation rather than a regression budget.

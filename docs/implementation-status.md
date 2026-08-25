@@ -180,8 +180,8 @@ same property is proved for arbitrary TypeScript.
   transition cannot be justified by a different or uncommitted generation.
 - Bounded Suspense replays give each suspended attempt an identity, resolve it
   explicitly, and permit either another suspending retry or the replacement
-  commit only afterward. They do not claim unbounded retry, fallback-tree,
-  nested-boundary, or scheduler coverage.
+  commit only afterward. They do not claim unbounded retry, general fallback-tree,
+  or scheduler coverage.
 - An explicit two-component Suspense boundary projection preserves primary and
   fallback lifecycle instances separately, requires resolution before reveal,
   and requires same-phase fallback teardown before primary setup. Boundary
@@ -190,6 +190,10 @@ same property is proved for arbitrary TypeScript.
   component elements, and reports recognized unsupported child shapes.
   Program analysis resolves these direct tags through named aliases, barrels,
   namespace imports, and default exports and retains canonical component keys.
+  A direct nested boundary chain additionally retains parent/child boundary
+  identities through Program resolution. Its bounded Quint ownership model
+  permits only the nearest fallback to commit for a leaf-primary suspension;
+  ancestor fallbacks remain uncommitted until a separately modeled cause exists.
 - The replay IR generates reviewable production, development Strict Mode,
   interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.
@@ -204,7 +208,8 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  general/dynamic Suspense fallback/nested-boundary graphs and propagation, transition/Offscreen
+  general/dynamic Suspense fallback graphs, sibling/fragment trees, suspension
+  originating in a boundary or fallback, transition/Offscreen
   scheduling, server components, and Z3 lifecycle projection remain unsupported
   rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

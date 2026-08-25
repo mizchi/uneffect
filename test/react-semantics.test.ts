@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -1043,6 +1043,41 @@ describe("React Function Component semantics", () => {
       .toThrow("Suspense boundary 0 is not available");
   });
 
+  it("extracts a nested direct Suspense chain and keeps a leaf suspension at the nearest boundary", () => {
+    const result = analyzeReactSemantics("nested-boundary.tsx", `
+      import { Suspense, useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => () => console.log("hide profile"), []); return null }
+      /* uneffect: react component */
+      function InnerSpinner() { useEffect(() => () => console.log("hide inner"), []); return null }
+      /* uneffect: react component */
+      function OuterSpinner() { useEffect(() => () => console.log("hide outer"), []); return null }
+      function App() {
+        return <Suspense fallback={<OuterSpinner />}>
+          <Suspense fallback={<InnerSpinner />}><Profile /></Suspense>
+        </Suspense>
+      }
+    `);
+
+    expect(result.suspenseBoundaries).toHaveLength(2);
+    const outer = result.suspenseBoundaries.find((boundary) => boundary.parentBoundary === undefined)!;
+    const inner = result.suspenseBoundaries.find((boundary) => boundary.parentBoundary === outer.instance)!;
+    expect(outer).toEqual(expect.objectContaining({
+      fallback: "OuterSpinner", primaryBoundary: inner.instance,
+    }));
+    expect(inner).toEqual(expect.objectContaining({
+      primary: "Profile", fallback: "InnerSpinner", parentBoundary: outer.instance,
+    }));
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+
+    const quint = generateReactNestedSuspenseQuintFromAnalysis("nested_boundary", result);
+    expect(quint).toContain("action suspend_leaf_primary");
+    expect(quint).toContain("action commit_fallback_1");
+    expect(quint).not.toContain("action commit_fallback_0");
+    expect(quint).toContain("fallback_committed_0 == 0");
+    expect(quint).toContain("val nestedSuspenseSafe");
+  });
+
   it("does not recognize an unrelated namespace property named Suspense", () => {
     const result = analyzeReactSemantics("unrelated-suspense.tsx", `
       declare const UI: { Suspense: unknown }
@@ -1120,6 +1155,49 @@ describe("React Function Component semantics", () => {
       expect(app.unsupportedSuspenseBoundaries).toEqual([]);
       expect(generateReactSuspenseBoundaryQuintFromProgram("namespace_boundary", results, appFile))
         .toContain("val suspenseBoundarySafe");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves a nested Suspense chain whose leaf and fallbacks are imported", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-nested-suspense-"));
+    const componentsFile = join(directory, "views.tsx");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(componentsFile, `
+        /* uneffect: react component */ export function Profile() { return null }
+        /* uneffect: react component */ export function InnerSpinner() { return null }
+        /* uneffect: react component */ export function OuterSpinner() { return null }
+      `);
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        import * as views from "./views.js"
+        export function App() {
+          return <Suspense fallback={<views.OuterSpinner />}>
+            <Suspense fallback={<views.InnerSpinner />}><views.Profile /></Suspense>
+          </Suspense>
+        }
+      `);
+      const program = ts.createProgram([componentsFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const app = results.get(appFile)!;
+      expect(app.suspenseBoundaries).toHaveLength(2);
+      const outer = app.suspenseBoundaries.find((boundary) => boundary.parentBoundary === undefined)!;
+      const inner = app.suspenseBoundaries.find((boundary) => boundary.parentBoundary === outer.instance)!;
+      expect(outer).toEqual(expect.objectContaining({
+        fallbackKey: `${componentsFile}:OuterSpinner`, primaryBoundary: inner.instance,
+      }));
+      expect(inner).toEqual(expect.objectContaining({
+        primaryKey: `${componentsFile}:Profile`, fallbackKey: `${componentsFile}:InnerSpinner`,
+      }));
+      expect(app.unsupportedSuspenseBoundaries).toEqual([]);
+      const quint = generateReactNestedSuspenseQuintFromProgram("imported_nested_boundary", results, appFile);
+      expect(quint).toContain("fallback_committed_0 == 0");
+      expect(quint).toContain("nearest boundary fallback: views.InnerSpinner");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -1258,6 +1336,18 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("component: Profile");
     expect(quint).toContain("component: ProfileSpinner");
     expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
+  });
+
+  it("dogfoods nearest-boundary ownership in a checked-in nested Suspense chain", () => {
+    const fileName = "examples/dogfood/react-nested-suspense.tsx";
+    const result = analyzeReactSemantics(fileName, readFileSync(fileName, "utf8"));
+    expect(result.diagnostics).toEqual([]);
+    expect(result.suspenseBoundaries).toHaveLength(2);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+    const quint = generateReactNestedSuspenseQuintFromAnalysis("account_nested_boundary", result);
+    expect(quint).toContain("leaf component: AccountPanel");
+    expect(quint).toContain("nearest boundary fallback: AccountSpinner");
+    expect(quint).toContain("fallback_committed_0 == 0");
   });
 
   it("dogfoods checked-in symbol-resolved React modules", async () => {

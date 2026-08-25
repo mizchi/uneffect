@@ -259,6 +259,16 @@ complete Program result map and rejects missing or duplicate summaries. The
 source-local API deliberately cannot authorize an imported component that has
 not been resolved by a Program.
 
+A direct nested chain is represented explicitly: an outer boundary stores the
+child boundary in `primaryBoundary`, and the child stores its owner in
+`parentBoundary`. `generateReactNestedSuspenseQuintFromAnalysis` and its
+Program-backed variant generate a bounded ownership projection for a
+suspension originating in the leaf primary. Only the nearest boundary may
+commit its fallback; every ancestor fallback remains uncommitted. Resolution
+then permits the leaf reveal and nearest-fallback cleanup. This is deliberately
+narrow: suspension while rendering a boundary or fallback, sibling children,
+fragments, and dynamic boundary selection are not inferred.
+
 Uneffect does not yet prove that a render actually throws a thenable or
 distinguish a user cleanup callback from an empty phase teardown barrier. The
 generator is therefore bounded lifecycle evidence for the extracted direct
@@ -334,7 +344,7 @@ This is a tested initial fragment, not a complete React semantics:
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
 - General Suspense trees, fragments, expression-valued or multiple children,
-  dynamic component selection, nested-boundary propagation,
+  dynamic component selection, non-chain nested-boundary propagation,
   rejected thenables, unbounded retries, transition priority, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
