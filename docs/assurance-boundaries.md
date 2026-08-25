@@ -19,8 +19,8 @@ uneffect check --assurance declared src/file.ts
 | Mode | Exit 0 establishes | It does not establish |
 | --- | --- | --- |
 | default gradual check | No enabled checker emitted an error. Warnings and unknown effect summaries may remain. | Completeness, purity, or whole-program safety. |
-| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories and explicitly represented iterator-effect parameters are accepted. | That inferred effects are declaration-checked, that an iterator-polymorphic function has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
-| `--assurance declared` | In addition, every emitted function effect summary is checked against an explicit effect declaration. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
+| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories and explicitly represented iterator-effect parameters are accepted. | That inferred effects are declaration-checked, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
+| `--assurance declared` | In addition, every emitted function effect summary is checked against explicit body-effect declarations and/or complete iterator-effect parameter bounds. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
 
 Both assurance profiles print their scope and every blocker. They are intended
 for CI on a deliberately selected file boundary. They do not silently broaden
@@ -83,7 +83,7 @@ for “this function is correct.”
 | Area | Safe reliance line | Outside the current claim |
 | --- | --- | --- |
 | Capability effects | Explicit declarations checked with `--assurance declared`, over symbol-resolved calls and reviewed builtin contracts. | Reflection, arbitrary dynamic dispatch, unresolved callbacks, native addons, and unreviewed host APIs. |
-| Generator effects | Direct iterator consumers expose `iteratorEffectParameters`; symbol-resolved wrappers forward them and resolved call sites specialize them to generator-body effects, pure standard iterators, or `unknown`. | A closed effect bound for the generic consumer itself, forwarding through arbitrary dynamic dispatch, escaped iterators, and dynamic properties. Ordinary effect annotations do not yet bind iterator-effect parameters. |
+| Generator effects | Direct iterator consumers expose `iteratorEffectParameters`; `effect_parameter iterator extends ...` bounds lazy effects. Symbol-resolved wrappers forward constraints and resolved call sites check generator-body effects, pure standard iterators, or `unknown`. | Forwarding through arbitrary dynamic dispatch, escaped iterators, dynamic properties, and an opaque iterator argument. Normal `effect` declarations bound the function body, not its iterator parameter. |
 | Hoare contracts | Individual emitted obligations whose artifact status is `verified`. | Termination, arbitrary heap aliasing, general loops, and unsupported expressions. |
 | Async/resource safety | The diagnostics and models for the exact patterns listed in the feature matrix, with negative regression coverage. | A complete exception-aware JavaScript CFG or proof that every rejection/resource escape is detected. |
 | React function components | Explicit `react component`/`react hook` boundaries and the documented phase/callback fragment. | Unannotated components, dynamic HOCs/Hooks/callbacks, full React scheduling, Server Components, and runtime reachability. |

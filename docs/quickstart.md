@@ -101,6 +101,20 @@ represents the platform result of `node:os.tmpdir()`. See
 [Deno-compatible permissions](./deno-permissions.md) for exact containment
 rules and unsupported glob forms.
 
+Generator consumers have a separate lazy-effect bound. This prevents an empty
+function-body inventory from being mistaken for purity:
+
+```ts
+/* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+export function consume(iterator: IteratorObject<unknown>): unknown[] {
+  return Array.from(iterator)
+}
+```
+
+Resolved call sites are checked against the bound. An opaque iterator remains
+unknown, and a normal `effect` directive does not stand in for
+`effect_parameter`. See [Effect system](./effect-system.md).
+
 ## 6. Use precise helper types and optional assertions
 
 Uneffect exports TypeScript-friendly helper types such as `Int`, `Nat`,

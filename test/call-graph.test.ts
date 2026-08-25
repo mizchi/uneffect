@@ -352,11 +352,34 @@ describe("multi-file call graph and effect polymorphism", () => {
         export function consumeIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
         /* uneffect: effect Console */
         export function boundedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
+        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        export function constrainedIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
+        export function consumeKnownConstrainedIteratorParameter() { constrainedIteratorParameter(generate()) }
+        export function consumeStoredConstrainedIteratorParameter() { const iterator = generate(); constrainedIteratorParameter(iterator) }
+        export function consumeOpaqueConstrainedIteratorParameter() { constrainedIteratorParameter(choosePartial(false)) }
+        /* uneffect: effect_parameter iterator extends Console */
+        export function narrowIteratorParameter(iterator: IteratorObject<unknown>) { iterator.next() }
+        export function consumeKnownNarrowIteratorParameter() { narrowIteratorParameter(generate()) }
+        export function consumeStoredNarrowIteratorParameter() { const iterator = generate(); narrowIteratorParameter(iterator) }
+        export function forwardNarrowIteratorParameter(iterator: IteratorObject<unknown>) { narrowIteratorParameter(iterator) }
+        export function consumeKnownForwardNarrowIteratorParameter() { forwardNarrowIteratorParameter(generate()) }
+        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        export function incompatibleForwardConstraint(iterator: IteratorObject<unknown>) { narrowIteratorParameter(iterator) }
+        /* uneffect: effect_parameter iterator Console */
+        export function malformedIteratorConstraint(iterator: IteratorObject<unknown>) { iterator.next() }
+        /* uneffect: effect_parameter value extends Console */
+        export function nonIteratorConstraint(value: number) { return value }
         export function consumeKnownIteratorParameter() { consumeIteratorParameter(generate()) }
         export function consumePureIteratorParameter() { consumeIteratorParameter([1, 2, 3].values()) }
         export function outerIteratorParameter(iterator: IteratorObject<unknown>) { consumeIteratorParameter(iterator) }
         export function consumeKnownOuterIteratorParameter() { outerIteratorParameter(generate()) }
         export function consumePromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
+        /* uneffect:
+         * effect InvokeUserCode
+         * effect_parameter iterator extends Console
+         */
+        export function constrainedPromiseIteratorParameter(iterator: IteratorObject<unknown>) { void Promise.all(iterator) }
+        export function consumeKnownConstrainedPromiseIteratorParameter() { constrainedPromiseIteratorParameter(generate()) }
         export function outerPromiseIteratorParameter(iterator: IteratorObject<unknown>) { consumePromiseIteratorParameter(iterator) }
         export function consumeKnownPromiseIteratorParameter() { consumePromiseIteratorParameter(generate()) }
         export function consumeKnownOuterPromiseIteratorParameter() { outerPromiseIteratorParameter(generate()) }
@@ -460,8 +483,16 @@ describe("multi-file call graph and effect polymorphism", () => {
       const graph = buildProgramCallGraph(program);
       const construct = graph.nodes.find((node) => node.name === "constructOnly")!;
       const consumeNext = graph.nodes.find((node) => node.name === "consumeNext")!;
+      const consumeIteratorParameter = graph.nodes.find((node) => node.name === "consumeIteratorParameter")!;
+      const consumeKnownIteratorParameter = graph.nodes.find((node) => node.name === "consumeKnownIteratorParameter")!;
+      const generate = graph.nodes.find((node) => node.name === "generate")!;
       expect(graph.edges).toContainEqual(expect.objectContaining({ caller: construct.id, executesBody: false }));
       expect(graph.edges).toContainEqual(expect.objectContaining({ caller: consumeNext.id, executesBody: true }));
+      expect(graph.edges).toContainEqual(expect.objectContaining({
+        caller: consumeKnownIteratorParameter.id,
+        callee: generate.id,
+        iteratorEffectInstantiation: { consumer: consumeIteratorParameter.id, parameterIndex: 0 },
+      }));
       const result = analyzeProgramEffects(program, { requireAnnotations: true });
       expect(result.diagnostics.filter((item) => item.functionName === "constructOnly")).toEqual([]);
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -528,6 +559,48 @@ describe("multi-file call graph and effect polymorphism", () => {
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "boundedIteratorParameter"))
         .toMatchObject({ evidence: "unknown", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
+      expect(result.summaries.find((summary) => summary.functionName === "constrainedIteratorParameter"))
+        .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownConstrainedIteratorParameter",
+        message: expect.stringContaining("outside its declared bound"),
+      }));
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeStoredConstrainedIteratorParameter",
+        message: expect.stringContaining("outside its declared bound"),
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumeOpaqueConstrainedIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownNarrowIteratorParameter", effect: "Throw<RangeError>", kind: "missing",
+        message: expect.stringContaining("iterator effect parameter iterator"),
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "consumeKnownNarrowIteratorParameter"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeStoredNarrowIteratorParameter", effect: "Throw<RangeError>",
+        message: expect.stringContaining("outside its declared bound"),
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownForwardNarrowIteratorParameter", effect: "Throw<RangeError>", kind: "missing",
+        message: expect.stringContaining("iterator effect parameter iterator"),
+      }));
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "incompatibleForwardConstraint", effect: "Throw<Error>", kind: "missing",
+        message: expect.stringContaining("not compatible with forwarded constraint"),
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "incompatibleForwardConstraint"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "malformedIteratorConstraint", kind: "unknown",
+        message: expect.stringContaining("expected <parameter> extends <Effect union>"),
+      }));
+      expect(result.summaries.find((summary) => summary.functionName === "malformedIteratorConstraint"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "nonIteratorConstraint", kind: "unknown",
+        message: expect.stringContaining("is not a consumed iterator parameter"),
+      }));
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownIteratorParameter"))
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.diagnostics).toContainEqual(expect.objectContaining({
@@ -540,6 +613,12 @@ describe("multi-file call graph and effect polymorphism", () => {
         .not.toMatchObject({ evidence: "unknown" });
       expect(result.summaries.find((summary) => summary.functionName === "consumePromiseIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, convertsThrowToRejection: true })] });
+      expect(result.summaries.find((summary) => summary.functionName === "constrainedPromiseIteratorParameter"))
+        .toMatchObject({ evidence: "verified", iteratorEffectBounds: [expect.objectContaining({ index: 0, name: "iterator" })] });
+      expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+        functionName: "consumeKnownConstrainedPromiseIteratorParameter",
+        message: expect.stringContaining("outside its declared bound"),
+      }));
       expect(result.summaries.find((summary) => summary.functionName === "outerPromiseIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, convertsThrowToRejection: true })] });
       expect(result.summaries.find((summary) => summary.functionName === "consumeKnownPromiseIteratorParameter"))

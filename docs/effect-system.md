@@ -128,9 +128,30 @@ cannot establish the contract remains outside this inference.
 The effect summary exposes the same contract as `iteratorEffectParameters` and
 uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not
 a closed proof that the function is effect-free: its lazy effects are supplied
-by each call site. A normal `uneffect: effect ...` annotation is not currently
-syntax for bounding that effect parameter, so an annotated polymorphic consumer
-remains `unknown` rather than being reported as verified.
+by each call site. Bound it separately from the function body's effects:
+
+```ts
+/* uneffect:
+ * effect InvokeUserCode
+ * effect_parameter iterator extends Console | Throw<Error>
+ */
+export function consume(iterator: IteratorObject<unknown>) {
+  return Array.from(iterator)
+}
+```
+
+`effect_parameter <name> extends <Effect union>` follows TypeScript constraint
+terminology but remains comment trivia. The Program analyzer checks resolved
+Generator factories and stored iterator identities at every call site. It also
+follows symbol-resolved parameter forwarding: a wrapper bound must be contained
+by every downstream bound, and a concrete Generator is checked against every
+reachable constraint. Promise iterable consumers preserve rejection conversion,
+so a synchronous Generator `Throw` does not need to appear in the bound after
+it is converted to rejection. Malformed syntax, an unknown/non-iterator
+parameter, duplicate bounds, unknown effects, incompatible forwarding, opaque
+arguments, and out-of-bound instantiations fail closed. Fully bounded consumers
+can be `verified`; partially or wholly unbounded consumers remain `inferred` or
+`unknown` according to the remaining evidence.
 Simple mutable local bindings are flow-sensitive. A straight-line assignment
 kills the previous iterator state and replaces it with the classified RHS;
 assignments under branches, loops, switch, or try/catch join generator targets,

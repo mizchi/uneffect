@@ -7,6 +7,7 @@ export type CallableKind = "function" | "method" | "arrow" | "function-expressio
 export type InvocationTiming = "inline" | "deferred" | "unknown";
 export interface EffectParameter { index: number; name: string; timing: InvocationTiming }
 export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
+export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
 export interface CallGraphNode {
   id: string;
   name: string;
@@ -31,6 +32,8 @@ export interface CallGraphEdge {
   unknownGeneratorConsumption?: boolean;
   unknownGeneratorParameterIndex?: number;
   dischargesUnknownGeneratorParameters?: boolean;
+  /** Identifies the polymorphic iterator contract instantiated by this execution edge. */
+  iteratorEffectInstantiation?: IteratorEffectInstantiation;
 }
 export interface ProgramCallGraph { nodes: CallGraphNode[]; edges: CallGraphEdge[] }
 export interface InstantiatedCallbackEffects { effects: Effect[]; evidence: EvidenceStatus; suspends: boolean }
@@ -368,7 +371,7 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         if (slot) updateIteratorSlot(slot.root, slot.key, iteratorStateOf(node.right), node.operatorToken.kind !== ts.SyntaxKind.EqualsToken || conditionallyExecuted(node));
         else invalidateObjectSlots(node.left.expression);
       }
-      const addStoredGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): boolean => {
+      const addStoredGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false, iteratorEffectInstantiation?: IteratorEffectInstantiation): boolean => {
         const binding = ts.isIdentifier(expression) ? resolvedSymbol(checker, expression) : undefined;
         const slot = propertySlot(expression);
         if (!binding && !slot) return false;
@@ -379,32 +382,32 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         } : undefined;
         if (!state) return false;
         const targets = state.generators;
-        for (const target of targets ?? []) edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
-        if (state.unknown) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true });
+        for (const target of targets ?? []) edges.push({ caller, callee: stableId(target), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, iteratorEffectInstantiation });
+        if (state.unknown) edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true, iteratorEffectInstantiation });
         return Boolean(targets.length || state.unknown || state.pure);
       };
-      const addUnknownGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false): void => {
+      const addUnknownGeneratorConsumption = (expression: ts.Expression, convertsThrowToRejection = false, iteratorEffectInstantiation?: IteratorEffectInstantiation): void => {
         const parameterIndex = ts.isIdentifier(expression)
           ? iteratorParameterIndices.get(resolvedSymbol(checker, expression)!) : undefined;
-        edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true, unknownGeneratorParameterIndex: parameterIndex });
+        edges.push({ caller, kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, unknownGeneratorConsumption: true, unknownGeneratorParameterIndex: parameterIndex, iteratorEffectInstantiation });
       };
-      const specializeIteratorArgument = (expression: ts.Expression, convertsThrowToRejection: boolean): boolean => {
-        if (addStoredGeneratorConsumption(expression, convertsThrowToRejection)) return true;
+      const specializeIteratorArgument = (expression: ts.Expression, convertsThrowToRejection: boolean, iteratorEffectInstantiation: IteratorEffectInstantiation): boolean => {
+        if (addStoredGeneratorConsumption(expression, convertsThrowToRejection, iteratorEffectInstantiation)) return true;
         if (ts.isCallExpression(expression)) {
           const lookup = ts.isPropertyAccessExpression(expression.expression) ? expression.expression.name : expression.expression;
           const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
           const generators = returnedGeneratorDeclarations(target);
           if (generators) {
-            for (const generator of generators) edges.push({ caller, callee: stableId(generator), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });
+            for (const generator of generators) edges.push({ caller, callee: stableId(generator), kind: "direct", timing: "inline", span: { start: expression.getStart(), end: expression.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true, iteratorEffectInstantiation });
             return true;
           }
           if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
-            if (!isStandardLibraryCall(expression)) addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+            if (!isStandardLibraryCall(expression)) addUnknownGeneratorConsumption(expression, convertsThrowToRejection, iteratorEffectInstantiation);
             return true;
           }
         }
         if (checker.getPropertyOfType(checker.getTypeAtLocation(expression), "next")) {
-          addUnknownGeneratorConsumption(expression, convertsThrowToRejection);
+          addUnknownGeneratorConsumption(expression, convertsThrowToRejection, iteratorEffectInstantiation);
           return true;
         }
         return false;
@@ -451,7 +454,9 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
           && iteratorContracts.every((contract) => {
             const argument = node.arguments[contract.index];
-            return Boolean(argument && specializeIteratorArgument(argument, contract.convertsThrowToRejection));
+            return Boolean(argument && specializeIteratorArgument(argument, contract.convertsThrowToRejection, {
+              consumer: stableId(targetDeclaration!), parameterIndex: contract.index,
+            }));
           });
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters });
         for (const returnedGenerator of returnedGenerators ?? []) if (returnedGenerator !== targetDeclaration) edges.push({ caller, callee: stableId(returnedGenerator), kind: "direct", timing: "inline", span: { start: node.getStart(), end: node.getEnd() }, arguments: [], dischargesThrow: catchesThrow || convertsThrowToRejection, executesBody: true });

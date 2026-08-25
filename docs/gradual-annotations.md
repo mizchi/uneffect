@@ -43,6 +43,7 @@ annotation = "/*", annotation_body, "*/" ;
 annotation_body = "uneffect:", { directive } ;
 
 directive = effect_decl
+          | effect_parameter_decl
           | module_effect_decl
           | requires_decl
           | ensures_decl
@@ -62,6 +63,7 @@ cannot write it.
 Temporal expressions are a restricted TypeScript expression subset. For example, write `phase === 0 && !cancelled`, not Quint's `phase == 0 and not(cancelled)`. Uneffect retains a neutral expression AST that can be lowered to a verifier expression or compiled into an optional runtime assertion.
 
 effect_decl    = "effect", effect_union ;
+effect_parameter_decl = "effect_parameter", identifier, "extends", effect_union ;
 module_effect_decl = "module_effect", effect_union ;
 requires_decl  = "requires", expression ;
 ensures_decl   = "ensures", expression ;

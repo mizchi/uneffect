@@ -36,7 +36,6 @@ const commonClaims = [
 
 const commonExclusions = [
   "unannotated semantic domains are not checked by this profile",
-  "iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set",
   "module summaries are may-effect sets and do not prove exact import or top-level-await temporal ordering",
   "dependencies, dynamically loaded code, native addons, and unmodeled host behavior are outside the explicitly checked file boundary",
   "a verified bounded or assumption-dependent artifact is not an unbounded or assumption-free proof",
@@ -71,6 +70,10 @@ export function assessCheckAssurance(
     kind: "typescript", fileName: diagnostic.fileName, functionName: diagnostic.functionName,
     message: `${diagnostic.fileName}:${diagnostic.line}: ${diagnostic.message}`,
   });
+  for (const diagnostic of result.diagnostics ?? []) if ("effect" in diagnostic && "severity" in diagnostic && diagnostic.severity === "error") blockers.push({
+    kind: "effect", fileName: diagnostic.fileName, functionName: diagnostic.functionName,
+    message: diagnostic.message,
+  });
   for (const fileName of uncoveredFiles) blockers.push({
     kind: "coverage", fileName, functionName: "<coverage>",
     message: `${fileName}: no proof-relevant evidence was emitted for this selected file`,
@@ -96,6 +99,10 @@ export function assessCheckAssurance(
   const exclusions = profile === "no-unknown"
     ? [...commonExclusions, "inferred effects need not have an explicit upper-bound declaration"]
     : [...commonExclusions];
+  if (result.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
+    !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)))) {
+    exclusions.push("unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
+  }
   return { profile, passed: blockers.length === 0, blockers, coverage, claims, exclusions };
 }
 

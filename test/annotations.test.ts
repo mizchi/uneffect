@@ -11,6 +11,8 @@ describe("Uneffect annotation marker", () => {
   it("extracts a canonical single-line directive", () => {
     expect(extractAnnotations("/* uneffect: effect Console | app.Audit */", "effect"))
       .toEqual(["Console | app.Audit"]);
+    expect(extractAnnotations("/* uneffect: effect_parameter iterator extends Console | Fetch */", "effect_parameter"))
+      .toEqual(["iterator extends Console | Fetch"]);
   });
 
   it("extracts multiple directives from one non-JSDoc block", () => {

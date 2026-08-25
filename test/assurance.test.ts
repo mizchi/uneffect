@@ -39,7 +39,7 @@ describe("assurance claim boundaries", () => {
     };
     const noUnknown = assessCheckAssurance({ summaries: [summary], artifacts: [] }, "no-unknown");
     expect(noUnknown).toMatchObject({ passed: true, blockers: [] });
-    expect(noUnknown.exclusions).toContain("iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
+    expect(noUnknown.exclusions).toContain("unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
     expect(assessCheckAssurance({ summaries: [summary], artifacts: [] }, "declared"))
       .toMatchObject({ passed: false, blockers: [expect.objectContaining({ kind: "effect" })] });
   });
@@ -54,6 +54,15 @@ describe("assurance claim boundaries", () => {
     });
     expect(formatAssuranceAssessment(assessment)).toContain("claim (not established)");
     expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts");
+  });
+
+  it("rejects an effect error even when a stale summary is not unknown", () => {
+    const assessment = assessCheckAssurance({
+      summaries: [{ functionName: "caller", fileName: "src/caller.ts", effects: [], evidence: "inferred" }],
+      artifacts: [],
+      diagnostics: [{ fileName: "src/caller.ts", functionName: "caller", effect: "Console", kind: "missing", severity: "error", line: 1, message: "iterator effect bound exceeded" }],
+    }, "no-unknown");
+    expect(assessment).toMatchObject({ passed: false, blockers: [expect.objectContaining({ kind: "effect", functionName: "caller" })] });
   });
 
   it("does not let evidence from one file hide an uncovered selected file", () => {

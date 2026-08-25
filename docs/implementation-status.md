@@ -451,8 +451,10 @@ same property is proved for arbitrary TypeScript.
   `iteratorEffectParameters` in effect summaries. Known call sites specialize
   the lazy body effects, while opaque arguments remain unknown. `no-unknown`
   accepts the represented parameter but reports that it is not a closed
-  concrete effect set; `declared` still rejects it because the current ordinary
-  effect annotation syntax cannot bind the parameter. Symbol-resolved wrapper
+  concrete effect set. `effect_parameter iterator extends ...` supplies an
+  independently checked lazy-effect upper bound; complete valid bounds permit
+  `declared` evidence while ordinary `effect` continues to describe only the
+  function body. Symbol-resolved wrapper
   calls forward the parameter transitively and retain Promise iterable
   `Throw`-to-rejection conversion; dynamic dispatch and escaped iterator aliases
   remain explicit unsupported boundaries.

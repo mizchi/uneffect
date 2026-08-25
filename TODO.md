@@ -534,6 +534,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Specialize iterator-consuming function parameters at call sites from known generator factories/bindings, pure standard iterators, or explicit unknown arguments.
   - [x] Expose directly consumed iterator parameters as explicit polymorphic effect parameters in function summaries instead of misclassifying the generic definition as opaque.
   - [x] Forward iterator-effect parameters through symbol-resolved wrapper calls, preserving Promise rejection conversion.
+  - [x] Add `effect_parameter p extends ...` bounds with call-site Generator specialization, stored-iterator evidence, transitive wrapper constraint checks, Promise rejection conversion, and fail-closed syntax/parameter diagnostics.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
   - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
   - [x] Track iterator identities in one-level local object slots with constant property keys, including local object aliases and flow-sensitive slot reassignment; keep dynamic keys unknown.

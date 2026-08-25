@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { extractAnnotations } from "./annotations.js";
+import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
@@ -29,6 +29,8 @@ export interface EffectSummary {
   span?: { start: number; end: number };
   /** Iterator parameters whose lazy body effects are supplied and instantiated by each call site. */
   iteratorEffectParameters?: IteratorEffectParameter[];
+  /** Explicit upper bounds for polymorphic iterator effects, indexed by the TypeScript parameter. */
+  iteratorEffectBounds?: Array<{ index: number; name: string; effects: Effect[] }>;
 }
 export interface EffectAnalysisResult { diagnostics: EffectDiagnostic[]; summaries: EffectSummary[] }
 
@@ -111,6 +113,26 @@ function declaration(source: ts.SourceFile, node: ts.Node): Effect[] {
     ? node.parent.parent.parent : node;
   const text = leadingText(source, owner);
   return extractAnnotations(text, "effect").flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
+}
+
+interface EffectParameterAnnotation {
+  name?: string;
+  effects: Effect[];
+  payload: string;
+  start: number;
+}
+
+function effectParameterAnnotations(source: ts.SourceFile, node: ts.Node): EffectParameterAnnotation[] {
+  const owner = (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
+    ? node.parent.parent.parent : node;
+  const leading = leadingText(source, owner), baseOffset = owner.getFullStart();
+  return extractLocatedAnnotations(leading, "effect_parameter", baseOffset).map(({ value: payload, span }) => {
+    const match = /^([A-Za-z_$][\w$]*)\s+extends\s+(.+)$/u.exec(payload);
+    return match ? {
+      name: match[1], payload, start: span.start,
+      effects: splitTopLevel(match[2]!, "|").map(parseEffectExpression),
+    } : { payload, effects: [], start: span.start };
+  });
 }
 
 /** Property names that can be written as a member path; anything else stays bracketed. */
@@ -665,6 +687,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
+  const iteratorEffectBounds = new Map<string, Map<number, { name: string; effects: Effect[] }>>();
+  const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
+  const invalidEffectParameterOwners = new Set<string>();
   const witnesses = new Map<string, Map<string, EffectWitness>>(), propagation = new Map<string, Map<string, EffectPropagation>>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
@@ -689,7 +714,25 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const symbol = nameNode ? checker.getSymbolAtLocation(nameNode) : undefined;
     const declarationEffects = symbol?.declarations?.flatMap((item) => declaration(item.getSourceFile(), item)) ?? declaration(source, node);
     declared.set(graphNode.id, declarationEffects.filter((effect, index, all) => all.findIndex((item) => formatEffect(item) === formatEffect(effect)) === index));
-    parameters.set(graphNode.id, node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source)));
+    const parameterNames = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
+    parameters.set(graphNode.id, parameterNames);
+    const iteratorIndices = new Set(graphNode.iteratorEffectParameters.map((parameter) => parameter.index));
+    const bounds = new Map<number, { name: string; effects: Effect[] }>();
+    for (const annotation of effectParameterAnnotations(source, node)) {
+      const index = annotation.name === undefined ? -1 : parameterNames.indexOf(annotation.name);
+      if (annotation.name === undefined) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter syntax; expected <parameter> extends <Effect union>` });
+      else if (index < 0) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter names unknown parameter ${annotation.name}` });
+      else if (!iteratorIndices.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter ${annotation.name} is not a consumed iterator parameter` });
+      else if (bounds.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `duplicate effect_parameter bound for ${annotation.name}` });
+      else {
+        bounds.set(index, { name: annotation.name, effects: annotation.effects });
+        for (const effect of annotation.effects) if (!isKnownEffect(effect)) effectParameterProblems.push({
+          id: graphNode.id, payload: annotation.payload, start: annotation.start,
+          message: `effect_parameter ${annotation.name} declares unknown effect ${formatEffect(effect)}`,
+        });
+      }
+    }
+    iteratorEffectBounds.set(graphNode.id, bounds);
     const visit = (child: ts.Node, catches: boolean): void => {
       if (child !== node.body && ts.isFunctionLike(child)) return;
       if (ts.isTryStatement(child)) {
@@ -795,7 +838,80 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     return steps.length > 0 ? steps.join("; ") : undefined;
   };
-  const diagnostics: EffectDiagnostic[] = [], summaries: EffectSummary[] = [];
+  const diagnostics: EffectDiagnostic[] = effectParameterProblems.map((problem) => {
+    invalidEffectParameterOwners.add(problem.id);
+    const graphNode = graphNodesById.get(problem.id)!;
+    const source = nodes.get(problem.id)!.getSourceFile();
+    return { fileName: source.fileName, functionName: graphNode.name, effect: problem.payload, kind: "unknown", severity: "error", line: source.getLineAndCharacterOfPosition(problem.start).line + 1, message: problem.message };
+  }), summaries: EffectSummary[] = [];
+  const invalidIteratorInstantiationCallers = new Set<string>();
+  type IteratorParameterRef = { consumer: string; parameterIndex: number };
+  const parameterKey = (reference: IteratorParameterRef): string => `${reference.consumer}#${reference.parameterIndex}`;
+  const forwardedConstraints = new Map<string, IteratorParameterRef[]>();
+  for (const edge of graph.edges) {
+    if (!edge.iteratorEffectInstantiation || edge.unknownGeneratorParameterIndex === undefined) continue;
+    const source = parameterKey({ consumer: edge.caller, parameterIndex: edge.unknownGeneratorParameterIndex });
+    const targets = forwardedConstraints.get(source) ?? [];
+    targets.push(edge.iteratorEffectInstantiation);
+    forwardedConstraints.set(source, targets);
+  }
+  const reachableBounds = (start: IteratorParameterRef): Array<{ owner: string; index: number; name: string; effects: Effect[] }> => {
+    const result: Array<{ owner: string; index: number; name: string; effects: Effect[] }> = [], queue = [start], seen = new Set<string>();
+    while (queue.length > 0) {
+      const current = queue.shift()!, key = parameterKey(current);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const bound = iteratorEffectBounds.get(current.consumer)?.get(current.parameterIndex);
+      if (bound) result.push({ owner: current.consumer, index: current.parameterIndex, ...bound });
+      queue.push(...(forwardedConstraints.get(key) ?? []));
+    }
+    return result;
+  };
+  // A wrapper declaration may not promise a wider input effect row than a
+  // downstream consumer accepts, even if no concrete call currently reaches it.
+  for (const [sourceKey, targets] of forwardedConstraints) {
+    const separator = sourceKey.lastIndexOf("#"), owner = sourceKey.slice(0, separator), index = Number(sourceKey.slice(separator + 1));
+    const sourceBound = iteratorEffectBounds.get(owner)?.get(index);
+    if (!sourceBound) continue;
+    for (const target of targets) for (const targetBound of reachableBounds(target)) for (const effect of sourceBound.effects) {
+      if (permits(targetBound.effects, effect)) continue;
+      const graphNode = graphNodesById.get(owner)!, targetNode = graphNodesById.get(targetBound.owner)!;
+      const source = nodes.get(owner)!.getSourceFile();
+      invalidEffectParameterOwners.add(owner);
+      invalidIteratorInstantiationCallers.add(owner);
+      diagnostics.push({
+        fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "missing", severity: "error",
+        line: source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1,
+        message: `${graphNode.name} effect_parameter ${sourceBound.name} allows ${formatEffect(effect)}, which is not compatible with forwarded constraint ${targetBound.name} of ${targetNode.name}`,
+      });
+    }
+  }
+  for (const edge of graph.edges) {
+    const instantiation = edge.iteratorEffectInstantiation;
+    if (!instantiation || !edge.callee) continue;
+    for (const bound of reachableBounds(instantiation)) for (const effect of inferred.get(edge.callee) ?? []) {
+      if (effect.kind === "throw" && edge.dischargesThrow) continue;
+      if (permits(bound.effects, effect)) continue;
+      const caller = graphNodesById.get(edge.caller)!;
+      const consumer = graphNodesById.get(bound.owner)!;
+      const source = nodes.get(edge.caller)!.getSourceFile();
+      diagnostics.push({
+        fileName: source.fileName, functionName: caller.name, effect: formatEffect(effect), kind: "missing", severity: "error",
+        line: source.getLineAndCharacterOfPosition(edge.span.start).line + 1,
+        message: `${caller.name} instantiates iterator effect parameter ${bound.name} of ${consumer.name} with ${formatEffect(effect)} outside its declared bound`,
+      });
+      invalidIteratorInstantiationCallers.add(edge.caller);
+    }
+  }
+  let invalidInstantiationChanged = true;
+  while (invalidInstantiationChanged) {
+    invalidInstantiationChanged = false;
+    for (const edge of graph.edges) if (edge.callee && invalidIteratorInstantiationCallers.has(edge.callee)
+      && !invalidIteratorInstantiationCallers.has(edge.caller)) {
+      invalidIteratorInstantiationCallers.add(edge.caller);
+      invalidInstantiationChanged = true;
+    }
+  }
   for (const graphNode of graph.nodes) {
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
@@ -811,14 +927,20 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const effect of allowed) if (!actual.some((item) => permits([effect], item))) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unused", severity: "warning", line, message: `${graphNode.name} declares unused effect ${formatEffect(effect)}`, notes: unusedEffectNotes(graphNode.name, allowed, actual, effect) });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === graphNode.name);
     const polymorphicIterator = graphNode.iteratorEffectParameters.length > 0;
+    const bounds = iteratorEffectBounds.get(graphNode.id) ?? new Map();
+    const fullyBoundIterator = polymorphicIterator && graphNode.iteratorEffectParameters.every((parameter) => bounds.has(parameter.index));
     const evidence: EvidenceStatus = invalidSources.has(source.fileName)
       || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
       || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
-      || (polymorphicIterator && allowed.length > 0)
-      ? "unknown" : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+      || invalidEffectParameterOwners.has(graphNode.id)
+      || invalidIteratorInstantiationCallers.has(graphNode.id)
+      || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
+      ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
+        : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({
       functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span,
       ...(polymorphicIterator ? { iteratorEffectParameters: graphNode.iteratorEffectParameters } : {}),
+      ...(bounds.size > 0 ? { iteratorEffectBounds: [...bounds].map(([index, bound]) => ({ index, ...bound })) } : {}),
     });
   }
 

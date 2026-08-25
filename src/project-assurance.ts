@@ -108,10 +108,12 @@ export function assessProjectVerification(
     "the configured assumption policy has no violation",
     ...(result.temporal ? ["every emitted temporal property is verified for its attributed source"] : []),
   ];
+  const hasOpenIteratorEffect = result.effects.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
+    !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)));
   const exclusions = [
     "this assessment covers only explicitly supplied files and analyses represented in this result",
     "inferred effects need not have an explicit declaration",
-    "iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set",
+    ...(hasOpenIteratorEffect ? ["unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set"] : []),
     "trusted typed-array and builtin contracts remain assumptions, not derived proofs",
     "emitted JavaScript is an adoption artifact and is not itself verified",
     ...(result.temporal ? [] : ["temporal behavior was not checked because no temporal runtime was selected"]),
