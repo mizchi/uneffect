@@ -375,6 +375,11 @@ same property is proved for arbitrary TypeScript.
 - A bounded model check or simulation is not reported as an unbounded proof.
 - Unsupported syntax, unresolved calls, solver timeouts, and abstraction gaps
   must remain `unknown` or diagnostics; they must not be silently accepted.
+- Default `check` remains a gradual lint result. The opt-in `no-unknown`
+  assurance profile rejects unknown effect summaries and non-verified emitted
+  contract artifacts; `declared` additionally rejects inferred effect
+  summaries. Both profiles are scoped to explicit files and opted-in analyses,
+  and neither is described as a whole-program proof.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

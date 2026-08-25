@@ -1,4 +1,6 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cliCommands, cliVersion, formatCliHelp, runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
@@ -52,6 +54,44 @@ describe("uneffect command line", () => {
     expect(await runCli(["check", "--stict", "fixtures/effects/missing-console.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("--stict");
     expect(io.stderr).toContain("usage: uneffect check");
+  });
+
+  it("separates gradual lint success from explicit assurance profiles", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-assurance-"));
+    const unknownFile = join(directory, "unknown.ts"), inferredFile = join(directory, "inferred.ts");
+    const declaredFile = join(directory, "declared.ts");
+    try {
+      writeFileSync(unknownFile, `export function consume(iterator: Iterator<number>) { iterator.next() }`);
+      writeFileSync(inferredFile, `export function identity(value: number) { return value }`);
+      writeFileSync(declaredFile, `/* uneffect: effect Console */ export function report() { console.log("ok") }`);
+
+      const gradual = capture();
+      expect(await runCli(["check", unknownFile], gradual)).toBe(exitCode.success);
+      expect(gradual.stderr).toContain("no diagnostics");
+
+      const noUnknown = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", unknownFile], noUnknown)).toBe(exitCode.failed);
+      expect(noUnknown.stderr).toContain("assurance no-unknown: failed");
+      expect(noUnknown.stderr).toContain("consume: effect summary is unknown");
+
+      const tracked = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile], tracked)).toBe(exitCode.success);
+      expect(tracked.stderr).toContain("assurance no-unknown: passed");
+
+      const inferred = capture();
+      expect(await runCli(["check", "--assurance", "declared", inferredFile], inferred)).toBe(exitCode.failed);
+      expect(inferred.stderr).toContain("identity: effect summary is inferred, not declaration-checked");
+
+      const declared = capture();
+      expect(await runCli(["check", "--assurance", "declared", declaredFile], declared)).toBe(exitCode.success);
+      expect(declared.stderr).toContain("assurance declared: passed");
+
+      const invalid = capture();
+      expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);
+      expect(invalid.stderr).toContain("unknown assurance profile absolute");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("reports missing or excess positional arguments per command", async () => {

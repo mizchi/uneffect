@@ -131,6 +131,8 @@ export { ownershipEvidenceKey, readOwnershipEvidenceCache, writeOwnershipEvidenc
 export type { OwnershipEvidenceCache, OwnershipEvidenceCacheEntry } from "./ownership-evidence-cache.js";
 export { verifyContractObligations, verifyContracts } from "./contracts.js";
 export type { ContractDiagnostic, ContractVerificationResult, VerificationArtifact } from "./contracts.js";
+export { assessCheckAssurance, formatAssuranceAssessment } from "./assurance.js";
+export type { AssuranceAssessment, AssuranceBlocker, AssuranceProfile } from "./assurance.js";
 export { checkUneffectProperty, generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "./property-tests.js";
 export type { CheckUneffectPropertyOptions, CheckUneffectPropertyResult, GenerateUneffectPropertyTestsOptions, GenerateUneffectPropertyTestsResult, GenerateUneffectPropertyTestsWithZ3Options, GenerateUneffectPropertyTestsWithZ3Result, PropertyBoundaryKind, PropertyCounterexample, PropertyLiteral, PropertySolverDiagnostic, PropertyTestBoundary, PropertyTestDomain } from "./property-tests.js";
 export { createModelCounterexample, parseQuintItfCounterexample, parseTlcCounterexample, readModelCounterexample, replayModelCounterexample, writeModelCounterexample } from "./model-replay.js";

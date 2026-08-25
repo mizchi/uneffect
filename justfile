@@ -110,5 +110,5 @@ evidence file:
     pnpm tsx src/cli.ts evidence {{ file }}
 
 dogfood:
-    pnpm tsx src/cli.ts check --infer src/*.ts
+    pnpm tsx src/cli.ts check --infer --assurance no-unknown src/*.ts
     pnpm vitest run test/dogfood.test.ts

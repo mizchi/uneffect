@@ -49,8 +49,9 @@ does not change the emitted JavaScript.
 npx uneffect check src/uneffect-example.ts
 ```
 
-No output and exit code 0 mean no diagnostic was produced. Add `--evidence` to
-see successful obligations and inferred effects:
+No output and exit code 0 mean no enabled checker produced a diagnostic. They
+do not mean arbitrary TypeScript or every host behavior was proved. Add
+`--evidence` to see successful obligations and inferred effects:
 
 ```sh
 npx uneffect check --evidence src/uneffect-example.ts
@@ -162,8 +163,26 @@ ordering and temporal interleavings. See
 
 ## 8. Put the check in CI
 
-Run the same package script in CI and pin the lockfile. Treat exit code 1 as a
-program diagnostic and exit code 2 as a broken invocation. A practical rollout
+Run the same package script in CI and pin the lockfile. Once the selected files
+have no unresolved effect summaries, add an explicit assurance gate:
+
+```sh
+npx uneffect check --assurance no-unknown src/uneffect-example.ts
+```
+
+After every function in that boundary has an explicit effect upper bound, use
+the stronger effect gate:
+
+```sh
+npx uneffect check --assurance declared src/uneffect-example.ts
+```
+
+These profiles cover emitted evidence for the explicit file boundary; they are
+not whole-program or assumption-free proofs. See
+[Assurance boundaries](./assurance-boundaries.md).
+
+Treat exit code 1 as a program diagnostic or assurance failure and exit code 2
+as a broken invocation. A practical rollout
 starts with a small explicit file set and expands it only after existing
 diagnostics have owners.
 

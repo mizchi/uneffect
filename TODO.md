@@ -464,6 +464,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Include compiler revision, tsconfig hash, source hash, builtin-contract digest, and Uneffect version in artifacts.
 - [x] Make unknown evidence stop transformations without blocking gradual lint adoption.
+- [x] Separate gradual lint success from explicit `no-unknown` and declaration-checked assurance profiles, with scoped blocker output and documented non-claims.
 - [x] Define one proof-obligation schema per optimizer transformation.
 - [x] Prototype stable-read reuse only when no overlapping mutate/invalidate/transfer event exists.
 - [x] Evaluate property mangling separately under closed-world reflection and escape constraints.

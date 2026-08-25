@@ -38,7 +38,9 @@ npx quint run protocol.qnt
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 
 `check` takes `--infer` (only check functions that already declare effects),
-`--strict` (an unknown effect name is an error, not a warning), and
+`--strict` (an unknown effect name is an error, not a warning),
+`--assurance no-unknown|declared` (fail when emitted evidence does not meet the
+selected CI profile), and
 `--evidence` (also print the proved obligations and the inferred effect of every
 function). `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
