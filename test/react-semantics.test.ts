@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -606,6 +606,52 @@ describe("React Function Component semantics", () => {
       expect.objectContaining({ component: "InvalidRender", kind: "render-effect", effect: "Fetch" }),
       expect.objectContaining({ component: "InvalidHookRender", kind: "render-effect", effect: "Console" }),
     ]);
+  });
+
+  it("requires state updates after await to re-enter a Transition", () => {
+    const result = analyzeReactSemantics("async-transitions.tsx", `
+      import React, { startTransition, useState, useTransition } from "react"
+      declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+      declare function load(): Promise<string>
+      /* uneffect: react component */
+      function Search() {
+        const [, setResult] = useState("")
+        const [, begin] = useTransition()
+        const setAlias = setResult
+        return <button onClick={() => {
+          begin(async () => {
+            setResult("loading")
+            const value = await load()
+            setAlias(value)
+            startTransition(() => setResult(value))
+          })
+        }} />
+      }
+      /* uneffect: react component */
+      function Namespaced() {
+        const [, setValue] = React.useReducer((_state: string, next: string) => next, "")
+        return <button onClick={() => React.startTransition(async () => {
+          await load()
+          setValue("late")
+        })} />
+      }
+    `);
+
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ component: "Search", kind: "transition-update-after-await", phase: "event", operation: "setAlias" }),
+      expect.objectContaining({ component: "Namespaced", kind: "transition-update-after-await", phase: "event", operation: "setValue" }),
+    ]);
+  });
+
+  it("generates and validates a bounded interruptible Transition model", () => {
+    const quint = generateReactTransitionQuint("search_transition", { maxActions: 3 });
+    expect(quint).toContain("action start_action");
+    expect(quint).toContain("action interrupt_render");
+    expect(quint).toContain("action commit_render");
+    expect(quint).toContain("val reactTransitionSafe");
+    expect(quint).toContain("pending == 1 iff shown < started");
+    expect(() => generateReactTransitionQuint("bad-name", { maxActions: 2 })).toThrow("invalid Quint module name");
+    expect(() => generateReactTransitionQuint("bad_bound", { maxActions: 0 })).toThrow("maxActions");
   });
 
   it("separates callback refs from render and models their Strict Mode replay", () => {

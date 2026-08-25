@@ -67,6 +67,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
     const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const generateReactActionQueue = futureApi("generateReactActionQueueQuint");
+    const generateReactTransition = futureApi("generateReactTransitionQuint");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
@@ -74,7 +75,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useSyncExternalStore } from "react"
+      import { memo, startTransition, useActionState, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useOptimistic, useState, useSyncExternalStore, useTransition } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown }; form: { action?: unknown; children?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -120,6 +121,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           return previous === topic ? previous : topic
         }, topic)
         const [optimisticTopic] = useOptimistic(savedTopic, (_previous, next: string) => next)
+        const [, setRefreshTopic] = useState(topic)
+        const [, beginRefresh] = useTransition()
         useTopicStatus()
         useSubscription(topic)
         useImperativeHandle(ref, () => {
@@ -131,7 +134,10 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           return () => removeFeedStyles()
         }, [])
         const refresh = () => fetch(\`/topics/\${topic}\`)
-        const handleClick = () => startTransition(refresh)
+        const handleClick = () => beginRefresh(async () => {
+          await Promise.resolve()
+          startTransition(() => { setRefreshTopic(topic); refresh() })
+        })
         return <form action={saveTopicAction}><button
           ref={(node) => { console.log(node); return () => console.log("detach") }}
           onClick={handleClick}
@@ -159,6 +165,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const actionQueueQuint = generateReactActionQueue("feed_actions", { maxQueuedActions: 3 }) as string;
     expect(actionQueueQuint).toContain("val reactActionQueueSafe");
     expect(actionQueueQuint).toContain("cancelled == 1 implies active == 0 and pending == 0");
+    const transitionQuint = generateReactTransition("feed_transition", { maxActions: 3 }) as string;
+    expect(transitionQuint).toContain("val reactTransitionSafe");
+    expect(transitionQuint).toContain("action interrupt_render");
     const lifecycleQuint = generateReactLifecycle("feed_lifecycle", result.components[0]) as string;
     expect(lifecycleQuint).toContain("val reactLifecycleSafe");
     expect(lifecycleQuint).toContain("action cleanup_0_strict_replay");

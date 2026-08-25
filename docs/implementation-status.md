@@ -163,8 +163,12 @@ same property is proved for arbitrary TypeScript.
 - Inline and immutable local actions passed to named/default/namespace
   `startTransition` or the setter returned by `useTransition` are traversed in
   the enclosing phase, including transitive `const` aliases.
-  This preserves nested capabilities but does not claim a transition scheduler
-  model. Imported, reassigned, and otherwise opaque actions fail closed.
+  This preserves nested capabilities. In the supported JSX-event fragment,
+  direct `useState`/`useReducer`/`useOptimistic` updates after `await` must enter
+  another recognized Transition. A separate bounded Quint projection models
+  aggregate pending Actions, arbitrary settlement order, interruptible render,
+  retry, and final commit. Imported, reassigned, higher-order,
+  custom-Hook-returned, and otherwise opaque async flow remains outside this proof.
 - Named/default/namespace `useActionState` and `useOptimistic` calls separate
   side-effecting Action callbacks from pure optimistic reducers. JSX
   `action`/`formAction` accepts a directly returned Action dispatcher, while

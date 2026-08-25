@@ -84,11 +84,21 @@ returned by `useTransition` execute in the caller's current phase. Uneffect
 therefore retains capabilities inside the action: a Fetch nested under
 `startTransition` in an event handler is an `event` capability, while the same
 call during render is a `render-effect` error. This is effect tracking for the
-synchronous action invocation. It does not yet model transition priority,
-pending state, interruption, or the eventual rendering work as a scheduler.
+synchronous action invocation. Source phase analysis does not infer a scheduler;
+the explicit bounded projection below models aggregate pending and interruption
+without claiming priority lanes or a concrete host schedule.
 Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
 otherwise opaque actions produce `unknown-transition-action` rather than losing
 their capabilities silently.
+
+Within an inline or immutable component-local JSX event callback, Uneffect also
+tracks the lexical async boundary of recognized Transition Actions. A direct
+`useState`, `useReducer`, or `useOptimistic` dispatcher call after `await`
+produces `transition-update-after-await`; entering a nested recognized
+`startTransition`/`useTransition` Action establishes a fresh synchronous scope.
+This is intentionally a supported lexical fragment, not a general async CFG:
+imported/higher-order Actions, callbacks returned by custom Hooks, dynamically
+selected dispatchers, and interprocedural awaits remain outside this proof.
 
 Named, aliased, default, and namespace calls to React 19 `useActionState` and
 `useOptimistic` have distinct contracts. A resolvable `useActionState`
@@ -448,6 +458,17 @@ React runtime queue limit. This model is explicit rather than automatically
 synthesized from call-site cardinality, does not model values or optimistic
 state layers, and does not connect thrown values to an Error Boundary.
 
+`generateReactTransitionQuint(moduleName, { maxActions })` generates a separate
+bounded model for `useTransition`. It permits multiple Actions to settle in any
+order, keeps `pending` true until all started Actions have settled and their
+final background render commits, and permits an urgent update to interrupt a
+render before a later retry. Test-only switches inject early pending clear,
+commit with unsettled Actions, and commit of an already interrupted render;
+each violates `reactTransitionSafe`. The bound controls exploration, not React
+runtime concurrency. The projection counts Actions and render attempts but
+does not model update values, priority lanes, Suspense visibility, cancellation,
+or a concrete host scheduler.
+
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
 `production`, `strictModeDevelopment`, `concurrentInterruption`,
 `dependencyChange`, `suspenseRetry`, or `repeatedSuspenseRetry` replay into
@@ -510,7 +531,7 @@ This is a tested initial fragment, not a complete React semantics:
   remain unsupported;
 - Intrinsic/component wrapper subtrees, expression-valued children, dynamic
   component selection, reachability/pending-state proof for `use`, suspension originating in a boundary or fallback,
-  rejected thenables, unbounded retries, transition priority/pending state,
+  rejected thenables, unbounded retries, transition priority lanes,
   imported/interprocedural transition actions, Offscreen trees,
   server components, hydration,
   insertion Effect component-by-component cleanup/setup interleaving,

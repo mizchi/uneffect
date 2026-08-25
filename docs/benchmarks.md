@@ -118,6 +118,17 @@ while the gap from the earlier 59.54/4.15/92.92 ms wrapper workload remains a
 regression target. The generator cost is small relative to source analysis;
 the run does not establish why the analysis means vary between invocations.
 
+After adding the bounded Transition generator and lexical async-Transition
+scan, a 2026-08-25 run measured 71.26 ms source analysis (2.70% RME), 5.57 ms
+parse-only (1.15% RME), and 96.23 ms for the reused Program (1.27% RME).
+Generating 128 three-Action Transition models measured 0.3957 ms total, but
+its 5.71% RME makes that generator number directional rather than a replacement
+baseline. The Action-queue generator measured 0.3083 ms in the same run. The
+source workload still uses synchronous Transition callbacks, so it measures
+the additional dispatcher/await scan but not 128 positive async-boundary
+diagnostics. These observations are not pass/fail budgets or evidence of a
+speedup over the preceding run.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

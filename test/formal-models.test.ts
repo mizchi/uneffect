@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, test } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -41,6 +41,36 @@ describe("async invalidation Quint model", () => {
 });
 
 describe("React lifecycle Quint projection", () => {
+  test("keeps a Transition pending through Actions and interruptible render", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-"));
+    const path = join(directory, "transition.qnt");
+    const run = (fault: "none" | "pending" | "unsettled-commit" | "interrupted-commit") => {
+      writeFileSync(path, generateReactTransitionQuint("react_transition", {
+        maxActions: 3,
+        allowEarlyPendingClear: fault === "pending",
+        allowCommitBeforeActionsSettle: fault === "unsettled-commit",
+        allowCommitInterruptedRender: fault === "interrupted-commit",
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactTransitionSafe", "--max-steps=10", "--max-samples=10000",
+        "--seed=0x7472616e73697469", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run("none");
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      expect(valid.stdout + valid.stderr).toContain("No violation found");
+      for (const fault of ["pending", "unsettled-commit", "interrupted-commit"] as const) {
+        const broken = run(fault);
+        expect(broken.error).toBeUndefined();
+        expect(broken.status, `${fault}: ${broken.stdout}${broken.stderr}`).toBe(1);
+        expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   test("serializes queued Actions and cancels the tail after failure", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-actions-"));
     const path = join(directory, "actions.qnt");

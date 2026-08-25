@@ -10,6 +10,7 @@ export type ReactDiagnosticKind =
   | "unknown-ref-callback"
   | "unknown-event-handler"
   | "unknown-transition-action"
+  | "transition-update-after-await"
   | "insertion-effect-state-update"
   | "insertion-effect-ref-access"
   | "invalid-effect-event-call"
@@ -577,6 +578,7 @@ function ownerBindingFacts(boundary: ComponentNode, source: ts.SourceFile): { bi
 
 interface DispatcherBindingFacts {
   state: ReadonlySet<string>;
+  transitionState: ReadonlySet<string>;
   action: ReadonlySet<string>;
   optimistic: ReadonlySet<string>;
 }
@@ -586,7 +588,7 @@ const dispatcherBindingCache = new WeakMap<ComponentNode, DispatcherBindingFacts
 function dispatcherBindingFacts(boundary: ComponentNode, source: ts.SourceFile): DispatcherBindingFacts {
   const cached = dispatcherBindingCache.get(boundary);
   if (cached) return cached;
-  const state = new Set<string>(), action = new Set<string>(), optimistic = new Set<string>();
+  const state = new Set<string>(), transitionState = new Set<string>(), action = new Set<string>(), optimistic = new Set<string>();
   const aliases: Array<{ name: string; target: string }> = [];
   const visit = (node: ts.Node): void => {
     if (node !== boundary.body && ts.isFunctionLike(node)) return;
@@ -598,12 +600,15 @@ function dispatcherBindingFacts(boundary: ComponentNode, source: ts.SourceFile):
       if (ts.isCallExpression(initializer) && ts.isArrayBindingPattern(node.name)) {
         const isAction = isUseActionStateCall(source, initializer.expression);
         const isOptimistic = isUseOptimisticCall(source, initializer.expression);
+        const isOrdinaryState = isReactBuiltinCall(source, initializer.expression, "useState")
+          || isReactBuiltinCall(source, initializer.expression, "useReducer");
         const isState = isReactBuiltinCall(source, initializer.expression, "useState")
           || isReactBuiltinCall(source, initializer.expression, "useReducer") || isAction || isOptimistic;
         const dispatcher = node.name.elements[1];
         if (dispatcher && !ts.isOmittedExpression(dispatcher)) {
           for (const name of bindingNames(dispatcher.name)) {
             if (isState) state.add(name);
+            if (isOrdinaryState || isOptimistic) transitionState.add(name);
             if (isAction) action.add(name);
             if (isOptimistic) optimistic.add(name);
           }
@@ -619,13 +624,13 @@ function dispatcherBindingFacts(boundary: ComponentNode, source: ts.SourceFile):
   while (changed) {
     changed = false;
     for (const alias of aliases) {
-      for (const bindings of [state, action, optimistic]) if (bindings.has(alias.target) && !bindings.has(alias.name)) {
+      for (const bindings of [state, transitionState, action, optimistic]) if (bindings.has(alias.target) && !bindings.has(alias.name)) {
         bindings.add(alias.name);
         changed = true;
       }
     }
   }
-  const facts = { state, action, optimistic };
+  const facts = { state, transitionState, action, optimistic };
   dispatcherBindingCache.set(boundary, facts);
   return facts;
 }
@@ -641,6 +646,10 @@ function actionDispatcherBindings(boundary: ComponentNode, source: ts.SourceFile
 
 function optimisticDispatcherBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
   return dispatcherBindingFacts(boundary, source).optimistic;
+}
+
+function transitionStateUpdaterBindings(boundary: ComponentNode, source: ts.SourceFile): ReadonlySet<string> {
+  return dispatcherBindingFacts(boundary, source).transitionState;
 }
 
 function stateUpdates(node: ts.Node, updaters: ReadonlySet<string>): ts.CallExpression[] {
@@ -1073,10 +1082,10 @@ function directEffects(
   declared: ReadonlyMap<string, string[]>,
   immediateCallbacks: ReadonlySet<string> = new Set(),
   localCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
-  invokedCallbacks: ReadonlyMap<string, ts.ArrowFunction | ts.FunctionExpression> = new Map(),
+  invokedCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
 ): string[] {
   const effects: string[] = [];
-  const activeCallbacks = new Set<ts.ArrowFunction | ts.FunctionExpression>();
+  const activeCallbacks = new Set<LocalEventCallback>();
   const visit = (current: ts.Node): void => {
     if (current !== node && ts.isFunctionLike(current)) return;
     if (ts.isCallExpression(current)) {
@@ -1178,6 +1187,47 @@ function actionDispatcherCallsOutsideAction(
     ts.forEachChild(current, (child) => visit(child, insideAction));
   };
   visit(node, false);
+  return invalid;
+}
+
+/**
+ * Find the supported lexical fragment where a state update occurs after an
+ * await has left React's synchronous Transition scope. A nested Transition
+ * action establishes a fresh scope. The walk follows source evaluation order
+ * and deliberately ignores retained, uninvoked nested functions.
+ */
+function transitionUpdatesAfterAwait(
+  node: ts.Node,
+  updaters: ReadonlySet<string>,
+  actionCallbacks: ReadonlySet<string>,
+  localCallbacks: ReadonlyMap<string, LocalEventCallback>,
+): ts.CallExpression[] {
+  const invalid: ts.CallExpression[] = [];
+  const visit = (current: ts.Node, insideTransition: boolean, afterAwait: boolean): boolean => {
+    if (current !== node && ts.isFunctionLike(current)) return afterAwait;
+    if (ts.isAwaitExpression(current)) {
+      visit(current.expression, insideTransition, afterAwait);
+      return insideTransition || afterAwait;
+    }
+    if (ts.isCallExpression(current)) {
+      if (insideTransition && afterAwait && ts.isIdentifier(current.expression) && updaters.has(current.expression.text)) {
+        invalid.push(current);
+      }
+      if (actionCallbacks.has(callName(current) ?? "")) {
+        let state = visit(current.expression, insideTransition, afterAwait);
+        const argument = current.arguments[0];
+        const callback = argument && (ts.isArrowFunction(argument) || ts.isFunctionExpression(argument))
+          ? argument : argument && ts.isIdentifier(argument) ? localCallbacks.get(argument.text) : undefined;
+        if (callback?.body) visit(callback.body, true, false);
+        for (const other of current.arguments.slice(1)) state = visit(other, insideTransition, state);
+        return state;
+      }
+    }
+    let state = afterAwait;
+    ts.forEachChild(current, (child) => { state = visit(child, insideTransition, state); });
+    return state;
+  };
+  visit(node, false, false);
   return invalid;
 }
 
@@ -1890,6 +1940,7 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const immutableSnapshots = immutableSnapshotBindings(component, source);
     const refs = renderRefBindings(component, source);
     const stateUpdaters = stateUpdaterBindings(component, source);
+    const transitionStateUpdaters = transitionStateUpdaterBindings(component, source);
     const actionDispatchers = actionDispatcherBindings(component, source);
     const actionContextDispatchers = new Set([
       ...actionDispatchers,
@@ -1899,6 +1950,12 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const callableCallbacks = new Map([...sourceCallbacks(source), ...eventCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
+    const reportTransitionUpdatesAfterAwait = (body: ts.Node, phase: ReactPhase): void => {
+      for (const call of transitionUpdatesAfterAwait(body, transitionStateUpdaters, transitionCallbacks, eventCallbacks)) report(call, {
+        kind: "transition-update-after-await", phase, operation: call.expression.getText(source),
+        message: `${call.expression.getText(source)} runs after await and must be wrapped in a new React Transition`,
+      });
+    };
     for (const wrapper of componentWrapperCalls(component)) {
       if (reactComponentWrapperKind(source, wrapper.expression) !== "memo") continue;
       addPhase("memo-compare");
@@ -1988,7 +2045,8 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           message: `${action.getText(source)} is not an inline or immutable locally resolved transition action`,
         });
         if (expression && (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression))) {
-          addPhase("event", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks));
+          addPhase("event", directEffects(expression.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
+          reportTransitionUpdatesAfterAwait(expression.body, "event");
           for (const action of unknownImmediateActions(expression.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
           for (const call of actionDispatcherCallsOutsideAction(expression.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
             kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
@@ -2009,7 +2067,8 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           }
           const callback = eventCallbacks.get(expression.text);
           if (callback?.body) {
-            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, eventCallbacks));
+            addPhase("event", directEffects(callback.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
+            reportTransitionUpdatesAfterAwait(callback.body, "event");
             for (const action of unknownImmediateActions(callback.body, transitionCallbacks, eventCallbacks)) reportUnknownAction(action);
             for (const call of actionDispatcherCallsOutsideAction(callback.body, actionContextDispatchers, transitionCallbacks, eventCallbacks)) report(call, {
               kind: "action-dispatch-outside-action", phase: "event", operation: call.expression.getText(source),
@@ -2390,6 +2449,85 @@ export function generateReactActionQueueQuint(moduleName: string, options: React
     "(cancelled == 1 implies active == 0 and pending == 0)",
   ];
   lines.push("", `  val reactActionQueueSafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
+export interface ReactTransitionOptions {
+  /** Finite exploration bound; this is not a runtime concurrency limit. */
+  maxActions: number;
+  /** Test-only fault injection that clears isPending before the final commit. */
+  allowEarlyPendingClear?: boolean;
+  /** Test-only fault injection that commits while an Action remains unsettled. */
+  allowCommitBeforeActionsSettle?: boolean;
+  /** Test-only fault injection that commits a render after it was interrupted. */
+  allowCommitInterruptedRender?: boolean;
+}
+
+/** Generate a bounded useTransition model with async Actions and interruptible renders. */
+export function generateReactTransitionQuint(moduleName: string, options: ReactTransitionOptions): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const bound = options.maxActions;
+  if (!Number.isSafeInteger(bound) || bound < 1 || bound > 64) {
+    throw new Error("maxActions must be a safe integer between 1 and 64");
+  }
+  if (options.allowCommitBeforeActionsSettle && bound < 2) {
+    throw new Error("unsettled Action commit fault injection requires maxActions of at least 2");
+  }
+  const variables = ["started", "settled", "shown", "renderAttempts", "interrupted", "commits", "activeRender", "pending"] as const;
+  const lines = [
+    `module ${moduleName} {`,
+    ...variables.map((name) => `  var ${name}: int`),
+    "",
+    "  action init = all {",
+    ...variables.map((name) => `    ${name}' = 0,`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comment: string): void => {
+    actions.push(name);
+    lines.push("", `  // ${comment}`, `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("start_action", [`started < ${bound}`], new Map([
+    ["started", "started + 1"], ["pending", "1"],
+  ]), "startTransition invokes an Action immediately and makes the Transition pending");
+  action("settle_action", ["settled < started"], new Map([
+    ["settled", "settled + 1"],
+  ]), "async Actions may settle in any order; only the completed count is observable here");
+  action("begin_render", ["activeRender == 0", "shown < settled"], new Map([
+    ["renderAttempts", "renderAttempts + 1"], ["activeRender", "1"],
+  ]), "settled work may begin an interruptible background render");
+  action("interrupt_render", ["activeRender == 1"], new Map([
+    ["interrupted", "interrupted + 1"], ["activeRender", "0"],
+  ]), "an urgent update may discard the current Transition render");
+  action("commit_render", ["activeRender == 1", "settled == started"], new Map([
+    ["shown", "settled"], ["commits", "commits + 1"], ["activeRender", "0"], ["pending", "0"],
+  ]), "the final state is shown only after every Action has settled");
+  if (options.allowEarlyPendingClear) action("clear_pending_early", ["pending == 1", "shown < started"], new Map([
+    ["pending", "0"],
+  ]), "fault injection: clear isPending before the final state is shown");
+  if (options.allowCommitBeforeActionsSettle) action("commit_unsettled_actions", [
+    "activeRender == 1", "settled < started",
+  ], new Map([
+    ["shown", "started"], ["commits", "commits + 1"], ["activeRender", "0"], ["pending", "0"],
+  ]), "fault injection: commit while an async Action remains unsettled");
+  if (options.allowCommitInterruptedRender) action("commit_interrupted_render", [
+    "activeRender == 0", "renderAttempts == interrupted + commits", "shown < settled", "settled == started",
+  ], new Map([
+    ["shown", "settled"], ["commits", "commits + 1"], ["pending", "0"],
+  ]), "fault injection: commit a render attempt that was already interrupted");
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const safety = [
+    "0 <= shown", "shown <= settled", "settled <= started", `started <= ${bound}`,
+    "0 <= interrupted", "0 <= commits", "interrupted + commits <= renderAttempts",
+    "0 <= activeRender", "activeRender <= 1", "activeRender == renderAttempts - interrupted - commits",
+    "0 <= pending", "pending <= 1", "(pending == 1 iff shown < started)",
+  ];
+  lines.push("", `  val reactTransitionSafe = ${safety.join(" and ")}`, "}", "");
   return lines.join("\n");
 }
 

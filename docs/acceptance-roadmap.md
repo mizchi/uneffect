@@ -33,7 +33,10 @@ contract layer for existing TypeScript:
     emitted code; annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity. An
     explicit bounded Quint projection checks one Action dispatcher's
-    sequential queue, pending flag, and failure cancellation laws.
+    sequential queue, pending flag, and failure cancellation laws. JSX-event
+    Transition Actions diagnose unwrapped state updates after `await`; a second
+    bounded projection checks aggregate pending, interruption/retry, and final
+    commit after all Actions settle.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a

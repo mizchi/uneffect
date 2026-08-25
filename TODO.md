@@ -42,6 +42,7 @@ documentation are all updated.
 - [x] Resolve immutable component-local function/arrow callbacks and transitive `const` aliases used by JSX event attributes, while diagnosing reassigned or otherwise opaque handlers.
 - [x] Treat inline actions passed to named/default/namespace `startTransition` and the setter returned by `useTransition` as immediately executed in the enclosing React phase, so nested capabilities are not lost.
 - [x] Resolve immutable component/custom-Hook-local transition actions through transitive `const` aliases and diagnose unresolved actions instead of dropping their capabilities.
+- [x] Diagnose `useState`/`useReducer`/`useOptimistic` updates after `await` in the supported JSX-event Transition fragment unless they re-enter `startTransition`, and generate a bounded Quint model for pending Actions, interruptible render, retry, and final commit.
 - [x] Model aliased `useInsertionEffect` setup/cleanup as a commit phase before refs, layout, and passive Effects; reject direct or transitively aliased local state dispatchers in its callback and preserve the order in Quint.
 - [x] Resolve local `useEffectEvent` callbacks and transitive `const` aliases into insertion/layout/passive setup and cleanup effects; reject render/JSX-event/transition calls and dependency-array entries.
 - [x] Split `useSyncExternalStore` into client/server snapshot and commit subscription phases, resolve inline/module/local callbacks, carry subscription resource cleanup into replay/Quint, and reject opaque or obviously uncached snapshots.

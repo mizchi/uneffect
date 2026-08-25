@@ -49,6 +49,7 @@ const hints: Readonly<Record<string, string>> = {
   "react/unknown-optimistic-reducer": "inline the optimistic reducer or bind it to an immutable local/module callback so its purity can be checked",
   "react/unknown-action-handler": "use an inline or immutable local Action callback, or the dispatcher returned directly by useActionState",
   "react/action-dispatch-outside-action": "dispatch inside startTransition, a useTransition Action, or an action/formAction prop",
+  "react/transition-update-after-await": "wrap the state update after await in a new startTransition call",
   "react/conditional-hook": "call Hooks unconditionally at the component top level and move the condition inside the Hook",
   "react/missing-effect-cleanup": "return cleanup that calls a matching /* uneffect: react release Capability */ boundary",
   "react/invalid-react-annotation": "use `react component`, `react hook`, `react acquire Capability [result]`, or `react release Capability [parameter N]`",
