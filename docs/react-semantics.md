@@ -109,9 +109,11 @@ call during render is a `render-effect` error. This is effect tracking for the
 synchronous action invocation. Source phase analysis does not infer a scheduler;
 the explicit bounded projection below models aggregate pending and interruption
 without claiming priority lanes or a concrete host schedule.
-Transitive `const` aliases are resolved. Imported, reassigned, member-based, or
-otherwise opaque actions produce `unknown-transition-action` rather than losing
-their capabilities silently.
+Transitive `const` aliases are resolved. Program analysis additionally resolves
+write-screened named, barrel, default, and namespace imports. Their nested calls
+use the declaration module's effect contracts. Reassigned, unresolved-member,
+dynamic, and otherwise opaque actions produce `unknown-transition-action`
+rather than losing their capabilities silently.
 
 Within an inline or immutable component-local JSX event callback, Uneffect also
 tracks the lexical async boundary of recognized Transition Actions. A direct

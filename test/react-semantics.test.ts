@@ -685,6 +685,47 @@ describe("React Function Component semantics", () => {
     ]);
   });
 
+  it("analyzes imported transition actions in their declaration environment", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-transition-imports-"));
+    const callbacksFile = join(directory, "callbacks.ts"), appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(callbacksFile, `
+        /* uneffect: effect RemoteTransition */ declare function auditTransition(): void
+        function fetchRemote() { auditTransition(); fetch("/remote") }
+        export function remoteAction() { fetchRemote() }
+        export let unstableAction = () => auditTransition()
+        unstableAction = () => console.log("changed")
+      `);
+      writeFileSync(appFile, `
+        import { startTransition, useEffect } from "react"
+        import { remoteAction, unstableAction } from "./callbacks.js"
+        declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
+        /* uneffect: react component */
+        function Panel() {
+          useEffect(() => { startTransition(remoteAction) }, [])
+          return <button onClick={() => {
+            startTransition(remoteAction)
+            startTransition(unstableAction)
+          }} />
+        }
+      `);
+      const program = ts.createProgram([callbacksFile, appFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+        expect.objectContaining({ phase: "passive-effect", effects: ["RemoteTransition", "Fetch"] }),
+        expect.objectContaining({ phase: "event", effects: ["RemoteTransition", "Fetch"] }),
+      ]));
+      expect(result.diagnostics).toEqual([
+        expect.objectContaining({ kind: "unknown-transition-action", phase: "event", operation: "unstableAction" }),
+      ]);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("requires state updates after await to re-enter a Transition", () => {
     const result = analyzeReactSemantics("async-transitions.tsx", `
       import React, { startTransition, useState, useTransition } from "react"
