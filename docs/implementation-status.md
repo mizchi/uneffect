@@ -73,7 +73,10 @@ same property is proved for arbitrary TypeScript.
   their temporal actions and invariant predicates. Supported forms include
   scalar and nested-record updates, selected native Set/Map operations,
   conditionals, scalar switch fallthrough and direct return/throw entries,
-  bounded literal loops, and acyclic symbol-resolved helpers. The
+  bounded ascending loops, finite numeric/boolean literal `for...of` loops, and
+  acyclic symbol-resolved helpers. Finite loops are expanded into the same
+  completion sequence as straight-line code, so an early return suppresses
+  later iterations while a surrounding `finally` still runs. The
   action-control subset keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
   their shared boundary. Post-try statements run only on the remaining normal
@@ -91,7 +94,8 @@ same property is proved for arbitrary TypeScript.
   throws may expose fields present on every joined branch through catch-local
   property reads. Missing/dynamic object fields, effectful or unresolved return
   calls, string/null payloads, other
-  abrupt finally forms, labels, and arbitrary exception-aware CFGs remain
+  abrupt finally forms, dynamic/spread/destructured/`for await` iteration,
+  labels, and arbitrary exception-aware CFGs remain
   unsupported. The opt-in Z3 validator proves equivalent boolean guards and
   integer updates when their normalized syntax differs.
 - Evidence artifacts bind source/model inputs, configuration, tool versions,

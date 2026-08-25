@@ -853,6 +853,66 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
+  it("unrolls finite for-of literals through return and finally completion", () => {
+    const source = `/* uneffect:
+      state value: int
+      state cleanup: int
+      state stop: int
+      init value = 0
+      init cleanup = 0
+      init stop = 0
+      action addUntil: value' = stop === 1 ? value + 1 : value + 1 + 2, cleanup' = stop === 1 ? cleanup + 1 : cleanup + 1 + 1
+    */
+      interface Runtime { value: number; cleanup: number; stop: number }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action addUntil */
+      export function addUntil(runtime: Runtime) {
+        for (const amount of [1, 2] as const) {
+          try {
+            runtime.value += amount
+            if (runtime.stop === amount) return
+          } finally {
+            runtime.cleanup++
+          }
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("for-of.ts", source, "counter", parseSpec("for-of.ts", source).temporal)).toEqual([]);
+
+    const dynamic = source.replace("[1, 2] as const", "runtime.values");
+    expect(validateRefinementActionBodies("dynamic-for-of.ts", dynamic, "counter", parseSpec("dynamic-for-of.ts", dynamic).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addUntil" }),
+    );
+
+    const spread = source.replace("[1, 2] as const", "[1, ...amounts] as const");
+    expect(validateRefinementActionBodies("spread-for-of.ts", spread, "counter", parseSpec("spread-for-of.ts", spread).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addUntil" }),
+    );
+  });
+
+  it("propagates early return while unrolling a classic finite for loop", () => {
+    const source = `/* uneffect:
+      state value: int
+      state stop: bool
+      init value = 0
+      init stop = false
+      action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1
+    */
+      interface Runtime { value: number; stop: boolean }
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: Runtime) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: Runtime) { return runtime }
+      /* uneffect: refinement counter@1 action addAtMostTwo */
+      export function addAtMostTwo(runtime: Runtime) {
+        for (let index = 0; index < 2; index++) {
+          runtime.value++
+          if (runtime.stop) return
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("returning-for.ts", source, "counter", parseSpec("returning-for.ts", source).temporal)).toEqual([]);
+  });
+
   it("inlines acyclic same-file action helpers and rejects recursion", () => {
     const model = `/* uneffect:
       state value: int

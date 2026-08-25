@@ -74,6 +74,7 @@ documentation are all updated.
 - [x] Flatten transparent JSX/React Fragments and multiple direct component/boundary children into a Program-resolved Suspense tree, with one-suspension fallback ownership checked by Quint.
 - [x] Track named/default/namespace React `use(thenable)` through direct and cross-file custom-Hook calls, promote only TypeChecker-proven callable-`then` inputs, and optionally restrict Suspense-tree traces to causally supported leaves.
 - [x] Track values thrown during opted-in component/custom-Hook render, classify callable-`then` values separately from ordinary errors with Program types, and use proven thrown thenables as Suspense-tree causes.
+- [x] Unroll bounded numeric/boolean literal `for...of` loops into the exception-aware refinement completion flow, including early return and mandatory `finally`, and fix classic bounded `for` loops to preserve abrupt completion.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

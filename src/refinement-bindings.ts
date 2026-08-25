@@ -893,6 +893,58 @@ function validateRefinementActionBodiesInSource(
     const asBlock = (statement: ts.Statement | undefined): ts.Block => !statement
       ? ts.factory.createBlock([], true)
       : ts.isBlock(statement) ? statement : ts.factory.createBlock([statement], true);
+    const substituteFiniteLoopBinding = (
+      statement: ts.Statement,
+      binding: string,
+      replacement: ts.Expression,
+    ): ts.Statement | undefined => {
+      let unsupported = false;
+      const statementStart = statement.getStart(source);
+      const replacements: Array<{ start: number; end: number }> = [];
+      const pending: ts.Node[] = [statement];
+      while (pending.length > 0) {
+        const node = pending.pop()!;
+        if (ts.isIdentifier(node) && node.text === binding) {
+          const parent = node.parent;
+          const shadowsBinding = ((ts.isVariableDeclaration(parent) || ts.isParameter(parent) || ts.isBindingElement(parent))
+            && parent.name === node);
+          const isPropertyName = (ts.isPropertyAccessExpression(parent) && parent.name === node)
+            || ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) && parent.name === node)
+            || (ts.isLabeledStatement(parent) && parent.label === node)
+            || ((ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) && parent.label === node);
+          if (shadowsBinding || (ts.isShorthandPropertyAssignment(parent) && parent.name === node)) unsupported = true;
+          else if (!isPropertyName) replacements.push({
+            start: node.getStart(source) - statementStart,
+            end: node.getEnd() - statementStart,
+          });
+        }
+        for (const child of node.getChildren(source)) pending.push(child);
+      }
+      if (unsupported) return undefined;
+      const printedReplacement = ts.createPrinter().printNode(ts.EmitHint.Expression, replacement, source);
+      let expandedText = statement.getText(source);
+      replacements.sort((left, right) => right.start - left.start);
+      for (const location of replacements) {
+        expandedText = `${expandedText.slice(0, location.start)}${printedReplacement}${expandedText.slice(location.end)}`;
+      }
+      const parsed = ts.createSourceFile("__uneffect_finite_loop.ts", expandedText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      return parsed.statements.length === 1 ? parsed.statements[0] : undefined;
+    };
+    const expandFiniteLoop = (
+      statement: ts.Statement,
+      binding: string,
+      values: readonly ts.Expression[],
+    ): ts.Block | undefined => {
+      const statements: ts.Statement[] = [];
+      for (const value of values) {
+        for (const item of asBlock(statement).statements) {
+          const expanded = substituteFiniteLoopBinding(item, binding, value);
+          if (!expanded) return undefined;
+          statements.push(expanded);
+        }
+      }
+      return ts.factory.createBlock(statements, true);
+    };
     const isUntrackedPrimitiveThrownValue = (expression: ts.Expression): boolean => {
       const value = unwrap(expression);
       return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
@@ -989,12 +1041,37 @@ function validateRefinementActionBodiesInSource(
           && increment.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(increment.operand) && increment.operand.text === loopName;
         if (!loopName || start === undefined || end === undefined || !incrementsLoop
           || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 64) return undefined;
-        for (let value = start; value < end; value++) {
-          const iterationSubstitutions = new Map(substitutions);
-          iterationSubstitutions.set(loopName, ts.factory.createNumericLiteral(value));
-          if (!collect(asBlock(statement.statement), receiver, runtimeClass, iterationSubstitutions, updates, new Map(localValues), activeCalls, false)) return undefined;
-        }
-        continue;
+        const expanded = expandFiniteLoop(
+          statement.statement,
+          loopName,
+          Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
+        );
+        if (!expanded) return undefined;
+        return collect(
+          ts.factory.createBlock([...expanded.statements, ...body.statements.slice(statementIndex + 1)], true),
+          receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
+          allowTerminalReturn, allowTerminalThrow,
+        );
+      }
+      if (ts.isForOfStatement(statement)) {
+        const declaration = ts.isVariableDeclarationList(statement.initializer)
+          && (statement.initializer.flags & ts.NodeFlags.Const) !== 0
+          && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
+        const loopName = declaration && ts.isIdentifier(declaration.name) && !declaration.initializer
+          ? declaration.name.text : undefined;
+        const iterable = ts.isAsExpression(statement.expression) ? statement.expression.expression : statement.expression;
+        const values = ts.isArrayLiteralExpression(iterable) && iterable.elements.length <= 64
+          && iterable.elements.every((element): element is ts.Expression => !ts.isSpreadElement(element)
+            && (ts.isNumericLiteral(element) || element.kind === ts.SyntaxKind.TrueKeyword || element.kind === ts.SyntaxKind.FalseKeyword))
+          ? [...iterable.elements] : undefined;
+        if (statement.awaitModifier || !loopName || !values) return undefined;
+        const expanded = expandFiniteLoop(statement.statement, loopName, values);
+        if (!expanded) return undefined;
+        return collect(
+          ts.factory.createBlock([...expanded.statements, ...body.statements.slice(statementIndex + 1)], true),
+          receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
+          allowTerminalReturn, allowTerminalThrow,
+        );
       }
       if (ts.isTryStatement(statement)) {
         let residualCompletion: ActionCompletion = "normal";

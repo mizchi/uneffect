@@ -101,6 +101,9 @@ const retryAttemptSlotFile = "examples/dogfood/retry-slots.ts";
 const leaseAuthorityFile = "examples/dogfood/lease-authority-refinement.ts";
 const leaseAuthoritySource = readFileSync(leaseAuthorityFile, "utf8");
 const leaseAuthoritySpec = parseSpec(leaseAuthorityFile, leaseAuthoritySource).temporal;
+const finiteTelemetryBatchFile = "examples/dogfood/finite-telemetry-batch.ts";
+const finiteTelemetryBatchSource = readFileSync(finiteTelemetryBatchFile, "utf8");
+const finiteTelemetryBatchSpec = parseSpec(finiteTelemetryBatchFile, finiteTelemetryBatchSource).temporal;
 const leaseAuthorityProgram = ts.createProgram([leaseAuthorityFile], {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.NodeNext,
@@ -922,6 +925,15 @@ describe("typed-array static verification", () => {
     validateRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
     validateRefinementInvariantBodies(fileName, source, "telemetryRouting", temporal);
     validateRefinementStateProjection(fileName, source, "telemetryRouting", temporal);
+  }, { time: 500, iterations: 20 });
+
+  bench("unroll finite for-of refinement with abrupt cleanup", () => {
+    validateRefinementActionBodies(
+      finiteTelemetryBatchFile,
+      finiteTelemetryBatchSource,
+      "telemetryBatch",
+      finiteTelemetryBatchSpec,
+    );
   }, { time: 500, iterations: 20 });
 
   bench("join catch return and rethrow completions", () => {

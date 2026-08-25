@@ -17,6 +17,25 @@ import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } fr
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("refines a finite telemetry batch across early return and per-sink finalization", async () => {
+    const fileName = "examples/dogfood/finite-telemetry-batch.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const program = ts.createProgram([fileName], {
+      target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    });
+    expect(validateRefinementBindingCoverage(fileName, source, "telemetryBatch", temporal)).toEqual([]);
+    expect(validateRefinementStateProjectionInProgram(program, fileName, "telemetryBatch", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesInProgramWithZ3(program, fileName, "telemetryBatch", temporal)).toEqual([]);
+    expect(await validateRefinementInvariantBodiesInProgramWithZ3(program, fileName, "telemetryBatch", temporal)).toEqual([]);
+
+    const missingFinalization = source.replace("runtime.finalized++;", "// missing finalization");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinalization, "telemetryBatch", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "sendBatch", target: "finalized" }),
+    );
+  });
+
   it("accepts grouped resource-release cases and catches an uncleared exit", () => {
     const fileName = "examples/dogfood/grouped-resource-release.ts";
     const source = readFileSync(fileName, "utf8");

@@ -234,6 +234,13 @@ coverage measured 0.3583 ms mean over 1,396 samples (2.10% RME). This measures
 annotation extraction and structural action/invariant set comparison only; it
 does not measure or claim semantic implementation-to-model refinement.
 
+On 2026-08-25, structurally validating the three-element finite telemetry
+`for...of` dogfood with an early-return condition and per-iteration `finally`
+measured 0.2932 ms mean over 1,706 samples (1.06% RME). This includes parsing,
+finite AST expansion, completion joins, and action comparison. It excludes the
+Program-backed TypeChecker and Z3 equivalence validator, and is not a claim
+about arbitrary or dynamically sized loops.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

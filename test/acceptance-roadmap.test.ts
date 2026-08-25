@@ -16,6 +16,40 @@ function futureApi(name: string): FutureApi {
 const files = (entries: Record<string, string>) => entries;
 
 describe("Uneffect end-to-end acceptance roadmap", () => {
+  it("refines finite TypeScript iteration with abrupt completion and finally cleanup", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state total: int
+       * state settled: int
+       * state stop: int
+       * init total = 0
+       * init settled = 0
+       * init stop = 0
+       * action applyBatch: total' = stop === 1 ? total + 1 : stop === 2 ? total + 1 + 2 : total + 1 + 2 + 3, settled' = stop === 1 ? settled + 1 : stop === 2 ? settled + 1 + 1 : settled + 1 + 1 + 1
+       */
+      interface Runtime { total: number; settled: number; stop: number }
+      /* uneffect: refinement batch@1 create */
+      export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement batch@1 observe */
+      export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement batch@1 action applyBatch */
+      export function applyBatch(runtime: Runtime) {
+        for (const delta of [1, 2, 3] as const) {
+          try {
+            runtime.total += delta
+            if (runtime.stop === delta) return
+          } finally {
+            runtime.settled++
+          }
+        }
+      }
+    `;
+    const specification = parseSpecification("finite-batch.ts", source) as { temporal: unknown };
+    expect(validateActions("finite-batch.ts", source, "batch", specification.temporal)).toEqual([]);
+  });
+
   it("generates shrinking property tests from refined TypeScript boundaries and replays counterexamples", async () => {
     const generatePropertyTests = futureApi("generateUneffectPropertyTests");
     const result = await generatePropertyTests({ files: files({

@@ -145,6 +145,14 @@ execution as constraint-preserving joint candidates.
 Model-checker counterexamples can be replayed through explicit TypeScript
 refinement adapters; arbitrary application bindings are not inferred.
 
+The refinement acceptance corpus also expands `for (const value of [finite
+literals] as const)` and the existing bounded ascending `for` form before
+running the common return/throw/catch/finally completion analysis. Consequently,
+an early return stops later iterations while the current iteration's `finally`
+still contributes its state update. Dynamic iterables, spreads, destructuring,
+shadowed loop bindings, `for await`, and more than 64 elements fail closed as
+unsupported rather than being treated as a proof.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared
