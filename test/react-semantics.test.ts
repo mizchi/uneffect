@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactSemantics, analyzeReactSemanticsInProgram } from "../src/react-semantics.js";
+import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -816,6 +816,27 @@ describe("React Function Component semantics", () => {
       expect.stringMatching(/^passive-effect@/),
       expect.stringMatching(/^ref-callback@/),
     ]);
+  });
+
+  it("generates an instance-preserving Strict Mode Quint lifecycle model", () => {
+    const result = analyzeReactSemantics("model.tsx", `
+      import { useEffect } from "react"
+      declare namespace JSX { interface IntrinsicElements { div: { ref?: unknown } } }
+      /* uneffect: react component */
+      function App() {
+        useEffect(() => { console.log("setup"); return () => console.log("cleanup") }, [])
+        return <div ref={() => { console.log("attach"); return () => console.log("detach") }} />
+      }
+    `);
+    const quint = generateReactLifecycleQuint("react_lifecycle", result.components[0]!);
+    expect(quint).toContain("module react_lifecycle");
+    expect(quint).toContain("action cleanup_0_strict_replay");
+    expect(quint).toContain("action setup_1_strict_replay");
+    expect(quint).toContain("cleanup_0 <= setup_0");
+    expect(quint).toContain("val reactLifecycleSafe");
+    for (const effect of result.components[0]!.replay.strictModeDevelopment.effects) {
+      expect(quint).toContain(`instance: ${effect.instance}`);
+    }
   });
 
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {

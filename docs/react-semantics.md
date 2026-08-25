@@ -222,6 +222,16 @@ TypeScript-resolved cross-file composition. `uneffect check` computes the
 Program result once and includes the same diagnostics. The analysis is
 metadata-only and adds no runtime dependency.
 
+`generateReactLifecycleQuint(moduleName, component, scenario)` projects either
+the `production` or `strictModeDevelopment` replay into reviewable Quint. It
+uses one setup/cleanup counter pair per lifecycle instance. Render must finish
+before initial setup, while different commit instances remain unordered. The
+`reactLifecycleSafe` invariant requires cleanup never to lead setup, setup to
+lead cleanup by at most one, and both counters to stay within the selected
+scenario's bounds. A test-only early-cleanup transition demonstrates that the
+invariant is load-bearing under the Quint simulator. This is bounded lifecycle
+evidence, not a proof of React's scheduler or host commit order.
+
 ## Current limits
 
 This is a tested initial fragment, not a complete React semantics:
@@ -248,7 +258,8 @@ This is a tested initial fragment, not a complete React semantics:
 - Suspense, transitions, Offscreen trees, server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
-- no Quint lifecycle model or Z3 invariant projection is generated yet.
+- React lifecycle replay has a Quint safety projection; Z3 projection and
+  concurrent scheduler refinement are not generated yet.
 
 Unsupported behavior must not be interpreted as verified purity. The phase
 summary only claims coverage for the constructs listed above.

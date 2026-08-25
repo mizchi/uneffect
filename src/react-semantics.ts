@@ -1075,6 +1075,61 @@ export function analyzeReactSemantics(fileName: string, text: string): ReactSema
   return analyzeReactSource(source).result;
 }
 
+export type ReactLifecycleScenario = keyof ReactReplayModel;
+
+/** Generate an instance-preserving bounded lifecycle model without imposing an order between commit instances. */
+export function generateReactLifecycleQuint(
+  moduleName: string,
+  component: ReactComponentSummary,
+  scenario: ReactLifecycleScenario = "strictModeDevelopment",
+  options: { allowCleanupBeforeSetup?: boolean } = {},
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  const replay = component.replay[scenario];
+  const strict = scenario === "strictModeDevelopment";
+  const variables = ["render_count", ...replay.effects.flatMap((_effect, index) => [`setup_${index}`, `cleanup_${index}`])];
+  const lines = [`module ${moduleName} {`, ...variables.map((name) => `  var ${name}: int`), "", "  action init = all {"];
+  for (const name of variables) lines.push(`    ${name}' = 0,`);
+  lines.push("  }");
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comments: readonly string[] = []): void => {
+    lines.push("", ...comments.map((comment) => `  // ${comment.replaceAll(/[\r\n]/gu, " ")}`), `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("render", [`render_count < ${replay.renderInvocations}`], new Map([["render_count", "render_count + 1"]]));
+  replay.effects.forEach((effect, index) => {
+    const comment = [
+      `instance: ${effect.instance}`,
+      `setup effects: ${effect.setupEffects.join(" | ") || "none"}`,
+      `cleanup effects: ${effect.cleanupEffects.join(" | ") || "none"}`,
+    ];
+    action(`setup_${index}_initial`, [`render_count == ${replay.renderInvocations}`, `setup_${index} == 0`, `cleanup_${index} == 0`], new Map([[`setup_${index}`, "1"]]), comment);
+    if (strict) {
+      action(`cleanup_${index}_strict_replay`, [`setup_${index} == 1`, `cleanup_${index} == 0`], new Map([[`cleanup_${index}`, "1"]]));
+      action(`setup_${index}_strict_replay`, [`setup_${index} == 1`, `cleanup_${index} == 1`], new Map([[`setup_${index}`, "2"]]));
+    }
+    if (options.allowCleanupBeforeSetup) action(`cleanup_${index}_before_setup`, [`setup_${index} == 0`, `cleanup_${index} == 0`], new Map([[`cleanup_${index}`, "1"]]));
+  });
+  lines.push("", "  action step = any {", "    render,");
+  replay.effects.forEach((_effect, index) => {
+    lines.push(`    setup_${index}_initial,`);
+    if (strict) lines.push(`    cleanup_${index}_strict_replay,`, `    setup_${index}_strict_replay,`);
+    if (options.allowCleanupBeforeSetup) lines.push(`    cleanup_${index}_before_setup,`);
+  });
+  lines.push("  }");
+  const bounds = [`0 <= render_count`, `render_count <= ${replay.renderInvocations}`];
+  replay.effects.forEach((_effect, index) => bounds.push(
+    `0 <= cleanup_${index}`,
+    `cleanup_${index} <= setup_${index}`,
+    `setup_${index} <= cleanup_${index} + 1`,
+    `setup_${index} <= ${strict ? 2 : 1}`,
+    `cleanup_${index} <= ${strict ? 1 : 0}`,
+  ));
+  lines.push("", `  val reactLifecycleSafe = ${bounds.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
 function declarationKey(node: AnnotatableFunction): string {
   return `${node.getSourceFile().fileName}:${componentName(node)}`;
 }

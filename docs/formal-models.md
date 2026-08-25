@@ -158,6 +158,18 @@ establish examples only; they are not a proof for arbitrary arrays.
 
 Z3 checks sequential preconditions, postconditions, and loop invariants. It is not used to approximate temporal interleavings. The current prototype proves partial correctness over a restricted integer language and does not prove termination.
 
+## React lifecycle projection
+
+An opted-in React component's production or development Strict Mode replay can
+be passed to `generateReactLifecycleQuint`. The generated model retains every
+layout/passive Effect and inline callback-ref instance with separate setup and
+cleanup counters. Initial setup is enabled only after the modeled render count
+is complete, but different commit instances are intentionally unordered.
+`reactLifecycleSafe` checks `cleanup <= setup <= cleanup + 1` and the selected
+scenario's counter bounds. The formal test tier runs a positive model and a
+negative early-cleanup transition, which Quint must reject. This does not model
+Suspense, Offscreen, hydration, or the browser scheduler.
+
 ## Verification ledger
 
 | Claim | Source of truth | Machine status | Regression lock |

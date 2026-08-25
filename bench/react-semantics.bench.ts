@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -41,6 +41,7 @@ host.getSourceFile = (fileName, languageVersion, onError, fresh) => fileName ===
   ? ts.createSourceFile(fileName, source, languageVersion, true, ts.ScriptKind.TSX)
   : originalGetSourceFile(fileName, languageVersion, onError, fresh);
 const program = ts.createProgram(["catalog.tsx"], compilerOptions, host);
+const analyzed = analyzeReactSemantics("catalog.tsx", source);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -53,5 +54,9 @@ describe("React semantic analysis", () => {
 
   bench("classify one reused TypeScript Program", () => {
     analyzeReactProgram(program);
+  }, { time: 500, iterations: 20 });
+
+  bench("generate Strict Mode Quint for 128 summaries", () => {
+    analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`component_${index}`, component));
   }, { time: 500, iterations: 20 });
 });

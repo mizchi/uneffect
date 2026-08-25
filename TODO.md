@@ -46,6 +46,7 @@ documentation are all updated.
 - [x] Track destructured props, `useState`/`useReducer` snapshots, `useContext` values, and transitive local `const` aliases as immutable render regions, including assignment, update, and delete writes.
 - [x] Reject direct `useRef` `.current` access during replayable render, and project inline callback refs as commit setup/returned-cleanup phases with resource matching and development Strict Mode replay.
 - [x] Preserve individual Effect/callback-ref lifecycle instances, including repeated and transitive cross-module custom-Hook call paths, so replay entries associate each setup with its own cleanup effects.
+- [x] Generate reviewable production/development-Strict-Mode Quint lifecycle models with per-instance setup/cleanup counters and a load-bearing early-cleanup invariant.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

@@ -173,6 +173,10 @@ same property is proved for arbitrary TypeScript.
   Effect/callback-ref setup/cleanup cycles without claiming total host
   scheduling order. Source-derived instance paths preserve each setup's own
   cleanup effects through repeated and transitive custom-Hook calls.
+- The replay IR generates reviewable production or development Strict Mode
+  Quint with per-instance setup/cleanup counters. `reactLifecycleSafe` rejects
+  cleanup-before-setup and counter-bound violations without imposing an order
+  between different commit instances.
 - Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common
@@ -181,7 +185,7 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  Suspense/concurrent lifecycle modeling, server components, and Quint/Z3
+  Suspense/concurrent lifecycle modeling, server components, and Z3 lifecycle
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
   calculation, custom subscription setup/cleanup, an identity-checked callback

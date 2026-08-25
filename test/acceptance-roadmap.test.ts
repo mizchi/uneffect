@@ -65,6 +65,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
 
   it("separates replayable React render from event, Effect, and cleanup capabilities", () => {
     const analyzeReact = futureApi("analyzeReactSemantics");
+    const generateReactLifecycle = futureApi("generateReactLifecycleQuint");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -98,6 +99,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));
+    const lifecycleQuint = generateReactLifecycle("feed_lifecycle", result.components[0]) as string;
+    expect(lifecycleQuint).toContain("val reactLifecycleSafe");
+    expect(lifecycleQuint).toContain("action cleanup_0_strict_replay");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"
