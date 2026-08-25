@@ -73,7 +73,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useSyncExternalStore } from "react"
+      import { memo, startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useSyncExternalStore } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -111,7 +111,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         }, [topic])
       }
       /* uneffect: react component */
-      export function Feed({ topic, ref }: { topic: string; ref: unknown }) {
+      export const Feed = memo(function Feed({ topic, ref }: { topic: string; ref: unknown }) {
         useTopicStatus()
         useSubscription(topic)
         useImperativeHandle(ref, () => {
@@ -128,13 +128,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
           ref={(node) => { console.log(node); return () => console.log("detach") }}
           onClick={handleClick}
         />
-      }
+      })
       function Legacy() { console.log("not opted in"); return null }
     `) as { diagnostics: unknown[]; components: Array<{ name: string; phases: Array<{ phase: string; effects: string[] }> }> };
     expect(result.diagnostics).toEqual([]);
     expect(result.components.map((component) => component.name)).toEqual(["Feed"]);
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
       expect.objectContaining({ phase: "render", effects: [] }),
+      expect.objectContaining({ phase: "memo-compare", effects: [] }),
       expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
       expect.objectContaining({ phase: "ref-callback", effects: ["Console"] }),
       expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),

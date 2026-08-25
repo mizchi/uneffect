@@ -20,6 +20,11 @@ export function Counter(props: { label: string }) {
 export function useCounterTelemetry() {
   // Hook body and nested built-in Effects receive phase semantics.
 }
+
+/* uneffect: react component */
+export const LegacyInput = memo(forwardRef(function LegacyInput(props, ref) {
+  return <input ref={ref} aria-label={props.label} />
+}))
 ```
 
 Capitalization, JSX return syntax, and `React.FC` alone do not opt a function
@@ -28,11 +33,12 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into twelve phases:
+The analyzer currently projects component work into thirteen phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
 | `render` | Replayable calculation of the next UI value | Must be idempotent and free of observable capabilities |
+| `memo-compare` | Optional `memo` comparison of previous and next props | Must be pure; an unresolved custom comparator fails closed |
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
 | `imperative-handle-method` | Method exposed to a ref consumer by `useImperativeHandle` | Method capabilities are recorded as externally invoked work, not factory work |
 | `external-store-snapshot` | `useSyncExternalStore` client `getSnapshot` read during replayable rendering | Read capabilities are recorded at the specialized boundary |
@@ -48,6 +54,21 @@ The analyzer currently projects component work into twelve phases:
 Creating JSX is a render calculation, not a `DomWrite`. React's later host DOM
 commit is outside the component function. Direct writes through `document` or
 `window` during render are `DomWrite` and are rejected.
+
+A component comment on a variable declaration may wrap one inline function in
+any direct named/default/namespace React `memo` and `forwardRef` chain. The
+wrapper variable remains the component identity for Program-backed imports and
+Suspense edges. An optional `memo` comparator is resolved from an inline,
+module-local, or immutable local callback and analyzed in `memo-compare`;
+observable capabilities or selected non-idempotent host reads produce
+`memo-comparator-effect`, while an opaque
+comparator produces `unknown-memo-comparator`. A comment on any other wrapper
+shape produces `unsupported-react-component-wrapper` rather than silently
+opting out. This follows the purity contract of
+[React `memo`](https://react.dev/reference/react/memo). `forwardRef` remains
+supported for existing code, while React 19 permits `ref` as a prop and marks
+`forwardRef` as no longer necessary in the
+[official reference](https://react.dev/reference/react/forwardRef).
 
 JSX event attributes accept inline callbacks and immutable component-local
 function/arrow callbacks reached through `const` identifier aliases. Their
@@ -423,6 +444,10 @@ This is a tested initial fragment, not a complete React semantics:
 - direct identifier/property calls of annotated custom Hooks resolve through
   named, barrel, namespace, and default imports; element access, dynamically
   selected Hooks, higher-order aliases, and runtime dispatch remain unknown;
+- component wrappers cover direct React `memo`/`forwardRef` chains around one
+  inline function. Referenced/imported component arguments, custom higher-order
+  wrappers, dynamic wrapper selection, custom comparator call-graph effects,
+  and semantic equivalence of comparator results remain unsupported;
 - event extraction covers inline callbacks and immutable component-local
   function/arrow callbacks through `const` aliases. Imported handlers, member
   expressions, callbacks passed through props, and general data flow remain
@@ -462,8 +487,8 @@ summary only claims coverage for the constructs listed above.
 
 ## Dogfood
 
-`examples/dogfood/react-telemetry-dashboard.tsx` combines `useState`, a pure
-`useMemo` calculation, a custom subscription Hook, an identity-checked inline
+`examples/dogfood/react-telemetry-dashboard.tsx` is itself a direct `memo`
+wrapper and combines `useState`, a pure `useMemo` calculation, a custom subscription Hook, an identity-checked inline
 callback ref, matching cleanup, an imperative handle exposing a Fetch method,
 and an inline Fetch event. Its regression test
 removes Effect/ref cleanup, substitutes another resource, removes a dependency,

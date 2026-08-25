@@ -4,7 +4,7 @@ import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
-  export function Item${index}(props: { label: string; active: boolean; ref: unknown }) {
+  export const Item${index} = memo(function Item${index}(props: { label: string; active: boolean; ref: unknown }) {
     const propsSnapshot = props
     const [selection] = useState({ active: propsSnapshot.active })
     const selectionSnapshot = selection
@@ -20,11 +20,11 @@ const components = Array.from({ length: 128 }, (_, index) => `
       ref={() => { const subscription = subscribe(props.label); return () => unsubscribe(subscription) }}
       onClick={handleClick}
     >{props.label}{catalogVersion}{selectionSnapshot.active && preferences.dense}</button>
-  }
+  })
 `).join("\n");
 
 const source = `
-  import { startTransition, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useState, useSyncExternalStore } from "react"
+  import { memo, startTransition, useContext, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useState, useSyncExternalStore } from "react"
   declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown; children?: unknown } } }
   declare const PreferencesContext: object
   interface Subscription { readonly label: string }

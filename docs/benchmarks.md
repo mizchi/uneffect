@@ -89,6 +89,15 @@ body classification, and commit instance make it intentionally larger than the
 external-store-only workload, so the difference is not presented as an
 isolated per-Hook cost.
 
+Wrapping all 128 benchmark components in direct React `memo(function ...)`
+calls, while retaining the imperative handles, measured 59.54 ms for source
+analysis (0.96% RME), 4.15 ms for parse-only (1.35% RME), and 92.92 ms for the
+reused Program (0.61% RME), again with 30 main-path samples. Strict Mode Quint
+generation measured 2.457 ms. The wrapper-aware analyzer now performs owner
+recovery, comparator classification, and Program identity preservation, so
+this replaces the unwrapped imperative-handle run as the current synthetic
+React baseline; it is not an isolated estimate of React's runtime `memo` cost.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

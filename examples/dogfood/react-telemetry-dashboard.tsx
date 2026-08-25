@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { memo, startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -80,7 +80,7 @@ function useTelemetrySubscription(service: string): void {
 }
 
 /* uneffect: react component */
-export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
+export const TelemetryDashboard = memo(function TelemetryDashboard(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
   const [showFailures, setShowFailures] = useState(false);
   const online = useTelemetryOnlineStatus();
   useTelemetryStyles();
@@ -108,4 +108,4 @@ export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[
     {online ? visibleRows.length : 0}
     <button onClick={refresh}>refresh</button>
   </output>;
-}
+});

@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "event" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
+export type ReactPhase = "render" | "memo-compare" | "event" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
@@ -18,6 +18,9 @@ export type ReactDiagnosticKind =
   | "uncached-external-store-snapshot"
   | "missing-external-store-cleanup"
   | "unknown-imperative-handle-callback"
+  | "memo-comparator-effect"
+  | "unknown-memo-comparator"
+  | "unsupported-react-component-wrapper"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -268,7 +271,46 @@ function commitInstance(
   };
 }
 
+type ReactComponentWrapperKind = "memo" | "forwardRef";
+
+function reactComponentWrapperKind(source: ts.SourceFile, expression: ts.LeftHandSideExpression): ReactComponentWrapperKind | undefined {
+  let imported: string | undefined;
+  if (ts.isIdentifier(expression)) imported = reactImportNames(source).get(expression.text);
+  else if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression)
+    && reactNamespaceImportNames(source).has(expression.expression.text)) imported = expression.name.text;
+  return imported === "memo" || imported === "forwardRef" ? imported : undefined;
+}
+
+function wrappedVariableDeclaration(node: AnnotatableFunction): ts.VariableDeclaration | undefined {
+  const source = node.getSourceFile();
+  let current: ts.Node = node;
+  while (ts.isCallExpression(current.parent) && current.parent.arguments[0] === current
+    && reactComponentWrapperKind(source, current.parent.expression)) current = current.parent;
+  return ts.isVariableDeclaration(current.parent) && current.parent.initializer === current ? current.parent : undefined;
+}
+
+function componentWrapperCalls(node: AnnotatableFunction): ts.CallExpression[] {
+  const source = node.getSourceFile();
+  const calls: ts.CallExpression[] = [];
+  let current: ts.Node = node;
+  while (ts.isCallExpression(current.parent) && current.parent.arguments[0] === current
+    && reactComponentWrapperKind(source, current.parent.expression)) {
+    calls.push(current.parent);
+    current = current.parent;
+  }
+  return calls;
+}
+
+function directWrappedComponent(initializer: ts.Expression, source: ts.SourceFile): ComponentNode | undefined {
+  const expression = unwrapExpression(initializer);
+  if ((ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) && expression.body) return expression as ComponentNode;
+  if (!ts.isCallExpression(expression) || !reactComponentWrapperKind(source, expression.expression) || !expression.arguments[0]) return undefined;
+  return directWrappedComponent(expression.arguments[0], source);
+}
+
 function ownerNode(node: AnnotatableFunction): ts.Node {
+  const wrapped = wrappedVariableDeclaration(node);
+  if (wrapped && ts.isVariableDeclarationList(wrapped.parent) && ts.isVariableStatement(wrapped.parent.parent)) return wrapped.parent.parent;
   return (ts.isArrowFunction(node) || ts.isFunctionExpression(node))
     && ts.isVariableDeclaration(node.parent)
     && ts.isVariableDeclarationList(node.parent.parent)
@@ -284,6 +326,8 @@ function leadingText(source: ts.SourceFile, node: AnnotatableFunction): string {
 
 function componentName(node: AnnotatableFunction): string {
   if (ts.isFunctionDeclaration(node) && node.name) return node.name.text;
+  const wrapped = wrappedVariableDeclaration(node);
+  if (wrapped) return wrapped.name.getText(node.getSourceFile());
   if ((ts.isFunctionExpression(node) || ts.isArrowFunction(node)) && ts.isVariableDeclaration(node.parent)) {
     return node.parent.name.getText(node.getSourceFile());
   }
@@ -961,6 +1005,23 @@ function effectsForCall(call: ts.CallExpression, declared: ReadonlyMap<string, s
   return name ? declared.get(name) ?? [] : [];
 }
 
+function knownNonIdempotentOperation(call: ts.CallExpression): string | undefined {
+  const operation = callName(call);
+  return operation === "Date.now" || operation === "Math.random" || operation === "crypto.randomUUID" || operation === "performance.now"
+    ? operation : undefined;
+}
+
+function directNonIdempotentCalls(node: ts.Node): ts.CallExpression[] {
+  const calls: ts.CallExpression[] = [];
+  const visit = (current: ts.Node): void => {
+    if (current !== node && ts.isFunctionLike(current)) return;
+    if (ts.isCallExpression(current) && knownNonIdempotentOperation(current)) calls.push(current);
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return calls;
+}
+
 function directEffects(
   node: ts.Node,
   declared: ReadonlyMap<string, string[]>,
@@ -1366,6 +1427,20 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     ts.forEachChild(node, collect);
   };
   collect(source);
+  for (const statement of source.statements) {
+    if (!ts.isVariableStatement(statement)
+      || !extractAnnotations(source.text.slice(statement.getFullStart(), statement.getStart(source)), "react").some((value) => value.trim() === "component")) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (declaration.initializer && directWrappedComponent(declaration.initializer, source)) continue;
+      const name = declaration.name.getText(source);
+      diagnostics.push({
+        fileName, component: name, functionName: name, kind: "unsupported-react-component-wrapper", phase: "render", severity: "error",
+        line: source.getLineAndCharacterOfPosition(declaration.getStart(source)).line + 1,
+        operation: declaration.initializer?.getText(source),
+        message: `${name} is not a direct function or a direct React memo/forwardRef wrapper around one`,
+      });
+    }
+  }
   for (const node of annotatable) for (const value of extractAnnotations(leadingText(source, node), "react")) {
     if (validReactAnnotation(value, node)) continue;
     const name = componentName(node);
@@ -1692,6 +1767,33 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const callableCallbacks = new Map([...sourceCallbacks(source), ...eventCallbacks]);
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
+    for (const wrapper of componentWrapperCalls(component)) {
+      if (reactComponentWrapperKind(source, wrapper.expression) !== "memo") continue;
+      addPhase("memo-compare");
+      const comparatorArgument = wrapper.arguments[1];
+      if (!comparatorArgument) continue;
+      const comparator = callbackArgument(comparatorArgument, callableCallbacks);
+      if (!comparator) {
+        report(comparatorArgument, {
+          kind: "unknown-memo-comparator", phase: "memo-compare", operation: comparatorArgument.getText(source),
+          message: "React memo comparator is not an inline, module-local, or immutable component-local callback",
+        });
+        continue;
+      }
+      const effects = directEffects(comparator.body, declared, transitionCallbacks, eventCallbacks);
+      addPhase("memo-compare", effects);
+      for (const effect of effects) report(comparatorArgument, {
+        kind: "memo-comparator-effect", phase: "memo-compare", effect,
+        message: `${effect} is observable while React compares previous and next props`,
+      });
+      for (const call of directNonIdempotentCalls(comparator.body)) {
+        const operation = knownNonIdempotentOperation(call)!;
+        report(call, {
+          kind: "memo-comparator-effect", phase: "memo-compare", operation,
+          message: `${operation} is not idempotent while React compares previous and next props`,
+        });
+      }
+    }
     const visitRender = (node: ts.Node): void => {
       if (node !== component.body && ts.isFunctionLike(node)) return;
       if (ts.isThrowStatement(node) && node.expression) suspensions.push({
@@ -1953,8 +2055,8 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           report(node, { kind: "unknown-hook-summary", phase: "render", hook: called, message: `${called} has no resolved /* uneffect: react hook */ summary` });
           return;
         }
-        const operation = called;
-        if (operation === "Date.now" || operation === "Math.random" || operation === "crypto.randomUUID" || operation === "performance.now") {
+        const operation = knownNonIdempotentOperation(node);
+        if (operation) {
           report(node, { kind: "non-idempotent-render", phase: "render", operation, message: `${operation} is not idempotent during render` });
         }
         const effects = effectsForCall(node, declared);
@@ -2636,8 +2738,11 @@ function functionDeclarationForSymbol(
   if (target !== symbol) return functionDeclarationForSymbol(checker, target, seen);
   for (const declaration of target.declarations ?? []) {
     if (ts.isFunctionDeclaration(declaration) || ts.isFunctionExpression(declaration) || ts.isArrowFunction(declaration)) return declaration;
-    if (ts.isVariableDeclaration(declaration) && declaration.initializer
-      && (ts.isFunctionExpression(declaration.initializer) || ts.isArrowFunction(declaration.initializer))) return declaration.initializer;
+    if (ts.isVariableDeclaration(declaration) && declaration.initializer) {
+      if (ts.isFunctionExpression(declaration.initializer) || ts.isArrowFunction(declaration.initializer)) return declaration.initializer;
+      const wrapped = directWrappedComponent(declaration.initializer, declaration.getSourceFile());
+      if (wrapped) return wrapped;
+    }
     if (ts.isExportAssignment(declaration)) {
       const resolved = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(declaration.expression), seen);
       if (resolved) return resolved;

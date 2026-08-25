@@ -30,7 +30,8 @@ contract layer for existing TypeScript:
 12. Opted-in React function components separate replayable render from event,
     Effect setup, external-store reads/subscriptions, imperative-handle
     factories/exposed methods, and cleanup capabilities without changing
-    emitted code; annotated custom Hooks compose through resolved imports.
+    emitted code; annotated custom Hooks compose through resolved imports, and
+    direct React memo/forwardRef wrappers preserve component identity.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a

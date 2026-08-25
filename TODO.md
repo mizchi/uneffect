@@ -46,6 +46,7 @@ documentation are all updated.
 - [x] Resolve local `useEffectEvent` callbacks and transitive `const` aliases into insertion/layout/passive setup and cleanup effects; reject render/JSX-event/transition calls and dependency-array entries.
 - [x] Split `useSyncExternalStore` into client/server snapshot and commit subscription phases, resolve inline/module/local callbacks, carry subscription resource cleanup into replay/Quint, and reject opaque or obviously uncached snapshots.
 - [x] Split named/default/namespace `useImperativeHandle` factories from externally invoked handle methods, compose both through custom Hooks, check dependencies and Hook order, and project factory lifecycles into replay/Quint.
+- [x] Recognize comment-opted direct React `memo`/`forwardRef` component wrapper chains, preserve the wrapper variable identity, separate memo comparator work, and fail closed on effectful/opaque comparators or unsupported wrapper shapes.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.

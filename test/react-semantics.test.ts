@@ -28,6 +28,107 @@ describe("React Function Component semantics", () => {
     ]);
   });
 
+  it("analyzes components wrapped directly in React memo and forwardRef", () => {
+    const result = analyzeReactSemantics("wrapped-components.tsx", `
+      import React, { forwardRef as legacyRef, memo as remember, useEffect } from "react"
+      declare namespace JSX {
+        interface IntrinsicElements {
+          button: { onClick?: () => void }
+          input: { ref?: unknown }
+        }
+      }
+      /* uneffect: effect Subscribe */ declare function subscribe(): void
+      /* uneffect: effect Unsubscribe */ declare function unsubscribe(): void
+      /* uneffect: effect CompareAudit */ declare function compareAudit(): void
+
+      /* uneffect: react component */
+      const MemoButton = remember((props: { path: string }) => {
+        useEffect(() => { subscribe(); return () => unsubscribe() }, [])
+        return <button onClick={() => fetch(props.path)} />
+      })
+
+      /* uneffect: react component */
+      const ForwardedInput = React.memo(legacyRef(function Input(props: { label: string }, ref: unknown) {
+        return <input ref={(node) => console.log(props.label, ref, node)} />
+      }))
+
+      /* uneffect: react component */
+      const ImpureComparator = remember(
+        (props: { value: number }) => null,
+        (previous, next) => { compareAudit(); Date.now(); return previous.value === next.value },
+      )
+
+      declare const opaqueComparator: (previous: object, next: object) => boolean
+      /* uneffect: react component */
+      const OpaqueComparator = remember((props: object) => null, opaqueComparator)
+
+      declare function importedComponent(props: object): null
+      /* uneffect: react component */
+      const OpaqueWrapped = remember(importedComponent)
+
+      declare function wrap<T>(value: T): T
+      /* uneffect: react component */
+      const WrongWrapper = wrap(() => null)
+    `);
+
+    expect(result.components.map(({ name }) => name)).toEqual([
+      "MemoButton", "ForwardedInput", "ImpureComparator", "OpaqueComparator",
+    ]);
+    expect(result.components.find(({ name }) => name === "MemoButton")!.phases).toEqual(expect.arrayContaining([
+      { phase: "event", effects: ["Fetch"] },
+      { phase: "passive-effect", effects: ["Subscribe"] },
+      { phase: "cleanup", effects: ["Unsubscribe"] },
+      { phase: "memo-compare", effects: [] },
+    ]));
+    expect(result.components.find(({ name }) => name === "ForwardedInput")!.phases).toEqual(expect.arrayContaining([
+      { phase: "ref-callback", effects: ["Console"] },
+      { phase: "memo-compare", effects: [] },
+    ]));
+    expect(result.components.find(({ name }) => name === "ImpureComparator")!.phases).toContainEqual({
+      phase: "memo-compare", effects: ["CompareAudit"],
+    });
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: "ImpureComparator", kind: "memo-comparator-effect", phase: "memo-compare", effect: "CompareAudit" }),
+      expect.objectContaining({ component: "ImpureComparator", kind: "memo-comparator-effect", phase: "memo-compare", operation: "Date.now" }),
+      expect.objectContaining({ component: "OpaqueComparator", kind: "unknown-memo-comparator", phase: "memo-compare" }),
+      expect.objectContaining({ component: "OpaqueWrapped", kind: "unsupported-react-component-wrapper" }),
+      expect.objectContaining({ component: "WrongWrapper", kind: "unsupported-react-component-wrapper" }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => ["MemoButton", "ForwardedInput"].includes(component))).toEqual([]);
+  });
+
+  it("resolves wrapped component identities through Program-backed Suspense edges", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-wrapped-program-"));
+    const viewsFile = join(directory, "views.tsx");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(viewsFile, `
+        import { forwardRef, memo } from "react"
+        /* uneffect: react component */
+        export const Content = memo(forwardRef(function Content(_props: object, _ref: unknown) { return null }))
+        /* uneffect: react component */
+        export const Spinner = memo(() => null)
+      `);
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        import { Content, Spinner } from "./views.js"
+        export function App() { return <Suspense fallback={<Spinner />}><Content /></Suspense> }
+      `);
+      const program = ts.createProgram([viewsFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      expect(results.get(viewsFile)!.components.map(({ name }) => name)).toEqual(["Content", "Spinner"]);
+      expect(results.get(appFile)!.suspenseBoundaries).toContainEqual(expect.objectContaining({
+        primaryKey: `${viewsFile}:Content`, fallbackKey: `${viewsFile}:Spinner`,
+      }));
+      expect(generateReactSuspenseBoundaryQuintFromProgram("wrapped_boundary", results, appFile)).toContain("val suspenseBoundarySafe");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects malformed or meaningless React annotations", () => {
     const result = analyzeReactSemantics("invalid.tsx", `
       /* uneffect: react components */
@@ -1795,6 +1896,7 @@ describe("React Function Component semantics", () => {
     expect(result.components).toContainEqual(expect.objectContaining({
       name: "TelemetryDashboard",
       phases: expect.arrayContaining([
+        expect.objectContaining({ phase: "memo-compare", effects: [] }),
         expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
         expect.objectContaining({ phase: "passive-effect", effects: expect.arrayContaining(["Console", "Acquire<TelemetrySubscription>"]) }),
         expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),
