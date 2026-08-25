@@ -59,4 +59,8 @@ describe("React semantic analysis", () => {
   bench("generate Strict Mode Quint for 128 summaries", () => {
     analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`component_${index}`, component));
   }, { time: 500, iterations: 20 });
+
+  bench("generate interrupted-render Quint for 128 summaries", () => {
+    analyzed.components.forEach((component, index) => generateReactLifecycleQuint(`interrupted_${index}`, component, "concurrentInterruption"));
+  }, { time: 500, iterations: 20 });
 });

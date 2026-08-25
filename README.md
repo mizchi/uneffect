@@ -135,7 +135,8 @@ Opt-in React function components can additionally separate replayable render
 from event, callback-ref commit, layout/passive Effect, and cleanup phases,
 locally match acquired resource identities, reject selected snapshot/ref render
 violations, check inline Hook dependencies, and expose a Strict Mode replay
-projection that can generate a reviewable Quint lifecycle model. See
+projection plus one bounded interrupted-render projection that can generate a
+reviewable Quint lifecycle model. See
 [React function component semantics](./docs/react-semantics.md).
 
 ## CLI

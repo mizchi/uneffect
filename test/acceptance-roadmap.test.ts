@@ -102,6 +102,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const lifecycleQuint = generateReactLifecycle("feed_lifecycle", result.components[0]) as string;
     expect(lifecycleQuint).toContain("val reactLifecycleSafe");
     expect(lifecycleQuint).toContain("action cleanup_0_strict_replay");
+    const interruptedQuint = generateReactLifecycle("feed_interrupted", result.components[0], "concurrentInterruption") as string;
+    expect(interruptedQuint).toContain("action discard_render_0");
+    expect(interruptedQuint).toContain("committed_render_count >= 1");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

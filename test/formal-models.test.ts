@@ -72,4 +72,37 @@ describe("React lifecycle Quint projection", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  test("rejects commit effects produced only by a discarded concurrent render", () => {
+    const analysis = analyzeReactSemantics("search-results.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function SearchResults() {
+        useEffect(() => { console.log("commit") }, [])
+        return null
+      }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-interruption-"));
+    const path = join(directory, "interruption.qnt");
+    const run = (broken: boolean) => {
+      writeFileSync(path, generateReactLifecycleQuint("react_interruption", analysis.components[0]!, "concurrentInterruption", {
+        allowCommitEffectsWithoutCommit: broken,
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=reactLifecycleSafe", "--max-steps=5", "--max-samples=500",
+        "--seed=0x696e746572727570", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run(false);
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      expect(valid.stdout + valid.stderr).toContain("No violation found");
+      const broken = run(true);
+      expect(broken.error).toBeUndefined();
+      expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+      expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

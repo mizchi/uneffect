@@ -767,6 +767,7 @@ describe("React Function Component semantics", () => {
     expect(result.components[0]!.replay).toEqual({
       production: {
         renderInvocations: 1,
+        renderAttempts: [{ instance: "render@0", outcome: "committed" }],
         effects: [
           { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
           { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
@@ -774,9 +775,24 @@ describe("React Function Component semantics", () => {
       },
       strictModeDevelopment: {
         renderInvocations: 2,
+        renderAttempts: [
+          { instance: "render@0", outcome: "discarded", reason: "strict-mode-replay" },
+          { instance: "render@1", outcome: "committed" },
+        ],
         effects: [
           { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
           { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+        ],
+      },
+      concurrentInterruption: {
+        renderInvocations: 2,
+        renderAttempts: [
+          { instance: "render@0", outcome: "discarded", reason: "concurrent-interruption" },
+          { instance: "render@1", outcome: "committed" },
+        ],
+        effects: [
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
     });
@@ -839,6 +855,27 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("models concurrent render interruption without committing discarded work", () => {
+    const result = analyzeReactSemantics("interrupted.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function SearchResults() {
+        useEffect(() => { console.log("commit"); return () => console.log("cleanup") }, [])
+        return null
+      }
+    `);
+    const replay = result.components[0]!.replay.concurrentInterruption;
+    expect(replay.renderAttempts).toEqual([
+      { instance: "render@0", outcome: "discarded", reason: "concurrent-interruption" },
+      { instance: "render@1", outcome: "committed" },
+    ]);
+    const quint = generateReactLifecycleQuint("interrupted_render", result.components[0]!, "concurrentInterruption");
+    expect(quint).toContain("action discard_render_0");
+    expect(quint).toContain("action commit_render_1");
+    expect(quint).toContain("committed_render_count >= 1");
+    expect(quint).toContain("val reactLifecycleSafe");
+  });
+
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -899,6 +936,13 @@ describe("React Function Component semantics", () => {
     expect(replay.find(({ phase }) => phase === "ref-callback")).toEqual(expect.objectContaining({
       cleanupEffects: ["Release<TelemetryViewport>"],
     }));
+    const interrupted = generateReactLifecycleQuint(
+      "telemetry_interrupted",
+      result.components.find(({ name }) => name === "TelemetryDashboard")!,
+      "concurrentInterruption",
+    );
+    expect(interrupted).toContain("action discard_render_0");
+    expect(interrupted).toContain("setup_0 == 0 or committed_render_count >= 1");
 
     const leaking = analyzeReactSemantics(fileName, source.replace(
       "return () => unsubscribeFromTelemetry(subscription);",

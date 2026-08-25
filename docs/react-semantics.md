@@ -206,6 +206,13 @@ has a source-derived `instance` path and preserves that setup's own
 `cleanupEffects`. Custom-Hook composition prefixes the nested instance with
 each caller site, so repeated Hook calls remain distinct.
 
+Each scenario also records ordered render attempts as committed or discarded.
+The bounded `concurrentInterruption` scenario discards one interrupted attempt,
+then commits a replacement attempt. Its Effect and callback-ref setup entries
+belong only to the committed result; discarded render work cannot authorize a
+commit-side effect. This is a minimal interruption law, not a React scheduler
+implementation.
+
 This is deliberately a lifecycle projection, not a claim about total ordering
 between all layout, passive, and callback-ref instances, browser tasks,
 Suspense, or concurrent commits. Production cleanup occurs on a later
@@ -222,15 +229,18 @@ TypeScript-resolved cross-file composition. `uneffect check` computes the
 Program result once and includes the same diagnostics. The analysis is
 metadata-only and adds no runtime dependency.
 
-`generateReactLifecycleQuint(moduleName, component, scenario)` projects either
-the `production` or `strictModeDevelopment` replay into reviewable Quint. It
-uses one setup/cleanup counter pair per lifecycle instance. Render must finish
-before initial setup, while different commit instances remain unordered. The
+`generateReactLifecycleQuint(moduleName, component, scenario)` projects the
+`production`, `strictModeDevelopment`, or `concurrentInterruption` replay into
+reviewable Quint. It uses separate attempted/committed/discarded render counts
+and one setup/cleanup counter pair per lifecycle instance. All modeled render
+attempts must finish and at least one must commit before initial setup, while
+different commit instances remain unordered. The
 `reactLifecycleSafe` invariant requires cleanup never to lead setup, setup to
 lead cleanup by at most one, and both counters to stay within the selected
-scenario's bounds. A test-only early-cleanup transition demonstrates that the
-invariant is load-bearing under the Quint simulator. This is bounded lifecycle
-evidence, not a proof of React's scheduler or host commit order.
+scenario's bounds. Test-only early-cleanup and setup-after-discard transitions
+demonstrate that the invariant is load-bearing under the Quint simulator. This
+is bounded lifecycle evidence, not a proof of React's scheduler or host commit
+order.
 
 ## Current limits
 
@@ -255,7 +265,7 @@ This is a tested initial fragment, not a complete React semantics:
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
-- Suspense, transitions, Offscreen trees, server components, hydration,
+- Suspense semantics, transition priority, Offscreen trees, server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
@@ -270,7 +280,9 @@ summary only claims coverage for the constructs listed above.
 `useMemo` calculation, a custom subscription Hook, an identity-checked inline
 callback ref, matching cleanup, and an inline Fetch event. Its regression test
 removes Effect/ref cleanup, substitutes another resource, removes a dependency,
-and mutates props as independent negative controls. The checked-in
+and mutates props as independent negative controls. The same component also
+generates the bounded interrupted-render model and locks the rule that only a
+committed render authorizes its subscription/ref setup. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

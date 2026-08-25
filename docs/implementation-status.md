@@ -168,14 +168,16 @@ same property is proved for arbitrary TypeScript.
   `acquire Capability result` / `release Capability parameter N` contracts
   additionally prove exact-once cleanup for direct result bindings and local
   immutable identifier aliases.
-- Component and custom-Hook summaries expose production and development Strict
-  Mode initial-mount replay projections. These model render multiplicity and
+- Component and custom-Hook summaries expose production, development Strict
+  Mode initial-mount, and one bounded concurrent-interruption replay projection.
+  These distinguish committed from discarded render attempts and model render multiplicity and
   Effect/callback-ref setup/cleanup cycles without claiming total host
   scheduling order. Source-derived instance paths preserve each setup's own
   cleanup effects through repeated and transitive custom-Hook calls.
-- The replay IR generates reviewable production or development Strict Mode
-  Quint with per-instance setup/cleanup counters. `reactLifecycleSafe` rejects
-  cleanup-before-setup and counter-bound violations without imposing an order
+- The replay IR generates reviewable production, development Strict Mode, or
+  interrupted-render Quint with per-instance setup/cleanup counters.
+  `reactLifecycleSafe` rejects cleanup-before-setup, commit-side setup without a
+  committed render, and counter-bound violations without imposing an order
   between different commit instances.
 - Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
@@ -185,7 +187,7 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  Suspense/concurrent lifecycle modeling, server components, and Z3 lifecycle
+  general Suspense/transition/Offscreen scheduling, server components, and Z3 lifecycle
   projection remain unsupported rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
   calculation, custom subscription setup/cleanup, an identity-checked callback

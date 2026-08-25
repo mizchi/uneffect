@@ -25,17 +25,17 @@ classification.
 
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
-workload, with per-call lifecycle instance association enabled, the analyzer
-measured 19.04 ms mean (0.98% RME, 27 samples), while the parse-only baseline
-measured 2.22 ms (0.66% RME, 226 samples). The combined parse-and-analysis path
-was therefore about 8.59 times the parse-only cost for this synthetic cold
-call, or roughly 0.149 ms per annotated component. This
+workload, with per-call lifecycle instance association and interrupted-render
+replay enabled, the analyzer measured 16.28 ms mean (0.95% RME, 31 samples),
+while the parse-only baseline measured 2.21 ms (0.72% RME, 227 samples). The
+combined parse-and-analysis path was therefore about 7.37 times the parse-only
+cost for this synthetic cold call, or roughly 0.127 ms per annotated component. This
 implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-22.76 ms mean (0.82% RME, 22 samples). It performs two source walks to establish
+19.14 ms mean (0.65% RME, 27 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk. Source-level React import facts and
 boundary-level immutable-region facts are cached by AST identity; before those
@@ -46,10 +46,11 @@ measurements used smaller workloads without state/context region construction
 or callback-ref lifecycle checking and are not directly comparable.
 
 Generating development Strict Mode Quint for all 128 already analyzed
-component summaries measured 0.496 ms mean (0.38% RME, 1,009 samples), about
-0.004 ms per component. This measures deterministic source generation only;
-Quint parsing and simulation are covered by the formal test tier rather than
-this microbenchmark.
+component summaries measured 0.680 ms mean (0.40% RME, 735 samples), about
+0.005 ms per component. Generating the bounded concurrent-interruption model
+measured 0.453 ms mean (0.40% RME, 1,104 samples), about 0.004 ms per component.
+These measure deterministic source generation only; Quint parsing and
+simulation are covered by the formal test tier rather than this microbenchmark.
 
 The scaled-affine strengthening dogfood initially measured 3,412.12 ms for one
 sample because every candidate obligation constructed a fresh Z3 Context.
