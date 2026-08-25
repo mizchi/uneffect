@@ -2,7 +2,8 @@ import ts from "typescript";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
 import { instrumentRuntimeAssertions, type InstrumentDiagnostic } from "./instrument.js";
@@ -81,11 +82,22 @@ function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
   };
   const host = ts.createCompilerHost(compilerOptions);
   const originalGetSourceFile = host.getSourceFile.bind(host);
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+  const selfPackageEntry = [join(moduleDirectory, "index.ts"), join(moduleDirectory, "index.d.ts")]
+    .find((candidate) => ts.sys.fileExists(candidate));
   host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
   host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
   host.getSourceFile = (fileName, languageVersion, onError, fresh) => Object.hasOwn(files, fileName)
     ? ts.createSourceFile(fileName, files[fileName]!, languageVersion, true, ts.ScriptKind.TS)
     : originalGetSourceFile(fileName, languageVersion, onError, fresh);
+  host.resolveModuleNames = (moduleNames, containingFile) => moduleNames.map((moduleName) => {
+    if (moduleName === "@mizchi/uneffect" && selfPackageEntry) return {
+      resolvedFileName: selfPackageEntry,
+      extension: selfPackageEntry.endsWith(".d.ts") ? ts.Extension.Dts : ts.Extension.Ts,
+      isExternalLibraryImport: true,
+    };
+    return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host).resolvedModule;
+  });
   return ts.createProgram(Object.keys(files), compilerOptions, host);
 }
 
