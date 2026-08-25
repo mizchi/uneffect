@@ -137,6 +137,10 @@ JSX Action prop; a direct render/event call is
 fail closed. These rules follow the official
 [useActionState](https://react.dev/reference/react/useActionState) and
 [useOptimistic](https://react.dev/reference/react/useOptimistic) contracts.
+JSX `action` and `formAction` also accept write-screened callbacks resolved by
+Program analysis through named, barrel, default, or namespace imports. These
+callbacks use their declaration module's effect contracts and helper graph;
+mutable, dynamic, and unresolved member expressions remain opaque.
 The source phase analysis does not infer queue traces. An optional bounded
 Quint projection described below models sequential queue execution,
 pending-flag consistency, and cancellation of the queued tail after a thrown

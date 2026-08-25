@@ -1279,6 +1279,7 @@ describe("React Function Component semantics", () => {
       writeFileSync(appFile, `
         import { memo, useActionState, useImperativeHandle, useOptimistic, useSyncExternalStore } from "react"
         import saveAction, { compareProps, createHandle, getSnapshot, noisyOptimistic, subscribeStore } from "./callbacks.js"
+        import * as callbackNamespace from "./callbacks.js"
         declare namespace JSX { interface IntrinsicElements { form: { action?: unknown } } }
         /* uneffect: react hook */
         function useImportedResources(ref: unknown) {
@@ -1292,6 +1293,8 @@ describe("React Function Component semantics", () => {
           useImportedResources(props.ref)
           return <form />
         }
+        /* uneffect: react component */
+        export function NamespaceForm() { return <form action={callbackNamespace.saveAction} /> }
         function ComparedView() { return <form /> }
         /* uneffect: react component */
         export const Compared = memo(ComparedView, compareProps)
@@ -1315,6 +1318,9 @@ describe("React Function Component semantics", () => {
         { phase: "external-store-subscribe", effects: ["Acquire<StoreConnection>"] },
         { phase: "cleanup", effects: ["Release<StoreConnection>"] },
       ]));
+      expect(result.components.find(({ name }) => name === "NamespaceForm")!.phases).toContainEqual({
+        phase: "action", effects: ["SaveRecord", "Throw<TypeError>"],
+      });
       expect(app.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
         phase: "external-store-subscribe",
         setupEffects: ["Acquire<StoreConnection>"], cleanupEffects: ["Release<StoreConnection>"],

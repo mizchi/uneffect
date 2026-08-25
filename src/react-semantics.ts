@@ -2347,17 +2347,22 @@ function analyzeReactSource(
       if (ts.isJsxAttribute(node) && (node.name.getText(source) === "action" || node.name.getText(source) === "formAction")
         && node.initializer && ts.isJsxExpression(node.initializer) && node.initializer.expression) {
         const expression = unwrapExpression(node.initializer.expression);
-        if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) {
-          addPhase("action", actionEffects(expression.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
-        } else if (ts.isIdentifier(expression) && actionDispatchers.has(expression.text)) {
+        if (ts.isIdentifier(expression) && actionDispatchers.has(expression.text)) {
           addPhase("action");
-        } else if (ts.isIdentifier(expression) && callableCallbacks.has(expression.text)) {
-          addPhase("action", actionEffects(callableCallbacks.get(expression.text)!.body, declared, transitionCallbacks, eventCallbacks, eventCallbacks));
         } else {
-          report(expression, {
-            kind: "unknown-action-handler", phase: "action", operation: expression.getText(source),
-            message: `${expression.getText(source)} is not an inline, immutable locally resolved, or useActionState-dispatched Action`,
-          });
+          const callback = callbackArgument(expression, callableCallbacks);
+          if (callback) {
+            const environment = callbackAnalysisEnvironment(
+              callback, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            addPhase("action", actionEffects(
+              callback.body, environment.declared, environment.immediateCallbacks,
+              environment.callbacks, environment.callbacks,
+            ));
+          } else report(expression, {
+              kind: "unknown-action-handler", phase: "action", operation: expression.getText(source),
+              message: `${expression.getText(source)} is not an inline, immutable locally resolved, or useActionState-dispatched Action`,
+            });
         }
         return;
       }
