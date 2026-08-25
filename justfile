@@ -110,5 +110,6 @@ evidence file:
     pnpm tsx src/cli.ts evidence {{ file }}
 
 dogfood:
-    pnpm tsx src/cli.ts check --infer --assurance no-unknown src/*.ts
+    # Function-effect boundary only: cli.ts has executable module initialization, which remains fail-closed.
+    rg --files src -g '*.ts' -g '!cli.ts' | xargs pnpm tsx src/cli.ts check --infer --assurance no-unknown
     pnpm tsx ci/run-test-tiers.ts integration test/dogfood.test.ts

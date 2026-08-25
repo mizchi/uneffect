@@ -480,6 +480,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Make unknown evidence stop transformations without blocking gradual lint adoption.
 - [x] Separate gradual lint success from explicit `no-unknown` and declaration-checked assurance profiles, with scoped blocker output and documented non-claims.
 - [x] Expose assurance claims and exclusions as typed assessment data and print exclusions even on success, preventing CI consumers from treating a context-free green boolean as a whole-program proof.
+- [x] Reject vacuous assurance when no proof-relevant evidence is emitted, report machine-readable coverage counts, and reject each explicitly selected file that contributes neither an effect summary nor a contract artifact.
+- [ ] Track top-level module initialization effects and imported-module evaluation order; until then executable entry modules remain uncovered by assurance and the library dogfood excludes `src/cli.ts` explicitly.
 - [x] Define one proof-obligation schema per optimizer transformation.
 - [x] Prototype stable-read reuse only when no overlapping mutate/invalidate/transfer event exists.
 - [x] Evaluate property mangling separately under closed-world reflection and escape constraints.

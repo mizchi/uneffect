@@ -60,10 +60,12 @@ describe("uneffect command line", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-assurance-"));
     const unknownFile = join(directory, "unknown.ts"), inferredFile = join(directory, "inferred.ts");
     const declaredFile = join(directory, "declared.ts");
+    const emptyFile = join(directory, "empty.ts");
     try {
       writeFileSync(unknownFile, `export function consume(iterator: Iterator<number>) { iterator.next() }`);
       writeFileSync(inferredFile, `export function identity(value: number) { return value }`);
       writeFileSync(declaredFile, `/* uneffect: effect Console */ export function report() { console.log("ok") }`);
+      writeFileSync(emptyFile, `export type Empty = never`);
 
       const gradual = capture();
       expect(await runCli(["check", unknownFile], gradual)).toBe(exitCode.success);
@@ -87,6 +89,14 @@ describe("uneffect command line", () => {
       expect(declared.stderr).toContain("assurance declared: passed");
       expect(declared.stderr).toContain("claim: every emitted function effect summary is declaration-checked");
       expect(declared.stderr).toContain("excluded: unannotated semantic domains are not checked by this profile");
+
+      const empty = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.failed);
+      expect(empty.stderr).toContain("no effect summary or contract artifact was emitted");
+
+      const mixed = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.failed);
+      expect(mixed.stderr).toContain(`${emptyFile}: no proof-relevant evidence was emitted for this selected file`);
 
       const invalid = capture();
       expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);

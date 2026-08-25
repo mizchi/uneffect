@@ -27,8 +27,13 @@ for CI on a deliberately selected file boundary. They do not silently broaden
 that boundary to dependencies, dynamically loaded code, native addons, or host
 behavior not represented by the builtin contract registry.
 
-The public `AssuranceAssessment` also exposes `claims` and `exclusions` as
-machine-readable fields. Claims are established only when `passed` is true;
+The public `AssuranceAssessment` also exposes `claims`, `exclusions`, and
+`coverage` as machine-readable fields. Coverage records the selected-file,
+effect-summary, and contract-artifact counts plus every selected file that
+emitted neither proof-relevant artifact. An assurance profile fails when the
+whole result is empty or when any selected file is uncovered, so evidence from
+one file cannot hide a type-only, misspelled, or otherwise unexamined sibling.
+Claims are established only when `passed` is true;
 on failure the CLI labels them `claim (not established)`. Exclusions are
 reported even for a passing assessment and must not be removed or interpreted
 as warnings that can be waived. This keeps CI integrations from reducing an
@@ -81,3 +86,15 @@ not infer support from a nearby example.
 Never replace an unknown with a broad declaration merely to make CI green. A
 broad effect may describe authority, but it cannot repair unresolved control
 flow or turn an unmodeled API into verified semantics.
+
+Function effect summaries do not yet cover top-level module initialization or
+imported-module evaluation order. Therefore an executable entry module with no
+function/contract artifact is uncovered and fails assurance. Uneffect's own
+dogfood currently asserts the 58-file library-function boundary and explicitly
+excludes `src/cli.ts`; this is a recorded limitation, not evidence that the CLI
+entrypoint is effect-verified.
+
+A type-only or otherwise evidence-free file intentionally cannot pass an
+assurance profile by itself. Keep it outside the asserted runtime boundary, or
+add a proof-relevant annotated function/contract that states what the boundary
+is meant to establish. Do not add a dummy annotation only to satisfy coverage.

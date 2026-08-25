@@ -429,7 +429,13 @@ same property is proved for arbitrary TypeScript.
   summaries. Both profiles are scoped to explicit files and opted-in analyses,
   and neither is described as a whole-program proof. Their public assessment
   objects carry machine-readable claims and exclusions; the CLI prints both on
-  success and marks claims as not established on failure.
+  success and marks claims as not established on failure. Machine-readable
+  coverage counts prevent empty results and per-file coverage gaps from passing
+  vacuously; a selected file with neither an effect summary nor a contract
+  artifact is an assurance blocker. Top-level module initialization effects and
+  imported-module evaluation order are not yet summarized. The library
+  dogfood consequently excludes the executable `src/cli.ts` entrypoint and
+  reports that exclusion rather than borrowing evidence from sibling files.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

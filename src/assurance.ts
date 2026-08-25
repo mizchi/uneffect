@@ -3,16 +3,25 @@ import type { CheckResult } from "./check.js";
 export type AssuranceProfile = "no-unknown" | "declared";
 
 export interface AssuranceBlocker {
-  kind: "effect" | "contract";
+  kind: "effect" | "contract" | "coverage";
   fileName: string;
   functionName: string;
   message: string;
+}
+
+export interface AssuranceCoverage {
+  effectSummaries: number;
+  contractArtifacts: number;
+  checkedFiles: number;
+  uncoveredFiles: string[];
 }
 
 export interface AssuranceAssessment {
   profile: AssuranceProfile;
   passed: boolean;
   blockers: AssuranceBlocker[];
+  /** Counts the proof-relevant artifacts on which this assessment is based. */
+  coverage: AssuranceCoverage;
   /** Claims established only when `passed` is true. */
   claims: readonly string[];
   /** Scope deliberately not established by this profile, even when it passes. */
@@ -26,6 +35,7 @@ const commonClaims = [
 
 const commonExclusions = [
   "unannotated semantic domains are not checked by this profile",
+  "top-level module initialization is not covered by function effect summaries",
   "dependencies, dynamically loaded code, native addons, and unmodeled host behavior are outside the explicitly checked file boundary",
   "a verified bounded or assumption-dependent artifact is not an unbounded or assumption-free proof",
 ] as const;
@@ -36,10 +46,29 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries">,
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources">>,
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
+  const coveredFiles = new Set<string>();
+  for (const summary of result.summaries) if (summary.fileName) coveredFiles.add(summary.fileName);
+  for (const artifact of result.artifacts) coveredFiles.add(artifact.source.fileName);
+  const selectedFiles = [...(result.sources?.keys() ?? [])];
+  const uncoveredFiles = selectedFiles.filter((fileName) => !coveredFiles.has(fileName));
+  const coverage: AssuranceCoverage = {
+    effectSummaries: result.summaries.length,
+    contractArtifacts: result.artifacts.length,
+    checkedFiles: selectedFiles.length,
+    uncoveredFiles,
+  };
+  if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0) blockers.push({
+    kind: "coverage", fileName: "<assessment>", functionName: "<coverage>",
+    message: "no effect summary or contract artifact was emitted; the assurance claim would be vacuous",
+  });
+  for (const fileName of uncoveredFiles) blockers.push({
+    kind: "coverage", fileName, functionName: "<coverage>",
+    message: `${fileName}: no proof-relevant evidence was emitted for this selected file`,
+  });
   for (const summary of result.summaries) {
     if (summary.evidence === "unknown") blockers.push({
       kind: "effect", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
@@ -61,15 +90,21 @@ export function assessCheckAssurance(
   const exclusions = profile === "no-unknown"
     ? [...commonExclusions, "inferred effects need not have an explicit upper-bound declaration"]
     : [...commonExclusions];
-  return { profile, passed: blockers.length === 0, blockers, claims, exclusions };
+  return { profile, passed: blockers.length === 0, blockers, coverage, claims, exclusions };
+}
+
+function countLabel(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 export function formatAssuranceAssessment(assessment: AssuranceAssessment): string {
   const header = `assurance ${assessment.profile}: ${assessment.passed ? "passed" : "failed"}`;
   const scope = "  scope: emitted evidence for explicitly checked files and opted-in annotations only";
+  const coverage = `  coverage: ${countLabel(assessment.coverage.effectSummaries, "effect summary", "effect summaries")}, ${countLabel(assessment.coverage.contractArtifacts, "contract artifact")}, ${countLabel(assessment.coverage.checkedFiles, "selected file")}`;
   return `${[
     header,
     scope,
+    coverage,
     ...assessment.claims.map((claim) => `  claim${assessment.passed ? "" : " (not established)"}: ${claim}`),
     ...assessment.exclusions.map((exclusion) => `  excluded: ${exclusion}`),
     ...assessment.blockers.map((blocker) => `  blocker: ${blocker.message}`),
