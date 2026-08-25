@@ -928,3 +928,12 @@ TypeScript Program. The nested measurement covers model text generation from
 an already analyzed direct chain only; it excludes parsing, symbol resolution,
 Quint execution, siblings/fragments, and suspension originating in a boundary
 or fallback. It is an observation rather than a regression budget.
+
+After extending the normalized primary graph to transparent Fragments and
+multiple direct children, generation of a two-boundary/three-leaf Suspense-tree
+projection measured 0.0016 ms mean over 304,401 samples (0.27% relative margin
+of error). In the same run, the older direct-chain projection measured 0.0024
+ms and parsing/classifying 128 opted-in components measured 18.1963 ms. These
+sub-microbenchmark differences are dominated by workload and runtime noise and
+must not be read as a speedup. The tree measurement excludes parsing, Program
+symbol resolution, and Quint execution and is not a regression budget.

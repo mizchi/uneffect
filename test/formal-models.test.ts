@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
-import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
 
 const commonArgs = [
   "exec",
@@ -269,6 +269,38 @@ describe("React lifecycle Quint projection", () => {
       return spawnSync("pnpm", ["exec", "quint", "run", path,
         "--invariant=nestedSuspenseSafe", "--max-steps=6", "--max-samples=500",
         "--seed=0x6e65737465645f62", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
+    };
+    try {
+      const valid = run(false);
+      expect(valid.error).toBeUndefined();
+      expect(valid.status, valid.stdout + valid.stderr).toBe(0);
+      const broken = run(true);
+      expect(broken.error).toBeUndefined();
+      expect(broken.status, broken.stdout + broken.stderr).toBe(1);
+      expect(broken.stdout + broken.stderr).toContain("Invariant violated");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a fallback owned by a different branch of a Suspense tree", () => {
+    const analysis = analyzeReactSemantics("suspense-tree.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function OuterLeaf() { return null }
+      /* uneffect: react component */ function InnerLeaf() { return null }
+      /* uneffect: react component */ function OuterFallback() { return null }
+      /* uneffect: react component */ function InnerFallback() { return null }
+      function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><InnerLeaf /></Suspense></></Suspense> }
+    `);
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-tree-"));
+    const path = join(directory, "suspense-tree.qnt");
+    const run = (broken: boolean) => {
+      writeFileSync(path, generateReactSuspenseTreeQuintFromAnalysis("react_suspense_tree", analysis, 0, {
+        allowWrongFallbackOwner: broken,
+      }));
+      return spawnSync("pnpm", ["exec", "quint", "run", path,
+        "--invariant=suspenseTreeSafe", "--max-steps=6", "--max-samples=800",
+        "--seed=0x737573705f747265", "--verbosity=1"], { encoding: "utf8", timeout: 30_000 });
     };
     try {
       const valid = run(false);

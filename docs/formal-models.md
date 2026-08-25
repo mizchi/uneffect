@@ -175,8 +175,8 @@ commit instances are intentionally unordered.
 scenario's counter bounds. The formal test tier runs positive models plus
 negative early-cleanup, setup-after-discard, wrong-generation setup, and
 retry-before-resolution transitions for both commit and re-suspend outcomes,
-which Quint must reject. This does not model Suspense fallback-tree commits,
-nested boundary propagation, rejected thenables, unbounded retries, Offscreen,
+which Quint must reject. This component-local projection does not model Suspense fallback-tree commits,
+rejected thenables, unbounded retries, Offscreen,
 hydration, or the browser scheduler.
 
 `generateReactSuspenseBoundaryQuint` accepts explicitly selected primary and
@@ -191,9 +191,18 @@ thenable causality remain outside this bounded proof.
 The Program variant stores and resolves canonical component keys after
 TypeScript symbol aliasing, including barrels and default exports; it does not
 fall back to matching imported display names.
-React and component namespace tags use their imported symbols as well; an
+React default/namespace tags and component namespace tags use their imported symbols as well; an
 unrelated object property named `Suspense` or `Profile` is not accepted by
 spelling alone.
+
+The normalized Suspense tree flattens JSX/React Fragments and preserves
+multiple direct component or nested-boundary children as ordered
+`primaryNodes`. `generateReactSuspenseTreeQuintFromAnalysis` and its Program
+variant model one selected component-leaf suspension. The selected leaf records
+its nearest boundary owner, and `suspenseTreeSafe` rejects an ancestor or
+sibling fallback commit. A fixed-seed fault injection demonstrates that this
+ownership equality is load-bearing. Wrapper/expression subtrees and suspension
+originating while rendering a boundary or fallback remain outside the proof.
 
 ## Verification ledger
 

@@ -56,6 +56,7 @@ documentation are all updated.
 - [x] Resolve direct Suspense primary/fallback components through TypeScript symbols across named aliases, barrels, and default exports.
 - [x] Resolve React namespace Suspense tags and namespace-qualified primary/fallback component tags in Program analysis.
 - [x] Extract direct nested Suspense chains, preserve parent/child boundary identity through Program symbol resolution, and generate a bounded nearest-boundary ownership model.
+- [x] Flatten transparent JSX/React Fragments and multiple direct component/boundary children into a Program-resolved Suspense tree, with one-suspension fallback ownership checked by Quint.
 
 The product-level completion gates are the skipped executable scenarios in
 `test/acceptance-roadmap.test.ts`. Before adding another narrow feature, select

@@ -240,34 +240,34 @@ names and their effect metadata instead of merging the components' effects.
 Fault-injection tests show that reveal-before-resolution and primary
 setup-before-fallback-cleanup violate `suspenseBoundarySafe`.
 
-For the supported direct JSX fragment, the analyzer recognizes a named React
-`Suspense` import (including a local import alias), a `fallback` containing one
-direct annotated component element, and exactly one direct annotated primary
-component child. It records the edge in `suspenseBoundaries`, while recognized
-Suspense elements with missing, indirect, expression-valued, fragment, or
-multiple children are retained in `unsupportedSuspenseBoundaries` with a
-reason. `generateReactSuspenseBoundaryQuintFromAnalysis` resolves one extracted
-edge back to exactly one summary per side and fails closed otherwise. The
-lower-level explicit-summary generator remains available.
+For the supported direct JSX fragment, the analyzer recognizes a React
+`Suspense`, a `fallback` containing one direct annotated component element,
+and one or more direct annotated component or nested-boundary primary nodes.
+JSX fragments, imported `Fragment`, and `React.Fragment` are transparent and
+recursively flattened. Each boundary stores the ordered normalized nodes in
+`primaryNodes`. Missing, indirect, intrinsic-wrapper, or expression-valued
+children remain in `unsupportedSuspenseBoundaries` with a reason.
+`generateReactSuspenseBoundaryQuintFromAnalysis` remains the stricter
+single-primary/two-component generator and fails closed for a tree.
 
 The Program-backed analyzer additionally resolves direct component tags
 through TypeScript symbols across named import aliases, namespace-qualified
 tags, re-export barrels, and default exports. Both named/aliased `Suspense` and
-`React.Suspense` from a React namespace import are recognized. Each edge stores canonical `file:name` keys for both sides;
+`React.Suspense` from a React namespace or default import are recognized. Each component node stores a canonical `file:name` key;
 `generateReactSuspenseBoundaryQuintFromProgram` resolves those keys against the
 complete Program result map and rejects missing or duplicate summaries. The
 source-local API deliberately cannot authorize an imported component that has
 not been resolved by a Program.
 
-A direct nested chain is represented explicitly: an outer boundary stores the
-child boundary in `primaryBoundary`, and the child stores its owner in
-`parentBoundary`. `generateReactNestedSuspenseQuintFromAnalysis` and its
-Program-backed variant generate a bounded ownership projection for a
-suspension originating in the leaf primary. Only the nearest boundary may
-commit its fallback; every ancestor fallback remains uncommitted. Resolution
-then permits the leaf reveal and nearest-fallback cleanup. This is deliberately
-narrow: suspension while rendering a boundary or fallback, sibling children,
-fragments, and dynamic boundary selection are not inferred.
+A direct nested chain retains the compatibility `primaryBoundary` field, while
+all supported trees use `primaryNodes` plus each child's `parentBoundary`.
+`generateReactSuspenseTreeQuintFromAnalysis` and its Program-backed variant
+choose one component-leaf suspension per bounded trace and record that leaf's
+nearest owner. Only that boundary may commit its fallback; a fallback in an
+ancestor or sibling branch violates `suspenseTreeSafe`. Resolution then permits
+the leaf reveal. The older nested-chain generator remains available. Suspension
+while rendering a boundary or fallback and dynamic boundary selection are not
+inferred.
 
 Uneffect does not yet prove that a render actually throws a thenable or
 distinguish a user cleanup callback from an empty phase teardown barrier. The
@@ -343,8 +343,8 @@ This is a tested initial fragment, not a complete React semantics:
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
-- General Suspense trees, fragments, expression-valued or multiple children,
-  dynamic component selection, non-chain nested-boundary propagation,
+- Intrinsic/component wrapper subtrees, expression-valued children, dynamic
+  component selection, suspension originating in a boundary or fallback,
   rejected thenables, unbounded retries, transition priority, Offscreen trees,
   server components, hydration,
   insertion effects, and React compiler assumptions are not
@@ -372,6 +372,9 @@ JSX edge extraction and the bounded boundary generator. The checked-in
 `react-suspense-symbol-*` fixture uses `React.Suspense` and namespace-qualified
 component tags, then resolves them through a barrel to default and named
 component exports before generating the same model. The checked-in
+`react-nested-suspense.tsx` fixture combines a Fragment sibling with a nested
+boundary and generates the tree ownership model, distinguishing the outer
+navigation leaf from the inner account leaf. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

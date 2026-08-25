@@ -69,6 +69,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
+    const generateSuspenseTree = futureApi("generateReactSuspenseTreeQuintFromAnalysis");
     const result = analyzeReact("src/feed.tsx", `
       import { useEffect } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
@@ -149,6 +150,17 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(nestedQuint).toContain("action commit_fallback_1");
     expect(nestedQuint).not.toContain("action commit_fallback_0");
     expect(nestedQuint).toContain("fallback_committed_0 == 0");
+    const tree = analyzeReact("src/suspense-tree.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function A() { return null }
+      /* uneffect: react component */ function B() { return null }
+      /* uneffect: react component */ function Fallback() { return null }
+      function App() { return <Suspense fallback={<Fallback />}><><A /><B /></></Suspense> }
+    `) as typeof result;
+    const treeQuint = generateSuspenseTree("fragment_tree", tree) as string;
+    expect(treeQuint).toContain("leaf 0: A; owner boundary 0");
+    expect(treeQuint).toContain("leaf 1: B; owner boundary 0");
+    expect(treeQuint).toContain("val suspenseTreeSafe");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

@@ -190,10 +190,11 @@ same property is proved for arbitrary TypeScript.
   component elements, and reports recognized unsupported child shapes.
   Program analysis resolves these direct tags through named aliases, barrels,
   namespace imports, and default exports and retains canonical component keys.
-  A direct nested boundary chain additionally retains parent/child boundary
-  identities through Program resolution. Its bounded Quint ownership model
-  permits only the nearest fallback to commit for a leaf-primary suspension;
-  ancestor fallbacks remain uncommitted until a separately modeled cause exists.
+  Transparent JSX/React Fragments and multiple direct component/boundary
+  children normalize into ordered `primaryNodes`; Program resolution retains
+  canonical component keys and parent/child boundary identities. A bounded
+  one-suspension Quint model permits only the selected leaf's nearest fallback
+  to commit. A fallback in an ancestor or sibling branch violates the invariant.
 - The replay IR generates reviewable production, development Strict Mode,
   interrupted-render, dependency-change, or single/repeated Suspense-retry Quint with
   per-instance setup/cleanup counters.
@@ -208,8 +209,8 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  general/dynamic Suspense fallback graphs, sibling/fragment trees, suspension
-  originating in a boundary or fallback, transition/Offscreen
+  general/dynamic Suspense subtrees through wrappers or expressions, suspension
+  originating in a boundary or fallback, rejected thenables, transition/Offscreen
   scheduling, server components, and Z3 lifecycle projection remain unsupported
   rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render

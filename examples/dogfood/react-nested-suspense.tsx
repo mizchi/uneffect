@@ -21,8 +21,16 @@ export function PageSpinner() {
   return <p>Loading page…</p>;
 }
 
+/* uneffect: react component */
+export function AccountNavigation() {
+  return <nav>Account navigation</nav>;
+}
+
 export function AccountPage() {
   return <Suspense fallback={<PageSpinner />}>
-    <Suspense fallback={<AccountSpinner />}><AccountPanel /></Suspense>
+    <>
+      <AccountNavigation />
+      <Suspense fallback={<AccountSpinner />}><AccountPanel /></Suspense>
+    </>
   </Suspense>;
 }

@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -1027,13 +1027,14 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("component: Spinner");
   });
 
-  it("reports unsupported Suspense child shapes without claiming a boundary", () => {
+  it("reports dynamic Suspense child expressions without claiming a boundary", () => {
     const result = analyzeReactSemantics("unsupported-boundary.tsx", `
       import { Suspense } from "react"
       /* uneffect: react component */ function First() { return null }
       /* uneffect: react component */ function Second() { return null }
       /* uneffect: react component */ function Spinner() { return null }
-      function App() { return <Suspense fallback={<Spinner />}><First /><Second /></Suspense> }
+      declare const showSecond: boolean
+      function App() { return <Suspense fallback={<Spinner />}><First />{showSecond && <Second />}</Suspense> }
     `);
     expect(result.suspenseBoundaries).toEqual([]);
     expect(result.unsupportedSuspenseBoundaries).toEqual([
@@ -1076,6 +1077,44 @@ describe("React Function Component semantics", () => {
     expect(quint).not.toContain("action commit_fallback_0");
     expect(quint).toContain("fallback_committed_0 == 0");
     expect(quint).toContain("val nestedSuspenseSafe");
+  });
+
+  it("flattens Fragment and multiple direct children into a nearest-boundary ownership tree", () => {
+    const result = analyzeReactSemantics("suspense-tree.tsx", `
+      import React, { Fragment, Suspense } from "react"
+      /* uneffect: react component */ function OuterLeaf() { return null }
+      /* uneffect: react component */ function InnerLeafA() { return null }
+      /* uneffect: react component */ function InnerLeafB() { return null }
+      /* uneffect: react component */ function OuterFallback() { return null }
+      /* uneffect: react component */ function InnerFallback() { return null }
+      function App() {
+        return <Suspense fallback={<OuterFallback />}><>
+          <OuterLeaf />
+          <Suspense fallback={<InnerFallback />}>
+            <Fragment><InnerLeafA /><React.Fragment><InnerLeafB /></React.Fragment></Fragment>
+          </Suspense>
+        </></Suspense>
+      }
+    `);
+    expect(result.suspenseBoundaries).toHaveLength(2);
+    const outer = result.suspenseBoundaries.find((boundary) => boundary.parentBoundary === undefined)!;
+    const inner = result.suspenseBoundaries.find((boundary) => boundary.parentBoundary === outer.instance)!;
+    expect(outer.primaryNodes).toEqual([
+      expect.objectContaining({ kind: "component", displayName: "OuterLeaf" }),
+      { kind: "boundary", instance: inner.instance },
+    ]);
+    expect(inner.primaryNodes).toEqual([
+      expect.objectContaining({ kind: "component", displayName: "InnerLeafA" }),
+      expect.objectContaining({ kind: "component", displayName: "InnerLeafB" }),
+    ]);
+    expect(result.unsupportedSuspenseBoundaries).toEqual([]);
+
+    const quint = generateReactSuspenseTreeQuintFromAnalysis("suspense_tree", result);
+    expect(quint).toContain("leaf 0: OuterLeaf; owner boundary 0");
+    expect(quint).toContain("leaf 1: InnerLeafA; owner boundary 1");
+    expect(quint).toContain("leaf 2: InnerLeafB; owner boundary 1");
+    expect(quint).toContain("fallback_owner == suspension_owner");
+    expect(quint).toContain("val suspenseTreeSafe");
   });
 
   it("does not recognize an unrelated namespace property named Suspense", () => {
@@ -1167,6 +1206,7 @@ describe("React Function Component semantics", () => {
     try {
       writeFileSync(componentsFile, `
         /* uneffect: react component */ export function Profile() { return null }
+        /* uneffect: react component */ export function Navigation() { return null }
         /* uneffect: react component */ export function InnerSpinner() { return null }
         /* uneffect: react component */ export function OuterSpinner() { return null }
       `);
@@ -1175,7 +1215,7 @@ describe("React Function Component semantics", () => {
         import * as views from "./views.js"
         export function App() {
           return <Suspense fallback={<views.OuterSpinner />}>
-            <Suspense fallback={<views.InnerSpinner />}><views.Profile /></Suspense>
+            <><views.Navigation /><Suspense fallback={<views.InnerSpinner />}><views.Profile /></Suspense></>
           </Suspense>
         }
       `);
@@ -1188,16 +1228,18 @@ describe("React Function Component semantics", () => {
       expect(app.suspenseBoundaries).toHaveLength(2);
       const outer = app.suspenseBoundaries.find((boundary) => boundary.parentBoundary === undefined)!;
       const inner = app.suspenseBoundaries.find((boundary) => boundary.parentBoundary === outer.instance)!;
-      expect(outer).toEqual(expect.objectContaining({
-        fallbackKey: `${componentsFile}:OuterSpinner`, primaryBoundary: inner.instance,
-      }));
+      expect(outer.fallbackKey).toBe(`${componentsFile}:OuterSpinner`);
+      expect(outer.primaryNodes).toEqual([
+        { kind: "component", displayName: "views.Navigation", componentKey: `${componentsFile}:Navigation` },
+        { kind: "boundary", instance: inner.instance },
+      ]);
       expect(inner).toEqual(expect.objectContaining({
         primaryKey: `${componentsFile}:Profile`, fallbackKey: `${componentsFile}:InnerSpinner`,
       }));
       expect(app.unsupportedSuspenseBoundaries).toEqual([]);
-      const quint = generateReactNestedSuspenseQuintFromProgram("imported_nested_boundary", results, appFile);
-      expect(quint).toContain("fallback_committed_0 == 0");
-      expect(quint).toContain("nearest boundary fallback: views.InnerSpinner");
+      const quint = generateReactSuspenseTreeQuintFromProgram("imported_suspense_tree", results, appFile);
+      expect(quint).toContain("leaf 0: views.Navigation; owner boundary 0");
+      expect(quint).toContain("leaf 1: views.Profile; owner boundary 1");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -1338,16 +1380,16 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
   });
 
-  it("dogfoods nearest-boundary ownership in a checked-in nested Suspense chain", () => {
+  it("dogfoods nearest-boundary ownership in a checked-in Suspense tree", () => {
     const fileName = "examples/dogfood/react-nested-suspense.tsx";
     const result = analyzeReactSemantics(fileName, readFileSync(fileName, "utf8"));
     expect(result.diagnostics).toEqual([]);
     expect(result.suspenseBoundaries).toHaveLength(2);
     expect(result.unsupportedSuspenseBoundaries).toEqual([]);
-    const quint = generateReactNestedSuspenseQuintFromAnalysis("account_nested_boundary", result);
-    expect(quint).toContain("leaf component: AccountPanel");
-    expect(quint).toContain("nearest boundary fallback: AccountSpinner");
-    expect(quint).toContain("fallback_committed_0 == 0");
+    const quint = generateReactSuspenseTreeQuintFromAnalysis("account_suspense_tree", result);
+    expect(quint).toContain("leaf 0: AccountNavigation; owner boundary 0");
+    expect(quint).toContain("leaf 1: AccountPanel; owner boundary 1");
+    expect(quint).toContain("fallback_owner == suspension_owner");
   });
 
   it("dogfoods checked-in symbol-resolved React modules", async () => {

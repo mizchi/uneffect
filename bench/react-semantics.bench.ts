@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseTreeQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -49,6 +49,15 @@ const nested = analyzeReactSemantics("nested.tsx", `
   /* uneffect: react component */ function OuterFallback() { return null }
   function App() { return <Suspense fallback={<OuterFallback />}><Suspense fallback={<InnerFallback />}><Primary /></Suspense></Suspense> }
 `);
+const suspenseTree = analyzeReactSemantics("tree.tsx", `
+  import { Suspense } from "react"
+  /* uneffect: react component */ function OuterLeaf() { return null }
+  /* uneffect: react component */ function InnerLeafA() { return null }
+  /* uneffect: react component */ function InnerLeafB() { return null }
+  /* uneffect: react component */ function InnerFallback() { return null }
+  /* uneffect: react component */ function OuterFallback() { return null }
+  function App() { return <Suspense fallback={<OuterFallback />}><><OuterLeaf /><Suspense fallback={<InnerFallback />}><><InnerLeafA /><InnerLeafB /></></Suspense></></Suspense> }
+`);
 
 describe("React semantic analysis", () => {
   bench("parse and classify 128 opted-in components", () => {
@@ -91,5 +100,9 @@ describe("React semantic analysis", () => {
 
   bench("generate nested-Suspense ownership Quint", () => {
     generateReactNestedSuspenseQuintFromAnalysis("nested_boundary", nested);
+  }, { time: 500, iterations: 20 });
+
+  bench("generate Fragment/multi-child Suspense-tree Quint", () => {
+    generateReactSuspenseTreeQuintFromAnalysis("suspense_tree", suspenseTree);
   }, { time: 500, iterations: 20 });
 });
