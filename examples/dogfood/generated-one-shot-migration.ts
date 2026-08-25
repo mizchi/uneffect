@@ -10,6 +10,7 @@
  * action migrate: migrated' = migrated + 1, audited' = audited + 1
  * action migrateBatch: migrated' = migrated + 1 + 2 + 3, audited' = audited + 1 + 1 + 1
  * action migrateUntil: migrated' = stopAfter === 1 ? migrated + 1 : stopAfter === 2 ? migrated + 1 + 2 : migrated + 1 + 2 + 3, audited' = stopAfter === 1 ? audited + 1 : stopAfter === 2 ? audited + 1 + 1 : audited + 1 + 1 + 1, reported' = reported + 1
+ * action migrateSelected: migrated' = stopAfter === 1 ? migrated + 2 + 3 : stopAfter === 2 ? migrated + 1 + 3 : stopAfter === 3 ? migrated + 1 + 2 : migrated + 1 + 2 + 3, audited' = audited + 1 + 1 + 1, reported' = reported + 1
  * temporal nonNegative: migrated >= 0 && audited >= 0 && reported >= 0
  */
 
@@ -62,6 +63,19 @@ export function migrateUntilReported(runtime: MigrationState): void {
     }
   }
   runtime.reported++;
+}
+
+/* uneffect: refinement generatedMigration@1 action migrateSelected */
+export function migrateSelectedRecords(runtime: MigrationState): void {
+  for (let migrationId = 1; migrationId < 4; migrationId++) {
+    try {
+      if (runtime.stopAfter === migrationId) continue;
+      runtime.migrated += migrationId;
+    } finally {
+      runtime.audited++;
+    }
+  }
+  runtime.reported++; // selected migration report
 }
 
 /* uneffect: refinement generatedMigration@1 invariant nonNegative */

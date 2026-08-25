@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { buildRefinementBindingManifest, createAnnotatedRefinementAdapter, generateRefinementAdapterModule, validateRefinementActionBodies, validateRefinementActionBodiesInProgram, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodies, validateRefinementInvariantBodiesInProgram, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 import { replayModelCounterexample } from "../src/model-replay.js";
 import { parseSpec } from "../src/spec-ir.js";
 import { findTemporalCounterexampleWithZ3 } from "../src/spec-lint.js";
@@ -2554,5 +2554,64 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("labeled-breaking-for.ts", labeled, "breaking", parseSpec("labeled-breaking-for.ts", labeled).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
     );
+  });
+
+  it("consumes continue only where the finite loop guarantees advancement", async () => {
+    const source = `/* uneffect:
+      state value: int
+      state cleaned: int
+      state after: int
+      state skip: int
+      init value = 0
+      init cleaned = 0
+      init after = 0
+      init skip = 0
+      action run: value' = skip === 0 ? value + 1 + 1 : skip === 1 ? value + 1 + 1 : skip === 2 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = cleaned + 1 + 1 + 1, after' = after + 1
+    */
+      interface Runtime { value: number; cleaned: number; after: number; skip: number }
+      /* uneffect: refinement continuing@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement continuing@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement continuing@1 action run */
+      export function run(runtime: Runtime) {
+        for (let index = 0; index < 3; index++) {
+          try {
+            if (runtime.skip === index) continue
+            runtime.value++
+          } finally {
+            runtime.cleaned++
+          }
+        }
+        runtime.after++
+      }
+    `;
+    await expect(validateRefinementActionBodiesWithZ3("continuing-for.ts", source, "continuing", parseSpec("continuing-for.ts", source).temporal)).resolves.toEqual([]);
+
+    const unsafeWhile = source.replace(
+      "for (let index = 0; index < 3; index++) {",
+      "let index = 0\n        while (index < 3) {",
+    ).replace("          } finally {", "          } finally {").replace("            runtime.cleaned++\n          }", "            runtime.cleaned++\n          }\n          index++");
+    expect(validateRefinementActionBodies("continuing-while.ts", unsafeWhile, "continuing", parseSpec("continuing-while.ts", unsafeWhile).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
+
+    const oneShot = `/* uneffect:
+      state cleaned: int
+      state after: int
+      init cleaned = 0
+      init after = 0
+      action run: cleaned' = cleaned + 1, after' = after + 1
+    */
+      interface Runtime { cleaned: number; after: number }
+      /* uneffect: refinement oneShotContinue@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement oneShotContinue@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement oneShotContinue@1 action run */
+      export function run(runtime: Runtime) {
+        do {
+          try { continue } finally { runtime.cleaned++ }
+        } while (false)
+        runtime.after++
+      }
+    `;
+    expect(validateRefinementActionBodies("one-shot-continue.ts", oneShot, "oneShotContinue", parseSpec("one-shot-continue.ts", oneShot).temporal)).toEqual([]);
   });
 });

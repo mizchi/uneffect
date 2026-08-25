@@ -237,6 +237,14 @@ once. The generated-migration fixture checks this with per-iteration auditing
 in `finally` and a post-loop report. `continue`, labeled transfers, and nested
 switch/loop ownership ambiguities remain fail-closed.
 
+Unlabeled `continue` uses a separate completion predicate as well. Each
+supported finite `for` or literal `for...of` iteration consumes it after
+mandatory `finally` work and proceeds to the next statically expanded
+iteration; one-shot `do...while(false)` consumes it as loop exit. Canonical
+local-counter `while` deliberately rejects `continue`, because jumping over its
+terminal `i++` would invalidate the finite trip-count argument. Labeled and
+ambiguous nested transfers remain unsupported.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

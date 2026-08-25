@@ -348,6 +348,15 @@ throw/break completion joins, and action comparison. It excludes Z3, Program
 construction, `continue`, labeled or ambiguous nested transfers, and general
 CFG fixed-point analysis; it is an observation rather than a regression budget.
 
+After adding a second three-iteration action whose conditional `continue`
+passes through per-iteration `finally`, advances the finite `for`, and reaches
+one post-loop report, the complete transfer-aware loop benchmark measured
+0.8623 ms mean over 580 samples (0.90% RME). It includes parsing, per-iteration
+expansion, five-way completion composition, and structural action comparison.
+It excludes the Z3 equivalence pass used by the dogfood, Program construction,
+canonical-while continue, labeled or ambiguous nested transfers, and general
+CFG fixed points; it is not a regression budget.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

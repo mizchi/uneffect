@@ -781,18 +781,21 @@ function validateRefinementActionBodiesInSource(
     return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
-  type AbruptCompletion = "return" | "throw" | "break";
+  type AbruptCompletion = "return" | "throw" | "break" | "continue";
   type ActionCompletion = "normal" | AbruptCompletion | {
     kind: "mixed";
     returnWhen?: TemporalExpression;
     throwWhen?: TemporalExpression;
     breakWhen?: TemporalExpression;
+    continueWhen?: TemporalExpression;
     throwValue?: TemporalExpression;
   };
   const completionPredicate = (completion: ActionCompletion, abrupt: AbruptCompletion): TemporalExpression => completion === abrupt
     ? { kind: "boolean", value: true }
     : completion === "normal" || typeof completion === "string" ? { kind: "boolean", value: false }
-      : completion[abrupt === "return" ? "returnWhen" : abrupt === "throw" ? "throwWhen" : "breakWhen"]
+      : completion[abrupt === "return" ? "returnWhen"
+        : abrupt === "throw" ? "throwWhen"
+          : abrupt === "break" ? "breakWhen" : "continueWhen"]
         ?? { kind: "boolean", value: false };
   const completionThrowValue = (completion: ActionCompletion): TemporalExpression | undefined =>
     typeof completion === "object" ? completion.throwValue : undefined;
@@ -821,19 +824,23 @@ function validateRefinementActionBodiesInSource(
     throwWhen: TemporalExpression,
     throwValue?: TemporalExpression,
     breakWhen: TemporalExpression = { kind: "boolean", value: false },
+    continueWhen: TemporalExpression = { kind: "boolean", value: false },
   ): ActionCompletion => {
     const noReturn = isBooleanCompletionPredicate(returnWhen, false);
     const noThrow = isBooleanCompletionPredicate(throwWhen, false);
     const noBreak = isBooleanCompletionPredicate(breakWhen, false);
-    if (noReturn && noThrow && noBreak) return "normal";
-    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak) return "return";
-    if (isBooleanCompletionPredicate(throwWhen, true) && noReturn && noBreak && !throwValue) return "throw";
-    if (isBooleanCompletionPredicate(breakWhen, true) && noReturn && noThrow) return "break";
+    const noContinue = isBooleanCompletionPredicate(continueWhen, false);
+    if (noReturn && noThrow && noBreak && noContinue) return "normal";
+    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak && noContinue) return "return";
+    if (isBooleanCompletionPredicate(throwWhen, true) && noReturn && noBreak && noContinue && !throwValue) return "throw";
+    if (isBooleanCompletionPredicate(breakWhen, true) && noReturn && noThrow && noContinue) return "break";
+    if (isBooleanCompletionPredicate(continueWhen, true) && noReturn && noThrow && noBreak) return "continue";
     return {
       kind: "mixed",
       ...(noReturn ? {} : { returnWhen }),
       ...(noThrow ? {} : { throwWhen }),
       ...(noBreak ? {} : { breakWhen }),
+      ...(noContinue ? {} : { continueWhen }),
       ...(throwValue ? { throwValue } : {}),
     };
   };
@@ -886,6 +893,7 @@ function validateRefinementActionBodiesInSource(
     allowTerminalReturn = true,
     allowTerminalThrow = false,
     allowBreak = false,
+    allowContinue = false,
   ): ActionCompletion | undefined => {
     // Each lexical block gets its own immutable-alias environment. Recursive
     // branch collection receives a snapshot, so aliases declared in a nested
@@ -1011,20 +1019,30 @@ function validateRefinementActionBodiesInSource(
       const parsed = ts.createSourceFile("__uneffect_finite_loop.ts", expandedText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
       return parsed.statements.length === 1 ? parsed.statements[0] : undefined;
     };
-    const expandFiniteLoop = (
+    const expandFiniteLoopIterations = (
       statement: ts.Statement,
       binding: string,
       values: readonly ts.Expression[],
-    ): ts.Block | undefined => {
-      const statements: ts.Statement[] = [];
+    ): readonly ts.Block[] | undefined => {
+      const iterations: ts.Block[] = [];
       for (const value of values) {
+        const statements: ts.Statement[] = [];
         for (const item of asBlock(statement).statements) {
           const expanded = substituteFiniteLoopBinding(item, binding, value);
           if (!expanded) return undefined;
           statements.push(expanded);
         }
+        iterations.push(ts.factory.createBlock(statements, true));
       }
-      return ts.factory.createBlock(statements, true);
+      return iterations;
+    };
+    const expandFiniteLoop = (
+      statement: ts.Statement,
+      binding: string,
+      values: readonly ts.Expression[],
+    ): ts.Block | undefined => {
+      const iterations = expandFiniteLoopIterations(statement, binding, values);
+      return iterations ? ts.factory.createBlock(iterations.flatMap((iteration) => [...iteration.statements]), true) : undefined;
     };
     const canonicalBoundedWhile = (
       declarationStatement: ts.VariableStatement,
@@ -1085,23 +1103,25 @@ function validateRefinementActionBodiesInSource(
       branchUpdates: Map<string, TemporalExpression>,
       continuation: ts.Block,
     ): ActionCompletion | undefined => {
-      if (completion === "return" || completion === "throw") return completion;
+      if (completion === "return" || completion === "throw" || completion === "break" || completion === "continue") return completion;
       if (completion === "normal") return collect(
         continuation, receiver, runtimeClass, substitutions,
-        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak,
+        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
       );
-      if (completion === "break") return completion;
       const beforeContinuation = new Map(branchUpdates);
       const continuingUpdates = new Map(branchUpdates);
       const continued = collect(
         continuation, receiver, runtimeClass, substitutions,
-        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak,
+        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
       );
       if (!continued) return undefined;
       const priorReturn = completionPredicate(completion, "return");
       const priorThrow = completionPredicate(completion, "throw");
       const priorBreak = completionPredicate(completion, "break");
-      const priorAbrupt = orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak);
+      const priorContinue = completionPredicate(completion, "continue");
+      const priorAbrupt = orCompletionPredicates(
+        orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+      );
       const normalWhen = notCompletionPredicate(priorAbrupt);
       mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
       return makeCompletion(
@@ -1109,9 +1129,51 @@ function validateRefinementActionBodiesInSource(
         orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
         sequenceThrowValue(completion, continued),
         orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(continued, "break"))),
+        orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
       );
     };
-    const consumeLoopBreak = (
+    const collectFiniteLoopIterations = (
+      iterations: readonly ts.Block[],
+      index: number,
+      branchUpdates: Map<string, TemporalExpression>,
+    ): ActionCompletion | undefined => {
+      const iteration = iterations[index];
+      if (!iteration) return "normal";
+      const completion = collect(
+        iteration, receiver, runtimeClass, substitutions,
+        branchUpdates, new Map(localValues), activeCalls,
+        allowTerminalReturn, allowTerminalThrow, true, true,
+      );
+      if (!completion) return undefined;
+      const afterContinue = makeCompletion(
+        completionPredicate(completion, "return"),
+        completionPredicate(completion, "throw"),
+        completionThrowValue(completion),
+        completionPredicate(completion, "break"),
+      );
+      if (index + 1 >= iterations.length) return afterContinue;
+      if (afterContinue === "return" || afterContinue === "throw" || afterContinue === "break") return afterContinue;
+      if (afterContinue === "normal") return collectFiniteLoopIterations(iterations, index + 1, branchUpdates);
+
+      const beforeNext = new Map(branchUpdates);
+      const nextUpdates = new Map(branchUpdates);
+      const next = collectFiniteLoopIterations(iterations, index + 1, nextUpdates);
+      if (!next) return undefined;
+      const priorReturn = completionPredicate(afterContinue, "return");
+      const priorThrow = completionPredicate(afterContinue, "throw");
+      const priorBreak = completionPredicate(afterContinue, "break");
+      const priorAbrupt = orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak);
+      const normalWhen = notCompletionPredicate(priorAbrupt);
+      mergeConditionalUpdates(priorAbrupt, beforeNext, nextUpdates, beforeNext, branchUpdates);
+      return makeCompletion(
+        orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(next, "return"))),
+        orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(next, "throw"))),
+        sequenceThrowValue(afterContinue, next),
+        orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(next, "break"))),
+        completionPredicate(next, "continue"),
+      );
+    };
+    const consumeLoopTransfers = (
       completion: ActionCompletion,
       branchUpdates: Map<string, TemporalExpression>,
       continuation: ts.Block,
@@ -1123,7 +1185,8 @@ function validateRefinementActionBodiesInSource(
       );
       if (escaping === "normal") return collect(
         continuation, receiver, runtimeClass, substitutions,
-        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak,
+        branchUpdates, new Map(localValues), activeCalls,
+        allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
       );
       return applyContinuation(escaping, branchUpdates, continuation);
     };
@@ -1194,11 +1257,15 @@ function validateRefinementActionBodiesInSource(
         if (!allowBreak || statement.label) return undefined;
         return "break";
       }
-      if (ts.isContinueStatement(statement)) return undefined;
+      if (ts.isContinueStatement(statement)) {
+        if (!allowContinue || statement.label) return undefined;
+        return "continue";
+      }
       if (ts.isBlock(statement)) {
         const completion = collect(
           statement, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak,
+          updates, new Map(localValues), activeCalls,
+          allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
         );
         if (!completion) return undefined;
         if (completion === "normal") continue;
@@ -1211,7 +1278,7 @@ function validateRefinementActionBodiesInSource(
         if (!labeledBlock) return undefined;
         const completion = collect(
           labeledBlock, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, true, allowTerminalThrow, allowBreak,
+          updates, new Map(localValues), activeCalls, true, allowTerminalThrow, allowBreak, allowContinue,
         );
         if (!completion) return undefined;
         // A return here is the rewritten break and is consumed by this label.
@@ -1222,6 +1289,7 @@ function validateRefinementActionBodiesInSource(
           completionPredicate(completion, "throw"),
           completionThrowValue(completion),
           completionPredicate(completion, "break"),
+          completionPredicate(completion, "continue"),
         );
         if (escapingCompletion === "normal") continue;
         return applyContinuation(
@@ -1240,9 +1308,9 @@ function validateRefinementActionBodiesInSource(
           const completion = collect(
             expanded,
             receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
-            allowTerminalReturn, allowTerminalThrow, true,
+            allowTerminalReturn, allowTerminalThrow, true, false,
           );
-          return completion ? consumeLoopBreak(
+          return completion ? consumeLoopTransfers(
             completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 2), true),
           ) : undefined;
         }
@@ -1261,9 +1329,10 @@ function validateRefinementActionBodiesInSource(
         const completion = collect(
           asBlock(statement.statement), receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, true,
+          true,
         );
         if (!completion) return undefined;
-        return consumeLoopBreak(
+        return consumeLoopTransfers(
           completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
         );
       }
@@ -1282,18 +1351,14 @@ function validateRefinementActionBodiesInSource(
           && increment.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(increment.operand) && increment.operand.text === loopName;
         if (!loopName || start === undefined || end === undefined || !incrementsLoop
           || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 64) return undefined;
-        const expanded = expandFiniteLoop(
+        const iterations = expandFiniteLoopIterations(
           statement.statement,
           loopName,
           Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
         );
-        if (!expanded) return undefined;
-        const completion = collect(
-          expanded,
-          receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
-          allowTerminalReturn, allowTerminalThrow, true,
-        );
-        return completion ? consumeLoopBreak(
+        if (!iterations) return undefined;
+        const completion = collectFiniteLoopIterations(iterations, 0, updates);
+        return completion ? consumeLoopTransfers(
           completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
         ) : undefined;
       }
@@ -1309,14 +1374,10 @@ function validateRefinementActionBodiesInSource(
             && (ts.isNumericLiteral(element) || element.kind === ts.SyntaxKind.TrueKeyword || element.kind === ts.SyntaxKind.FalseKeyword))
           ? [...iterable.elements] : undefined;
         if (statement.awaitModifier || !loopName || !values) return undefined;
-        const expanded = expandFiniteLoop(statement.statement, loopName, values);
-        if (!expanded) return undefined;
-        const completion = collect(
-          expanded,
-          receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
-          allowTerminalReturn, allowTerminalThrow, true,
-        );
-        return completion ? consumeLoopBreak(
+        const iterations = expandFiniteLoopIterations(statement.statement, loopName, values);
+        if (!iterations) return undefined;
+        const completion = collectFiniteLoopIterations(iterations, 0, updates);
+        return completion ? consumeLoopTransfers(
           completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
         ) : undefined;
       }
@@ -1325,7 +1386,7 @@ function validateRefinementActionBodiesInSource(
         if (statement.catchClause) {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak,
+            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
           );
           if (!tryCompletion) return undefined;
           const throwWhen = completionPredicate(tryCompletion, "throw");
@@ -1340,7 +1401,7 @@ function validateRefinementActionBodiesInSource(
           }
           const catchCompletion = collect(
             statement.catchClause.block, receiver, runtimeClass, substitutions,
-            caughtUpdates, catchLocals, activeCalls, true, true, allowBreak,
+            caughtUpdates, catchLocals, activeCalls, true, true, allowBreak, allowContinue,
           );
           if (!catchCompletion) return undefined;
           if (isBooleanCompletionPredicate(throwWhen, true)) {
@@ -1358,11 +1419,15 @@ function validateRefinementActionBodiesInSource(
               completionPredicate(tryCompletion, "break"),
               andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "break")),
             ),
+            orCompletionPredicates(
+              completionPredicate(tryCompletion, "continue"),
+              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "continue")),
+            ),
           );
         } else {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak,
+            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
           );
           if (!tryCompletion) return undefined;
           residualCompletion = tryCompletion;
@@ -1373,36 +1438,45 @@ function validateRefinementActionBodiesInSource(
           const priorReturn = completionPredicate(residualCompletion, "return");
           const priorThrow = completionPredicate(residualCompletion, "throw");
           const priorBreak = completionPredicate(residualCompletion, "break");
+          const priorContinue = completionPredicate(residualCompletion, "continue");
           const finallyCompletion = collect(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak,
+            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
           );
           if (!finallyCompletion) return undefined;
           const finallyReturn = completionPredicate(finallyCompletion, "return");
           const finallyThrow = completionPredicate(finallyCompletion, "throw");
           const finallyBreak = completionPredicate(finallyCompletion, "break");
+          const finallyContinue = completionPredicate(finallyCompletion, "continue");
           const finallyNormal = notCompletionPredicate(orCompletionPredicates(
-            orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
+            orCompletionPredicates(
+              orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
+            ),
+            finallyContinue,
           ));
           residualCompletion = makeCompletion(
             orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
             orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
             sequenceThrowValue(finallyCompletion, residualCompletion),
             orCompletionPredicates(finallyBreak, andCompletionPredicates(finallyNormal, priorBreak)),
+            orCompletionPredicates(finallyContinue, andCompletionPredicates(finallyNormal, priorContinue)),
           );
           if (residualCompletion === "normal") continue;
         }
         const priorReturn = completionPredicate(residualCompletion, "return");
         const priorThrow = completionPredicate(residualCompletion, "throw");
         const priorBreak = completionPredicate(residualCompletion, "break");
-        const priorAbrupt = orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak);
+        const priorContinue = completionPredicate(residualCompletion, "continue");
+        const priorAbrupt = orCompletionPredicates(
+          orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+        );
         if (isBooleanCompletionPredicate(priorAbrupt, true)) return residualCompletion;
         const beforeContinuation = new Map(updates);
         const continuingUpdates = new Map(updates);
         const continued = collect(
           ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
           continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
-          allowBreak,
+          allowBreak, allowContinue,
         );
         if (!continued) return undefined;
         const normalWhen = notCompletionPredicate(priorAbrupt);
@@ -1412,6 +1486,7 @@ function validateRefinementActionBodiesInSource(
           orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),
           sequenceThrowValue(residualCompletion, continued),
           orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(continued, "break"))),
+          orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
         );
       }
       if (ts.isIfStatement(statement)) {
@@ -1423,8 +1498,8 @@ function validateRefinementActionBodiesInSource(
         const falseBlock = asBlock(statement.elseStatement);
         const trueUpdates = new Map(before);
         const falseUpdates = new Map(before);
-        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak);
-        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue);
         if (!whenTrue || !whenFalse) return undefined;
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
         if (hasAbruptBranch) {
@@ -1440,6 +1515,7 @@ function validateRefinementActionBodiesInSource(
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "throw"), completionPredicate(whenFalse, "throw")),
             joinThrowValue(condition, whenTrue, whenFalse),
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "break"), completionPredicate(whenFalse, "break")),
+            joinCompletionPredicate(condition, completionPredicate(whenTrue, "continue"), completionPredicate(whenFalse, "continue")),
           );
         }
         continue;

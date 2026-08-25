@@ -98,8 +98,12 @@ same property is proved for arbitrary TypeScript.
   other steps, and general loop invariants remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
-  loop, and followed by the outer continuation. `continue`, labeled transfers,
-  and ambiguous nested switch/loop transfers remain unsupported.
+  loop, and followed by the outer continuation. Labeled transfers and ambiguous
+  nested switch/loop transfers remain unsupported. An unlabeled
+  `continue` is additionally tracked through branches and `try`/`finally`, but
+  consumed only at finite `for`, literal `for...of`, and one-shot `do` iteration
+  boundaries where advancement is guaranteed. Canonical `while` rejects it
+  because it can bypass the required terminal increment.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

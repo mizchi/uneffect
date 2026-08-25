@@ -973,7 +973,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("reduce exact, canonical, and breaking bounded loops", () => {
+  bench("reduce exact and transfer-aware bounded loops", () => {
     validateRefinementActionBodies(
       generatedMigrationFile,
       generatedMigrationSource,
