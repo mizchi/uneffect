@@ -178,6 +178,14 @@ runs on both the break and ordinary paths. Labeled `continue`, cross/nested
 labels, and actual function returns inside this fragment remain fail-closed;
 this is not a general labeled-control-flow fixed point.
 
+Unconditional supported `return` and `throw` completions discard their
+unreachable lexical suffix. Updates before a throw still enter the selected
+catch, and a catch-local return suppresses both its remaining statements and
+the post-try continuation. Unsupported/effectful completion expressions still
+fail closed; this rule does not infer general reachability through arbitrary
+loops or dynamic dispatch. The labeled-delivery dogfood retains a deliberately
+unreachable write after its local break so this behavior is load-bearing.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

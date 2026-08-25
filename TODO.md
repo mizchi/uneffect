@@ -222,7 +222,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Compose scalar `switch` entry, fallthrough, unlabeled `break`, and `default` paths into conditional temporal updates; reject dynamic labels, duplicate labels, labeled breaks, and other unsupported abrupt flow.
       - [x] Sequence mandatory `finally` updates after a normally completing action `try` block; reject catches and return/throw/break completion until the exception-aware completion lattice is implemented.
       - [x] Join a direct branch-local `return` with the continuing `if` path, applying trailing statements only to paths that continue and preserving updates made before the branch; the initial slice covered void returns and later generalized to supported pure value expressions.
-      - [x] Route a direct terminal primitive `throw` through a catch body and then an optional mandatory `finally`; reject effectful throw expressions, catch-value-dependent flow, and nonterminal/nested throws.
+      - [x] Route a direct primitive `throw` through a catch body and then an optional mandatory `finally`; ignore its unreachable lexical suffix while rejecting effectful throw expressions and unsupported catch-value-dependent flow.
       - [x] Split a top-level conditional primitive `throw` into exceptional and normal try paths, apply catch only to the exceptional path, join their symbolic state, and then sequence `finally` and trailing statements.
       - [x] Unwind a direct or top-level conditional void `return` through `finally`, applying post-try statements only to the normally continuing path before the symbolic join.
       - [x] Let a direct terminal void `return` in `finally` override a normally completed or already joined try/catch path and suppress all post-try statements.
@@ -241,7 +241,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Distribute catch-field reads across conditional joins of normalized object-literal throw payloads; a field missing from either branch remains unproved and is rejected by action equivalence.
       - [x] Unroll ascending literal-bound `for (let i = start; i < end; i++)` action loops up to 64 iterations; reject dynamic or oversized bounds.
       - [x] Compose acyclic direct calls to same-file action helpers over shared symbolic state with call-site scalar argument snapshots; reject recursion and nonlocal or dynamic calls.
-      - [x] Compose terminal void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; reject nonterminal and branch-local abrupt completion.
+      - [x] Compose void `return` and `return helper(runtime, ...)` in root action, same-file helper, and local method bodies; ignore unreachable lexical suffixes after unconditional completion.
+      - [x] Stop action collection after an unconditional supported `return` or `throw`, preserving preceding updates and rejecting a model that depends on unreachable suffix writes.
       - [x] Lower a nested scalar member assignment, compound assignment, or increment into an immutable temporal record update and detect redirected writes.
       - [x] Merge sequential writes to distinct nested record members into one immutable update while preserving same-member data dependencies; compare record fields independent of source order.
       - [x] Normalize direct immutable TypeScript object-literal assignments with one leading state spread into temporal record updates; reject unresolved or later spreads.

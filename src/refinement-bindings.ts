@@ -1036,7 +1036,7 @@ function validateRefinementActionBodiesInSource(
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
-      if (terminalReturn && (!allowTerminalReturn || statementIndex !== body.statements.length - 1)) return undefined;
+      if (terminalReturn && !allowTerminalReturn) return undefined;
       if (terminalReturn && !statement.expression) return "return";
       if (terminalReturn && !ts.isCallExpression(statement.expression!)) {
         const returned = normalizeRefinementExpression(
@@ -1049,7 +1049,7 @@ function validateRefinementActionBodiesInSource(
         return "return";
       }
       if (ts.isThrowStatement(statement)) {
-        if (!allowTerminalThrow || statementIndex !== body.statements.length - 1) return undefined;
+        if (!allowTerminalThrow) return undefined;
         if (!isUntrackedPrimitiveThrownValue(statement.expression)) {
           const thrown = normalizeRefinementExpression(
             statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,

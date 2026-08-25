@@ -317,10 +317,10 @@ signal; it is not an optimization claim and does not cover mutable or escaping
 alias analysis.
 
 On 2026-08-26, parsing and validating the labeled telemetry delivery with a
-conditional local break, mandatory `finally`, and outer audit continuation
-measured 0.1023 ms mean over 4,889 samples (2.13% RME). This measures the
-syntax-only refinement comparison. It excludes Z3, labeled loops, nested
-labels, and `continue`.
+conditional local break, mandatory `finally`, outer audit continuation, and an
+unreachable post-break write measured 0.1272 ms mean over 3,931 samples (2.37%
+RME). This measures the syntax-only refinement comparison. It excludes Z3,
+labeled loops, nested labels, and `continue`.
 
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean

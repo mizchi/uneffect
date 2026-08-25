@@ -31,7 +31,10 @@ export function observeDelivery(runtime: DeliveryAccounting): DeliveryAccounting
 export function deliver(runtime: DeliveryAccounting): void {
   attempt: {
     try {
-      if (runtime.skip) break attempt;
+      if (runtime.skip) {
+        break attempt;
+        runtime.delivered += 100; // unreachable after the local completion
+      }
       runtime.delivered++;
     } finally {
       runtime.finalized++;

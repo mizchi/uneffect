@@ -74,6 +74,40 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("labeled-delivery.ts", source, "telemetry", specification.temporal)).toEqual([]);
   });
 
+  it("drops unreachable statements after unconditional return and throw", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state attempted: int
+       * state recovered: int
+       * state unreachable: int
+       * init attempted = 0
+       * init recovered = 0
+       * init unreachable = 0
+       * action recover: attempted' = attempted + 1, recovered' = recovered + 1
+       */
+      interface Runtime { attempted: number; recovered: number; unreachable: number }
+      /* uneffect: refinement recovery@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement recovery@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement recovery@1 action recover */
+      export function recover(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          throw false
+          runtime.unreachable += 100
+        } catch {
+          runtime.recovered++
+          return
+          runtime.unreachable += 10
+        }
+        runtime.unreachable++
+      }
+    `;
+    const specification = parseSpecification("unreachable-recovery.ts", source) as { temporal: unknown };
+    expect(validateActions("unreachable-recovery.ts", source, "recovery", specification.temporal)).toEqual([]);
+  });
+
   it("refines finite TypeScript iteration with abrupt completion and finally cleanup", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

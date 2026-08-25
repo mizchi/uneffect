@@ -957,7 +957,7 @@ describe("annotated refinement bindings", () => {
 
     const nonterminal = source.replace("runtime.value++; return", "return; runtime.value++");
     expect(validateRefinementActionBodies("nonterminal-return.ts", nonterminal, "counter", parseSpec("nonterminal-return.ts", nonterminal).temporal)).toEqual([
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "increment" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "increment", target: "value" }),
     ]);
   });
 
@@ -1049,6 +1049,11 @@ describe("annotated refinement bindings", () => {
     `;
     expect(validateRefinementActionBodies("labeled-break.ts", source, "routing", parseSpec("labeled-break.ts", source).temporal)).toEqual([]);
 
+    const unconditional = source
+      .replace("sent' = stop ? sent : sent + 1", "sent' = sent")
+      .replace("if (runtime.stop) break delivery\n            runtime.sent++", "break delivery\n            runtime.sent += 100");
+    expect(validateRefinementActionBodies("unconditional-labeled-break.ts", unconditional, "routing", parseSpec("unconditional-labeled-break.ts", unconditional).temporal)).toEqual([]);
+
     for (const invalid of [
       source.replace("break delivery", "continue delivery"),
       source.replace("break delivery", "break outside"),
@@ -1056,6 +1061,36 @@ describe("annotated refinement bindings", () => {
     ]) expect(validateRefinementActionBodies("invalid-labeled-break.ts", invalid, "routing", parseSpec("invalid-labeled-break.ts", invalid).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "route" }),
     );
+  });
+
+  it("ignores unreachable suffixes after unconditional return and throw completions", () => {
+    const source = `/* uneffect:
+      state attempted: int
+      state caught: int
+      state unreachable: int
+      init attempted = 0
+      init caught = 0
+      init unreachable = 0
+      action fail: attempted' = attempted + 1, caught' = caught + 1
+    */
+      interface Runtime { attempted: number; caught: number; unreachable: number }
+      /* uneffect: refinement completion@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement completion@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement completion@1 action fail */
+      export function fail(runtime: Runtime) {
+        try {
+          runtime.attempted++
+          throw true
+          runtime.unreachable += 100
+        } catch {
+          runtime.caught++
+          return
+          runtime.unreachable += 10
+        }
+        runtime.unreachable++
+      }
+    `;
+    expect(validateRefinementActionBodies("unreachable-completion.ts", source, "completion", parseSpec("unreachable-completion.ts", source).temporal)).toEqual([]);
   });
 
   it("merges multiple nested member writes independent of model field order", () => {

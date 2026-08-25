@@ -81,6 +81,9 @@ same property is proved for arbitrary TypeScript.
   later iterations while a surrounding `finally` still runs. The
   same completion machinery consumes a statically named block's own `break`
   after its mandatory `finally` work and then executes the outer continuation.
+  An unconditional supported `return` or `throw` terminates collection of its
+  lexical suffix; preceding updates remain visible, while unreachable writes
+  cannot satisfy a temporal action.
   Labeled loops, `continue`, nested/cross-label transfers, and real returns
   inside that labeled fragment remain unsupported. The action-control subset
   keeps return and throw completion predicates distinct,
