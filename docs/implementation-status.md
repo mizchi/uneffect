@@ -172,6 +172,12 @@ same property is proved for arbitrary TypeScript.
   object/array snapshots fail closed. Member
   callbacks, general cache proofs, exact call counts, transition fallback, and
   hydration equality remain unsupported.
+- `useImperativeHandle` resolves named/default/namespace calls and local or
+  module-local factories. Factory work is a layout-commit lifecycle; methods,
+  accessors, and function properties on directly returned object literals are
+  separate externally invoked capabilities. Dependency omissions, conditional
+  calls, and opaque factories fail closed. Object spread, prototype/member
+  factories, and cross-component ref-call flow remain unsupported.
 - `/* uneffect: react hook */` adds the same replayable boundary to custom
   Hooks. Source-local calls and TypeScript-symbol-resolved named aliases,
   barrels, namespace properties, and default imports compose their phase

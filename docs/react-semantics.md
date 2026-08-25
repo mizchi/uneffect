@@ -28,17 +28,19 @@ code. Ordinary JSDoc remains untouched.
 
 ## Phase model
 
-The analyzer currently projects component work into ten phases:
+The analyzer currently projects component work into twelve phases:
 
 | Phase | Execution meaning | Initial rule |
 | --- | --- | --- |
 | `render` | Replayable calculation of the next UI value | Must be idempotent and free of observable capabilities |
 | `event` | JSX event callback invoked by an external interaction | Capabilities are recorded but are not charged to render |
+| `imperative-handle-method` | Method exposed to a ref consumer by `useImperativeHandle` | Method capabilities are recorded as externally invoked work, not factory work |
 | `external-store-snapshot` | `useSyncExternalStore` client `getSnapshot` read during replayable rendering | Read capabilities are recorded at the specialized boundary |
 | `server-snapshot` | Optional `getServerSnapshot` read during SSR or hydration | Capabilities remain distinct from the client snapshot |
 | `external-store-subscribe` | External-store subscription setup after mount | Acquisition and returned cleanup are paired without claiming exact host timing |
 | `insertion-effect` | `useInsertionEffect` setup during commit, before refs and layout/passive Effects | Capabilities are recorded; local state dispatch is rejected |
 | `layout-effect` | `useLayoutEffect` setup after commit | Capabilities are recorded separately |
+| `imperative-handle` | `useImperativeHandle` factory during the layout commit | Factory capabilities and lifecycle replay are separate from exposed methods |
 | `passive-effect` | `useEffect` setup after commit | Capabilities are recorded separately |
 | `ref-callback` | Inline JSX callback ref invoked during commit | Setup capabilities are separate from render |
 | `cleanup` | Function returned by an Effect or callback-ref setup | May release a setup acquisition |
@@ -88,6 +90,18 @@ directly returns a fresh object or array produces
 `uncached-external-store-snapshot`; a subscribe callback without a returned
 unsubscribe function produces `missing-external-store-cleanup`, following the
 [React external-store contract](https://react.dev/reference/react/useSyncExternalStore).
+
+Named, default-object, or namespace-qualified `useImperativeHandle` calls
+resolve inline, module-local, and immutable component/custom-Hook-local handle
+factories. Factory capabilities occupy an `imperative-handle` commit instance;
+methods, getters, setters, and function-valued properties on a directly
+returned object occupy `imperative-handle-method`, because a ref consumer may
+invoke them later. Dependency arrays use the same lexical capture checks as
+Effects, and opaque factories produce `unknown-imperative-handle-callback`.
+The lifecycle replay includes React's setup/cleanup/setup development stress
+cycle without claiming a user-visible cleanup callback from the factory. This
+is the reviewed local fragment of the
+[React `useImperativeHandle` contract](https://react.dev/reference/react/useImperativeHandle).
 
 Named imports of `useEffect`, `useLayoutEffect`, and `useInsertionEffect` from `react`, including
 aliases, establish the Effect boundaries. An unrelated same-named local
@@ -419,7 +433,7 @@ This is a tested initial fragment, not a complete React semantics:
   containers, and interprocedural region flow need a flow-sensitive
   ownership analysis;
 - callback-ref extraction covers inline JSX functions only; referenced refs,
-  ref props, imperative handles, and the predictable lazy-initialization
+  ref props, and the predictable lazy-initialization
   exception for render-time `.current` access are not modeled;
 - dependency completeness is checked for the documented inline lexical
   fragment; referenced callbacks, custom stability contracts, module mutation,
@@ -436,7 +450,9 @@ This is a tested initial fragment, not a complete React semantics:
   Effect Events passed through props/imports or higher-order containers,
   external-store member callbacks, general cache/immutability proofs,
   exact snapshot invocation counts, transition fallback-to-blocking behavior,
-  server/client snapshot equality, and React compiler assumptions are not
+  server/client snapshot equality, non-object/member/aliased imperative-handle
+  return values, methods introduced through object spread or prototype flow,
+  cross-component calls through refs, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
   concurrent scheduler refinement are not generated yet.
@@ -448,7 +464,8 @@ summary only claims coverage for the constructs listed above.
 
 `examples/dogfood/react-telemetry-dashboard.tsx` combines `useState`, a pure
 `useMemo` calculation, a custom subscription Hook, an identity-checked inline
-callback ref, matching cleanup, and an inline Fetch event. Its regression test
+callback ref, matching cleanup, an imperative handle exposing a Fetch method,
+and an inline Fetch event. Its regression test
 removes Effect/ref cleanup, substitutes another resource, removes a dependency,
 and mutates props as independent negative controls. The same component also
 generates the bounded interrupted-render model and locks the rule that only a

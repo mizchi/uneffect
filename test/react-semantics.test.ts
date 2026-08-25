@@ -233,6 +233,88 @@ describe("React Function Component semantics", () => {
     }));
   });
 
+  it("separates imperative-handle creation from externally invoked handle methods", () => {
+    const result = analyzeReactSemantics("imperative-handle.tsx", `
+      import React, { useImperativeHandle as expose } from "react"
+
+      /* uneffect: effect Audit */ declare function audit(value: string): void
+      /* uneffect: effect Focus */ declare function focusInput(): void
+      /* uneffect: effect Submit */ declare function submitForm(): void
+
+      /* uneffect: react hook */
+      function useEditorHandle(ref: unknown, label: string) {
+        const createHandle = () => {
+          audit(label)
+          return {
+            focus() { focusInput() },
+            submit: () => submitForm(),
+          }
+        }
+        expose(ref, createHandle, [label])
+      }
+
+      /* uneffect: react component */
+      function Editor(props: { label: string; ref: unknown }) {
+        useEditorHandle(props.ref, props.label)
+        return null
+      }
+
+      /* uneffect: react component */
+      function Namespaced(props: { ref: unknown }) {
+        React.useImperativeHandle(props.ref, () => ({ focus() { focusInput() } }), [])
+        return null
+      }
+
+      /* uneffect: react component */
+      function Stale(props: { label: string; ref: unknown }) {
+        expose(props.ref, () => ({ label: props.label }), [])
+        return null
+      }
+
+      /* uneffect: react component */
+      function Opaque(props: { ref: unknown }, createHandle: () => object) {
+        expose(props.ref, createHandle, [])
+        return null
+      }
+
+      /* uneffect: react component */
+      function Conditional(props: { enabled: boolean; ref: unknown }) {
+        if (props.enabled) expose(props.ref, () => ({}), [])
+        return null
+      }
+    `);
+
+    const hook = result.hooks.find(({ name }) => name === "useEditorHandle")!;
+    expect(hook.phases).toEqual(expect.arrayContaining([
+      { phase: "imperative-handle", effects: ["Audit"] },
+      { phase: "imperative-handle-method", effects: ["Focus", "Submit"] },
+    ]));
+    expect(hook.replay.production.effects).toEqual(expect.arrayContaining([
+      expect.objectContaining({ phase: "imperative-handle", transitions: ["setup"] }),
+    ]));
+
+    const editor = result.components.find(({ name }) => name === "Editor")!;
+    expect(editor.phases).toEqual(expect.arrayContaining([
+      { phase: "imperative-handle", effects: ["Audit"] },
+      { phase: "imperative-handle-method", effects: ["Focus", "Submit"] },
+    ]));
+    const quint = generateReactLifecycleQuint("imperative_handle", editor);
+    expect(quint).toContain("phase: imperative-handle");
+    expect(quint).toContain("action cleanup_0_strict_replay");
+    expect(result.components.find(({ name }) => name === "Namespaced")!.phases).toContainEqual({
+      phase: "imperative-handle-method", effects: ["Focus"],
+    });
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ component: "Stale", kind: "missing-hook-dependency", phase: "imperative-handle" }),
+      expect.objectContaining({ component: "Opaque", kind: "unknown-imperative-handle-callback", phase: "imperative-handle" }),
+      expect.objectContaining({ component: "Conditional", kind: "conditional-hook", hook: "useImperativeHandle" }),
+    ]));
+    expect(result.diagnostics.filter(({ component }) => ["useEditorHandle", "Editor", "Namespaced"].includes(component))).toEqual([]);
+    expect(reportDiagnostic(result.diagnostics.find(({ component }) => component === "Opaque")!).notes).toContainEqual(expect.objectContaining({
+      label: "hint", detail: expect.stringContaining("inline the handle factory"),
+    }));
+  });
+
   it("classifies locally referenced and aliased JSX handlers as event work", () => {
     const result = analyzeReactSemantics("referenced-events.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -1705,7 +1787,7 @@ describe("React Function Component semantics", () => {
     }
   });
 
-  it("dogfoods a telemetry dashboard with state, memo, event, and subscription phases", () => {
+  it("dogfoods a telemetry dashboard with state, memo, event, subscription, and imperative-handle phases", () => {
     const fileName = "examples/dogfood/react-telemetry-dashboard.tsx";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeReactSemantics(fileName, source);
@@ -1716,6 +1798,7 @@ describe("React Function Component semantics", () => {
         expect.objectContaining({ phase: "event", effects: ["Fetch"] }),
         expect.objectContaining({ phase: "passive-effect", effects: expect.arrayContaining(["Console", "Acquire<TelemetrySubscription>"]) }),
         expect.objectContaining({ phase: "ref-callback", effects: ["Acquire<TelemetryViewport>"] }),
+        expect.objectContaining({ phase: "imperative-handle-method", effects: ["Fetch"] }),
         expect.objectContaining({ phase: "cleanup", effects: expect.arrayContaining(["Release<TelemetrySubscription>", "Release<TelemetryViewport>"]) }),
       ]),
     }));

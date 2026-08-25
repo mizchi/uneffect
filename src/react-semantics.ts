@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 
-export type ReactPhase = "render" | "event" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "ref-callback" | "cleanup";
+export type ReactPhase = "render" | "event" | "imperative-handle-method" | "external-store-snapshot" | "server-snapshot" | "external-store-subscribe" | "insertion-effect" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback" | "cleanup";
 export type ReactDiagnosticKind =
   | "render-effect"
   | "non-idempotent-render"
@@ -17,6 +17,7 @@ export type ReactDiagnosticKind =
   | "unknown-external-store-callback"
   | "uncached-external-store-snapshot"
   | "missing-external-store-cleanup"
+  | "unknown-imperative-handle-callback"
   | "conditional-hook"
   | "missing-effect-cleanup"
   | "invalid-react-annotation"
@@ -36,7 +37,7 @@ export interface ReactPhaseSummary {
 }
 
 export type ReactEffectTransition = "setup" | "cleanup";
-export type ReactCommitPhase = "insertion-effect" | "external-store-subscribe" | "passive-effect" | "layout-effect" | "ref-callback";
+export type ReactCommitPhase = "insertion-effect" | "external-store-subscribe" | "passive-effect" | "layout-effect" | "imperative-handle" | "ref-callback";
 export interface ReactLifecycleStep {
   transition: ReactEffectTransition;
   commit: string;
@@ -185,7 +186,7 @@ interface CommitInstanceSummary {
 }
 
 const reactCommitPhaseOrder = new Map<ReactCommitPhase, number>([
-  ["insertion-effect", 0], ["ref-callback", 1], ["layout-effect", 2], ["external-store-subscribe", 3], ["passive-effect", 3],
+  ["insertion-effect", 0], ["ref-callback", 1], ["layout-effect", 2], ["imperative-handle", 2], ["external-store-subscribe", 3], ["passive-effect", 3],
 ]);
 
 function replayModel(instances: readonly CommitInstanceSummary[]): ReactReplayModel {
@@ -611,7 +612,7 @@ function directScopeBindings(block: ts.Block): Set<string> {
 }
 
 function capturedDependencies(
-  callback: ts.ArrowFunction | ts.FunctionExpression,
+  callback: LocalEventCallback,
   ownerBindings: ReadonlySet<string>,
   stableBindings: ReadonlySet<string>,
 ): Set<string> {
@@ -680,12 +681,14 @@ function dependencyIssues(
   config: DependencyHook,
   boundary: ComponentNode,
   source: ts.SourceFile,
+  callbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
 ): DependencyIssue[] {
   const dependencyNode = call.arguments[config.dependencies];
   if (!dependencyNode) return [];
   const callbackNode = call.arguments[config.callback];
   const issues: DependencyIssue[] = [];
-  if (!callbackNode || !(ts.isArrowFunction(callbackNode) || ts.isFunctionExpression(callbackNode))) {
+  const callback = callbackArgument(callbackNode, callbacks);
+  if (!callback) {
     issues.push({ kind: "unknown-hook-closure", node: callbackNode ?? call, detail: `${hook} uses a callback whose captured values are not locally inspectable` });
   }
   if (!ts.isArrayLiteralExpression(dependencyNode) || dependencyNode.elements.some(ts.isSpreadElement)) {
@@ -706,9 +709,9 @@ function dependencyIssues(
       detail: `${expression.text} is an Effect Event and must be omitted from dependency arrays`,
     });
   }
-  if (!callbackNode || !(ts.isArrowFunction(callbackNode) || ts.isFunctionExpression(callbackNode))) return issues;
+  if (!callback) return issues;
   const { bindings, stable } = ownerBindingFacts(boundary, source);
-  const required = capturedDependencies(callbackNode, bindings, stable);
+  const required = capturedDependencies(callback, bindings, stable);
   const declared = dependencyNode.elements.map((element) => element.getText(source).replace(/\s+/gu, ""));
   const missing = [...required].filter((requiredPath) => !declared.some((dependency) => requiredPath === dependency || requiredPath.startsWith(`${dependency}.`) || requiredPath.startsWith(`${dependency}[`))).sort();
   if (missing.length > 0) issues.push({
@@ -813,6 +816,46 @@ function isUseSyncExternalStoreCall(source: ts.SourceFile, expression: ts.LeftHa
   if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "useSyncExternalStore";
   return ts.isPropertyAccessExpression(expression) && expression.name.text === "useSyncExternalStore"
     && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
+}
+
+function isUseImperativeHandleCall(source: ts.SourceFile, expression: ts.LeftHandSideExpression): boolean {
+  if (ts.isIdentifier(expression)) return reactImportNames(source).get(expression.text) === "useImperativeHandle";
+  return ts.isPropertyAccessExpression(expression) && expression.name.text === "useImperativeHandle"
+    && ts.isIdentifier(expression.expression) && reactNamespaceImportNames(source).has(expression.expression.text);
+}
+
+function imperativeHandleMethodEffects(
+  callback: LocalEventCallback,
+  declared: ReadonlyMap<string, string[]>,
+  immediateCallbacks: ReadonlySet<string>,
+  localCallbacks: ReadonlyMap<string, LocalEventCallback>,
+): string[] {
+  const objects: ts.ObjectLiteralExpression[] = [];
+  if (!ts.isBlock(callback.body)) {
+    const expression = unwrapExpression(callback.body);
+    if (ts.isObjectLiteralExpression(expression)) objects.push(expression);
+  } else {
+    const visitReturns = (node: ts.Node): void => {
+      if (node !== callback.body && ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node) && node.expression) {
+        const expression = unwrapExpression(node.expression);
+        if (ts.isObjectLiteralExpression(expression)) objects.push(expression);
+      }
+      ts.forEachChild(node, visitReturns);
+    };
+    visitReturns(callback.body);
+  }
+  const effects = new Set<string>();
+  for (const object of objects) for (const property of object.properties) {
+    let body: ts.ConciseBody | undefined;
+    if ((ts.isMethodDeclaration(property) || ts.isGetAccessorDeclaration(property) || ts.isSetAccessorDeclaration(property)) && property.body) body = property.body;
+    if (ts.isPropertyAssignment(property)) {
+      const initializer = unwrapExpression(property.initializer);
+      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) body = initializer.body;
+    }
+    if (body) for (const effect of directEffects(body, declared, immediateCallbacks, localCallbacks)) effects.add(effect);
+  }
+  return [...effects];
 }
 
 function returnsFreshSnapshot(callback: LocalEventCallback): ts.Expression | undefined {
@@ -1402,6 +1445,17 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
             span: { start: node.getStart(source), end: node.getEnd() },
           });
         }
+        if (isUseImperativeHandleCall(source, node.expression)) {
+          const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
+          if (createHandle) {
+            const setupEffects = directEffects(createHandle.body, declared, transitionCallbacks, localCallbacks);
+            const methodEffects = imperativeHandleMethodEffects(createHandle, declared, transitionCallbacks, localCallbacks);
+            add("imperative-handle", setupEffects);
+            add("imperative-handle-method", methodEffects);
+            instances.push(commitInstance("imperative-handle", node, setupEffects, []));
+          }
+          return;
+        }
         if (isUseSyncExternalStoreCall(source, node.expression)) {
           const subscribe = callbackArgument(node.arguments[0], callableCallbacks);
           const snapshot = callbackArgument(node.arguments[1], callableCallbacks);
@@ -1491,6 +1545,22 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
+        if (isUseImperativeHandleCall(source, node.expression)) {
+          const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
+          if (!createHandle) reportHook(node.arguments[1] ?? node, {
+            kind: "unknown-imperative-handle-callback", phase: "imperative-handle",
+            operation: node.arguments[1]?.getText(source) ?? "<argument 1>",
+            message: "useImperativeHandle createHandle is not an inline, module-local, or immutable Hook-local callback",
+          });
+          for (const issue of dependencyIssues(node, "useImperativeHandle", { callback: 1, dependencies: 2, phase: "imperative-handle" }, hook, source, callableCallbacks)) reportHook(issue.node, {
+            kind: issue.kind, phase: "imperative-handle", hook: "useImperativeHandle", operation: issue.operation, dependencies: issue.dependencies, message: issue.detail,
+          });
+          if (isConditionalWithin(node, hook)) reportHook(node, {
+            kind: "conditional-hook", phase: "render", hook: "useImperativeHandle",
+            message: "useImperativeHandle has control-flow-dependent call order",
+          });
+          return;
+        }
         if (isUseSyncExternalStoreCall(source, node.expression)) {
           const phases: ReactPhase[] = ["external-store-subscribe", "external-store-snapshot", "server-snapshot"];
           for (const [index, phase] of phases.entries()) {
@@ -1708,6 +1778,29 @@ function analyzeReactSource(source: ts.SourceFile, externalHooks: ReadonlyMap<st
           report(node, {
             kind: "invalid-effect-event-call", phase: "render", operation: node.expression.text,
             message: `${node.expression.text} is an Effect Event and may only be called from an Effect`,
+          });
+          return;
+        }
+        if (isUseImperativeHandleCall(source, node.expression)) {
+          const createHandle = callbackArgument(node.arguments[1], callableCallbacks);
+          if (!createHandle) report(node.arguments[1] ?? node, {
+            kind: "unknown-imperative-handle-callback", phase: "imperative-handle",
+            operation: node.arguments[1]?.getText(source) ?? "<argument 1>",
+            message: "useImperativeHandle createHandle is not an inline, module-local, or immutable component-local callback",
+          });
+          else {
+            const setupEffects = directEffects(createHandle.body, declared, transitionCallbacks, eventCallbacks);
+            const methodEffects = imperativeHandleMethodEffects(createHandle, declared, transitionCallbacks, eventCallbacks);
+            addPhase("imperative-handle", setupEffects);
+            addPhase("imperative-handle-method", methodEffects);
+            instances.push(commitInstance("imperative-handle", node, setupEffects, []));
+          }
+          for (const issue of dependencyIssues(node, "useImperativeHandle", { callback: 1, dependencies: 2, phase: "imperative-handle" }, component, source, callableCallbacks)) report(issue.node, {
+            kind: issue.kind, phase: "imperative-handle", hook: "useImperativeHandle", operation: issue.operation, dependencies: issue.dependencies, message: issue.detail,
+          });
+          if (isConditionalWithin(node, component)) report(node, {
+            kind: "conditional-hook", phase: "render", hook: "useImperativeHandle",
+            message: "useImperativeHandle has control-flow-dependent call order",
           });
           return;
         }

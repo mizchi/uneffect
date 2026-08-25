@@ -1,4 +1,4 @@
-import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 declare namespace JSX {
   interface IntrinsicElements {
@@ -22,6 +22,10 @@ interface TelemetryViewport {
 
 interface TelemetryStatusSubscription {
   readonly service: string;
+}
+
+export interface TelemetryDashboardHandle {
+  refresh(): void;
 }
 
 /* uneffect: react acquire TelemetrySubscription result */
@@ -76,11 +80,16 @@ function useTelemetrySubscription(service: string): void {
 }
 
 /* uneffect: react component */
-export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[] }) {
+export function TelemetryDashboard(props: { service: string; rows: TelemetryRow[]; handleRef: unknown }) {
   const [showFailures, setShowFailures] = useState(false);
   const online = useTelemetryOnlineStatus();
   useTelemetryStyles();
   useTelemetrySubscription(props.service);
+  useImperativeHandle(props.handleRef, () => ({
+    refresh() {
+      fetch(`/telemetry/${props.service}/refresh`, { method: "POST" });
+    },
+  }), [props.service]);
   const visibleRows = useMemo(
     () => showFailures ? props.rows.filter((row) => row.failures > 0) : props.rows,
     [props.rows, showFailures],

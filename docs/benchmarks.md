@@ -79,6 +79,16 @@ This replaces the rejected Effect Event runs as the current expanded-workload
 baseline. It is close to the earlier insertion-only 44.23/3.10/63.98 ms run,
 but the workloads differ and the result is not claimed as a speedup.
 
+After adding one `useImperativeHandle` with a directly returned exposed method
+to each of the 128 components, the same 1,000 ms/30-iteration main paths
+measured 51.82 ms for source analysis (1.12% RME), 3.93 ms for parse-only
+(0.66% RME), and 77.65 ms for the reused Program (0.52% RME). Strict Mode Quint
+generation for all summaries measured 2.541 ms. This is the current
+imperative-handle workload baseline. Its extra factory dependency scan, method
+body classification, and commit instance make it intentionally larger than the
+external-store-only workload, so the difference is not presented as an
+isolated per-Hook cost.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

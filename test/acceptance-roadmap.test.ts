@@ -73,7 +73,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const analyzeReactProgram = futureApi("analyzeReactProgram");
     const generateSuspenseTreeFromProgram = futureApi("generateReactSuspenseTreeQuintFromProgram");
     const result = analyzeReact("src/feed.tsx", `
-      import { startTransition, useEffect, useEffectEvent, useInsertionEffect, useSyncExternalStore } from "react"
+      import { startTransition, useEffect, useEffectEvent, useImperativeHandle, useInsertionEffect, useSyncExternalStore } from "react"
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void; ref?: unknown } } }
       /* uneffect: react acquire Subscription */
       declare function subscribe(): void
@@ -90,6 +90,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       declare function closeTopicStatus(subscription: TopicStatusSubscription): void
       /* uneffect: effect TopicStatusRead */
       declare function readTopicStatus(): boolean
+      /* uneffect: effect HandlePrepare */
+      declare function prepareFeedHandle(): void
       function subscribeTopicStatus(notify: () => void) {
         const subscription = openTopicStatus(notify)
         return () => closeTopicStatus(subscription)
@@ -109,9 +111,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         }, [topic])
       }
       /* uneffect: react component */
-      export function Feed({ topic }: { topic: string }) {
+      export function Feed({ topic, ref }: { topic: string; ref: unknown }) {
         useTopicStatus()
         useSubscription(topic)
+        useImperativeHandle(ref, () => {
+          prepareFeedHandle()
+          return { refresh() { fetch(\`/topics/\${topic}/refresh\`) } }
+        }, [topic])
         useInsertionEffect(() => {
           insertFeedStyles()
           return () => removeFeedStyles()
@@ -134,6 +140,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect.objectContaining({ phase: "insertion-effect", effects: ["StyleWrite"] }),
       expect.objectContaining({ phase: "external-store-snapshot", effects: ["TopicStatusRead"] }),
       expect.objectContaining({ phase: "external-store-subscribe", effects: ["Acquire<TopicStatusSubscription>"] }),
+      expect.objectContaining({ phase: "imperative-handle", effects: ["HandlePrepare"] }),
+      expect.objectContaining({ phase: "imperative-handle-method", effects: ["Fetch"] }),
       expect.objectContaining({ phase: "passive-effect" }),
       expect.objectContaining({ phase: "cleanup" }),
     ]));

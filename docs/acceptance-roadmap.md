@@ -28,8 +28,9 @@ contract layer for existing TypeScript:
 11. External dogfood reports false positives, unknown summaries, annotation
     density, and frontend/verifier cost.
 12. Opted-in React function components separate replayable render from event,
-    Effect setup, and cleanup capabilities without changing emitted code;
-    annotated custom Hooks compose through resolved named import aliases.
+    Effect setup, external-store reads/subscriptions, imperative-handle
+    factories/exposed methods, and cleanup capabilities without changing
+    emitted code; annotated custom Hooks compose through resolved imports.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a
