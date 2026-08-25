@@ -894,6 +894,8 @@ function validateRefinementActionBodiesInSource(
     allowTerminalThrow = false,
     allowBreak = false,
     allowContinue = false,
+    ownedBreakLabel?: string,
+    ownedContinueLabel?: string,
   ): ActionCompletion | undefined => {
     // Each lexical block gets its own immutable-alias environment. Recursive
     // branch collection receives a snapshot, so aliases declared in a nested
@@ -987,6 +989,11 @@ function validateRefinementActionBodiesInSource(
       binding: string,
       replacement: ts.Expression,
     ): ts.Statement | undefined => {
+      // A statement produced by an earlier finite expansion has positions in
+      // its synthetic SourceFile. Reinterpreting those offsets against the
+      // original source can crash TypeScript's trivia walker, so nested finite
+      // expansion remains an explicit unsupported boundary.
+      if (statement.getSourceFile() !== source) return undefined;
       let unsupported = false;
       const statementStart = statement.getStart(source);
       const replacements: Array<{ start: number; end: number }> = [];
@@ -1075,6 +1082,30 @@ function validateRefinementActionBodiesInSource(
         values: Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
       };
     };
+    const boundedForIterations = (statement: ts.ForStatement): readonly ts.Block[] | undefined => {
+      const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
+        && (statement.initializer.flags & ts.NodeFlags.Let) !== 0
+        && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
+      const loopName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+      const start = declaration?.initializer && ts.isNumericLiteral(declaration.initializer)
+        ? Number(declaration.initializer.text) : undefined;
+      const condition = statement.condition && ts.isBinaryExpression(statement.condition) ? statement.condition : undefined;
+      const end = condition && condition.operatorToken.kind === ts.SyntaxKind.LessThanToken
+        && ts.isIdentifier(condition.left) && condition.left.text === loopName && ts.isNumericLiteral(condition.right)
+        ? Number(condition.right.text) : undefined;
+      const increment = statement.incrementor;
+      const incrementsLoop = increment && ts.isPostfixUnaryExpression(increment)
+        && increment.operator === ts.SyntaxKind.PlusPlusToken
+        && ts.isIdentifier(increment.operand) && increment.operand.text === loopName;
+      if (!loopName || start === undefined || end === undefined || !incrementsLoop
+        || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+        || start < 0 || end < start || end - start > 64) return undefined;
+      return expandFiniteLoopIterations(
+        statement.statement,
+        loopName,
+        Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
+      );
+    };
     const isUntrackedPrimitiveThrownValue = (expression: ts.Expression): boolean => {
       const value = unwrap(expression);
       return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
@@ -1106,13 +1137,15 @@ function validateRefinementActionBodiesInSource(
       if (completion === "return" || completion === "throw" || completion === "break" || completion === "continue") return completion;
       if (completion === "normal") return collect(
         continuation, receiver, runtimeClass, substitutions,
-        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
+        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
       );
       const beforeContinuation = new Map(branchUpdates);
       const continuingUpdates = new Map(branchUpdates);
       const continued = collect(
         continuation, receiver, runtimeClass, substitutions,
-        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
+        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
       );
       if (!continued) return undefined;
       const priorReturn = completionPredicate(completion, "return");
@@ -1136,13 +1169,14 @@ function validateRefinementActionBodiesInSource(
       iterations: readonly ts.Block[],
       index: number,
       branchUpdates: Map<string, TemporalExpression>,
+      transferLabel?: string,
     ): ActionCompletion | undefined => {
       const iteration = iterations[index];
       if (!iteration) return "normal";
       const completion = collect(
         iteration, receiver, runtimeClass, substitutions,
         branchUpdates, new Map(localValues), activeCalls,
-        allowTerminalReturn, allowTerminalThrow, true, true,
+        allowTerminalReturn, allowTerminalThrow, true, true, transferLabel, transferLabel,
       );
       if (!completion) return undefined;
       const afterContinue = makeCompletion(
@@ -1153,11 +1187,11 @@ function validateRefinementActionBodiesInSource(
       );
       if (index + 1 >= iterations.length) return afterContinue;
       if (afterContinue === "return" || afterContinue === "throw" || afterContinue === "break") return afterContinue;
-      if (afterContinue === "normal") return collectFiniteLoopIterations(iterations, index + 1, branchUpdates);
+      if (afterContinue === "normal") return collectFiniteLoopIterations(iterations, index + 1, branchUpdates, transferLabel);
 
       const beforeNext = new Map(branchUpdates);
       const nextUpdates = new Map(branchUpdates);
-      const next = collectFiniteLoopIterations(iterations, index + 1, nextUpdates);
+      const next = collectFiniteLoopIterations(iterations, index + 1, nextUpdates, transferLabel);
       if (!next) return undefined;
       const priorReturn = completionPredicate(afterContinue, "return");
       const priorThrow = completionPredicate(afterContinue, "throw");
@@ -1187,6 +1221,7 @@ function validateRefinementActionBodiesInSource(
         continuation, receiver, runtimeClass, substitutions,
         branchUpdates, new Map(localValues), activeCalls,
         allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
+        ownedBreakLabel, ownedContinueLabel,
       );
       return applyContinuation(escaping, branchUpdates, continuation);
     };
@@ -1254,11 +1289,11 @@ function validateRefinementActionBodiesInSource(
         return "throw";
       }
       if (ts.isBreakStatement(statement)) {
-        if (!allowBreak || statement.label) return undefined;
+        if (!allowBreak || statement.label && statement.label.text !== ownedBreakLabel) return undefined;
         return "break";
       }
       if (ts.isContinueStatement(statement)) {
-        if (!allowContinue || statement.label) return undefined;
+        if (!allowContinue || statement.label && statement.label.text !== ownedContinueLabel) return undefined;
         return "continue";
       }
       if (ts.isBlock(statement)) {
@@ -1266,6 +1301,7 @@ function validateRefinementActionBodiesInSource(
           statement, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls,
           allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
+          ownedBreakLabel, ownedContinueLabel,
         );
         if (!completion) return undefined;
         if (completion === "normal") continue;
@@ -1274,11 +1310,20 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isLabeledStatement(statement)) {
+        if (ts.isForStatement(statement.statement)) {
+          const iterations = boundedForIterations(statement.statement);
+          if (!iterations) return undefined;
+          const completion = collectFiniteLoopIterations(iterations, 0, updates, statement.label.text);
+          return completion ? consumeLoopTransfers(
+            completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+          ) : undefined;
+        }
         const labeledBlock = rewriteLabeledBreaks(statement);
         if (!labeledBlock) return undefined;
         const completion = collect(
           labeledBlock, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, true, allowTerminalThrow, allowBreak, allowContinue,
+          updates, new Map(localValues), activeCalls, true, allowTerminalThrow,
+          allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
         );
         if (!completion) return undefined;
         // A return here is the rewritten break and is consumed by this label.
@@ -1337,25 +1382,7 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isForStatement(statement)) {
-        const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
-          && (statement.initializer.flags & ts.NodeFlags.Let) !== 0
-          && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
-        const loopName = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
-        const start = declaration?.initializer && ts.isNumericLiteral(declaration.initializer) ? Number(declaration.initializer.text) : undefined;
-        const condition = statement.condition && ts.isBinaryExpression(statement.condition) ? statement.condition : undefined;
-        const end = condition && condition.operatorToken.kind === ts.SyntaxKind.LessThanToken
-          && ts.isIdentifier(condition.left) && condition.left.text === loopName && ts.isNumericLiteral(condition.right)
-          ? Number(condition.right.text) : undefined;
-        const increment = statement.incrementor;
-        const incrementsLoop = increment && ts.isPostfixUnaryExpression(increment)
-          && increment.operator === ts.SyntaxKind.PlusPlusToken && ts.isIdentifier(increment.operand) && increment.operand.text === loopName;
-        if (!loopName || start === undefined || end === undefined || !incrementsLoop
-          || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || end - start > 64) return undefined;
-        const iterations = expandFiniteLoopIterations(
-          statement.statement,
-          loopName,
-          Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
-        );
+        const iterations = boundedForIterations(statement);
         if (!iterations) return undefined;
         const completion = collectFiniteLoopIterations(iterations, 0, updates);
         return completion ? consumeLoopTransfers(
@@ -1386,7 +1413,8 @@ function validateRefinementActionBodiesInSource(
         if (statement.catchClause) {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
+            updates, new Map(localValues), activeCalls, true, true,
+            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
           );
           if (!tryCompletion) return undefined;
           const throwWhen = completionPredicate(tryCompletion, "throw");
@@ -1401,7 +1429,8 @@ function validateRefinementActionBodiesInSource(
           }
           const catchCompletion = collect(
             statement.catchClause.block, receiver, runtimeClass, substitutions,
-            caughtUpdates, catchLocals, activeCalls, true, true, allowBreak, allowContinue,
+            caughtUpdates, catchLocals, activeCalls, true, true,
+            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
           );
           if (!catchCompletion) return undefined;
           if (isBooleanCompletionPredicate(throwWhen, true)) {
@@ -1427,7 +1456,8 @@ function validateRefinementActionBodiesInSource(
         } else {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
+            updates, new Map(localValues), activeCalls, true, true,
+            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
           );
           if (!tryCompletion) return undefined;
           residualCompletion = tryCompletion;
@@ -1441,7 +1471,8 @@ function validateRefinementActionBodiesInSource(
           const priorContinue = completionPredicate(residualCompletion, "continue");
           const finallyCompletion = collect(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true, allowBreak, allowContinue,
+            updates, new Map(localValues), activeCalls, true, true,
+            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
           );
           if (!finallyCompletion) return undefined;
           const finallyReturn = completionPredicate(finallyCompletion, "return");
@@ -1476,7 +1507,7 @@ function validateRefinementActionBodiesInSource(
         const continued = collect(
           ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
           continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
-          allowBreak, allowContinue,
+          allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
         );
         if (!continued) return undefined;
         const normalWhen = notCompletionPredicate(priorAbrupt);
@@ -1498,8 +1529,8 @@ function validateRefinementActionBodiesInSource(
         const falseBlock = asBlock(statement.elseStatement);
         const trueUpdates = new Map(before);
         const falseUpdates = new Map(before);
-        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue);
-        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel);
         if (!whenTrue || !whenFalse) return undefined;
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
         if (hasAbruptBranch) {

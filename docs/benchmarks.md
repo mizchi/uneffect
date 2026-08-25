@@ -357,6 +357,14 @@ It excludes the Z3 equivalence pass used by the dogfood, Program construction,
 canonical-while continue, labeled or ambiguous nested transfers, and general
 CFG fixed points; it is not a regression budget.
 
+After binding those two finite actions to their own loop labels and replacing
+the local transfers with `break label` and `continue label`, the renamed
+ownership-aware benchmark measured 0.8664 ms mean over 578 samples (1.18% RME).
+It covers exact owner-label propagation through `finally` and consumption at
+the finite loop boundary. Transfers to an outer loop, nested synthetic loop
+expansion, the Z3 equivalence pass, and general CFG fixed points remain outside
+the measurement and outside the proof claim.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

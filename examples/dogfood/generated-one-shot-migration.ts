@@ -54,10 +54,10 @@ export function migrateGeneratedBatch(runtime: MigrationState): void {
 
 /* uneffect: refinement generatedMigration@1 action migrateUntil */
 export function migrateUntilReported(runtime: MigrationState): void {
-  for (let migrationId = 1; migrationId < 4; migrationId++) {
+  untilReported: for (let migrationId = 1; migrationId < 4; migrationId++) {
     try {
       runtime.migrated += migrationId;
-      if (runtime.stopAfter === migrationId) break;
+      if (runtime.stopAfter === migrationId) break untilReported;
     } finally {
       runtime.audited++;
     }
@@ -67,9 +67,9 @@ export function migrateUntilReported(runtime: MigrationState): void {
 
 /* uneffect: refinement generatedMigration@1 action migrateSelected */
 export function migrateSelectedRecords(runtime: MigrationState): void {
-  for (let migrationId = 1; migrationId < 4; migrationId++) {
+  selectedRecords: for (let migrationId = 1; migrationId < 4; migrationId++) {
     try {
-      if (runtime.stopAfter === migrationId) continue;
+      if (runtime.stopAfter === migrationId) continue selectedRecords;
       runtime.migrated += migrationId;
     } finally {
       runtime.audited++;

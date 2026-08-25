@@ -2551,9 +2551,7 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("breaking-for.ts", source, "breaking", parseSpec("breaking-for.ts", source).temporal)).toEqual([]);
 
     const labeled = source.replace("break\n", "break outer\n").replace("        for (", "        outer: for (");
-    expect(validateRefinementActionBodies("labeled-breaking-for.ts", labeled, "breaking", parseSpec("labeled-breaking-for.ts", labeled).temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
-    );
+    expect(validateRefinementActionBodies("labeled-breaking-for.ts", labeled, "breaking", parseSpec("labeled-breaking-for.ts", labeled).temporal)).toEqual([]);
   });
 
   it("consumes continue only where the finite loop guarantees advancement", async () => {
@@ -2613,5 +2611,30 @@ describe("annotated refinement bindings", () => {
       }
     `;
     expect(validateRefinementActionBodies("one-shot-continue.ts", oneShot, "oneShotContinue", parseSpec("one-shot-continue.ts", oneShot).temporal)).toEqual([]);
+
+    const labeled = source.replace("continue\n", "continue batch\n").replace("        for (", "        batch: for (");
+    await expect(validateRefinementActionBodiesWithZ3("labeled-continuing-for.ts", labeled, "continuing", parseSpec("labeled-continuing-for.ts", labeled).temporal)).resolves.toEqual([]);
+
+    const crossLoop = `/* uneffect:
+      state value: int
+      init value = 0
+      action run: value' = value + 1
+    */
+      interface Runtime { value: number }
+      /* uneffect: refinement crossLoop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement crossLoop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement crossLoop@1 action run */
+      export function run(runtime: Runtime) {
+        outer: for (let index = 0; index < 1; index++) {
+          for (let inner = 0; inner < 1; inner++) {
+            continue outer
+          }
+          runtime.value++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("cross-loop-continue.ts", crossLoop, "crossLoop", parseSpec("cross-loop-continue.ts", crossLoop).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
   });
 });

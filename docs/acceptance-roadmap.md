@@ -234,16 +234,20 @@ conditional completion, rather than rewritten as a function return. It passes
 through supported branches and `try`/`finally`, stops later iterations, is
 consumed at the loop boundary, and then permits the outer continuation exactly
 once. The generated-migration fixture checks this with per-iteration auditing
-in `finally` and a post-loop report. `continue`, labeled transfers, and nested
-switch/loop ownership ambiguities remain fail-closed.
+in `finally` and a post-loop report.
 
 Unlabeled `continue` uses a separate completion predicate as well. Each
 supported finite `for` or literal `for...of` iteration consumes it after
 mandatory `finally` work and proceeds to the next statically expanded
 iteration; one-shot `do...while(false)` consumes it as loop exit. Canonical
 local-counter `while` deliberately rejects `continue`, because jumping over its
-terminal `i++` would invalidate the finite trip-count argument. Labeled and
-ambiguous nested transfers remain unsupported.
+terminal `i++` would invalidate the finite trip-count argument. An ascending
+finite `for` may instead name itself and use `break label` or `continue label`:
+the exact owner label is carried through branches and `finally` and consumed at
+that loop boundary. Transfers to an outer loop, nested synthetic loop
+expansion, and ambiguous switch/loop ownership remain fail-closed. A source-file
+identity guard makes the nested-expansion boundary a diagnostic rather than a
+TypeScript AST trivia failure.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
