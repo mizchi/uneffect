@@ -332,6 +332,14 @@ the exact execution-count reduction, and action comparison. It excludes Z3,
 Program construction, dynamic conditions, loop transfers, and loop-invariant
 reasoning; it is an observation rather than a regression budget.
 
+After adding the three-iteration canonical local-counter `while` action to the
+same generated-migration fixture, the complete exact/canonical-while benchmark
+measured 0.1497 ms mean over 3,341 samples (2.53% RME). The lower mean despite
+the larger fixture is measurement noise, not an optimization claim. This run
+includes finite AST expansion and completion composition, but still excludes
+Z3, Program construction, dynamic bounds, non-unit steps, loop transfers, and
+general loop fixed-point reasoning.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

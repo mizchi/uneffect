@@ -30,6 +30,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicLoop, "generatedMigration", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "migrate" }),
     );
+    const dynamicBatch = source.replace("migrationId < 4", "migrationId < runtime.migrated");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicBatch, "generatedMigration", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "migrateBatch" }),
+    );
   });
 
   it("accepts mandatory finally release of a loop-local upload session alias", () => {

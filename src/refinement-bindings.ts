@@ -1013,6 +1013,37 @@ function validateRefinementActionBodiesInSource(
       }
       return ts.factory.createBlock(statements, true);
     };
+    const canonicalBoundedWhile = (
+      declarationStatement: ts.VariableStatement,
+      loopStatement: ts.Statement,
+    ): { binding: string; body: ts.Block; values: readonly ts.Expression[] } | undefined => {
+      const declaration = (declarationStatement.declarationList.flags & ts.NodeFlags.Let) !== 0
+        && declarationStatement.declarationList.declarations.length === 1
+        ? declarationStatement.declarationList.declarations[0] : undefined;
+      const binding = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+      const start = declaration?.initializer && ts.isNumericLiteral(declaration.initializer)
+        ? Number(declaration.initializer.text) : undefined;
+      const condition = ts.isWhileStatement(loopStatement) && ts.isBinaryExpression(loopStatement.expression)
+        ? loopStatement.expression : undefined;
+      const end = condition && condition.operatorToken.kind === ts.SyntaxKind.LessThanToken
+        && ts.isIdentifier(condition.left) && condition.left.text === binding && ts.isNumericLiteral(condition.right)
+        ? Number(condition.right.text) : undefined;
+      const loopBody = ts.isWhileStatement(loopStatement) && ts.isBlock(loopStatement.statement)
+        ? loopStatement.statement : undefined;
+      const last = loopBody?.statements.at(-1);
+      const increment = last && ts.isExpressionStatement(last) && ts.isPostfixUnaryExpression(last.expression)
+        ? last.expression : undefined;
+      const incrementsBinding = increment?.operator === ts.SyntaxKind.PlusPlusToken
+        && ts.isIdentifier(increment.operand) && increment.operand.text === binding;
+      if (!binding || start === undefined || end === undefined || !loopBody || !incrementsBinding
+        || !Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+        || start < 0 || end < start || end - start > 64) return undefined;
+      return {
+        binding,
+        body: ts.factory.createBlock(loopBody.statements.slice(0, -1), true),
+        values: Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
+      };
+    };
     const isUntrackedPrimitiveThrownValue = (expression: ts.Expression): boolean => {
       const value = unwrap(expression);
       return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
@@ -1158,6 +1189,22 @@ function validateRefinementActionBodiesInSource(
         return applyContinuation(
           escapingThrow, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
         );
+      }
+      if (ts.isVariableStatement(statement) && statementIndex + 1 < body.statements.length) {
+        const loop = canonicalBoundedWhile(statement, body.statements[statementIndex + 1]!);
+        if (loop && !localValues.has(loop.binding) && !substitutions.has(loop.binding)) {
+          const expanded = expandFiniteLoop(
+            loop.body,
+            loop.binding,
+            loop.values,
+          );
+          if (!expanded) return undefined;
+          return collect(
+            ts.factory.createBlock([...expanded.statements, ...body.statements.slice(statementIndex + 2)], true),
+            receiver, runtimeClass, substitutions, updates, new Map(localValues), activeCalls,
+            allowTerminalReturn, allowTerminalThrow,
+          );
+        }
       }
       if (ts.isWhileStatement(statement)) {
         // This is an exact zero-iteration reduction, not a loop invariant or

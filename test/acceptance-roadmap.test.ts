@@ -1797,6 +1797,31 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("static-loop.ts", source, "staticLoop", specification.temporal)).toEqual([]);
   });
 
+  it("unrolls a canonical bounded while with a local counter", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state total: int
+       * init total = 0
+       * action addBatch: total' = total + 1 + 2 + 3
+       */
+      interface Runtime { total: number }
+      /* uneffect: refinement whileBatch@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement whileBatch@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement whileBatch@1 action addBatch */
+      export function addBatch(runtime: Runtime) {
+        let index = 1
+        while (index < 4) {
+          runtime.total += index
+          index++
+        }
+      }
+    `;
+    const specification = parseSpecification("bounded-while.ts", source) as { temporal: unknown };
+    expect(validateActions("bounded-while.ts", source, "whileBatch", specification.temporal)).toEqual([]);
+  });
+
   it("compares native Promise, Uneffect annotations, and Effect TS against the same observable contract", async () => {
     const compareImplementations = futureApi("compareEffectImplementations");
     const result = await compareImplementations({ fixture: "fetch-and-recover" }) as { implementations: string[]; sameResult: boolean; sameDeclaredAuthority: boolean; effectTsRecovery: { unhandledFailures: number }; limitations: string[] };

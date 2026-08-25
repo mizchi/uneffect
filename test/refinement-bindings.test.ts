@@ -2453,4 +2453,70 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
     );
   });
+
+  it("unrolls only canonical bounded local-counter while loops", () => {
+    const model = `/* uneffect:
+      state value: int
+      state limit: int
+      init value = 0
+      init limit = 3
+      action addThree: value' = value + 0 + 1 + 2
+    */`;
+    const exact = `${model}
+      interface Runtime { value: number; limit: number }
+      /* uneffect: refinement boundedWhile@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement boundedWhile@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement boundedWhile@1 action addThree */
+      export function addThree(runtime: Runtime) {
+        let index = 0
+        while (index < 3) {
+          runtime.value += index
+          index++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("bounded-while.ts", exact, "boundedWhile", parseSpec("bounded-while.ts", exact).temporal)).toEqual([]);
+
+    const returning = `/* uneffect:
+      state value: int
+      state stop: bool
+      init value = 0
+      init stop = false
+      action addAtMostTwo: value' = stop ? value + 1 : value + 1 + 1
+    */
+      interface Runtime { value: number; stop: boolean }
+      /* uneffect: refinement returningWhile@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement returningWhile@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement returningWhile@1 action addAtMostTwo */
+      export function addAtMostTwo(runtime: Runtime) {
+        let index = 0
+        while (index < 2) {
+          runtime.value++
+          if (runtime.stop) return
+          index++
+        }
+      }
+    `;
+    expect(validateRefinementActionBodies("returning-while.ts", returning, "returningWhile", parseSpec("returning-while.ts", returning).temporal)).toEqual([]);
+
+    const dynamicBound = exact.replace("index < 3", "index < runtime.limit");
+    expect(validateRefinementActionBodies("dynamic-while.ts", dynamicBound, "boundedWhile", parseSpec("dynamic-while.ts", dynamicBound).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
+    );
+
+    const nonCanonicalIncrement = exact.replace("index++", "index += 2");
+    expect(validateRefinementActionBodies("step-while.ts", nonCanonicalIncrement, "boundedWhile", parseSpec("step-while.ts", nonCanonicalIncrement).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
+    );
+
+    const oversized = exact.replace("index < 3", "index < 65");
+    expect(validateRefinementActionBodies("oversized-while.ts", oversized, "boundedWhile", parseSpec("oversized-while.ts", oversized).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
+    );
+
+    const finalCounterUse = exact.replace("        }\n      }", "        }\n        runtime.value += index\n      }");
+    expect(validateRefinementActionBodies("escaping-counter.ts", finalCounterUse, "boundedWhile", parseSpec("escaping-counter.ts", finalCounterUse).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
+    );
+  });
 });

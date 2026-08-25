@@ -973,7 +973,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("reduce exact zero-shot and one-shot while refinements", () => {
+  bench("reduce exact and canonical bounded while refinements", () => {
     validateRefinementActionBodies(
       generatedMigrationFile,
       generatedMigrationSource,

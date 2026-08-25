@@ -221,6 +221,14 @@ respectively. This is not a loop-invariant proof. State-dependent conditions,
 generated-migration dogfood retains both exact shells and a dynamic-condition
 negative control.
 
+The same mapper finitely expands the adjacent canonical form
+`let i = start; while (i < end) { ...; i++ }` when both non-negative bounds are
+safe integer literals and the trip count is at most 64. Expansion reuses the
+return/throw/finally completion flow, so an early return suppresses later
+iterations. Dynamic bounds, non-unit increments, uses of the final mutable
+counter, and loop transfers are rejected. This remains finite specialization,
+not a general loop fixed point.
+
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and
 `Map<int, int>`, native `Set.add`/`Map.set` calls must match the declared

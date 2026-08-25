@@ -4,6 +4,7 @@
  * init migrated = 0
  * init audited = 0
  * action migrate: migrated' = migrated + 1, audited' = audited + 1
+ * action migrateBatch: migrated' = migrated + 1 + 2 + 3, audited' = audited + 1 + 1 + 1
  * temporal nonNegative: migrated >= 0 && audited >= 0
  */
 
@@ -31,6 +32,16 @@ export function migrateGeneratedRecord(runtime: MigrationState): void {
     runtime.migrated++;
     runtime.audited++;
   } while (false);
+}
+
+/* uneffect: refinement generatedMigration@1 action migrateBatch */
+export function migrateGeneratedBatch(runtime: MigrationState): void {
+  let migrationId = 1;
+  while (migrationId < 4) {
+    runtime.migrated += migrationId;
+    runtime.audited++;
+    migrationId++;
+  }
 }
 
 /* uneffect: refinement generatedMigration@1 invariant nonNegative */

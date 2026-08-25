@@ -73,7 +73,8 @@ same property is proved for arbitrary TypeScript.
   their temporal actions and invariant predicates. Supported forms include
   scalar and nested-record updates, selected native Set/Map operations,
   conditionals, scalar switch fallthrough and direct return/throw entries,
-  bounded ascending loops, finite numeric/boolean literal `for...of` loops,
+  bounded ascending `for` loops, canonical adjacent local-counter `while`
+  loops, finite numeric/boolean literal `for...of` loops,
   exact zero-shot `while (false)` and one-shot `do...while (false)`, and
   acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
   through lexical, non-escaping `const` alias chains; mutable, escaping,
@@ -92,7 +93,9 @@ same property is proved for arbitrary TypeScript.
   owner/expiration metadata; it never upgrades dispatch to `verified`.
   Unscanned external subclasses, proxies, and prototype mutation remain excluded.
   Literal-false while reductions are syntactic execution-count facts only;
-  dynamic conditions, loop transfers, and general loop invariants remain unsupported.
+  The canonical while form is `let i = start; while (i < end) { ...; i++ }`
+  with literal safe-integer bounds and at most 64 iterations. Dynamic bounds,
+  other steps, loop transfers, and general loop invariants remain unsupported.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The
