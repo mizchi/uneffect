@@ -457,7 +457,9 @@ same property is proved for arbitrary TypeScript.
   function body. Symbol-resolved wrapper
   calls forward the parameter transitively and retain Promise iterable
   `Throw`-to-rejection conversion; dynamic dispatch and escaped iterator aliases
-  remain explicit unsupported boundaries.
+  remain explicit unsupported boundaries. The telemetry Generator dogfood checks
+  a realistic 64 KiB batching producer through the public project API and
+  demonstrates that narrowing away `Throw<RangeError>` fails project assurance.
 - Optimizer transformations require verified evidence for the exact supported
   schema. Only narrow authorization and ownership-assertion-elision prototypes
   exist; a general proof-driven compressor or mangler is not implemented.

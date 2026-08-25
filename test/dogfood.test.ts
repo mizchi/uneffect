@@ -17,6 +17,32 @@ import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } fr
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 describe("Uneffect dogfood", () => {
+  it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
+    const fileName = "examples/dogfood/telemetry-generator-budget.ts";
+    const source = readFileSync(fileName, "utf8");
+    const verified = await verifyUneffectProject({ files: { [fileName]: source } });
+    expect(verified.diagnostics).toEqual([]);
+    expect(verified.effects.summaries.find((summary) => summary.functionName === "drainTelemetryBatches"))
+      .toMatchObject({
+        evidence: "verified",
+        iteratorEffectBounds: [expect.objectContaining({ index: 0, name: "batches" })],
+      });
+    expect(verified.effects.summaries.find((summary) => summary.functionName === "flushTelemetry"))
+      .toMatchObject({ evidence: "verified" });
+    expect(verified.assurance).toMatchObject({ passed: true, blockers: [] });
+
+    const broken = await verifyUneffectProject({ files: {
+      [fileName]: source.replace("Console | Throw<RangeError> */\nexport function drainTelemetryBatches", "Console */\nexport function drainTelemetryBatches"),
+    } });
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "flushTelemetry", effect: "Throw<RangeError>", kind: "missing",
+      message: expect.stringContaining("outside its declared bound"),
+    }));
+    expect(broken.effects.summaries.find((summary) => summary.functionName === "flushTelemetry"))
+      .toMatchObject({ evidence: "unknown" });
+    expect(broken.assurance).toMatchObject({ passed: false });
+  });
+
   it("refines generated zero-shot and one-shot migration control shells", async () => {
     const fileName = "examples/dogfood/generated-one-shot-migration.ts";
     const source = readFileSync(fileName, "utf8");
