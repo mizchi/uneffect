@@ -98,6 +98,8 @@ export interface ReactSuspenseBoundarySummary {
   instance: string;
   primary: string;
   fallback: string;
+  primaryKey: string;
+  fallbackKey: string;
   span: { start: number; end: number };
 }
 
@@ -812,7 +814,7 @@ interface InternalReactAnalysis {
   hookNodes: Map<string, ComponentNode>;
 }
 
-function directJsxComponentName(node: ts.Node | undefined): string | undefined {
+function directJsxComponentTag(node: ts.Node | undefined): ts.Identifier | undefined {
   if (!node) return undefined;
   const expression = ts.isJsxExpression(node) ? node.expression : node;
   if (!expression) return undefined;
@@ -820,7 +822,11 @@ function directJsxComponentName(node: ts.Node | undefined): string | undefined {
   const tag = ts.isJsxElement(unwrapped)
     ? unwrapped.openingElement.tagName
     : ts.isJsxSelfClosingElement(unwrapped) ? unwrapped.tagName : undefined;
-  return tag && ts.isIdentifier(tag) && /^[A-Z]/u.test(tag.text) ? tag.text : undefined;
+  return tag && ts.isIdentifier(tag) && /^[A-Z]/u.test(tag.text) ? tag : undefined;
+}
+
+function directJsxComponentName(node: ts.Node | undefined): string | undefined {
+  return directJsxComponentTag(node)?.text;
 }
 
 function suspenseBoundaryFacts(
@@ -851,7 +857,12 @@ function suspenseBoundaryFacts(
         else if (!primary) fail("primary-must-be-one-direct-component");
         else if (!componentNames.has(primary)) fail("unannotated-primary");
         else if (!componentNames.has(fallback)) fail("unannotated-fallback");
-        else boundaries.push({ instance, primary, fallback, span });
+        else boundaries.push({
+          instance, primary, fallback,
+          primaryKey: `${source.fileName}:${primary}`,
+          fallbackKey: `${source.fileName}:${fallback}`,
+          span,
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -1553,6 +1564,30 @@ export function generateReactSuspenseBoundaryQuintFromAnalysis(
   return generateReactSuspenseBoundaryQuint(moduleName, primary[0]!, fallback[0]!, options);
 }
 
+/** Generate a boundary model whose component summaries may live in other Program source files. */
+export function generateReactSuspenseBoundaryQuintFromProgram(
+  moduleName: string,
+  results: ReadonlyMap<string, ReactSemanticsResult>,
+  sourceFileName: string,
+  boundaryIndex = 0,
+  options: ReactSuspenseBoundaryOptions = {},
+): string {
+  const analysis = results.get(sourceFileName);
+  const boundary = analysis?.suspenseBoundaries[boundaryIndex];
+  if (!boundary) throw new Error(`Suspense boundary ${boundaryIndex} is not available in ${sourceFileName}`);
+  const components = new Map<string, ReactComponentSummary>();
+  for (const [fileName, result] of results) for (const component of result.components) {
+    const key = `${fileName}:${component.name}`;
+    if (components.has(key)) throw new Error(`duplicate React component summary key ${key}`);
+    components.set(key, component);
+  }
+  const primary = components.get(boundary.primaryKey);
+  const fallback = components.get(boundary.fallbackKey);
+  if (!primary) throw new Error(`Suspense primary summary ${boundary.primaryKey} is not available`);
+  if (!fallback) throw new Error(`Suspense fallback summary ${boundary.fallbackKey} is not available`);
+  return generateReactSuspenseBoundaryQuint(moduleName, primary, fallback, options);
+}
+
 function declarationKey(node: AnnotatableFunction): string {
   return `${node.getSourceFile().fileName}:${componentName(node)}`;
 }
@@ -1653,6 +1688,59 @@ function addProgramHookCycleDiagnostics(
   return results;
 }
 
+function resolveProgramSuspenseBoundaries(
+  program: ts.Program,
+  results: Map<string, ReactSemanticsResult>,
+): Map<string, ReactSemanticsResult> {
+  const checker = program.getTypeChecker();
+  const componentKeys = new Set<string>();
+  for (const [fileName, result] of results) for (const component of result.components) componentKeys.add(`${fileName}:${component.name}`);
+  for (const source of program.getSourceFiles()) {
+    if (source.isDeclarationFile) continue;
+    const result = results.get(source.fileName);
+    if (!result) continue;
+    const imports = reactImportNames(source);
+    if (![...imports.values()].includes("Suspense")) continue;
+    const visit = (node: ts.Node): void => {
+      if (ts.isJsxElement(node) && ts.isIdentifier(node.openingElement.tagName)
+        && imports.get(node.openingElement.tagName.text) === "Suspense") {
+        const fallbackAttribute = node.openingElement.attributes.properties.find(
+          (attribute): attribute is ts.JsxAttribute => ts.isJsxAttribute(attribute)
+            && ts.isIdentifier(attribute.name) && attribute.name.text === "fallback",
+        );
+        const children = node.children.filter((child) => !(ts.isJsxText(child) && child.text.trim() === "")
+          && !(ts.isJsxExpression(child) && child.expression === undefined));
+        const fallbackTag = fallbackAttribute?.initializer ? directJsxComponentTag(fallbackAttribute.initializer) : undefined;
+        const primaryTag = children.length === 1 ? directJsxComponentTag(children[0]) : undefined;
+        if (primaryTag && fallbackTag) {
+          const primaryDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(primaryTag));
+          const fallbackDeclaration = functionDeclarationForSymbol(checker, checker.getSymbolAtLocation(fallbackTag));
+          const primaryKey = primaryDeclaration ? declarationKey(primaryDeclaration) : undefined;
+          const fallbackKey = fallbackDeclaration ? declarationKey(fallbackDeclaration) : undefined;
+          if (primaryKey && fallbackKey && componentKeys.has(primaryKey) && componentKeys.has(fallbackKey)) {
+            const instance = `suspense@${node.getStart(source)}`;
+            const boundary: ReactSuspenseBoundarySummary = {
+              instance,
+              primary: primaryTag.text,
+              fallback: fallbackTag.text,
+              primaryKey,
+              fallbackKey,
+              span: { start: node.getStart(source), end: node.getEnd() },
+            };
+            const existing = result.suspenseBoundaries.findIndex((candidate) => candidate.instance === instance);
+            if (existing >= 0) result.suspenseBoundaries[existing] = boundary;
+            else result.suspenseBoundaries.push(boundary);
+            result.unsupportedSuspenseBoundaries = result.unsupportedSuspenseBoundaries.filter((candidate) => candidate.instance !== instance);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+  }
+  return results;
+}
+
 function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanticsResult> {
   const checker = program.getTypeChecker();
   const sources = program.getSourceFiles().filter((candidate) => !candidate.isDeclarationFile);
@@ -1674,12 +1762,14 @@ function analyzeProgramFixedPoint(program: ts.Program): Map<string, ReactSemanti
       summary.leaked,
       summary.lifecycleIssues.map(({ kind, capability, phase, detail }) => ({ kind, capability, phase, detail })),
     ]).sort(([left], [right]) => String(left).localeCompare(String(right))));
-    if (fingerprint(next) === fingerprint(summaries)) return addProgramHookCycleDiagnostics(program, nextResults, nextHookNodes);
+    if (fingerprint(next) === fingerprint(summaries)) {
+      return resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, nextResults, nextHookNodes));
+    }
     summaries = next;
     results = nextResults;
     hookNodes = nextHookNodes;
   }
-  return addProgramHookCycleDiagnostics(program, results, hookNodes);
+  return resolveProgramSuspenseBoundaries(program, addProgramHookCycleDiagnostics(program, results, hookNodes));
 }
 
 /** Analyze every implementation source while computing the custom-Hook fixed point only once. */

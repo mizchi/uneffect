@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactLifecycleQuint, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -1043,6 +1043,43 @@ describe("React Function Component semantics", () => {
       .toThrow("Suspense boundary 0 is not available");
   });
 
+  it("resolves cross-file Suspense components through barrel and default import aliases", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-suspense-symbols-"));
+    const componentsFile = join(directory, "components.tsx");
+    const barrelFile = join(directory, "index.ts");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(componentsFile, `
+        import { useEffect } from "react"
+        /* uneffect: react component */
+        export default function Profile() { useEffect(() => () => console.log("hide"), []); return null }
+        /* uneffect: react component */
+        export function Spinner() { useEffect(() => () => console.log("hide"), []); return null }
+      `);
+      writeFileSync(barrelFile, `export { default as LoadedProfile, Spinner as Busy } from "./components.js"`);
+      writeFileSync(appFile, `
+        import { Suspense } from "react"
+        import { LoadedProfile as Primary, Busy as Fallback } from "./index.js"
+        export function App() { return <Suspense fallback={<Fallback />}><Primary /></Suspense> }
+      `);
+      const program = ts.createProgram([componentsFile, barrelFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const results = analyzeReactProgram(program);
+      const app = results.get(appFile)!;
+      expect(app.suspenseBoundaries).toEqual([
+        expect.objectContaining({ primary: "Primary", fallback: "Fallback", primaryKey: `${componentsFile}:Profile`, fallbackKey: `${componentsFile}:Spinner` }),
+      ]);
+      expect(app.unsupportedSuspenseBoundaries).toEqual([]);
+      const quint = generateReactSuspenseBoundaryQuintFromProgram("cross_file_boundary", results, appFile);
+      expect(quint).toContain("component: Profile");
+      expect(quint).toContain("component: Spinner");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -1193,6 +1230,31 @@ describe("React Function Component semantics", () => {
       { phase: "passive-effect", effects: ["Console"] },
     ]));
     const checked = await checkFiles([hooksFile, barrelFile, appFile]);
+    expect(checked.diagnostics.filter((diagnostic) => "component" in diagnostic)).toEqual([]);
+  });
+
+  it("dogfoods a checked-in cross-file Suspense boundary", async () => {
+    const componentsFile = "examples/dogfood/react-suspense-symbol-components.tsx";
+    const barrelFile = "examples/dogfood/react-suspense-symbol-barrel.ts";
+    const appFile = "examples/dogfood/react-suspense-symbol-app.tsx";
+    const program = ts.createProgram([componentsFile, barrelFile, appFile], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+    });
+    const results = analyzeReactProgram(program);
+    const app = results.get(appFile)!;
+    expect(app.suspenseBoundaries).toEqual([
+      expect.objectContaining({
+        primary: "Profile", fallback: "Spinner",
+        primaryKey: `${componentsFile}:RemoteProfile`,
+        fallbackKey: `${componentsFile}:RemoteSpinner`,
+      }),
+    ]);
+    expect(app.unsupportedSuspenseBoundaries).toEqual([]);
+    const quint = generateReactSuspenseBoundaryQuintFromProgram("remote_profile_boundary", results, appFile);
+    expect(quint).toContain("component: RemoteProfile");
+    expect(quint).toContain("component: RemoteSpinner");
+    const checked = await checkFiles([componentsFile, barrelFile, appFile]);
     expect(checked.diagnostics.filter((diagnostic) => "component" in diagnostic)).toEqual([]);
   });
 });

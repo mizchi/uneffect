@@ -28,36 +28,39 @@ region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render
 replay, commit-generation ownership, and bounded repeated-Suspense-retry
 metadata and direct Suspense-boundary extraction enabled, the analyzer measured
-18.89 ms mean (1.23% RME, 27 samples), while the parse-only baseline measured
-2.20 ms (0.64% RME, 227 samples). The combined parse-and-analysis path was
-therefore about 8.58 times the parse-only cost for this synthetic cold call, or roughly 0.148
+18.28 ms mean (1.09% RME, 28 samples), while the parse-only baseline measured
+2.23 ms (0.63% RME, 225 samples). The combined parse-and-analysis path was
+therefore about 8.20 times the parse-only cost for this synthetic cold call, or roughly 0.143
 ms per annotated component. This
 implementation reparses the supplied
 source; it is not yet the intended Corsa/TypeScript Program-reuse path, so the
 number is a regression baseline rather than a compiler-plugin latency claim.
 
 The Program-backed path reusing the already parsed TypeScript Program measured
-23.39 ms mean (0.50% RME, 22 samples). It performs two source walks to establish
+22.76 ms mean (1.18% RME, 22 samples). It performs two source walks to establish
 the custom-Hook import fixed point. Reusing the converged second-pass results
 removed an unnecessary third walk. Source-level React import facts and
 boundary-level immutable-region facts are cached by AST identity; before those
 caches, the expanded Program workload measured 19.07 ms and then 17.29 ms.
+The current path also constructs canonical component keys for cross-file
+Suspense edges, but skips the JSX symbol walk entirely in sources that do not
+import React `Suspense`.
 This synthetic one-file Program has no cross-file imports and therefore shows
 fixed-point overhead rather than its intended multi-file benefit. Earlier
 measurements used smaller workloads without state/context region construction
 or callback-ref lifecycle checking and are not directly comparable.
 
 Generating development Strict Mode Quint for all 128 already analyzed
-component summaries measured 0.931 ms mean (0.66% RME, 538 samples), about
+component summaries measured 0.934 ms mean (0.45% RME, 536 samples), about
 0.007 ms per component. Generating the bounded concurrent-interruption model
-measured 0.592 ms mean (0.41% RME, 845 samples), about 0.005 ms per component.
-Generating dependency-change models with two commit generations measured 0.994
-ms mean (0.38% RME, 503 samples), about 0.008 ms per component. Generating the
-single suspend-resolve-retry model measured 0.762 ms mean (0.37% RME, 656
-samples), about 0.006 ms per component; the repeated-retry model measured 1.10
-ms mean (0.43% RME, 453 samples), about 0.009 ms per component. Generating 64
-explicit primary/fallback boundary pairs measured 0.587 ms mean (0.46% RME,
-853 samples), also about 0.009 ms per component pair. These measure deterministic source generation
+measured 0.600 ms mean (0.44% RME, 834 samples), about 0.005 ms per component.
+Generating dependency-change models with two commit generations measured 1.00
+ms mean (0.42% RME, 500 samples), about 0.008 ms per component. Generating the
+single suspend-resolve-retry model measured 0.780 ms mean (0.43% RME, 641
+samples), about 0.006 ms per component; the repeated-retry model measured 1.13
+ms mean (0.41% RME, 444 samples), about 0.009 ms per component. Generating 64
+explicit primary/fallback boundary pairs measured 0.593 ms mean (0.46% RME,
+843 samples), also about 0.009 ms per component pair. These measure deterministic source generation
 only; Quint parsing and simulation are covered by the formal test tier rather
 than this microbenchmark.
 

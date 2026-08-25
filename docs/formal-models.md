@@ -188,6 +188,9 @@ The source analyzer extracts the documented direct named/aliased JSX fragment,
 and `generateReactSuspenseBoundaryQuintFromAnalysis` fails closed if the chosen
 edge or either unique component summary is unavailable. General tree and
 thenable causality remain outside this bounded proof.
+The Program variant stores and resolves canonical component keys after
+TypeScript symbol aliasing, including barrels and default exports; it does not
+fall back to matching imported display names.
 
 ## Verification ledger
 
