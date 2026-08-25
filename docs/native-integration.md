@@ -64,12 +64,16 @@ const result = await compareUneffectFrontends({
 });
 ```
 
-This executable slice currently supports exactly one source file, top-level
-named function declarations, direct calls between those functions, function
-type text, and leading `uneffect:` trivia. Unsupported multi-file input is
-rejected before execution. Calls outside the exported local symbol set are not
+This executable slice supports multiple project files, top-level named function
+declarations, direct local and cross-file calls between those functions,
+function type text, and leading `uneffect:` trivia. Corsa symbol IDs are
+collected before numeric schema IDs are assigned, so imported calls retain
+declaration identity. A local function name is kept when unique and rendered as
+`path/to/file.ts::name` when duplicated elsewhere in the project; call edges
+use the same identity and cannot collapse solely because spellings match.
+Calls outside the exported project symbol set are not
 emitted. Promise/resource records, methods, arrows, callbacks, overload facts,
-callback timing, and cross-file edges are not checker-exported yet; using those
+and callback timing are not checker-exported yet; using those
 constructs therefore cannot establish full frontend parity. Install compatible
 `corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers and supply a real Corsa or
 `tsgo` executable. The package does not silently fall back to TypeScript facts.
@@ -77,6 +81,13 @@ constructs therefore cannot establish full frontend parity. Install compatible
 exporter. A cloned, deserialized, or hand-written object carrying the same
 provenance strings is rejected as unauthenticated. Persisted checker facts do
 not yet have a signed evidence format and cannot satisfy this gate.
+
+Schema v7 has one `fileId`, so both adapters use a deterministic virtual-project
+coordinate instead of mixing file-local offsets: source files are ordered by
+file name, encoded as UTF-8, and separated by one byte. Every symbol, trivia,
+call, Promise, and resource offset is projected into that coordinate. This
+makes spans unique and ordered across files without pretending that unrelated
+file-local offsets share a source buffer.
 
 TypeScript Go's Content Mapper facility is deliberately not treated as this
 frontend API. Content Mappers run an external process for otherwise unsupported

@@ -1,10 +1,12 @@
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectExpression, splitTopLevel } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
 import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
+import { createProjectByteCoordinates, projectFunctionDisplayName } from "./project-coordinates.js";
 
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
@@ -48,83 +50,100 @@ export interface CompareUneffectFrontendsResult {
 function programOf(files: Record<string, string>): ts.Program {
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true };
   const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, version, onError, fresh) => Object.hasOwn(files, name) ? ts.createSourceFile(name, files[name]!, version, true, ts.ScriptKind.TS) : original(name, version, onError, fresh);
-  return ts.createProgram(Object.keys(files), options, host);
+  const originalFileExists = host.fileExists.bind(host), originalReadFile = host.readFile.bind(host);
+  host.fileExists = (name) => projectFileName(files, name) !== undefined || originalFileExists(name);
+  host.readFile = (name) => {
+    const key = projectFileName(files, name);
+    return key === undefined ? originalReadFile(name) : files[key];
+  };
+  host.getSourceFile = (name, version, onError, fresh) => {
+    const key = projectFileName(files, name);
+    return key === undefined ? original(name, version, onError, fresh) : ts.createSourceFile(name, files[key]!, version, true, ts.ScriptKind.TS);
+  };
+  return ts.createProgram(Object.keys(files).sort((left, right) => left.localeCompare(right)), options, host);
 }
 
-function byteOffset(text: string, utf16Offset: number): number { return Buffer.byteLength(text.slice(0, utf16Offset)); }
+function projectFileName(files: Readonly<Record<string, string>>, candidate: string): string | undefined {
+  if (Object.hasOwn(files, candidate)) return candidate;
+  const absolute = resolve(candidate);
+  return Object.keys(files).find((fileName) => resolve(fileName) === absolute);
+}
 
 function corsaInput(program: ts.Program, files: Record<string, string>, schemaVersion: number) {
+  const coordinates = createProjectByteCoordinates(files);
+  const nameCounts = topLevelFunctionNameCounts(program, files);
   let nextId = 1;
   const symbols: any[] = [], trivia: unknown[] = [], calls: any[] = [];
-  const ids = new Map<ts.Symbol, number>(), declarations: Array<{ source: ts.SourceFile; node: ts.FunctionDeclaration; id: number }> = [];
+  const ids = new Map<ts.Symbol, number>(), declarations: Array<{ source: ts.SourceFile; sourceName: string; node: ts.FunctionDeclaration; id: number }> = [];
   const checker = program.getTypeChecker();
   for (const source of program.getSourceFiles()) {
-    if (!Object.hasOwn(files, source.fileName)) continue;
+    const sourceName = projectFileName(files, source.fileName);
+    if (!sourceName) continue;
     for (const node of source.statements) {
       if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
       const id = nextId++, leading = source.text.slice(node.getFullStart(), node.getStart(source));
       const symbol = checker.getSymbolAtLocation(node.name);
       if (symbol) ids.set(symbol, id);
-      declarations.push({ source, node, id });
-      symbols.push({ id, name: node.name.text, kind: "function", typeRepr: node.getText(source).slice(0, node.getText(source).indexOf("{")).trim(), overloads: [], effectParameters: [], span: { start: byteOffset(source.text, node.getStart(source)), end: byteOffset(source.text, node.getEnd()) } });
-      if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: byteOffset(source.text, node.getFullStart()), end: byteOffset(source.text, node.getStart(source)) } });
+      declarations.push({ source, sourceName, node, id });
+      symbols.push({ id, name: projectFunctionDisplayName(sourceName, node.name.text, nameCounts), kind: "function", typeRepr: node.getText(source).slice(0, node.getText(source).indexOf("{")).trim(), overloads: [], effectParameters: [], span: { start: coordinates.offset(sourceName, node.getStart(source)), end: coordinates.offset(sourceName, node.getEnd()) } });
+      if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: coordinates.offset(sourceName, node.getFullStart()), end: coordinates.offset(sourceName, node.getStart(source)) } });
     }
   }
-  for (const { source, node, id: caller } of declarations) {
+  for (const { source, sourceName, node, id: caller } of declarations) {
     const visit = (child: ts.Node): void => {
       if (ts.isCallExpression(child)) {
         const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
         let symbol = checker.getSymbolAtLocation(lookup);
         if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
         const callee = symbol ? ids.get(symbol) : undefined;
-        if (callee) calls.push({ caller, callee, overloadIndex: null, callbackTiming: "none", span: { start: byteOffset(source.text, child.getStart(source)), end: byteOffset(source.text, child.getEnd()) } });
+        if (callee) calls.push({ caller, callee, overloadIndex: null, callbackTiming: "none", span: { start: coordinates.offset(sourceName, child.getStart(source)), end: coordinates.offset(sourceName, child.getEnd()) } });
       }
       ts.forEachChild(child, visit);
     };
     ts.forEachChild(node.body!, visit);
   }
-  const idsByName = new Map(symbols.map((symbol) => [symbol.name as string, symbol.id as number]));
+  const idsByFileAndName = new Map(declarations.map((item) => [`${item.sourceName}\0${item.node.name!.text}`, item.id]));
   const promiseObservations: unknown[] = [], rejectionOwnership: unknown[] = [], resourceScopes: unknown[] = [], disposals: unknown[] = [], suppressedErrors: unknown[] = [];
   const protocolSymbols: Array<{ id: number; kind: "sync" | "async"; fileName: string; span: { start: number; end: number } }> = [];
   const protocolIds = new Map<string, number>();
-  for (const [fileName, text] of Object.entries(files)) {
+  for (const fileName of coordinates.fileNames) {
+    const text = files[fileName]!;
     const async = analyzeAsyncSafety(fileName, text);
     for (const item of async.promises) {
-      const owner = idsByName.get(item.owner); if (!owner) continue;
+      const owner = idsByFileAndName.get(`${fileName}\0${item.owner}`); if (!owner) continue;
       promiseObservations.push({ owner, source: item.source, observation: item.observation, catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths,
-        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+        span: { start: coordinates.offset(fileName, item.span.start), end: coordinates.offset(fileName, item.span.end) } });
     }
     for (const item of async.promiseBindings) {
-      const owner = idsByName.get(item.owner); if (!owner) continue;
+      const owner = idsByFileAndName.get(`${fileName}\0${item.owner}`); if (!owner) continue;
       rejectionOwnership.push({ owner, binding: item.binding, status: item.status, observations: item.observations,
-        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+        span: { start: coordinates.offset(fileName, item.span.start), end: coordinates.offset(fileName, item.span.end) } });
     }
     for (const item of async.resources) {
-      const owner = idsByName.get(item.owner); if (!owner) continue;
+      const owner = idsByFileAndName.get(`${fileName}\0${item.owner}`); if (!owner) continue;
       let protocolSymbol: number | null = null;
       if (item.disposalProtocol) {
         const protocolSource = files[item.disposalProtocol.fileName];
-        const start = protocolSource === undefined ? item.disposalProtocol.start : byteOffset(protocolSource, item.disposalProtocol.start);
-        const end = protocolSource === undefined ? item.disposalProtocol.end : byteOffset(protocolSource, item.disposalProtocol.end);
+        const start = protocolSource === undefined ? item.disposalProtocol.start : coordinates.offset(item.disposalProtocol.fileName, item.disposalProtocol.start);
+        const end = protocolSource === undefined ? item.disposalProtocol.end : coordinates.offset(item.disposalProtocol.fileName, item.disposalProtocol.end);
         const key = `${item.disposalProtocol.fileName}\0${start}\0${end}\0${item.disposalProtocol.kind}`;
         protocolSymbol = protocolIds.get(key) ?? protocolSymbols.length + 1;
         if (!protocolIds.has(key)) { protocolIds.set(key, protocolSymbol); protocolSymbols.push({ id: protocolSymbol, kind: item.disposalProtocol.kind, fileName: item.disposalProtocol.fileName, span: { start, end } }); }
       }
       resourceScopes.push({ owner, binding: item.binding, ownerAsync: item.ownerAsync, asynchronous: item.asynchronous, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths,
-        acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: byteOffset(text, item.scopeEnd),
+        acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: coordinates.offset(fileName, item.scopeEnd),
         catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol,
         protocolKind: item.disposalProtocol?.kind ?? null,
-        span: { start: byteOffset(text, item.span.start), end: byteOffset(text, item.span.end) } });
+        span: { start: coordinates.offset(fileName, item.span.start), end: coordinates.offset(fileName, item.span.end) } });
     }
     for (const item of async.disposals) {
-      const owner = idsByName.get(item.owner); if (!owner) continue;
+      const owner = idsByFileAndName.get(`${fileName}\0${item.owner}`); if (!owner) continue;
       disposals.push({ owner, binding: item.binding, order: item.order, asynchronous: item.asynchronous, scopeId: item.scopeId,
-        scopeDepth: item.scopeDepth, disposalPoint: byteOffset(text, item.disposalPoint), failureKind: item.failureKind,
+        scopeDepth: item.scopeDepth, disposalPoint: coordinates.offset(fileName, item.disposalPoint), failureKind: item.failureKind,
         failureType: item.failureType, catchesFailure: item.catchesFailure, escapingFailure: item.escapingFailure, exits: item.exits });
     }
     for (const ownerName of [...new Set(async.disposals.map((item) => item.owner))]) {
-      const owner = idsByName.get(ownerName); if (!owner) continue;
+      const owner = idsByFileAndName.get(`${fileName}\0${ownerName}`); if (!owner) continue;
       const bindings = async.disposals.filter((item) => item.owner === ownerName).sort((left, right) => left.order - right.order).map((item) => item.binding);
       const payload = composeResourceFailures(async, ownerName, undefined, bindings);
       if (payload) suppressedErrors.push({ owner, payload });
@@ -135,11 +154,13 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
   const program = programOf(options.files), functions: NormalizedFrontendIr["functions"] = [];
-  for (const source of program.getSourceFiles()) if (Object.hasOwn(options.files, source.fileName)) for (const node of source.statements) {
+  const nameCounts = topLevelFunctionNameCounts(program, options.files);
+  for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+    const sourceName = projectFileName(options.files, source.fileName)!;
     const leading = source.text.slice(node.getFullStart(), node.getStart(source));
     const effects = extractAnnotations(leading, "effect").flatMap((union) => splitTopLevel(union, "|").map(parseEffectExpression)).map(formatEffect).sort();
-    functions.push({ name: node.name.text, effects });
+    functions.push({ name: projectFunctionDisplayName(sourceName, node.name.text, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
   const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
@@ -198,6 +219,18 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   } catch (error) {
     return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
   }
+}
+
+function topLevelFunctionNameCounts(program: ts.Program, files: Readonly<Record<string, string>>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const source of program.getSourceFiles()) {
+    if (!projectFileName(files, source.fileName)) continue;
+    for (const node of source.statements) {
+      if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
+      counts.set(node.name.text, (counts.get(node.name.text) ?? 0) + 1);
+    }
+  }
+  return counts;
 }
 
 function semanticProjection(ir: NormalizedFrontendIr): Omit<NormalizedFrontendIr, "provenance"> {

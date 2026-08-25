@@ -1,7 +1,8 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Node } from "@oxlint/plugins";
 import { OxlintUtils, definePlugin } from "corsa-oxlint";
@@ -44,6 +45,12 @@ interface PendingCall {
   end: number;
 }
 
+interface RawCorsaCheckerFacts {
+  fileName: string;
+  functions: Array<Omit<PendingFunction, "node"> & { trivia: { text: string; start: number; end: number } | null }>;
+  calls: PendingCall[];
+}
+
 const createRule = OxlintUtils.RuleCreator(() => "https://github.com/mizchi/uneffect");
 
 export const corsaCheckerFactRule = createRule({
@@ -72,9 +79,10 @@ export const corsaCheckerFactRule = createRule({
     return {
       FunctionDeclaration(node: any) {
         if (!node.id || !node.body) return;
-        const symbol = checker.getSymbolAtLocation(node.id as Node);
-        if (!symbol) return;
+        const directSymbol = checker.getSymbolAtLocation(node.id as Node);
         const type = checker.getTypeAtLocation(node.id as Node);
+        const symbol = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
+        if (!symbol) return;
         const pending: PendingFunction = {
           node,
           symbolId: symbol.id,
@@ -96,7 +104,9 @@ export const corsaCheckerFactRule = createRule({
           ? node.callee.property
           : node.callee;
         if (!target) return;
-        const callee = checker.getSymbolAtLocation(target as Node);
+        const directSymbol = checker.getSymbolAtLocation(target as Node);
+        const type = checker.getTypeAtLocation(target as Node);
+        const callee = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
         if (!callee) return;
         calls.push({
           callerSymbolId: caller.symbolId,
@@ -106,56 +116,23 @@ export const corsaCheckerFactRule = createRule({
         });
       },
       "Program:exit"() {
-        const ids = new Map<string, number>();
-        functions.forEach((item, index) => ids.set(item.symbolId, index + 1));
-        const symbols = functions.map((item) => ({
-          id: ids.get(item.symbolId)!,
-          name: item.name,
-          kind: "function",
-          typeRepr: item.typeRepr,
-          overloads: [],
-          effectParameters: [],
-          span: { start: item.start, end: item.end },
-        }));
-        const trivia = functions.flatMap((item) => {
-          const leading = leadingUneffectTrivia(text, item.node.range[0]);
-          if (!leading) return [];
-          return [{
-            owner: ids.get(item.symbolId)!,
-            text: leading.text,
-            span: {
-              start: byteOffset(text, leading.start),
-              end: byteOffset(text, leading.end),
-            },
-          }];
-        });
-        const resolvedCalls = calls.flatMap((item) => {
-          const caller = ids.get(item.callerSymbolId), callee = ids.get(item.calleeSymbolId);
-          if (!caller || !callee) return [];
-          return [{
-            caller,
-            callee,
-            overloadIndex: null,
-            callbackTiming: "none",
-            span: { start: item.start, end: item.end },
-          }];
-        });
-        const facts: CorsaCheckerFactFile = {
-          schemaVersion: 7,
-          fileId: 1,
-          compilerRevision: process.env.UNEFFECT_CORSA_COMPILER_REVISION ?? "corsa-checker@unknown",
-          provenance: { producer: "corsa-checker", checkerBacked: true },
-          symbols,
-          calls: resolvedCalls,
-          trivia,
-          protocolSymbols: [],
-          promiseObservations: [],
-          rejectionOwnership: [],
-          resourceScopes: [],
-          disposals: [],
-          suppressedErrors: [],
+        const raw: RawCorsaCheckerFacts = {
+          fileName: context.filename,
+          functions: functions.map(({ node, ...item }) => {
+            const leading = leadingUneffectTrivia(text, node.range[0]);
+            return {
+              ...item,
+              trivia: leading ? {
+                text: leading.text,
+                start: byteOffset(text, leading.start),
+                end: byteOffset(text, leading.end),
+              } : null,
+            };
+          }),
+          calls,
         };
-        writeFileSync(output, JSON.stringify(facts));
+        const outputName = createHash("sha256").update(context.filename).digest("hex");
+        writeFileSync(join(output, `${outputName}.json`), JSON.stringify(raw));
       },
     };
   },
@@ -168,19 +145,25 @@ export const corsaCheckerExporterPlugin = definePlugin({
 export default corsaCheckerExporterPlugin;
 
 export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOptions): Promise<CorsaCheckerFactFile> {
-  const entries = Object.entries(options.files);
-  if (entries.length !== 1) throw new Error("Corsa checker fact export currently supports exactly one source file");
-  const [fileName, source] = entries[0]!;
+  const { createProjectByteCoordinates, projectFunctionDisplayName } = await import("./project-coordinates.js");
+  const coordinates = createProjectByteCoordinates(options.files);
+  if (coordinates.fileNames.length === 0) throw new Error("Corsa checker fact export requires at least one source file");
   const workspace = mkdtempSync(join(tmpdir(), "uneffect-corsa-"));
   try {
-    const sourcePath = join(workspace, basename(fileName));
     const configPath = join(workspace, "oxlint.config.mjs");
     const tsconfigPath = join(workspace, "tsconfig.json");
-    const outputPath = join(workspace, "facts.json");
-    writeFileSync(sourcePath, source);
+    const outputPath = join(workspace, "facts");
+    mkdirSync(outputPath);
+    const sourcePaths = new Map<string, string>();
+    for (const fileName of coordinates.fileNames) {
+      const sourcePath = safeWorkspacePath(workspace, fileName);
+      mkdirSync(dirname(sourcePath), { recursive: true });
+      writeFileSync(sourcePath, options.files[fileName]!);
+      sourcePaths.set(resolve(sourcePath), fileName);
+    }
     writeFileSync(tsconfigPath, JSON.stringify({
       compilerOptions: { module: "esnext", target: "es2022", strict: true },
-      include: [basename(sourcePath)],
+      include: ["**/*.ts", "**/*.tsx"],
     }));
     const moduleUrl = pathToFileURL(fileURLToPath(import.meta.url)).href;
     writeFileSync(configPath, `
@@ -198,7 +181,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
     const oxlintBin = join(dirname(oxlintPackage), "bin", "oxlint");
     const version = spawnSync(resolve(options.corsaExecutable), ["--version"], { encoding: "utf8" });
     const compilerRevision = version.status === 0 ? `corsa-checker@${version.stdout.trim()}` : "corsa-checker@unknown";
-    const execution = spawnSync(process.execPath, [oxlintBin, "--config", configPath, sourcePath], {
+    const execution = spawnSync(process.execPath, [oxlintBin, "--config", configPath, ...sourcePaths.keys()], {
       cwd: process.cwd(),
       encoding: "utf8",
       timeout: options.timeoutMs ?? 120_000,
@@ -211,11 +194,92 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
     if (execution.error || execution.status !== 0) {
       throw new Error(`corsa-oxlint fact export failed: ${execution.stderr}${execution.stdout}${execution.error?.message ?? ""}`.trim());
     }
+    const sourceNameOf = (fileName: string): string => {
+      const name = sourcePaths.get(resolve(fileName));
+      if (!name) throw new Error(`corsa-oxlint returned an unknown source file: ${fileName}`);
+      return name;
+    };
+    const rawFiles = readdirSync(outputPath)
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => JSON.parse(readFileSync(join(outputPath, name), "utf8")) as RawCorsaCheckerFacts)
+      .sort((left, right) => sourceNameOf(left.fileName).localeCompare(sourceNameOf(right.fileName)));
+    if (rawFiles.length !== coordinates.fileNames.length) {
+      throw new Error(`corsa-oxlint fact export produced ${rawFiles.length} file record(s), expected ${coordinates.fileNames.length}`);
+    }
+    const allFunctions = rawFiles.flatMap((raw) => {
+      const fileName = sourceNameOf(raw.fileName);
+      return raw.functions.map((item) => ({ ...item, fileName }));
+    });
+    const ids = new Map<string, number>();
+    allFunctions.forEach((item, index) => ids.set(item.symbolId, index + 1));
+    const nameCounts = new Map<string, number>();
+    for (const item of allFunctions) nameCounts.set(item.name, (nameCounts.get(item.name) ?? 0) + 1);
+    const symbols = allFunctions.map((item) => ({
+      id: ids.get(item.symbolId)!,
+      name: projectFunctionDisplayName(item.fileName, item.name, nameCounts),
+      kind: "function",
+      typeRepr: item.typeRepr,
+      overloads: [],
+      effectParameters: [],
+      span: {
+        start: coordinates.base(item.fileName) + item.start,
+        end: coordinates.base(item.fileName) + item.end,
+      },
+    }));
+    const trivia = allFunctions.flatMap((item) => item.trivia ? [{
+      owner: ids.get(item.symbolId)!,
+      text: item.trivia.text,
+      span: {
+        start: coordinates.base(item.fileName) + item.trivia.start,
+        end: coordinates.base(item.fileName) + item.trivia.end,
+      },
+    }] : []);
+    const calls = rawFiles.flatMap((raw) => {
+      const fileName = sourceNameOf(raw.fileName);
+      return raw.calls.flatMap((item) => {
+        const caller = ids.get(item.callerSymbolId), callee = ids.get(item.calleeSymbolId);
+        if (!caller || !callee) return [];
+        return [{
+          caller,
+          callee,
+          overloadIndex: null,
+          callbackTiming: "none",
+          span: {
+            start: coordinates.base(fileName) + item.start,
+            end: coordinates.base(fileName) + item.end,
+          },
+        }];
+      });
+    });
+    const facts: CorsaCheckerFactFile = {
+      schemaVersion: 7,
+      fileId: 1,
+      compilerRevision,
+      provenance: { producer: "corsa-checker", checkerBacked: true },
+      symbols,
+      calls,
+      trivia,
+      protocolSymbols: [],
+      promiseObservations: [],
+      rejectionOwnership: [],
+      resourceScopes: [],
+      disposals: [],
+      suppressedErrors: [],
+    };
     const { authenticateCorsaCheckerFacts } = await import("./corsa-fact-provenance.js");
-    return authenticateCorsaCheckerFacts(JSON.parse(readFileSync(outputPath, "utf8")) as CorsaCheckerFactFile);
+    return authenticateCorsaCheckerFacts(facts);
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
+}
+
+function safeWorkspacePath(workspace: string, fileName: string): string {
+  const target = resolve(workspace, fileName);
+  const child = relative(workspace, target);
+  if (!child || child === ".." || child.startsWith(`..${sep}`)) {
+    throw new Error(`source file must be a relative path inside the project: ${fileName}`);
+  }
+  return target;
 }
 
 function byteOffset(text: string, utf16Offset: number): number {
