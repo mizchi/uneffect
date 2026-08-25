@@ -2519,4 +2519,40 @@ describe("annotated refinement bindings", () => {
       expect.objectContaining({ code: "unsupported-action-body", modelName: "addThree" }),
     );
   });
+
+  it("consumes an unlabeled bounded-loop break while preserving finally and continuation", () => {
+    const source = `/* uneffect:
+      state value: int
+      state cleaned: int
+      state after: int
+      state stop: int
+      init value = 0
+      init cleaned = 0
+      init after = 0
+      init stop = 0
+      action run: value' = stop === 0 ? value + 1 : stop === 1 ? value + 1 + 1 : value + 1 + 1 + 1, cleaned' = stop === 0 ? cleaned + 1 : stop === 1 ? cleaned + 1 + 1 : cleaned + 1 + 1 + 1, after' = after + 1
+    */
+      interface Runtime { value: number; cleaned: number; after: number; stop: number }
+      /* uneffect: refinement breaking@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement breaking@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement breaking@1 action run */
+      export function run(runtime: Runtime) {
+        for (let index = 0; index < 3; index++) {
+          try {
+            runtime.value++
+            if (runtime.stop === index) break
+          } finally {
+            runtime.cleaned++
+          }
+        }
+        runtime.after++
+      }
+    `;
+    expect(validateRefinementActionBodies("breaking-for.ts", source, "breaking", parseSpec("breaking-for.ts", source).temporal)).toEqual([]);
+
+    const labeled = source.replace("break\n", "break outer\n").replace("        for (", "        outer: for (");
+    expect(validateRefinementActionBodies("labeled-breaking-for.ts", labeled, "breaking", parseSpec("labeled-breaking-for.ts", labeled).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
+    );
+  });
 });

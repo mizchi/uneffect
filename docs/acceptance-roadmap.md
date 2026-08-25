@@ -226,8 +226,16 @@ The same mapper finitely expands the adjacent canonical form
 safe integer literals and the trip count is at most 64. Expansion reuses the
 return/throw/finally completion flow, so an early return suppresses later
 iterations. Dynamic bounds, non-unit increments, uses of the final mutable
-counter, and loop transfers are rejected. This remains finite specialization,
-not a general loop fixed point.
+counter, `continue`, and labeled transfers are rejected. This remains finite
+specialization, not a general loop fixed point.
+
+An unlabeled `break` inside a supported finite loop is represented as its own
+conditional completion, rather than rewritten as a function return. It passes
+through supported branches and `try`/`finally`, stops later iterations, is
+consumed at the loop boundary, and then permits the outer continuation exactly
+once. The generated-migration fixture checks this with per-iteration auditing
+in `finally` and a post-loop report. `continue`, labeled transfers, and nested
+switch/loop ownership ambiguities remain fail-closed.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and

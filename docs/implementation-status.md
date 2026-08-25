@@ -95,7 +95,11 @@ same property is proved for arbitrary TypeScript.
   Literal-false while reductions are syntactic execution-count facts only;
   The canonical while form is `let i = start; while (i < end) { ...; i++ }`
   with literal safe-integer bounds and at most 64 iterations. Dynamic bounds,
-  other steps, loop transfers, and general loop invariants remain unsupported.
+  other steps, and general loop invariants remain unsupported. Within the
+  finite-loop fragment, an unlabeled `break` is retained separately from
+  return/throw through conditional and try/finally completion, consumed by the
+  loop, and followed by the outer continuation. `continue`, labeled transfers,
+  and ambiguous nested switch/loop transfers remain unsupported.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

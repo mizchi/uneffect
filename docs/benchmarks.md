@@ -340,6 +340,14 @@ includes finite AST expansion and completion composition, but still excludes
 Z3, Program construction, dynamic bounds, non-unit steps, loop transfers, and
 general loop fixed-point reasoning.
 
+After adding a three-iteration conditional-break action with mandatory
+per-iteration `finally` work and a post-loop continuation, the complete
+generated-migration loop benchmark measured 0.4452 ms mean over 1,124 samples
+(1.25% RME). This includes parsing, finite expansion, four-way normal/return/
+throw/break completion joins, and action comparison. It excludes Z3, Program
+construction, `continue`, labeled or ambiguous nested transfers, and general
+CFG fixed-point analysis; it is an observation rather than a regression budget.
+
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean
 over 1,032 samples (1.66% RME). The extra work includes literal specialization

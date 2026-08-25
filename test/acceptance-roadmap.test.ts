@@ -1822,6 +1822,43 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("bounded-while.ts", source, "whileBatch", specification.temporal)).toEqual([]);
   });
 
+  it("consumes a bounded-loop break after mandatory finally and before outer continuation", () => {
+    const validateActions = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state applied: int
+       * state finalized: int
+       * state audited: int
+       * state stop: int
+       * init applied = 0
+       * init finalized = 0
+       * init audited = 0
+       * init stop = 0
+       * action apply: applied' = stop === 0 ? applied + 1 : stop === 1 ? applied + 1 + 1 : applied + 1 + 1 + 1, finalized' = stop === 0 ? finalized + 1 : stop === 1 ? finalized + 1 + 1 : finalized + 1 + 1 + 1, audited' = audited + 1
+       */
+      interface Runtime { applied: number; finalized: number; audited: number; stop: number }
+      /* uneffect: refinement breakBatch@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement breakBatch@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement breakBatch@1 action apply */
+      export function apply(runtime: Runtime) {
+        let index = 0
+        while (index < 3) {
+          try {
+            runtime.applied++
+            if (runtime.stop === index) break
+          } finally {
+            runtime.finalized++
+          }
+          index++
+        }
+        runtime.audited++
+      }
+    `;
+    const specification = parseSpecification("breaking-while.ts", source) as { temporal: unknown };
+    expect(validateActions("breaking-while.ts", source, "breakBatch", specification.temporal)).toEqual([]);
+  });
+
   it("compares native Promise, Uneffect annotations, and Effect TS against the same observable contract", async () => {
     const compareImplementations = futureApi("compareEffectImplementations");
     const result = await compareImplementations({ fixture: "fetch-and-recover" }) as { implementations: string[]; sameResult: boolean; sameDeclaredAuthority: boolean; effectTsRecovery: { unhandledFailures: number }; limitations: string[] };

@@ -34,6 +34,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicBatch, "generatedMigration", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "migrateBatch" }),
     );
+    const missingReport = source.replace("  runtime.reported++;", "  // missing report");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, missingReport, "generatedMigration", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "migrateUntil", target: "reported" }),
+    );
   });
 
   it("accepts mandatory finally release of a loop-local upload session alias", () => {
