@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect } from "react";
+import { installRemoteAudit } from "./react-symbol-callbacks.js";
 
 interface RemoteViewport {
   readonly node: Element | null;
@@ -27,6 +28,7 @@ export function useDocumentTitle(title: string): void {
 
 /* uneffect: react hook */
 export default function useRefreshAudit(endpoint: string): void {
+  useEffect(installRemoteAudit, []);
   useEffect(() => {
     console.log("refresh audit", endpoint);
   }, [endpoint]);

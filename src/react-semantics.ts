@@ -798,7 +798,11 @@ function dependencyIssues(
   const issues: DependencyIssue[] = [];
   const callback = callbackArgument(callbackNode, callbacks);
   if (!callback) {
-    issues.push({ kind: "unknown-hook-closure", node: callbackNode ?? call, detail: `${hook} uses a callback whose captured values are not locally inspectable` });
+    issues.push({
+      kind: "unknown-hook-closure", node: callbackNode ?? call,
+      operation: callbackNode?.getText(source),
+      detail: `${hook} uses a callback whose captured values are not locally inspectable`,
+    });
   }
   if (!ts.isArrayLiteralExpression(dependencyNode) || dependencyNode.elements.some(ts.isSpreadElement)) {
     issues.push({ kind: "unknown-hook-dependencies", node: dependencyNode, detail: `${hook} dependency list is not a finite inline array` });
@@ -819,6 +823,7 @@ function dependencyIssues(
     });
   }
   if (!callback) return issues;
+  if (callback.getSourceFile() !== source) return issues;
   const { bindings, stable } = ownerBindingFacts(boundary, source);
   const required = capturedDependencies(callback, bindings, stable);
   const declared = dependencyNode.elements.map((element) => element.getText(source).replace(/\s+/gu, ""));
@@ -875,39 +880,6 @@ function localEventCallbacks(component: ComponentNode): ReadonlyMap<string, Loca
     const callback = resolve(name);
     if (callback) resolved.set(name, callback);
   }
-  return resolved;
-}
-
-const sourceCallbackCache = new WeakMap<ts.SourceFile, ReadonlyMap<string, LocalEventCallback>>();
-
-function sourceCallbacks(source: ts.SourceFile): ReadonlyMap<string, LocalEventCallback> {
-  const cached = sourceCallbackCache.get(source);
-  if (cached) return cached;
-  const callbacks = new Map<string, LocalEventCallback>();
-  const aliases = new Map<string, string>();
-  for (const statement of source.statements) {
-    if (ts.isFunctionDeclaration(statement) && statement.name && statement.body) callbacks.set(statement.name.text, statement as ts.FunctionDeclaration & { body: ts.Block });
-    if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
-      const initializer = unwrapExpression(declaration.initializer);
-      if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) callbacks.set(declaration.name.text, initializer);
-      else if (ts.isIdentifier(initializer)) aliases.set(declaration.name.text, initializer.text);
-    }
-  }
-  const resolve = (name: string, seen = new Set<string>()): LocalEventCallback | undefined => {
-    if (seen.has(name)) return undefined;
-    const callback = callbacks.get(name);
-    if (callback) return callback;
-    const alias = aliases.get(name);
-    return alias ? resolve(alias, new Set(seen).add(name)) : undefined;
-  };
-  const resolved = new Map<string, LocalEventCallback>();
-  for (const name of [...callbacks.keys(), ...aliases.keys()]) {
-    const callback = resolve(name);
-    if (callback) resolved.set(name, callback);
-  }
-  sourceCallbackCache.set(source, resolved);
   return resolved;
 }
 
@@ -994,6 +966,7 @@ function callbackArgument(
 interface CallbackAnalysisEnvironment {
   declared: ReadonlyMap<string, string[]>;
   callbacks: ReadonlyMap<string, LocalEventCallback>;
+  immediateCallbacks: ReadonlySet<string>;
   acquisitions: ReadonlyMap<string, LifecycleContract>;
   releases: ReadonlyMap<string, LifecycleContract>;
 }
@@ -1003,17 +976,19 @@ function callbackAnalysisEnvironment(
   ownerSource: ts.SourceFile,
   ownerDeclared: ReadonlyMap<string, string[]>,
   ownerCallbacks: ReadonlyMap<string, LocalEventCallback>,
+  ownerImmediateCallbacks: ReadonlySet<string>,
   ownerAcquisitions: ReadonlyMap<string, LifecycleContract>,
   ownerReleases: ReadonlyMap<string, LifecycleContract>,
 ): CallbackAnalysisEnvironment {
   const callbackSource = callback.getSourceFile();
   if (callbackSource === ownerSource) return {
-    declared: ownerDeclared, callbacks: ownerCallbacks,
+    declared: ownerDeclared, callbacks: ownerCallbacks, immediateCallbacks: ownerImmediateCallbacks,
     acquisitions: ownerAcquisitions, releases: ownerReleases,
   };
   return {
     declared: effectDeclarations(callbackSource),
-    callbacks: new Map([...sourceConstComponentCallbacks(callbackSource), ...ownerCallbacks]),
+    callbacks: new Map([...ownerCallbacks, ...sourceConstComponentCallbacks(callbackSource)]),
+    immediateCallbacks: reactTransitionCallbacks(callbackSource, callback as ComponentNode),
     acquisitions: lifecycleDeclarations(callbackSource, "acquire"),
     releases: lifecycleDeclarations(callbackSource, "release"),
   };
@@ -1793,7 +1768,7 @@ function suspenseBoundaryFacts(
 function analyzeReactSource(
   source: ts.SourceFile,
   externalHooks: ReadonlyMap<string, CustomHookSummary> = new Map(),
-  externalJsxCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
+  externalCallbacks: ReadonlyMap<string, LocalEventCallback> = new Map(),
 ): InternalReactAnalysis {
   const fileName = source.fileName;
   const hooks = importedHooks(source), renderCallbacks = importedRenderCallbacks(source);
@@ -1887,7 +1862,7 @@ function analyzeReactSource(
     if (!hook || stack.has(hookName)) return { phases, instances, leaked, lifecycleIssues, suspensions };
     const transitionCallbacks = reactTransitionCallbacks(source, hook);
     const localCallbacks = localEventCallbacks(hook);
-    const callableCallbacks = new Map([...componentCallbacks, ...localCallbacks]);
+    const callableCallbacks = new Map([...componentCallbacks, ...externalCallbacks, ...localCallbacks]);
     const effectEvents = localEffectEventCallbacks(hook, source);
     const nextStack = new Set(stack).add(hookName);
     const add = (phase: ReactPhase, effects: readonly string[]): void => {
@@ -1963,25 +1938,40 @@ function analyzeReactSource(
         const called = callName(node), builtinPhase = called ? hooks.get(called) : undefined;
         if (builtinPhase) {
           if (builtinPhase === "render-hook") {
-            const callback = inlineCallback(node, called ? renderCallbacks.get(called) : undefined);
-            if (callback) add("render", directEffects(callback.body, declared, transitionCallbacks, localCallbacks));
+            const callbackIndex = called ? renderCallbacks.get(called) : undefined;
+            const callback = callbackArgument(callbackIndex === undefined ? undefined : node.arguments[callbackIndex], callableCallbacks);
+            if (callback) {
+              const environment = callbackAnalysisEnvironment(
+                callback, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+              );
+              add("render", directEffects(
+                callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks, environment.callbacks,
+              ));
+            }
             return;
           }
           const callback = callbackArgument(node.arguments[0], callableCallbacks);
           if (callback) {
-            const setupEffects = directEffects(callback.body, declared, transitionCallbacks, localCallbacks, effectEvents);
+            const environment = callbackAnalysisEnvironment(
+              callback, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const callbackEffectEvents = callback.getSourceFile() === source ? effectEvents : new Map<string, LocalEventCallback>();
+            const invokedCallbacks = new Map([...environment.callbacks, ...callbackEffectEvents]);
+            const setupEffects = directEffects(callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks, invokedCallbacks);
             add(builtinPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, localCallbacks, effectEvents) : [];
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, environment.declared, environment.immediateCallbacks, environment.callbacks, invokedCallbacks) : [];
             if (cleanup) add("cleanup", cleanupEffects);
-            const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+            const lifecycle = lifecycleSummary(callback, cleanup, environment.acquisitions, environment.releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
             const released = lifecycle.released.map((capability) => `Release<${capability}>`);
             add(builtinPhase, acquired);
             add("cleanup", released);
             instances.push(commitInstance(builtinPhase, node, [...setupEffects, ...acquired], [...cleanupEffects, ...released]));
             if (lifecycle.missing.length > 0) leaked.push({ phase: builtinPhase, capabilities: lifecycle.missing });
-            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({ ...issue, phase: builtinPhase })));
+            lifecycleIssues.push(...lifecycle.issues.map((issue) => ({
+              ...issue, node: callback.getSourceFile() === source ? issue.node : node, phase: builtinPhase,
+            })));
           } else {
             add(builtinPhase, []);
             instances.push(commitInstance(builtinPhase, node, [], []));
@@ -2024,7 +2014,7 @@ function analyzeReactSource(
     const nullRefs = renderNullRefBindings(hook, source);
     const stateUpdaters = stateUpdaterBindings(hook, source);
     const effectEvents = localEffectEventCallbacks(hook, source);
-    const callableCallbacks = new Map([...sourceCallbacks(source), ...localEventCallbacks(hook)]);
+    const callableCallbacks = new Map([...componentCallbacks, ...externalCallbacks, ...localEventCallbacks(hook)]);
     const visitHookRender = (node: ts.Node): void => {
       if (node !== hook.body && ts.isFunctionLike(node)) return;
       if (ts.isCallExpression(node)) {
@@ -2127,7 +2117,7 @@ function analyzeReactSource(
           });
           if (dependencyHook?.phase === "insertion-effect") {
             const callback = callbackArgument(node.arguments[dependencyHook.callback], callableCallbacks);
-            if (callback) {
+            if (callback && callback.getSourceFile() === source) {
               const cleanup = returnedCleanup(callback);
               for (const body of cleanup ? [callback.body, cleanup.body] : [callback.body]) {
                 for (const update of stateUpdates(body, stateUpdaters)) reportHook(update, {
@@ -2224,8 +2214,8 @@ function analyzeReactSource(
       ...optimisticDispatcherBindings(component, source),
     ]);
     const eventCallbacks = localEventCallbacks(component);
-    const callableCallbacks = new Map([...componentCallbacks, ...eventCallbacks]);
-    const jsxCallbacks = new Map([...callableCallbacks, ...externalJsxCallbacks]);
+    const callableCallbacks = new Map([...componentCallbacks, ...externalCallbacks, ...eventCallbacks]);
+    const jsxCallbacks = callableCallbacks;
     const effectEvents = localEffectEventCallbacks(component, source);
     const transitionCallbacks = reactTransitionCallbacks(source, component);
     const reportTransitionUpdatesAfterAwait = (body: ts.Node, phase: ReactPhase): void => {
@@ -2290,12 +2280,12 @@ function analyzeReactSource(
         const callback = refExpression ? callbackArgument(refExpression, jsxCallbacks) : undefined;
         if (callback) {
           const environment = callbackAnalysisEnvironment(
-            callback, source, declared, jsxCallbacks, acquisitions, releases,
+            callback, source, declared, jsxCallbacks, transitionCallbacks, acquisitions, releases,
           );
-          const setupEffects = directEffects(callback.body, environment.declared, transitionCallbacks, environment.callbacks);
+          const setupEffects = directEffects(callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks);
           addPhase("ref-callback", setupEffects);
           const cleanup = returnedCleanup(callback);
-          const cleanupEffects = cleanup ? directEffects(cleanup.body, environment.declared, transitionCallbacks, environment.callbacks) : [];
+          const cleanupEffects = cleanup ? directEffects(cleanup.body, environment.declared, environment.immediateCallbacks, environment.callbacks) : [];
           if (cleanup) addPhase("cleanup", cleanupEffects);
           const lifecycle = lifecycleSummary(callback, cleanup, environment.acquisitions, environment.releases);
           const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
@@ -2307,7 +2297,7 @@ function analyzeReactSource(
             kind: "missing-effect-cleanup", phase: "ref-callback", effect: lifecycle.missing.join(" | "),
             message: `callback ref acquires ${lifecycle.missing.join(", ")} without a matching returned cleanup release`,
           });
-          for (const issue of lifecycle.issues) report(issue.node, {
+          for (const issue of lifecycle.issues) report(callback.getSourceFile() === source ? issue.node : node, {
             kind: issue.kind, phase: "ref-callback", effect: issue.capability, message: issue.detail,
           });
         } else if (!(refExpression && ts.isIdentifier(refExpression) && refs.has(refExpression.text))
@@ -2358,9 +2348,9 @@ function analyzeReactSource(
           }
           if (callback?.body) {
             const environment = callbackAnalysisEnvironment(
-              callback, source, declared, jsxCallbacks, acquisitions, releases,
+              callback, source, declared, jsxCallbacks, transitionCallbacks, acquisitions, releases,
             );
-            addPhase("event", directEffects(callback.body, environment.declared, transitionCallbacks, environment.callbacks, environment.callbacks));
+            addPhase("event", directEffects(callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks, environment.callbacks));
             if (callback.getSourceFile() === source) {
               reportTransitionUpdatesAfterAwait(callback.body, "event");
               for (const action of unknownImmediateActions(callback.body, transitionCallbacks, environment.callbacks)) reportUnknownAction(action);
@@ -2575,17 +2565,38 @@ function analyzeReactSource(
             addPhase("render");
             const callbackIndex = called ? renderCallbacks.get(called) : undefined;
             const callback = callbackArgument(callbackIndex === undefined ? undefined : node.arguments[callbackIndex], callableCallbacks);
-            if (callback) visitRender(callback.body);
+            if (callback) {
+              if (callback.getSourceFile() === source) visitRender(callback.body);
+              else {
+                const environment = callbackAnalysisEnvironment(
+                  callback, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+                );
+                for (const effect of directEffects(
+                  callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks, environment.callbacks,
+                )) {
+                  addPhase("render", [effect]);
+                  report(node, {
+                    kind: "render-effect", phase: "render", effect,
+                    message: `${effect} is observable during render through ${node.arguments[callbackIndex!]!.getText(source)}`,
+                  });
+                }
+              }
+            }
             return;
           }
           const callback = callbackArgument(node.arguments[0], callableCallbacks);
           if (callback) {
-            const setupEffects = directEffects(callback.body, declared, transitionCallbacks, eventCallbacks, effectEvents);
+            const environment = callbackAnalysisEnvironment(
+              callback, source, declared, callableCallbacks, transitionCallbacks, acquisitions, releases,
+            );
+            const callbackEffectEvents = callback.getSourceFile() === source ? effectEvents : new Map<string, LocalEventCallback>();
+            const invokedCallbacks = new Map([...environment.callbacks, ...callbackEffectEvents]);
+            const setupEffects = directEffects(callback.body, environment.declared, environment.immediateCallbacks, environment.callbacks, invokedCallbacks);
             addPhase(hookPhase, setupEffects);
             const cleanup = returnedCleanup(callback);
-            const cleanupEffects = cleanup ? directEffects(cleanup.body, declared, transitionCallbacks, eventCallbacks, effectEvents) : [];
+            const cleanupEffects = cleanup ? directEffects(cleanup.body, environment.declared, environment.immediateCallbacks, environment.callbacks, invokedCallbacks) : [];
             if (cleanup) addPhase("cleanup", cleanupEffects);
-            const lifecycle = lifecycleSummary(callback, cleanup, acquisitions, releases);
+            const lifecycle = lifecycleSummary(callback, cleanup, environment.acquisitions, environment.releases);
             const acquired = lifecycle.acquired.map((capability) => `Acquire<${capability}>`);
             const released = lifecycle.released.map((capability) => `Release<${capability}>`);
             addPhase(hookPhase, acquired);
@@ -2595,7 +2606,7 @@ function analyzeReactSource(
               kind: "missing-effect-cleanup", phase: hookPhase,
               effect: lifecycle.missing.join(" | "), message: `Effect acquires ${lifecycle.missing.join(", ")} without a matching cleanup release`,
             });
-            for (const issue of lifecycle.issues) report(issue.node, {
+            for (const issue of lifecycle.issues) report(callback.getSourceFile() === source ? issue.node : node, {
               kind: issue.kind, phase: hookPhase, effect: issue.capability, message: issue.detail,
             });
           } else {

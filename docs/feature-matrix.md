@@ -44,6 +44,10 @@ write-screened functions reached through named aliases, barrels, and namespace
 imports and reads their effect/lifecycle declarations from the defining
 module. The open referenced-callback boundary means unresolved imports, props,
 arbitrary members, reassigned functions, or dynamically selected references.
+Effect and reviewed render-Hook callbacks use the same Program resolution and
+definition-module contracts; imported functions cannot capture caller-local
+bindings, while finite dependency-array shape and unstable entries are still
+checked.
 The same row's lazy-ref support means only a direct/aliased `useRef(null)`, one
 strict null guard without `else`, and one same-ref assignment from the stable
 literal/object/array fragment. General factory/constructor purity and

@@ -1174,3 +1174,16 @@ write-screened callback declaration lookup, but not a large import graph,
 callback-ref lifecycle contracts, or incremental Program replacement. It is an
 observation rather than a regression budget; earlier runs were environmentally
 noisy, so cross-run differences are not attributed to this feature.
+
+After extending the same Program resolution to Effect callbacks, each of the
+128 generated components also installs one imported lifecycle callback whose
+definition module carries matching acquire/release contracts. Cold source
+parsing/classification measured 112.44 ms mean over 30 samples (0.56% relative
+margin of error), fresh two-file Program construction and analysis measured
+277.91 ms over 30 samples (3.56%), and the TSX parse baseline measured
+7.1881 ms over 140 samples (1.57%). Cached lookup remained below useful timer
+resolution. This workload exercises 128 imported Effect instances, symbol
+resolution, definition-module contract lookup, and replay construction. The
+run was noisy in several unrelated model-generation cases, so it is recorded
+as an observation rather than a regression budget or an attributed cross-run
+performance change.

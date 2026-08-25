@@ -1130,6 +1130,73 @@ describe("React Function Component semantics", () => {
     }
   });
 
+  it("resolves imported Effect and reviewed render callbacks through TypeScript symbols", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-callback-imports-"));
+    const callbacksFile = join(directory, "callbacks.ts"), barrelFile = join(directory, "barrel.ts");
+    const appFile = join(directory, "app.tsx");
+    try {
+      writeFileSync(callbacksFile, `
+        interface Connection { readonly id: unique symbol }
+        /* uneffect: react acquire Connection result */
+        declare function connect(): Connection
+        /* uneffect: react release Connection parameter 0 */
+        declare function disconnect(connection: Connection): void
+        function traceConnection() { console.log("connected") }
+        export function installConnection() {
+          traceConnection()
+          const connection = connect()
+          return () => disconnect(connection)
+        }
+        export function deriveLabel() { console.log("derive"); return "ready" }
+        export function installWrongConnection() {
+          const connection = connect()
+          return () => disconnect(connect())
+        }
+        export function unstableSetup() { fetch("/unstable") }
+        unstableSetup = () => console.log("changed")
+      `);
+      writeFileSync(barrelFile, `export { installConnection, installWrongConnection, deriveLabel, unstableSetup } from "./callbacks.js"`);
+      writeFileSync(appFile, `
+        import { useEffect, useMemo } from "react"
+        import { installConnection, installWrongConnection } from "./barrel.js"
+        import * as callbacks from "./callbacks.js"
+        function traceConnection() { fetch("/caller-collision") }
+        /* uneffect: react hook */
+        function useConnection() { useEffect(installConnection, []) }
+        /* uneffect: react component */
+        export function App() {
+          useConnection()
+          useEffect(installWrongConnection, [])
+          useEffect(callbacks.unstableSetup, [])
+          const label = useMemo(callbacks.deriveLabel, [])
+          return label
+        }
+      `);
+      const program = ts.createProgram([callbacksFile, barrelFile, appFile], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
+      });
+      const result = analyzeReactSemanticsInProgram(program, program.getSourceFile(appFile)!);
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "render-effect", phase: "render", effect: "Console" }),
+        expect.objectContaining({ kind: "missing-effect-cleanup", phase: "passive-effect", effect: "Connection" }),
+        expect.objectContaining({ kind: "resource-identity-mismatch", phase: "passive-effect", effect: "Connection" }),
+        expect.objectContaining({ kind: "unknown-hook-closure", phase: "passive-effect", operation: "callbacks.unstableSetup" }),
+      ]));
+      expect(result.diagnostics).toHaveLength(4);
+      expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
+        { phase: "render", effects: ["Console"] },
+        { phase: "passive-effect", effects: ["Console", "Acquire<Connection>"] },
+        { phase: "cleanup", effects: ["Release<Connection>"] },
+      ]));
+      expect(result.components[0]!.replay.strictModeDevelopment.effects).toContainEqual(expect.objectContaining({
+        phase: "passive-effect", setupEffects: ["Console", "Acquire<Connection>"], cleanupEffects: ["Release<Connection>"],
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves barrel, namespace, and default custom Hook calls by TypeScript symbol", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-react-hook-imports-"));
     const namedFile = join(directory, "named.tsx"), barrelFile = join(directory, "barrel.ts");
@@ -2481,10 +2548,11 @@ describe("React Function Component semantics", () => {
   });
 
   it("dogfoods checked-in symbol-resolved React modules", async () => {
+    const callbacksFile = "examples/dogfood/react-symbol-callbacks.ts";
     const hooksFile = "examples/dogfood/react-symbol-hooks.tsx";
     const barrelFile = "examples/dogfood/react-symbol-barrel.ts";
     const appFile = "examples/dogfood/react-symbol-dashboard.tsx";
-    const program = ts.createProgram([hooksFile, barrelFile, appFile], {
+    const program = ts.createProgram([callbacksFile, hooksFile, barrelFile, appFile], {
       target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve,
     });
@@ -2493,11 +2561,11 @@ describe("React Function Component semantics", () => {
     expect(result.components[0]!.phases).toEqual(expect.arrayContaining([
       { phase: "event", effects: ["Fetch"] },
       { phase: "ref-callback", effects: ["Acquire<RemoteViewport>"] },
-      { phase: "cleanup", effects: ["Release<RemoteViewport>"] },
+      { phase: "cleanup", effects: expect.arrayContaining(["Release<RemoteAuditConnection>", "Release<RemoteViewport>"]) },
       { phase: "layout-effect", effects: ["DomWrite"] },
-      { phase: "passive-effect", effects: ["Console"] },
+      { phase: "passive-effect", effects: expect.arrayContaining(["Acquire<RemoteAuditConnection>", "Console"]) },
     ]));
-    const checked = await checkFiles([hooksFile, barrelFile, appFile]);
+    const checked = await checkFiles([callbacksFile, hooksFile, barrelFile, appFile]);
     expect(checked.diagnostics.filter((diagnostic) => "component" in diagnostic)).toEqual([]);
   });
 

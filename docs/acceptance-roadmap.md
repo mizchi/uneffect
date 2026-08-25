@@ -35,6 +35,8 @@ contract layer for existing TypeScript:
     local event handlers and callback refs compose through `const` aliases;
     Program analysis also resolves write-screened JSX callbacks through named,
     barrel, and namespace imports while retaining their declaration contracts;
+    Effect and reviewed render-Hook callbacks use the same resolution for
+    definition-module effects, cleanup identity, render purity, and replay;
     annotated custom Hooks compose through resolved imports, and
     direct React memo/forwardRef wrappers preserve component identity for
     inline, source-local immutable, or write-screened module-local function

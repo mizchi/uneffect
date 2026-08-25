@@ -83,17 +83,20 @@ JSX event attributes accept inline callbacks, immutable component-local
 function/arrow callbacks, write-screened module-local functions reached
 through `const` identifier aliases, and Program-resolved named/barrel/namespace
 imports of such functions. Their
-capabilities belong to the `event` phase, not render. Reassigned identifiers,
-member expressions, imported callbacks, and other unresolved handler shapes
+capabilities belong to the `event` phase, not render. In source-only analysis,
+or when Program resolution fails, reassigned identifiers, arbitrary member
+expressions, imported callbacks, and other unresolved handler shapes
 produce `unknown-event-handler` instead of being silently treated as pure.
 
 Effect and reviewed render-Hook callbacks accept the same inline or immutable
 component/custom-Hook-local function fragment through transitive `const`
-aliases. Dependency capture, setup effects, returned cleanup, resource
-identity, insertion-Effect state/ref restrictions, and replay all use the same
-resolved callback. Mutable, member, imported, and dynamically selected
-callbacks remain opaque and fail closed where the Hook contract requires
-inspectable evidence.
+aliases. Program analysis also resolves write-screened functions through named
+aliases, barrels, and namespace imports. Definition-module effects, returned
+cleanup, resource identity, render-purity diagnostics, custom-Hook composition,
+and replay use the resolved callback. Imported callbacks cannot lexically
+capture caller-local values, so an inline finite dependency array is still
+validated but has no caller-capture obligations. Source-only imports and
+mutable, unresolved-member, or dynamically selected callbacks remain opaque.
 
 Inline or immutable component/custom-Hook-local action callbacks passed to named or aliased `startTransition`,
 `React.startTransition`, a React namespace object, or the second tuple element
@@ -610,9 +613,11 @@ This is a tested initial fragment, not a complete React semantics:
   null-guarded stable-expression fragment above; factory/constructor purity
   and general control-flow dominance are not inferred;
 - dependency completeness is checked for inline and immutable component/custom-
-  Hook-local callbacks through transitive `const` aliases; custom stability
-  contracts, module mutation, imported callbacks, and TypeScript-symbol-level
-  aliasing remain unsupported;
+  Hook-local callbacks through transitive `const` aliases. Program-resolved
+  imported callbacks retain finite-array and unstable-entry checks but cannot
+  capture caller bindings. Custom stability contracts, mutable module state,
+  unresolved imports, and general TypeScript-symbol-level dependency aliasing
+  remain unsupported;
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
@@ -662,5 +667,7 @@ navigation leaf from the inner account leaf. Its account component calls
 causal model excludes the static navigation leaf. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
-import using the Program-backed checker. These are controlled fixtures rather
-than an ecosystem false-positive measurement.
+import using the Program-backed checker. The custom Hook installs an imported
+Effect callback whose definition module owns its acquire/release contract; the
+component also uses imported event and callback-ref functions. These are
+controlled fixtures rather than an ecosystem false-positive measurement.

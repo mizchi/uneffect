@@ -185,9 +185,11 @@ same property is proved for arbitrary TypeScript.
   insertion-cleanup/setup interleaving are not claimed.
 - Effect and reviewed render-Hook callbacks resolve inline functions plus
   immutable component/custom-Hook-local functions through transitive `const`
-  aliases. Dependency capture, setup/cleanup effects, resource identity,
-  insertion safety, and replay share that resolution; mutable/member/imported/
-  dynamic callbacks remain fail-closed.
+  aliases. Program analysis additionally resolves write-screened named,
+  barrel, and namespace imports, retaining definition-module effects,
+  setup/cleanup resource identity, custom-Hook composition, render-purity
+  diagnostics, and replay. Imported callbacks have no caller-local capture
+  obligations; mutable/unresolved-member/dynamic callbacks remain fail-closed.
 - Inline and immutable local actions passed to named/default/namespace
   `startTransition` or the setter returned by `useTransition` are traversed in
   the enclosing phase, including transitive `const` aliases.
