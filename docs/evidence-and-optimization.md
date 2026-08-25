@@ -28,7 +28,11 @@ also retain `iteratorEffectParameters` and their formatted
 empty function-body effect set from an unbounded lazy-effect parameter and can
 inspect the declaration that justified a bounded `verified` result. Schema v1
 artifacts predate this distinction and must not be used to authorize claims
-about iterator-polymorphic functions.
+about iterator-polymorphic functions. The artifact identifies its `sourceFile`
+and binds `sourceHashes` for every non-declaration source in the analyzed
+TypeScript Program; `sourceHash` remains the root-file hash for compatibility.
+Changing an imported implementation therefore changes the evidence inputs even
+when the root source is unchanged.
 
 Project verification is fail-closed on TypeScript syntax, semantic, and
 compiler-option errors. These errors appear in `result.diagnostics`; function

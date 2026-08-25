@@ -23,7 +23,10 @@ export interface EvidenceArtifact {
   uneffectVersion: string;
   compilerRevision: string;
   tsconfigHash: string;
+  sourceFile: string;
   sourceHash: string;
+  /** Hashes every non-declaration source that contributed to Program-wide analysis. */
+  sourceHashes: Record<string, string>;
   builtinContractDigest: string;
   summaries: EvidenceArtifactSummary[];
 }
@@ -31,12 +34,18 @@ export interface EvidenceArtifact {
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 export function builtinContractDigest(): string { return digest(JSON.stringify(builtinContractRegistry)); }
 export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFile, summaries: readonly EffectSummary[]): EvidenceArtifact {
+  const sourceHashes = Object.fromEntries(program.getSourceFiles()
+    .filter((item) => !item.isDeclarationFile)
+    .sort((left, right) => left.fileName.localeCompare(right.fileName))
+    .map((item) => [item.fileName, digest(item.text)]));
   return {
     schemaVersion: 2,
     uneffectVersion: "0.1.0",
     compilerRevision: ts.version,
     tsconfigHash: digest(JSON.stringify(program.getCompilerOptions(), Object.keys(program.getCompilerOptions()).sort())),
+    sourceFile: source.fileName,
     sourceHash: digest(source.text),
+    sourceHashes,
     builtinContractDigest: builtinContractDigest(),
     summaries: summaries.map((summary) => ({
       functionName: summary.functionName,

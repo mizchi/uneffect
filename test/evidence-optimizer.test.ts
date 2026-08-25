@@ -77,7 +77,13 @@ describe("evidence and optimizer obligations", () => {
     const artifact = createEvidenceArtifact(program, source, result.summaries);
     expect(artifact.summaries.filter((item) => item.functionName !== "<module>").map((item) => item.evidence))
       .toEqual(["verified", "inferred", "unknown"]);
-    expect(artifact).toMatchObject({ schemaVersion: 2, compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/), sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/), builtinContractDigest: expect.stringMatching(/^[a-f0-9]{64}$/) });
+    expect(artifact).toMatchObject({
+      schemaVersion: 2, sourceFile: source.fileName,
+      compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      sourceHashes: { [source.fileName]: expect.stringMatching(/^[a-f0-9]{64}$/) },
+      builtinContractDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
+    });
   });
 
   it("preserves polymorphic iterator contracts and bounds in evidence artifacts", () => {
@@ -93,6 +99,23 @@ describe("evidence and optimizer obligations", () => {
       iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
       iteratorEffectBounds: [{ index: 0, name: "iterator", effects: ["Console"] }],
     });
+  });
+
+  it("changes evidence inputs when any analyzed Program source changes", () => {
+    const root = "/virtual/root.ts", dependency = "/virtual/dependency.ts";
+    const build = (dependencyText: string) => {
+      const files = new Map([[root, `export const root = 1`], [dependency, dependencyText]]);
+      const options: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, noEmit: true };
+      const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+      host.getSourceFile = (name, language, onError, fresh) => files.has(name)
+        ? ts.createSourceFile(name, files.get(name)!, language, true) : original(name, language, onError, fresh);
+      const program = ts.createProgram([...files.keys()], options, host), source = program.getSourceFile(root)!;
+      return createEvidenceArtifact(program, source, []);
+    };
+    const before = build(`export const dependency = 1`), after = build(`export const dependency = 2`);
+    expect(before.sourceHash).toBe(after.sourceHash);
+    expect(before.sourceHashes[root]).toBe(after.sourceHashes[root]);
+    expect(before.sourceHashes[dependency]).not.toBe(after.sourceHashes[dependency]);
   });
 
   it("allows stable-read reuse only with proof-grade evidence and no invalidation", () => {
