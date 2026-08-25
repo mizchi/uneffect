@@ -42,6 +42,7 @@ export const ciTestTiers = {
   integration: [
     "test/acceptance-roadmap.test.ts",
     "test/async-safety.test.ts",
+    "test/corsa-checker-exporter.test.ts",
     "test/dogfood.test.ts",
     "test/evidence-optimizer.test.ts",
     "test/fixtures.test.ts",

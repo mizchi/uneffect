@@ -3,12 +3,16 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectExpression, splitTopLevel } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
+import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
+import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
 
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
   corsaSchemaVersion?: number;
   /** Allows slower cold Rust builds while retaining a finite process boundary. */
   corsaTimeoutMs?: number;
+  /** Actual schema-v7 facts emitted by the corsa-bind checker exporter. */
+  corsaFacts?: CorsaCheckerFactFile;
   /** Fail the comparison unless records came from an actual corsa-bind checker. */
   requireCorsaCheckerFacts?: boolean;
 }
@@ -138,15 +142,18 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     functions.push({ name: node.name.text, effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const input = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
+  const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
+  const input = options.corsaFacts ?? referenceInput;
   const provenance: FrontendFactProvenance = {
     ...input.provenance,
     compilerRevision: input.compilerRevision,
-    satisfiesRequirement: !options.requireCorsaCheckerFacts,
+    satisfiesRequirement: !options.requireCorsaCheckerFacts || (
+      input.provenance.producer === "corsa-checker" && isAuthenticatedCorsaCheckerFacts(input)
+    ),
   };
-  const protocolSymbols = input.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
-  const names = new Map(input.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
-  const calls = input.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
+  const protocolSymbols = referenceInput.protocolSymbols.map((item) => ({ id: item.id, kind: item.kind, fileName: item.fileName, start: item.span.start, end: item.span.end }));
+  const names = new Map(referenceInput.symbols.map((symbol) => [symbol.id as number, symbol.name as string]));
+  const calls = referenceInput.calls.map((call) => ({ caller: names.get(call.caller)!, callee: names.get(call.callee)!, callbackTiming: "none" as const }));
   let changed = true;
   while (changed) {
     changed = false;
@@ -156,22 +163,22 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
       if (next.join("\0") !== caller.effects.join("\0")) { caller.effects = next; changed = true; }
     }
   }
-  const orderedEvents = input.calls.map((call) => ({ kind: "call" as const, caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end }))
+  const orderedEvents = referenceInput.calls.map((call) => ({ kind: "call" as const, caller: names.get(call.caller)!, callee: names.get(call.callee)!, start: call.span.start, end: call.span.end }))
     .sort((left, right) => left.start - right.start || left.end - right.end);
-  const promiseObservations = input.promiseObservations.map((item: any) => ({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
+  const promiseObservations = referenceInput.promiseObservations.map((item: any) => ({ owner: names.get(item.owner)!, source: item.source, observation: item.observation,
     catchesRejection: item.catchesRejection, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths, start: item.span.start, end: item.span.end }));
-  const rejectionOwnership = input.rejectionOwnership.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
+  const rejectionOwnership = referenceInput.rejectionOwnership.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, status: item.status,
     observations: item.observations, start: item.span.start, end: item.span.end }));
-  const resourceScopes = input.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
+  const resourceScopes = referenceInput.resourceScopes.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, ownerAsync: item.ownerAsync,
     asynchronous: item.asynchronous, conditional: item.conditional, controlConditions: item.controlConditions, controlPaths: item.controlPaths, acquisitionIndex: item.acquisitionIndex, scopeId: item.scopeId, scopeDepth: item.scopeDepth, scopeEnd: item.scopeEnd,
     catchesFailure: item.catchesFailure, disposalFailureType: item.disposalFailureType, protocolSymbol: item.protocolSymbol,
     protocolKind: item.protocolKind, start: item.span.start, end: item.span.end }));
-  const disposals = input.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
+  const disposals = referenceInput.disposals.map((item: any) => ({ owner: names.get(item.owner)!, binding: item.binding, order: item.order,
     asynchronous: item.asynchronous, scopeId: item.scopeId, scopeDepth: item.scopeDepth, disposalPoint: item.disposalPoint,
     failureKind: item.failureKind, failureType: item.failureType, catchesFailure: item.catchesFailure,
     escapingFailure: item.escapingFailure, exits: item.exits }));
-  const suppressedErrors = input.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
-  const irProvenance = { ...input.provenance, compilerRevision: input.compilerRevision };
+  const suppressedErrors = referenceInput.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
+  const irProvenance = { ...referenceInput.provenance, compilerRevision: referenceInput.compilerRevision };
   const typescriptIr: NormalizedFrontendIr = { schemaVersion: 7, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
     input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
@@ -180,13 +187,20 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   try {
     const corsaIr = JSON.parse(execution.stdout) as NormalizedFrontendIr;
     corsaIr.functions.sort((left, right) => left.name.localeCompare(right.name));
-    const semanticEquivalent = JSON.stringify(typescriptIr) === JSON.stringify(corsaIr);
+    const semanticEquivalent = JSON.stringify(semanticProjection(typescriptIr)) === JSON.stringify(semanticProjection(corsaIr));
     const provenanceFailure: FrontendSchemaDrift[] = provenance.satisfiesRequirement ? [] : [{
       frontend: "corsa",
-      message: "actual corsa-bind checker facts are unavailable; comparison used TypeScript reference-adapter records",
+      message: input.provenance.producer === "corsa-checker"
+        ? "corsa-checker provenance was not authenticated by the in-process exporter"
+        : "actual corsa-bind checker facts are unavailable; comparison used TypeScript reference-adapter records",
     }];
     return { equivalent: semanticEquivalent && provenance.satisfiesRequirement, semanticEquivalent, provenance, schemaDrift: provenanceFailure, typescriptIr, corsaIr };
   } catch (error) {
     return { equivalent: false, semanticEquivalent: false, provenance, schemaDrift: [{ frontend: "corsa", message: error instanceof Error ? error.message : String(error) }], typescriptIr, corsaIr: null };
   }
+}
+
+function semanticProjection(ir: NormalizedFrontendIr): Omit<NormalizedFrontendIr, "provenance"> {
+  const { provenance: _provenance, ...projection } = ir;
+  return projection;
 }

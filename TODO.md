@@ -485,7 +485,10 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts.
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
   - [x] Carry mandatory fact provenance through schema v7 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
+  - [x] Export a real checker-backed single-file slice through the `corsa-oxlint` plugin context: top-level named functions, Corsa type text, direct local call edges, and leading Uneffect trivia.
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
+    - [ ] Extend the checker-backed exporter to multi-file symbol identity, methods, arrows, callbacks/timing, overloads, Promise/resource records, and the complete neutral IR.
+    - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate.
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.

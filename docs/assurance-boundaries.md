@@ -53,7 +53,7 @@ for “this function is correct.”
 | Temporal logic | A generated artifact plus the reported backend result and bounds/fairness assumptions. | An unbounded proof when only simulation or bounded checking ran. |
 | Property testing | Bugs found in generated cases and minimized counterexamples. | Proof of correctness from a passing finite sample. |
 | Optimization | Only a transformation whose exact proof-grade authorization schema matches. | General compression, mangling, reordering, or DCE. |
-| Native frontend parity | `semanticEquivalent: true` establishes that reference-adapter records survive the versioned Rust consumer unchanged. `provenance.producer: corsa-checker` is additionally required for a real Corsa-checker claim. | A successful reference comparison is not evidence that corsa-bind or typescript-go examined the source. `requireCorsaCheckerFacts` currently fails closed because the exporter is not implemented. |
+| Native frontend parity | `semanticEquivalent: true` establishes semantic agreement for the emitted neutral-IR fields. An in-process exporter result plus `requireCorsaCheckerFacts` establishes that its supported symbol/type facts came from full Corsa parser services; provenance strings alone are insufficient. | The checker-backed exporter currently covers only one file, top-level named functions, their direct local calls, type text, and leading Uneffect trivia. Cloned/persisted facts are unauthenticated, and there is no signed evidence format or whole-program Corsa parity. |
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do

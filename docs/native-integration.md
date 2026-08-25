@@ -41,14 +41,52 @@ typescript-go/Corsa build. The reference adapter proves that aliases of
 the standard symbols resolve through TypeChecker identity while same-spelled
 user properties do not become protocols.
 
+### Checker-backed exporter prototype
+
+The optional `@mizchi/uneffect/corsa` entry point now runs an Oxlint JS plugin
+through `corsa-oxlint`. The visitor refuses parser services without full type
+information, reads Corsa symbol identity and type text, emits schema-v7 facts
+with `producer: corsa-checker`, and compares them through the Rust consumer:
+
+```ts
+import { compareUneffectFrontends } from "@mizchi/uneffect";
+import { exportCorsaCheckerFacts } from "@mizchi/uneffect/corsa";
+
+const files = { "example.ts": "export function run(): number { return 1 }" };
+const corsaFacts = await exportCorsaCheckerFacts({
+  files,
+  corsaExecutable: "node_modules/.bin/tsgo",
+});
+const result = await compareUneffectFrontends({
+  files,
+  corsaFacts,
+  requireCorsaCheckerFacts: true,
+});
+```
+
+This executable slice currently supports exactly one source file, top-level
+named function declarations, direct calls between those functions, function
+type text, and leading `uneffect:` trivia. Unsupported multi-file input is
+rejected before execution. Calls outside the exported local symbol set are not
+emitted. Promise/resource records, methods, arrows, callbacks, overload facts,
+callback timing, and cross-file edges are not checker-exported yet; using those
+constructs therefore cannot establish full frontend parity. Install compatible
+`corsa-oxlint`, `oxlint`, and `@oxlint/plugins` peers and supply a real Corsa or
+`tsgo` executable. The package does not silently fall back to TypeScript facts.
+`requireCorsaCheckerFacts` accepts only the object returned by the in-process
+exporter. A cloned, deserialized, or hand-written object carrying the same
+provenance strings is rejected as unauthenticated. Persisted checker facts do
+not yet have a signed evidence format and cannot satisfy this gate.
+
 TypeScript Go's Content Mapper facility is deliberately not treated as this
 frontend API. Content Mappers run an external process for otherwise unsupported
 file extensions, return generated TypeScript plus source-span mappings, and do
 not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
-them to Rust native rules. A schema-v7 exporter at that bridge remains the P6
-production integration task. Content Mappers may later project an Uneffect
+them to Rust native rules. Expanding the implemented schema-v7 exporter from
+the single-file slice above to the whole neutral IR remains the P6 production
+integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
 semantic parity.
 

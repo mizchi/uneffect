@@ -27,6 +27,10 @@
     ".": {
       "types": "./dist/src/index.d.ts",
       "import": "./dist/src/index.js"
+    },
+    "./corsa": {
+      "types": "./dist/src/corsa-checker-exporter.d.ts",
+      "import": "./dist/src/corsa-checker-exporter.js"
     }
   },
   "bin": {
@@ -52,10 +56,22 @@
   },
   "peerDependencies": {
     "@informalsystems/quint": ">=0.32.0",
+    "@oxlint/plugins": ">=1.80.0",
+    "corsa-oxlint": ">=1.12.4",
+    "oxlint": ">=1.80.0",
     "typescript": ">=6.0.0-dev.20260820"
   },
   "peerDependenciesMeta": {
     "@informalsystems/quint": {
+      "optional": true
+    },
+    "@oxlint/plugins": {
+      "optional": true
+    },
+    "corsa-oxlint": {
+      "optional": true
+    },
+    "oxlint": {
       "optional": true
     }
   },
@@ -66,7 +82,11 @@
   },
   "devDependencies": {
     "@informalsystems/quint": "^0.32.0",
+    "@oxlint/plugins": "1.80.0",
     "@types/node": "^24.0.0",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "corsa-oxlint": "1.12.4",
+    "oxlint": "1.80.0",
     "tsx": "^4.20.5",
     "typescript": "^6.0.0-dev.20260820",
     "vitest": "^4.1.11"
