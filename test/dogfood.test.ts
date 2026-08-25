@@ -622,6 +622,11 @@ describe("Uneffect dogfood", () => {
       expect(await validateRefinementActionBodiesInProgramWithZ3(wrongProgram, wrongFile, "importedTelemetry", temporal)).toContainEqual(
         expect.objectContaining({ code: "action-update-mismatch", modelName: "record", target: "attempted" }),
       );
+      writeFileSync(wrongRuntimeFile, `${runtimeSource}\nexport class DerivedTelemetryRuntime extends ImportedTelemetryRuntime { record(): void { this.attempted += 2; this.sent += 2 } }\n`);
+      const subclassProgram = ts.createProgram([wrongFile, wrongRuntimeFile], compilerOptions);
+      expect(await validateRefinementActionBodiesInProgramWithZ3(subclassProgram, wrongFile, "importedTelemetry", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

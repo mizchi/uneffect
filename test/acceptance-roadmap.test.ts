@@ -94,6 +94,17 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       });
       const specification = parseSpecification(mainFile, source) as { temporal: unknown };
       expect(validateActions(program, mainFile, "telemetry", specification.temporal)).toEqual([]);
+      writeFileSync(runtimeFile, `
+        export class Runtime { sent = 0; record() { this.sent++ } }
+        export class DerivedRuntime extends Runtime { record() { this.sent += 2 } }
+      `);
+      const subclassProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateActions(subclassProgram, mainFile, "telemetry", specification.temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -1355,6 +1355,14 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("mutable-method-alias.ts", mutableAlias, "routing", parseSpec("mutable-method-alias.ts", mutableAlias).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver", exportName: "deliver" }),
     );
+
+    const overridden = aliased.replace(
+      "      }\n      /* uneffect: refinement routing@1 create */",
+      "      }\n      class DerivedRuntime extends Runtime { record(outcome: \"delivered\") { this.attempted += 2; this[outcome] += 2 } }\n      /* uneffect: refinement routing@1 create */",
+    );
+    expect(validateRefinementActionBodies("overridden-method.ts", overridden, "routing", parseSpec("overridden-method.ts", overridden).temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver", exportName: "deliver" }),
+    );
   });
 
   it("resolves imported runtime class methods only in the Program-backed path", () => {
@@ -1413,6 +1421,25 @@ describe("annotated refinement bindings", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
       });
       expect(validateRefinementActionBodiesInProgram(unionProgram, mainFile, "telemetry", spec)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+
+      writeFileSync(runtimeFile, `
+        export class Runtime {
+          sent = 0
+          attempted = 0
+          record() { this.attempted++; this.sent++ }
+        }
+        export class DerivedRuntime extends Runtime {
+          record() { this.attempted += 2; this.sent += 2 }
+        }
+      `);
+      writeFileSync(mainFile, source);
+      const subclassProgram = ts.createProgram([mainFile, runtimeFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateRefinementActionBodiesInProgram(subclassProgram, mainFile, "telemetry", spec)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
       );
 

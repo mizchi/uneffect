@@ -205,8 +205,10 @@ action updates, its accounting invariant, and create/observe projection; a
 method body that increments the wrong amount is rejected. Syntax-only imports,
 same-shaped interfaces, computed or polymorphic methods, and reassigned or
 escaping receivers are not proved. This body comparison also does not prove
-closed-world dispatch: unscanned subclasses, prototype replacement, proxies,
-and runtime monkey-patching remain outside the refinement claim.
+closed-world dispatch. A locally or Program-visible subclass makes method
+specialization fail closed, including the dogfood's wrong override oracle.
+Unscanned external subclasses, prototype replacement, proxies, and runtime
+monkey-patching remain outside the refinement claim.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and

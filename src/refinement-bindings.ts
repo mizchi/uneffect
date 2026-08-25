@@ -665,6 +665,7 @@ function validateRefinementActionBodiesInSource(
   adapterName: string,
   spec: TemporalSpec,
   checker?: ts.TypeChecker,
+  program?: ts.Program,
 ): RefinementActionDiagnostic[] {
   const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
@@ -692,13 +693,49 @@ function validateRefinementActionBodiesInSource(
     return resolveProgramFunction(checker, expression, seen);
   };
 
+  const knownSubclassCache = new Map<ts.ClassDeclaration, boolean>();
+  const hasKnownSubclass = (runtimeClass: ts.ClassDeclaration): boolean => {
+    const cached = knownSubclassCache.get(runtimeClass);
+    if (cached !== undefined) return cached;
+    let runtimeSymbol = checker && runtimeClass.name ? checker.getSymbolAtLocation(runtimeClass.name) : undefined;
+    if (runtimeSymbol && (runtimeSymbol.flags & ts.SymbolFlags.Alias) !== 0) runtimeSymbol = checker!.getAliasedSymbol(runtimeSymbol);
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found) return;
+      if (ts.isClassDeclaration(node) && node !== runtimeClass) {
+        for (const clause of node.heritageClauses ?? []) {
+          if (clause.token !== ts.SyntaxKind.ExtendsKeyword) continue;
+          for (const inherited of clause.types) {
+            if (checker && runtimeSymbol) {
+              let inheritedSymbol = checker.getSymbolAtLocation(inherited.expression);
+              if (inheritedSymbol && (inheritedSymbol.flags & ts.SymbolFlags.Alias) !== 0) inheritedSymbol = checker.getAliasedSymbol(inheritedSymbol);
+              if (inheritedSymbol === runtimeSymbol || inheritedSymbol?.declarations?.includes(runtimeClass)) { found = true; return; }
+            } else if (runtimeClass.name && ts.isIdentifier(inherited.expression)
+              && inherited.expression.text === runtimeClass.name.text) { found = true; return; }
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    const roots = program
+      ? program.getSourceFiles().filter((file) => !file.isDeclarationFile)
+      : [source];
+    for (const root of roots) visit(root);
+    knownSubclassCache.set(runtimeClass, found);
+    return found;
+  };
+
   const resolveRuntimeClass = (parameter: ts.ParameterDeclaration | undefined): ts.ClassDeclaration | undefined => {
     const type = parameter?.type;
     if (!type || !ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return undefined;
-    if (!checker) return classes.get(type.typeName.text);
+    if (!checker) {
+      const runtimeClass = classes.get(type.typeName.text);
+      return runtimeClass && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
+    }
     let symbol = checker.getSymbolAtLocation(type.typeName);
     if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-    return symbol?.declarations?.find(ts.isClassDeclaration);
+    const runtimeClass = symbol?.declarations?.find(ts.isClassDeclaration);
+    return runtimeClass && !hasKnownSubclass(runtimeClass) ? runtimeClass : undefined;
   };
 
   const isBuiltinCollectionReceiver = (node: ts.Expression, kind: "set" | "map"): boolean => {
@@ -1692,7 +1729,7 @@ export function validateRefinementActionBodiesInProgram(
 ): RefinementActionDiagnostic[] {
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
-  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker());
+  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), program);
 }
 
 function collectProgramHelperFunctions(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, ts.FunctionDeclaration> {

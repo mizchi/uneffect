@@ -83,7 +83,9 @@ same property is proved for arbitrary TypeScript.
   type alias must resolve through the TypeChecker to an actual class
   declaration. A same-shaped interface is not accepted. This remains exact
   declaration-body specialization, not proof of closed-world dynamic method
-  dispatch; subclasses, proxies, and prototype mutation remain excluded.
+  dispatch. A subclass declaration known to the source or Program disables the
+  specialization (using TypeChecker symbol identity in Program mode). Unscanned
+  external subclasses, proxies, and prototype mutation remain excluded.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

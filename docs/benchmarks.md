@@ -427,6 +427,11 @@ the same date. Program construction, Z3 discharge, invariant comparison, and
 state projection are outside this microbenchmark; it isolates repeated action
 validation with an already-created checker and symbol graph.
 
+After adding cached Program-wide known-subclass rejection, the same warm
+benchmark measured 0.0614 ms mean over 8,148 samples (0.32% RME). The increase
+is retained as a regression signal for the additional closed-world scan; one
+result is cached per resolved runtime class during a validation pass.
+
 Syntactic boundary generation for 16 shard contracts, each combining a range
 with `% 16 === 0`, measured 1.0009 ms mean over 500 samples (0.34% RME).
 Generated Vitest execution and Z3 enumeration are intentionally outside this
