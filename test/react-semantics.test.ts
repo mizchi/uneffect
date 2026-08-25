@@ -806,6 +806,17 @@ describe("React Function Component semantics", () => {
           { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup", "cleanup", "setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }, { transition: "cleanup", commit: "commit@0" }, { transition: "setup", commit: "commit@1" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
         ],
       },
+      suspenseRetry: {
+        renderInvocations: 2,
+        renderAttempts: [
+          { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
+          { instance: "render@1", outcome: "committed", commit: "commit@0", retryOf: "suspension@0" },
+        ],
+        effects: [
+          { instance: expect.stringMatching(/^layout-effect@/), phase: "layout-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+          { instance: expect.stringMatching(/^passive-effect@/), phase: "passive-effect", transitions: ["setup"], lifecycle: [{ transition: "setup", commit: "commit@0" }], setupEffects: ["Console"], cleanupEffects: ["Console"] },
+        ],
+      },
     });
   });
 
@@ -925,6 +936,24 @@ describe("React Function Component semantics", () => {
       .toThrow("transitions do not match lifecycle steps");
   });
 
+  it("models Suspense resolution as a prerequisite for retry commit", () => {
+    const result = analyzeReactSemantics("suspense.tsx", `
+      import { useEffect } from "react"
+      /* uneffect: react component */
+      function Profile() { useEffect(() => { console.log("visible") }, []); return null }
+    `);
+    const replay = result.components[0]!.replay.suspenseRetry;
+    expect(replay.renderAttempts).toEqual([
+      { instance: "render@0", outcome: "suspended", suspension: "suspension@0" },
+      { instance: "render@1", outcome: "committed", commit: "commit@0", retryOf: "suspension@0" },
+    ]);
+    const quint = generateReactLifecycleQuint("suspense_retry", result.components[0]!, "suspenseRetry");
+    expect(quint).toContain("action suspend_render_0");
+    expect(quint).toContain("action resolve_suspension_0");
+    expect(quint).toContain("resolved_suspension_0 == 1");
+    expect(quint).toContain("commit_generation_0 == 1 implies resolved_suspension_0 == 1");
+  });
+
   it("rejects direct network and DOM writes in render but not inside an event callback", () => {
     const result = analyzeReactSemantics("render-effects.tsx", `
       declare namespace JSX { interface IntrinsicElements { button: { onClick?: () => void } } }
@@ -992,6 +1021,14 @@ describe("React Function Component semantics", () => {
     );
     expect(interrupted).toContain("action discard_render_0");
     expect(interrupted).toContain("setup_0 >= 1 implies commit_generation_0 == 1");
+    const suspense = generateReactLifecycleQuint(
+      "telemetry_suspense",
+      result.components.find(({ name }) => name === "TelemetryDashboard")!,
+      "suspenseRetry",
+    );
+    expect(suspense).toContain("action suspend_render_0");
+    expect(suspense).toContain("action resolve_suspension_0");
+    expect(suspense).toContain("commit_generation_0 == 1 implies resolved_suspension_0 == 1");
 
     const leaking = analyzeReactSemantics(fileName, source.replace(
       "return () => unsubscribeFromTelemetry(subscription);",

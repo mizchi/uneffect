@@ -107,6 +107,9 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(interruptedQuint).toContain("setup_0 >= 1 implies commit_generation_0 == 1");
     const dependencyQuint = generateReactLifecycle("feed_dependency", result.components[0], "dependencyChange") as string;
     expect(dependencyQuint).toContain("setup_0 >= 2 implies commit_generation_1 == 1");
+    const suspenseQuint = generateReactLifecycle("feed_suspense", result.components[0], "suspenseRetry") as string;
+    expect(suspenseQuint).toContain("action resolve_suspension_0");
+    expect(suspenseQuint).toContain("commit_generation_0 == 1 implies resolved_suspension_0 == 1");
 
     const broken = analyzeReact("src/feed.tsx", `
       import { useContext, useEffect, useRef, useState } from "react"

@@ -208,12 +208,19 @@ has a source-derived `instance` path and preserves that setup's own
 `cleanupEffects`. Custom-Hook composition prefixes the nested instance with
 each caller site, so repeated Hook calls remain distinct.
 
-Each scenario also records ordered render attempts as committed or discarded.
+Each scenario also records ordered render attempts as committed, discarded, or
+suspended.
 The bounded `concurrentInterruption` scenario discards one interrupted attempt,
 then commits a replacement attempt. Its Effect and callback-ref setup entries
 belong only to the committed result; discarded render work cannot authorize a
 commit-side effect. This is a minimal interruption law, not a React scheduler
 implementation.
+
+The bounded `suspenseRetry` scenario records a suspended render separately from
+a discarded render. The suspension has a model-local identity; an explicit
+resolution transition must occur before the retry may commit. Effect and ref
+setup still belong only to the retry's commit generation. This captures the
+minimal no-effects-before-successful-retry law without modeling fallback trees.
 
 Committed render attempts carry a stable model-local generation such as
 `commit@0`. Each lifecycle entry stores both its transition and owning commit.
@@ -239,18 +246,19 @@ metadata-only and adds no runtime dependency.
 
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
 `production`, `strictModeDevelopment`, `concurrentInterruption`, or
-`dependencyChange` replay into reviewable Quint. It uses separate
+`dependencyChange`, or `suspenseRetry` replay into reviewable Quint. It uses
+separate
 attempted/committed/discarded render counts, one flag per commit generation,
-and one setup/cleanup counter pair per lifecycle instance. A lifecycle
+separate suspended/resolved flags, and one setup/cleanup counter pair per
+lifecycle instance. A lifecycle
 transition requires its owner generation to have committed, while different
 commit instances remain unordered. The
 `reactLifecycleSafe` invariant requires cleanup never to lead setup, setup to
 lead cleanup by at most one, and both counters to stay within the selected
-scenario's bounds. Test-only early-cleanup, setup-after-discard, and
-wrong-generation setup transitions demonstrate that the invariant is
-load-bearing under the Quint simulator. This
-is bounded lifecycle evidence, not a proof of React's scheduler or host commit
-order.
+scenario's bounds. Test-only early-cleanup, setup-after-discard,
+wrong-generation setup, and retry-before-resolution transitions demonstrate
+that the invariant is load-bearing under the Quint simulator. This is bounded
+lifecycle evidence, not a proof of React's scheduler or host commit order.
 
 The public generator validates externally supplied replay IR before emitting a
 model. Render-attempt counts, committed/discarded generation ownership, and the
@@ -280,7 +288,7 @@ This is a tested initial fragment, not a complete React semantics:
 - identity-aware setup/release matching is local to direct return bindings and
   immutable identifier aliases; general aliasing and interprocedural ownership
   remain unsupported;
-- Suspense semantics, transition priority, Offscreen trees, server components, hydration,
+- Suspense fallback trees and nested boundaries, transition priority, Offscreen trees, server components, hydration,
   insertion effects, and React compiler assumptions are not
   modeled;
 - React lifecycle replay has a Quint safety projection; Z3 projection and
@@ -299,7 +307,8 @@ and mutates props as independent negative controls. The same component also
 generates the bounded interrupted-render model and locks the rule that only a
 committed render authorizes its subscription/ref setup. Its dependency-change
 projection additionally distinguishes the generation owning old cleanup from
-the one owning replacement setup. The checked-in
+the one owning replacement setup. Its Suspense projection locks the
+suspend-resolve-retry ordering. The checked-in
 `react-symbol-*` modules additionally compose a
 component through a named barrel, namespace property, and default custom-Hook
 import using the Program-backed checker. These are controlled fixtures rather

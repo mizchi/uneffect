@@ -169,19 +169,24 @@ same property is proved for arbitrary TypeScript.
   additionally prove exact-once cleanup for direct result bindings and local
   immutable identifier aliases.
 - Component and custom-Hook summaries expose production, development Strict
-  Mode initial-mount, one bounded concurrent-interruption, and dependency-change replay projections.
-  These distinguish committed from discarded render attempts and model render multiplicity and
+  Mode initial-mount, one bounded concurrent-interruption, dependency-change,
+  and Suspense-retry projections. These distinguish committed, discarded, and
+  suspended render attempts and model render multiplicity and
   Effect/callback-ref setup/cleanup cycles without claiming total host
   scheduling order. Source-derived instance paths preserve each setup's own
   cleanup effects through repeated and transitive custom-Hook calls.
 - Dependency-change replay assigns the old setup/cleanup to its original commit
   generation and the replacement setup to the next generation. A lifecycle
   transition cannot be justified by a different or uncommitted generation.
-- The replay IR generates reviewable production, development Strict Mode, or
-  interrupted-render, or dependency-change Quint with per-instance setup/cleanup counters.
+- A bounded Suspense replay gives the suspended attempt an identity, resolves
+  it explicitly, and permits the replacement commit only afterward. It does
+  not claim fallback-tree, nested-boundary, or scheduler coverage.
+- The replay IR generates reviewable production, development Strict Mode,
+  interrupted-render, dependency-change, or Suspense-retry Quint with
+  per-instance setup/cleanup counters.
   `reactLifecycleSafe` rejects cleanup-before-setup, commit-side setup without a
-  committed render, and counter-bound violations without imposing an order
-  between different commit instances.
+  committed render, retry-before-resolution, and counter-bound violations
+  without imposing an order between different commit instances.
 - Inline dependency arrays for `useEffect`, `useLayoutEffect`, `useMemo`, and
   `useCallback` are checked against lexically captured owner bindings. The
   checker understands member-path coverage, block/function shadowing, common
@@ -190,8 +195,9 @@ same property is proved for arbitrary TypeScript.
   custom stability contracts, general/reassigned state-context aliases,
   interprocedural region flow, referenced/prop callback refs, imperative
   handles, lazy ref initialization,
-  general Suspense/transition/Offscreen scheduling, server components, and Z3 lifecycle
-  projection remain unsupported rather than implicitly verified.
+  general Suspense fallback/nested-boundary behavior, transition/Offscreen
+  scheduling, server components, and Z3 lifecycle projection remain unsupported
+  rather than implicitly verified.
 - The checked-in telemetry dashboard dogfood composes state, memoized render
   calculation, custom subscription setup/cleanup, an identity-checked callback
   ref, and a Fetch event. Removing Effect/ref cleanup, substituting another
