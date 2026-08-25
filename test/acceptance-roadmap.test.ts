@@ -69,6 +69,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const generateReactActionQueue = futureApi("generateReactActionQueueQuint");
     const generateReactTransition = futureApi("generateReactTransitionQuint");
     const generateTransitionSuspense = futureApi("generateReactTransitionSuspenseQuintFromAnalysis");
+    const generateSuspenseFallback = futureApi("generateReactSuspenseFallbackQuintFromAnalysis");
     const generateSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuint");
     const generateExtractedSuspenseBoundary = futureApi("generateReactSuspenseBoundaryQuintFromAnalysis");
     const generateNestedSuspense = futureApi("generateReactNestedSuspenseQuintFromAnalysis");
@@ -203,6 +204,17 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const transitionSuspenseQuint = generateTransitionSuspense("feed_transition_visibility", extracted) as string;
     expect(transitionSuspenseQuint).toContain("val reactTransitionSuspenseSafe");
     expect(transitionSuspenseQuint).toContain("pending == 1 implies content_visible == 1 and fallback_visible == 0");
+    const mountedFallbackQuint = generateSuspenseFallback("feed_new_boundary", extracted, {
+      scenario: "newlyMountedTransition",
+    }) as string;
+    expect(mountedFallbackQuint).toContain("scenario: newlyMountedTransition");
+    expect(mountedFallbackQuint).toContain("action commit_fallback_after_suspension");
+    expect(mountedFallbackQuint).toContain("fallback_visible == 1 implies suspended == 1 and committed == 0");
+    const urgentFallbackQuint = generateSuspenseFallback("feed_urgent_boundary", extracted, {
+      scenario: "urgentUpdate",
+    }) as string;
+    expect(urgentFallbackQuint).toContain("scenario: urgentUpdate");
+    expect(urgentFallbackQuint).toContain("initial content: visible");
     const nested = analyzeReact("src/nested-boundary.tsx", `
       import { Suspense } from "react"
       /* uneffect: react component */ function Primary() { return null }

@@ -52,6 +52,7 @@ documentation are all updated.
 - [x] Separate React 19 `useActionState` Actions from pure `useOptimistic` reducers, accept action/formAction dispatchers, reject opaque callbacks and effectful optimistic reducers, and require both returned dispatchers to run in an Action context.
 - [x] Generate a bounded Quint model for one `useActionState` dispatcher queue, proving sequential reducer execution, pending-state consistency, and cancellation of queued tail work after a thrown Action with load-bearing fault injections.
 - [x] Compose an already-revealed extracted Suspense boundary with a bounded Transition, preserving stale content across suspension/interruption until resolution, retry, and final commit with load-bearing visibility faults.
+- [x] Model fallback-eligible newly mounted Transition boundaries and urgent Suspense updates separately, requiring suspension before fallback and resolution before content commit with load-bearing faults.
 - [x] Compose explicitly annotated custom Hooks through source-local calls and TypeScript-resolved named import aliases, fail closed on unresolved/directly recursive Hook calls, and compute the Program summary fixed point once per check.
 - [x] Add opt-in React resource-result/cleanup-parameter identity contracts, exact-once local alias checks, and explicit production/development-Strict-Mode replay projections.
 - [x] Check inline Effect/memo/callback dependency arrays against lexically captured owner bindings, including shadowing, member coverage, common stable React bindings, and fail-closed opaque/dynamic evidence.

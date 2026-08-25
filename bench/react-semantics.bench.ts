@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
-import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactSuspenseBoundaryQuint, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 const components = Array.from({ length: 128 }, (_, index) => `
   /* uneffect: react component */
@@ -159,6 +159,10 @@ describe("React semantic analysis", () => {
 
   bench("generate already-revealed Transition/Suspense Quint", () => {
     generateReactTransitionSuspenseQuintFromAnalysis("transition_suspense", nested);
+  }, { time: 500, iterations: 20 });
+
+  bench("generate fallback-eligible Suspense Quint", () => {
+    generateReactSuspenseFallbackQuintFromAnalysis("fallback_eligible", nested, { scenario: "newlyMountedTransition" });
   }, { time: 500, iterations: 20 });
 
   bench("generate Fragment/multi-child Suspense-tree Quint", () => {

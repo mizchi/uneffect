@@ -482,6 +482,17 @@ infer whether a boundary was previously committed, whether an update is urgent,
 or whether a nested boundary is newly mounted. Those cases have different
 fallback rules and remain outside this projection.
 
+`generateReactSuspenseFallbackQuintFromAnalysis` covers the two
+fallback-eligible cases without weakening the already-revealed model. A
+`newlyMountedTransition` starts with no committed content; an `urgentUpdate`
+starts with content visible. In both scenarios fallback can commit only after
+the render suspends, retry requires resolution, and content commit replaces
+fallback. Fault switches expose fallback before suspension, commit unresolved
+content, or retain fallback after content commit; each violates
+`reactSuspenseFallbackSafe`. The caller selects the scenario explicitly because
+static TSX does not establish whether this runtime update is urgent or whether
+the boundary has committed before.
+
 `generateReactLifecycleQuint(moduleName, component, scenario)` projects the
 `production`, `strictModeDevelopment`, `concurrentInterruption`,
 `dependencyChange`, `suspenseRetry`, or `repeatedSuspenseRetry` replay into
@@ -550,8 +561,8 @@ This is a tested initial fragment, not a complete React semantics:
   insertion Effect component-by-component cleanup/setup interleaving,
   Effect Events passed through props/imports or higher-order containers,
   external-store member callbacks, general cache/immutability proofs,
-  exact snapshot invocation counts, automatic prior-visibility inference and
-  transition fallback-to-blocking behavior,
+  exact snapshot invocation counts, automatic prior-visibility/update-urgency
+  inference and transition fallback-to-blocking behavior,
   server/client snapshot equality, non-object/member/aliased imperative-handle
   return values, methods introduced through object spread or prototype flow,
   cross-component calls through refs, and React compiler assumptions are not

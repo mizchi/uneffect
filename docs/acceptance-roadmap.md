@@ -39,6 +39,9 @@ contract layer for existing TypeScript:
     commit after all Actions settle. A third analysis-backed projection keeps
     an already revealed Suspense boundary's stale content visible while a
     Transition suspends or is interrupted, until resolution and retry commit.
+    A separate explicit projection covers newly mounted Transition boundaries
+    and urgent updates, where fallback may commit after suspension and must be
+    replaced by content only after resolution and retry.
 
 The checked-in routing-state dogfood deliberately names temporal
 `subscribers` as concrete `routing.activeSubscriberIds: number[]` through a

@@ -139,6 +139,15 @@ result is noisy and the changed benchmark set can affect the process, so these
 figures are observations rather than a regression budget or a claimed
 analysis slowdown.
 
+After adding explicit newly-mounted and urgent fallback scenarios, the
+fallback-eligible Suspense generator measured 0.0047 ms mean over 106,434
+samples (0.54% RME) on 2026-08-25. The same run measured 77.17 ms for source
+analysis (5.73% RME), 5.48 ms parse-only (4.06% RME), 95.10 ms for the reused
+Program (2.21% RME), and 0.0056 ms for the already-revealed generator (0.37%
+RME). The new number covers string generation from an analyzed boundary only;
+it excludes TSX analysis and Quint execution. These figures are observations,
+not pass/fail budgets or a cross-run speed claim.
+
 On 2026-08-25 with Vitest 4.1.11, after adding immutable props/state/context
 region construction and callback-ref lifecycle checking to the expanded
 workload, with per-call lifecycle instance association, interrupted-render

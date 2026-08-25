@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { checkFiles } from "../src/check.js";
 import { reportDiagnostic } from "../src/diagnostics.js";
-import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
+import { analyzeReactProgram, analyzeReactSemantics, analyzeReactSemanticsInProgram, generateReactActionQueueQuint, generateReactLifecycleQuint, generateReactNestedSuspenseQuintFromAnalysis, generateReactNestedSuspenseQuintFromProgram, generateReactSuspenseBoundaryQuint, generateReactSuspenseBoundaryQuintFromAnalysis, generateReactSuspenseBoundaryQuintFromProgram, generateReactSuspenseFallbackQuintFromAnalysis, generateReactSuspenseTreeQuintFromAnalysis, generateReactSuspenseTreeQuintFromProgram, generateReactTransitionQuint, generateReactTransitionSuspenseQuintFromAnalysis } from "../src/react-semantics.js";
 
 describe("React Function Component semantics", () => {
   it("checks only explicitly annotated components during gradual adoption", () => {
@@ -672,6 +672,30 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("val reactTransitionSuspenseSafe");
     expect(quint).toContain("pending == 1 implies content_visible == 1 and fallback_visible == 0");
     expect(() => generateReactTransitionSuspenseQuintFromAnalysis("missing", { ...result, suspenseBoundaries: [] })).toThrow("root 0 is not available");
+  });
+
+  it("generates distinct fallback-eligible models for new and urgent Suspense updates", () => {
+    const result = analyzeReactSemantics("fallback-eligible.tsx", `
+      import { Suspense } from "react"
+      /* uneffect: react component */ function Results() { return null }
+      /* uneffect: react component */ function Spinner() { return null }
+      function App() { return <Suspense fallback={<Spinner />}><Results /></Suspense> }
+    `);
+    const mounted = generateReactSuspenseFallbackQuintFromAnalysis("mounted", result, {
+      scenario: "newlyMountedTransition",
+    });
+    expect(mounted).toContain("initial content: not mounted");
+    expect(mounted).toContain("action commit_fallback_after_suspension");
+    expect(mounted).toContain("val reactSuspenseFallbackSafe");
+    const urgent = generateReactSuspenseFallbackQuintFromAnalysis("urgent", result, { scenario: "urgentUpdate" });
+    expect(urgent).toContain("initial content: visible");
+    expect(urgent).toContain("content_visible' = 0");
+    expect(() => generateReactSuspenseFallbackQuintFromAnalysis("missing", { ...result, suspenseBoundaries: [] }, {
+      scenario: "urgentUpdate",
+    })).toThrow("root 0 is not available");
+    expect(() => generateReactSuspenseFallbackQuintFromAnalysis("bad", result, {
+      scenario: "unsupported" as "urgentUpdate",
+    })).toThrow("scenario must be");
   });
 
   it("separates callback refs from render and models their Strict Mode replay", () => {
@@ -2168,6 +2192,16 @@ describe("React Function Component semantics", () => {
     expect(quint).toContain("component: Profile");
     expect(quint).toContain("component: ProfileSpinner");
     expect(quint).toContain("primary_setup_0 == 1 implies fallback_cleanup_0 == 1");
+    const mounted = generateReactSuspenseFallbackQuintFromAnalysis("profile_mount", result, {
+      scenario: "newlyMountedTransition",
+    });
+    expect(mounted).toContain("primary: Profile");
+    expect(mounted).toContain("fallback: ProfileSpinner");
+    expect(mounted).toContain("action commit_fallback_after_suspension");
+    const urgent = generateReactSuspenseFallbackQuintFromAnalysis("profile_urgent", result, {
+      scenario: "urgentUpdate",
+    });
+    expect(urgent).toContain("initial content: visible");
   });
 
   it("dogfoods nearest-boundary ownership in a checked-in Suspense tree", () => {

@@ -2666,6 +2666,131 @@ export function generateReactTransitionSuspenseQuintFromAnalysis(
   return generateReactTransitionSuspenseQuint(moduleName, boundary, options);
 }
 
+export type ReactSuspenseFallbackScenario = "newlyMountedTransition" | "urgentUpdate";
+
+export interface ReactSuspenseFallbackOptions {
+  scenario: ReactSuspenseFallbackScenario;
+  /** Test-only fault injection that exposes fallback before the render suspends. */
+  allowFallbackBeforeSuspension?: boolean;
+  /** Test-only fault injection that commits content while the suspension is unresolved. */
+  allowCommitBeforeResolution?: boolean;
+  /** Test-only fault injection that leaves fallback visible after content commits. */
+  allowFallbackAfterCommit?: boolean;
+}
+
+/**
+ * Generate a bounded fallback-eligible Suspense update. This is intentionally
+ * separate from the stale-content-preserving Transition projection: a newly
+ * mounted boundary and an urgent update may reveal fallback after suspension.
+ */
+export function generateReactSuspenseFallbackQuint(
+  moduleName: string,
+  boundary: ReactSuspenseBoundarySummary,
+  options: ReactSuspenseFallbackOptions,
+): string {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(moduleName)) throw new Error(`invalid Quint module name: ${moduleName}`);
+  if (options.scenario !== "newlyMountedTransition" && options.scenario !== "urgentUpdate") {
+    throw new Error("scenario must be newlyMountedTransition or urgentUpdate");
+  }
+  if (boundary.primaryNodes.length === 0) throw new Error(`Suspense boundary ${boundary.instance} has no primary nodes`);
+  const initialContent = options.scenario === "urgentUpdate" ? 1 : 0;
+  const variables = [
+    "update_started", "pending", "render_attempts", "active_render", "suspended", "resolved",
+    "fallback_committed", "committed", "content_visible", "fallback_visible",
+  ] as const;
+  const initial = new Map<string, string>([["content_visible", String(initialContent)]]);
+  const lines = [
+    `module ${moduleName} {`,
+    `  // scenario: ${options.scenario}`,
+    `  // initial content: ${initialContent === 1 ? "visible" : "not mounted"}`,
+    `  // boundary: ${boundary.instance}`,
+    `  // primary: ${boundary.primary}`,
+    `  // fallback: ${boundary.fallback}`,
+    ...variables.map((name) => `  var ${name}: int`),
+    "",
+    "  action init = all {",
+    ...variables.map((name) => `    ${name}' = ${initial.get(name) ?? "0"},`),
+    "  }",
+  ];
+  const actions: string[] = [];
+  const action = (name: string, guards: readonly string[], updates: ReadonlyMap<string, string>, comment: string): void => {
+    actions.push(name);
+    lines.push("", `  // ${comment}`, `  action ${name} = all {`);
+    for (const guard of guards) lines.push(`    ${guard},`);
+    for (const variable of variables) lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    lines.push("  }");
+  };
+  action("start_update", ["update_started == 0"], new Map([
+    ["update_started", "1"], ["pending", "1"],
+  ]), "start a fallback-eligible render");
+  action("begin_render", ["update_started == 1", "render_attempts == 0", "active_render == 0"], new Map([
+    ["render_attempts", "1"], ["active_render", "1"],
+  ]), "begin the initial render attempt");
+  action("suspend_render", ["active_render == 1", "suspended == 0"], new Map([
+    ["active_render", "0"], ["suspended", "1"],
+  ]), "record suspension before fallback becomes eligible");
+  action("commit_fallback_after_suspension", [
+    "suspended == 1", "resolved == 0", "fallback_committed == 0", "committed == 0",
+  ], new Map([
+    ["fallback_committed", "1"], ["content_visible", "0"], ["fallback_visible", "1"],
+  ]), "show fallback only after suspension");
+  action("resolve_suspension", ["suspended == 1", "resolved == 0"], new Map([
+    ["resolved", "1"],
+  ]), "resolve the suspended resource");
+  action("retry_render", ["suspended == 1", "resolved == 1", "render_attempts == 1", "active_render == 0"], new Map([
+    ["render_attempts", "2"], ["active_render", "1"],
+  ]), "retry after resolution");
+  action("commit_content", ["active_render == 1", "committed == 0", "(suspended == 0 or resolved == 1)"], new Map([
+    ["active_render", "0"], ["committed", "1"], ["pending", "0"],
+    ["content_visible", "1"], ["fallback_visible", "0"],
+  ]), "commit content and replace any fallback");
+  if (options.allowFallbackBeforeSuspension) action("commit_fallback_before_suspension", [
+    "pending == 1", "suspended == 0", "committed == 0",
+  ], new Map([
+    ["content_visible", "0"], ["fallback_visible", "1"],
+  ]), "fault injection: expose fallback before suspension");
+  if (options.allowCommitBeforeResolution) action("commit_content_before_resolution", [
+    "suspended == 1", "resolved == 0", "committed == 0", "active_render == 0",
+  ], new Map([
+    ["committed", "1"], ["pending", "0"], ["content_visible", "1"], ["fallback_visible", "0"],
+  ]), "fault injection: commit unresolved content");
+  if (options.allowFallbackAfterCommit) action("retain_fallback_after_commit", ["committed == 1"], new Map([
+    ["fallback_visible", "1"],
+  ]), "fault injection: retain fallback beside committed content");
+  lines.push("", "  action step = any {");
+  for (const name of actions) lines.push(`    ${name},`);
+  lines.push("  }");
+  const safety = [
+    "0 <= update_started", "update_started <= 1", "0 <= pending", "pending <= 1",
+    "(pending == 1 iff update_started == 1 and committed == 0)",
+    "0 <= render_attempts", "render_attempts <= 2", "0 <= active_render", "active_render <= 1",
+    "active_render == render_attempts - suspended - committed",
+    "0 <= suspended", "suspended <= 1", "0 <= resolved", "resolved <= suspended",
+    "0 <= fallback_committed", "fallback_committed <= suspended", "0 <= committed", "committed <= 1",
+    "(committed == 1 implies suspended == 0 or resolved == 1)",
+    "0 <= content_visible", "content_visible <= 1", "0 <= fallback_visible", "fallback_visible <= 1",
+    "content_visible + fallback_visible <= 1",
+    "(fallback_visible == 1 iff fallback_committed == 1 and committed == 0)",
+    "(fallback_visible == 1 implies suspended == 1 and committed == 0)",
+    "(committed == 1 implies content_visible == 1 and fallback_visible == 0)",
+  ];
+  lines.push("", `  val reactSuspenseFallbackSafe = ${safety.join(" and ")}`, "}", "");
+  return lines.join("\n");
+}
+
+/** Generate a fallback-eligible Suspense update from one extracted root boundary. */
+export function generateReactSuspenseFallbackQuintFromAnalysis(
+  moduleName: string,
+  analysis: ReactSemanticsResult,
+  options: ReactSuspenseFallbackOptions,
+  rootBoundaryIndex = 0,
+): string {
+  const roots = analysis.suspenseBoundaries.filter(({ parentBoundary }) => parentBoundary === undefined);
+  const boundary = roots[rootBoundaryIndex];
+  if (!boundary) throw new Error(`Suspense fallback root ${rootBoundaryIndex} is not available`);
+  return generateReactSuspenseFallbackQuint(moduleName, boundary, options);
+}
+
 /** Generate an instance-preserving bounded lifecycle model without imposing an order between commit instances. */
 export function generateReactLifecycleQuint(
   moduleName: string,
