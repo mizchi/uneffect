@@ -9,7 +9,7 @@ import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type 
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { formatEffect, parseEffectExpression, unknownCapabilityReasons } from "./capabilities.js";
 import type { EffectSummary, EvidenceStatus } from "./effects.js";
-import { createZ3Context, z3Version } from "./z3.js";
+import { executeZ3, type Z3Backend, type Z3ExecutionResult } from "./z3.js";
 
 export interface EvidenceArtifactSummary {
   id: string;
@@ -197,9 +197,8 @@ export function trustedSummary(functionName: string, effects: EffectSummary["eff
   return { functionName, effects, evidence: "trusted" };
 }
 
-export interface OwnershipEvidenceArtifact {
-  schema: "ownership-evidence/v1";
-  backend: "z3" | "quint";
+interface OwnershipEvidenceArtifactBase {
+  schema: "ownership-evidence/v2";
   backendVersion: string;
   obligationHash: string;
   verifierProgramHash: string;
@@ -209,6 +208,17 @@ export interface OwnershipEvidenceArtifact {
   stdout: string;
   stderr: string;
 }
+
+export type OwnershipEvidenceArtifact = OwnershipEvidenceArtifactBase & (
+  | {
+    backend: "z3";
+    /** The concrete runtime that produced the semantic verdict. */
+    backendRuntime: Z3Backend;
+    /** Failed infrastructure attempts remain visible when auto mode falls back. */
+    backendAttempts: readonly Z3ExecutionResult[];
+  }
+  | { backend: "quint"; backendRuntime?: never; backendAttempts?: never }
+);
 
 /** The optional Quint peer, run through its own entry point instead of whatever `quint` PATH holds. */
 function resolveQuint(): { bin: string; version: string } | undefined {
@@ -231,24 +241,18 @@ function ownershipObligationHash(obligation: OwnershipGuardObligation): string {
 
 /**
  * Runs the generated refutation query and binds the result to all reproducibility inputs.
- * The solver is the `z3-solver` WASM build, so no native Z3 installation is involved.
+ * The same SMT-LIB is executed by the selected native/WASM backend policy.
  */
 export async function verifyOwnershipObligationWithZ3(obligation: OwnershipGuardObligation): Promise<OwnershipEvidenceArtifact> {
   const program = generateOwnershipObligationSmt(obligation);
+  const execution = await executeZ3(program);
   const base = {
-    schema: "ownership-evidence/v1" as const, backend: "z3" as const, backendVersion: await z3Version(),
+    schema: "ownership-evidence/v2" as const, backend: "z3" as const,
+    backendVersion: execution.version, backendRuntime: execution.backend, backendAttempts: execution.attempts,
     obligationHash: ownershipObligationHash(obligation), verifierProgramHash: digest(program),
   };
-  try {
-    const context = await createZ3Context("ownership");
-    const solver = new context.Solver();
-    solver.fromString(program);
-    const answer = String(await solver.check());
-    const result = answer === "unsat" ? "verified" : answer === "sat" ? "counterexample" : "unknown";
-    return { ...base, result, evidence: result === "verified" ? "verified" : "unknown", exitCode: 0, stdout: `${answer}\n`, stderr: "" };
-  } catch (cause) {
-    return { ...base, result: "error", evidence: "unknown", exitCode: 1, stdout: "", stderr: cause instanceof Error ? cause.message : String(cause) };
-  }
+  const result = execution.status === "unsat" ? "verified" : execution.status === "sat" ? "counterexample" : execution.status === "error" ? "error" : "unknown";
+  return { ...base, result, evidence: result === "verified" ? "verified" : "unknown", exitCode: execution.exitCode, stdout: execution.stdout, stderr: execution.stderr };
 }
 
 export function verifyOwnershipObligationWithQuint(obligation: OwnershipGuardObligation): OwnershipEvidenceArtifact {
@@ -264,7 +268,7 @@ export function verifyOwnershipObligationWithQuint(obligation: OwnershipGuardObl
   const output = `${execution.stdout}${execution.stderr}`;
   const result = execution.error ? "error" : execution.status === 0 ? "verified" : /violation|counterexample/i.test(output) ? "counterexample" : "unknown";
   return {
-    schema: "ownership-evidence/v1", backend: "quint", backendVersion: quint?.version ?? "unknown",
+    schema: "ownership-evidence/v2", backend: "quint", backendVersion: quint?.version ?? "unknown",
     obligationHash: ownershipObligationHash(obligation), verifierProgramHash: digest(program), result,
     evidence: result === "verified" ? "verified" : "unknown", exitCode: execution.status,
     stdout: execution.stdout, stderr: execution.error ? `${execution.stderr}${execution.error.message}` : execution.stderr,
@@ -274,7 +278,21 @@ export function verifyOwnershipObligationWithQuint(obligation: OwnershipGuardObl
 /** Rejects stale, tampered, non-proof, or differently generated evidence. */
 export function validateOwnershipEvidence(artifact: OwnershipEvidenceArtifact, obligation: OwnershipGuardObligation): boolean {
   const program = artifact.backend === "z3" ? generateOwnershipObligationSmt(obligation) : generateOwnershipObligationQuint("ownership_evidence", obligation);
-  return artifact.schema === "ownership-evidence/v1"
+  const z3RuntimeValid = artifact.backend !== "z3" || (() => {
+    const attempts = artifact.backendAttempts;
+    if (!artifact.backendRuntime || !attempts?.length) return false;
+    const final = attempts.at(-1)!;
+    return final.backend === artifact.backendRuntime
+      && final.version === artifact.backendVersion
+      && final.status === "unsat"
+      && final.exitCode === 0
+      && artifact.exitCode === final.exitCode
+      && artifact.stdout === final.stdout
+      && artifact.stderr === final.stderr
+      && attempts.slice(0, -1).every((attempt) => attempt.status === "error" && attempt.failureKind !== undefined);
+  })();
+  return artifact.schema === "ownership-evidence/v2"
+    && z3RuntimeValid
     && artifact.result === "verified"
     && artifact.evidence === "verified"
     && artifact.exitCode === 0

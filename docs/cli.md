@@ -30,7 +30,7 @@ npx quint run protocol.qnt
 | Command | Purpose |
 | --- | --- |
 | `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files. |
-| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `java` command. |
+| `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the selected Z3 backend, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
@@ -60,7 +60,7 @@ synthesis options listed by its own `--help`.
 ## Checking the prerequisites
 
 The toolchain has real requirements — Node 24, a TypeScript peer, and a working
-Z3 WASM build — and most of them fail late and confusingly if they are missing.
+Z3 backend — and most of them fail late and confusingly if they are missing.
 `uneffect doctor` checks all of them before you depend on a run:
 
 ```
@@ -68,7 +68,7 @@ $ uneffect doctor
 ok       node                    v24.4.0 (engines: >=24)
 ok       typescript              6.0.3 at node_modules/typescript (peer: >=6.0.0-dev.20260820)
 ok       @types/node             24.13.3 at node_modules/@types/node
-ok       z3-solver               4.16.0, probe query answered in 380 ms
+ok       z3 backend              native Z3 version 4.16.0 - 64 bit, probe query answered in 14 ms
 warn     @informalsystems/quint  not installed
            needed by: running the models `spec quint`, `resource-model`, and `async-model` generate
            fix: npm install --save-dev @informalsystems/quint, an optional peer; it brings its own `quint` binary, and generating the models needs nothing
@@ -77,10 +77,23 @@ warn     java (command)          not found on PATH
            fix: install a JDK 21 or newer only if you run `quint verify`; simulation and every uneffect command work without it
 ```
 
-Nothing in the list is a native install: every solver the toolchain runs itself
-is the `z3-solver` WASM build, so `check`, `instrument --verify-ownership`, and
-the evidence artifacts need no Z3 binary on the machine. The two optional
-entries are for running what the model commands generate, not for producing it.
+The default `UNEFFECT_Z3_BACKEND=auto` policy uses a working native `z3` first
+for Hoare contracts and ownership evidence, then uses the bundled `z3-solver`
+WASM build if native startup fails. A native timeout does not fall back by
+default, because retrying an expensive query on a second engine can conceal a
+resource limit. `UNEFFECT_Z3_BACKEND=native` or `wasm` requires exactly that
+runtime, and `UNEFFECT_Z3_PATH=/absolute/path/to/z3` pins the executable.
+`sat`, `unsat`, and `unknown` are semantic verdicts and are never retried on a
+different runtime. Invalid SMT-LIB is classified separately and is not a
+fallback trigger; this also guards against the WASM parser treating an ignored
+top-level command as an empty satisfiable query. Evidence retains every failed
+infrastructure attempt.
+
+Native Z3 is optional: systems without it still run through WASM. The temporal
+counterexample decoder, generated property tests, and typed-array checker have
+not yet migrated from the WASM model API, so backend selection currently does
+not cover them. This limitation is deliberate and reported rather than
+claiming whole-toolchain native support.
 
 Packages are resolved from the project being checked first, then from this
 installation, because a peer dependency belongs to the project and only the
@@ -88,8 +101,8 @@ project's copy is the one a run uses.
 
 Every check names the commands it blocks and how to satisfy it. Unmet
 requirements exit 1; missing optional tools are warnings and exit 0. `--json`
-emits the same result for CI, and `--skip-solver-probe` skips loading the Z3
-WASM build, which is the slow check.
+emits the same result for CI, and `--skip-solver-probe` skips probing the
+selected native/WASM backend.
 
 When any other command fails for a reason that is not about your source, it
 points at `uneffect doctor` rather than printing a bare stack; set

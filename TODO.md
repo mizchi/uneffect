@@ -25,6 +25,7 @@ Open-work mapping:
   - [x] Infer compound `innerHTML` serialization/parsing effects and reviewed client/scroll/offset layout reads.
   - [x] Separate `outerHTML` serialization on the receiver from parse/topology writes and mutation on `receiver.parentNode`; parent-presence refinement remains conservative.
 - complete React function component lifecycle semantics: [#16](https://github.com/mizchi/uneffect/issues/16)
+- native/WASM solver portability and model decoding: [#17](https://github.com/mizchi/uneffect/issues/17)
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -37,8 +38,9 @@ documentation are all updated.
 - [x] Explain diagnostics instead of reporting solver verdicts: replay contract counterexamples over the invariant IR, trace effects to the operation that produces them, and locate unsupported constructs where they appear.
 - [x] Commit a `fixtures/` corpus that pairs each input with its generated `.diag` report, and score every diagnostic against a committed quality rubric that CI holds at its current level.
 - [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
-- [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, and the optional `z3`, `quint`, and `java` commands, each naming what it blocks and how to satisfy it.
-- [x] Drop the native Z3 installation from the toolchain: run ownership evidence on the `z3-solver` WASM build like contract verification already did, and keep it that way with a manifest test.
+- [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the selected native/WASM Z3 backend, and the optional Quint and Java runners, each naming what it blocks and how to satisfy it.
+- [x] Add an `auto | native | wasm` SMT-LIB execution layer for Hoare contracts and ownership evidence: prefer optional native Z3, fall back only on classified infrastructure failure, never reinterpret semantic verdicts, and preserve attempts in evidence.
+- [ ] Migrate temporal counterexample decoding, property generation, and typed-array checks from direct WASM model objects to the common native/WASM execution layer without losing structured model replay. ([#17](https://github.com/mizchi/uneffect/issues/17))
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
 - [x] Resolve immutable component-local function/arrow callbacks and transitive `const` aliases used by JSX event attributes, while diagnosing reassigned or otherwise opaque handlers.
@@ -516,7 +518,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Define one proof-obligation schema per optimizer transformation.
 - [x] Prototype stable-read reuse only when no overlapping mutate/invalidate/transfer event exists.
 - [x] Evaluate property mangling separately under closed-world reflection and escape constraints.
-- [x] Gate generated ownership-assertion elision on matching proof-grade `ownership-evidence/v1`; never rewrite user-authored Promise control flow from ownership evidence alone.
+- [x] Gate generated ownership-assertion elision on matching proof-grade `ownership-evidence/v2`; never rewrite user-authored Promise control flow from ownership evidence alone.
 - [x] Add an end-to-end ownership instrumentation path: unresolved direct calls emit runtime assertions, matching Z3 evidence removes only generated checks and their unused helper.
 - [x] Add one-shot `--ownership` and `--verify-ownership` CLI modes with safe runtime fallback for unresolved or unavailable Z3 proofs.
 - [x] Persist ownership artifacts, reuse matching proofs across builds, and report stale evidence separately from first-time unknowns.

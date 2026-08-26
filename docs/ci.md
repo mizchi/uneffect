@@ -9,7 +9,7 @@ that does not provision that verifier.
 | Tier | Runtime dependencies | Purpose |
 | --- | --- | --- |
 | `fast` | Node.js and Rust | Type checking, parser/analyzer unit tests, Rust parity, build, and package checks |
-| `z3` | none beyond Node; the solver is the `z3-solver` WASM build | Hoare, ownership, property generation, and typed-array obligations |
+| `z3` | none beyond Node; native Z3 is optional and WASM is bundled | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
 | `integration` | Quint and Java/TLC | End-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
@@ -48,6 +48,13 @@ queries were enough to exhaust one file process on GitHub. A manifest test
 keeps those selectors synchronized with every declared test. GitHub still runs
 independent capability-tier jobs in parallel, so this bounds memory without
 collapsing CI-level parallelism.
+
+CI deliberately does not install native Z3: this continuously proves that the
+published WASM fallback remains sufficient. `test/z3-backend.test.ts` also
+executes native Z3 when the host already supplies it and always exercises an
+absent-native fallback. The native/WASM common layer currently covers Hoare
+contracts and ownership evidence; solver clients that decode WASM model objects
+remain explicitly outside that claim.
 
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
 fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier

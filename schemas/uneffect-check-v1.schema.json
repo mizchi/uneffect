@@ -110,7 +110,31 @@
             "clause": { "enum": ["requires", "ensures", "invariant", "unsupported"] },
             "source": { "type": "string" }
           }
+        },
+        "solver": {
+          "type": "object", "additionalProperties": false,
+          "required": ["backend", "version", "attempts"],
+          "properties": {
+            "backend": { "enum": ["native", "wasm"] },
+            "version": { "type": "string" },
+            "attempts": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/z3Attempt" } }
+          }
         }
+      }
+    },
+    "z3Attempt": {
+      "type": "object", "additionalProperties": false,
+      "required": ["backend", "version", "status", "stdout", "stderr", "exitCode"],
+      "properties": {
+        "backend": { "enum": ["native", "wasm"] },
+        "version": { "type": "string" },
+        "status": { "enum": ["sat", "unsat", "unknown", "error"] },
+        "model": { "type": "string" },
+        "stdout": { "type": "string" },
+        "stderr": { "type": "string" },
+        "exitCode": { "type": ["integer", "null"] },
+        "failureKind": { "enum": ["unavailable", "timeout", "oom", "crash", "invalid-input"] },
+        "executable": { "type": "string" }
       }
     },
     "assurance": {

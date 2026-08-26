@@ -1086,12 +1086,21 @@ describe("evidence and optimizer obligations", () => {
   it("binds ownership proof evidence to the obligation, verifier program, and Z3 version", async () => {
     const obligation: OwnershipGuardObligation = { owner: "run", callee: "consume", ownership: "promise", parameter: 1, assumptions: ["enabled && active"], goal: "enabled && active", status: "verified", evidence: "finite-propositional", span: { start: 10, end: 20 } };
     const artifact = await verifyOwnershipObligationWithZ3(obligation);
-    expect(artifact).toMatchObject({ schema: "ownership-evidence/v1", backend: "z3", result: "verified", evidence: "verified", exitCode: 0 });
-    expect(artifact.backendVersion).toMatch(/^Z3 \d+\./u);
+    expect(artifact).toMatchObject({ schema: "ownership-evidence/v2", backend: "z3", result: "verified", evidence: "verified", exitCode: 0 });
+    if (artifact.backend !== "z3") throw new Error("Z3 verifier returned non-Z3 evidence");
+    expect(artifact.backendVersion).toMatch(/^Z3 (?:version )?\d+\./u);
+    expect(artifact.backendRuntime).toMatch(/^(?:native|wasm)$/u);
+    expect(artifact.backendAttempts?.at(-1)).toMatchObject({ backend: artifact.backendRuntime, status: "unsat" });
     expect(artifact.obligationHash).toMatch(/^[a-f0-9]{64}$/);
     expect(artifact.verifierProgramHash).toMatch(/^[a-f0-9]{64}$/);
     expect(validateOwnershipEvidence(artifact, obligation)).toBe(true);
     expect(validateOwnershipEvidence({ ...artifact, verifierProgramHash: "0".repeat(64) }, obligation)).toBe(false);
+    const otherRuntime: "native" | "wasm" = artifact.backendRuntime === "native" ? "wasm" : "native";
+    expect(validateOwnershipEvidence({ ...artifact, backendRuntime: otherRuntime }, obligation)).toBe(false);
+    expect(validateOwnershipEvidence({ ...artifact, backendAttempts: [] }, obligation)).toBe(false);
+    expect(validateOwnershipEvidence({ ...artifact, backendAttempts: [{ ...artifact.backendAttempts[0]!, status: "sat" as const }] }, obligation)).toBe(false);
+    expect(validateOwnershipEvidence({ ...artifact, backendAttempts: artifact.backendAttempts.map((attempt, index) => index === artifact.backendAttempts.length - 1 ? { ...attempt, exitCode: 1 } : attempt) }, obligation)).toBe(false);
+    expect(validateOwnershipEvidence({ ...artifact, stdout: "unsat\n; modified" }, obligation)).toBe(false);
     expect(validateOwnershipEvidence(artifact, { ...obligation, goal: "enabled" })).toBe(false);
     const quintArtifact = verifyOwnershipObligationWithQuint(obligation);
     expect(quintArtifact).toMatchObject({ backend: "quint", backendVersion: expect.stringMatching(/^0\.32\.0/) });

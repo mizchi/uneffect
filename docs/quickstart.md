@@ -16,7 +16,10 @@ npx uneffect doctor
 ```
 
 `doctor` fails only for missing requirements used by normal checks. Quint and a
-JDK are optional unless the project runs generated temporal models.
+JDK are optional unless the project runs generated temporal models. Contract
+checks prefer an installed native `z3` and otherwise use bundled WASM; pin the
+choice with `UNEFFECT_Z3_BACKEND=native` or `wasm` when reproducible execution
+policy matters.
 
 ## 2. Add one annotated file
 

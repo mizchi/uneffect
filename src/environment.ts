@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, relative } from "node:path";
 import ts from "typescript";
+import { executeZ3 } from "./z3.js";
 
 export type EnvironmentStatus = "ok" | "warning" | "error";
 
@@ -125,25 +126,20 @@ function nodeTypesCheck(): EnvironmentCheck {
 async function solverCheck(): Promise<EnvironmentCheck> {
   const started = process.hrtime.bigint();
   try {
-    const { init } = await import("z3-solver");
-    const { Context } = await init();
-    const context: any = new Context(`uneffect_doctor_${process.pid}`);
-    const solver = new context.Solver();
-    solver.fromString("(set-logic ALL)\n(declare-const probe Int)\n(assert (> probe 0))\n");
-    const answer = String(await solver.check());
+    const execution = await executeZ3("(set-logic ALL)\n(declare-const probe Int)\n(assert (> probe 0))\n");
     const milliseconds = Number((process.hrtime.bigint() - started) / 1_000_000n);
-    const version = resolvePackage("z3-solver").version;
-    if (answer !== "sat") {
-      return { name: "z3-solver", status: "error", detail: `probe query answered ${answer}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`", remedy: "reinstall z3-solver; the bundled WASM build did not answer a trivial query" };
+    if (execution.status !== "sat") {
+      return { name: "z3 backend", status: "error", detail: `${execution.backend} ${execution.version}, probe query answered ${execution.status}${execution.failureKind ? ` (${execution.failureKind})` : ""}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`", remedy: "set UNEFFECT_Z3_BACKEND=wasm to use the bundled solver, or install/configure a working native executable with UNEFFECT_Z3_PATH" };
     }
-    return { name: "z3-solver", status: "ok", detail: `${version ?? "installed"}, probe query answered in ${milliseconds} ms`, requiredBy: "contract verification in `check`" };
+    const fallback = execution.attempts.length > 1 ? ` after ${execution.attempts.length - 1} failed attempt(s)` : "";
+    return { name: "z3 backend", status: "ok", detail: `${execution.backend} ${execution.version}, probe query answered in ${milliseconds} ms${fallback}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`" };
   } catch (cause) {
     return {
-      name: "z3-solver",
+      name: "z3 backend",
       status: "error",
       detail: cause instanceof Error ? cause.message : String(cause),
       requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`",
-      remedy: "reinstall dependencies so the z3-solver WASM build loads; without it `check` cannot verify requires/ensures/invariant",
+      remedy: "use UNEFFECT_Z3_BACKEND=auto or wasm, reinstall z3-solver, or point UNEFFECT_Z3_PATH at a working native Z3 executable",
     };
   }
 }
@@ -172,7 +168,7 @@ function javaCheck(): EnvironmentCheck {
 }
 
 export interface EnvironmentCheckOptions {
-  /** Skip the solver probe, which loads the Z3 WASM build and costs about a second. */
+  /** Skip the selected native/WASM solver probe. */
   skipSolverProbe?: boolean;
 }
 

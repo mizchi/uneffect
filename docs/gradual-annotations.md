@@ -508,9 +508,10 @@ obligations are retained in Async IR and can be emitted as SMT-LIB or a pure
 Quint implication. Backend output must still be imported as reproducible
 evidence before optimizer decisions can trust it.
 
-Ownership verifier executions use the `ownership-evidence/v1` artifact. It
-binds backend version and output to hashes of both the obligation and generated
-program. Only Z3 `unsat` or a successful exhaustive Quint verification is
+Ownership verifier executions use the `ownership-evidence/v2` artifact. It
+binds backend version, concrete native/WASM runtime, preserved infrastructure
+attempts, and output to hashes of both the obligation and generated program.
+Only Z3 `unsat` or a successful exhaustive Quint verification is
 proof-grade; missing backend dependencies, unknown, and counterexamples remain
 unknown evidence.
 

@@ -34,6 +34,7 @@ export const ciTestTiers = {
     "test/property-tests.test.ts",
     "test/refinement-equivalence.test.ts",
     "test/typed-array-safety.test.ts",
+    "test/z3-backend.test.ts",
   ],
   quint: [
     "test/async-patterns.test.ts",

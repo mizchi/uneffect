@@ -270,12 +270,26 @@ describe("uneffect command line", () => {
       expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-check/v1" } },
         required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assumptions", "assurance", "project"]),
-        $defs: { assurance: { allOf: [expect.objectContaining({ then: { properties: { claims: { maxItems: 0 } } } })] } },
+        $defs: {
+          assurance: { allOf: [expect.objectContaining({ then: { properties: { claims: { maxItems: 0 } } } })] },
+          z3Attempt: { required: expect.arrayContaining(["backend", "version", "status", "stdout", "stderr", "exitCode"]) },
+        },
       });
 
       const gradual = capture();
       expect(await runCli(["check", "--infer", "--json", fileName], gradual)).toBe(exitCode.success);
       expect(JSON.parse(gradual.stdout)).toMatchObject({ outcome: "passed", assurance: null });
+
+      const contracted = join(directory, "contracted.ts");
+      writeFileSync(contracted, "/* uneffect: ensures result === x */ export function identity(x: number) { return x }");
+      const proof = capture();
+      expect(await runCli(["check", "--json", contracted], proof)).toBe(exitCode.success);
+      expect(JSON.parse(proof.stdout)).toMatchObject({
+        contracts: [expect.objectContaining({
+          status: "verified",
+          solver: { backend: expect.stringMatching(/^(?:native|wasm)$/), version: expect.any(String), attempts: [expect.objectContaining({ status: "unsat" })] },
+        })],
+      });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -714,6 +728,15 @@ describe("uneffect command line", () => {
       expect(check.requiredBy.length).toBeGreaterThan(0);
       if (check.status !== "ok") expect(check.remedy?.length ?? 0).toBeGreaterThan(0);
     }
+  });
+
+  it("reports the concrete Z3 runtime selected by the backend policy", async () => {
+    const io = capture();
+    await runCli(["doctor", "--json"], io);
+    const report = JSON.parse(io.stdout) as { checks: Array<{ name: string; status: string; detail: string }> };
+    const solver = report.checks.find((check) => check.name === "z3 backend");
+    expect(solver).toMatchObject({ status: "ok" });
+    expect(solver?.detail).toMatch(/(?:native|wasm).*probe query answered/u);
   });
 
   it("refuses file arguments the doctor cannot act on", async () => {

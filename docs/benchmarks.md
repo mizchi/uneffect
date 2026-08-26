@@ -1,5 +1,21 @@
 # Benchmarks
 
+## Z3 process/backend boundary (2026-08-27)
+
+On the development macOS host (Node 24.12.0, native Z3 4.16.0, bundled WASM
+Z3 4.16.0), 25 warmed executions of one small satisfiable QF_LIA query measured:
+
+| Backend | Mean per query |
+| --- | ---: |
+| native subprocess | 5.32 ms |
+| in-process WASM | 3.95 ms |
+
+This microbenchmark does not justify native selection as a speed optimization:
+process startup is visible on small obligations. Native-first `auto` exists to
+isolate solver memory and escape the WASM heap ceiling; representative semantic
+parity is regression-tested separately. Larger-query latency and peak RSS still
+need corpus measurements before making a performance claim.
+
 On 2026-08-26, a warm TypeScript Program covering all 64 `src/*.ts` inputs was
 analyzed for function effects plus source-attributed module initialization
 may-effects in 1,198.56 ms mean over 3 samples (2.81% RME). This includes

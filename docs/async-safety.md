@@ -322,9 +322,10 @@ implication for temporal composition. Generated text is not itself trusted
 evidence; importing reproducible backend results is a separate step.
 
 `verifyOwnershipObligationWithZ3` and
-`verifyOwnershipObligationWithQuint` produce `ownership-evidence/v1`
+`verifyOwnershipObligationWithQuint` produce `ownership-evidence/v2`
 artifacts. They bind the obligation hash, generated verifier-program hash,
-backend version, exit code, stdout, and stderr. `validateOwnershipEvidence`
+backend version, concrete native/WASM runtime, retained fallback attempts, exit
+code, stdout, and stderr. `validateOwnershipEvidence`
 accepts only a successful proof whose hashes still match; counterexamples,
 unknown results, tool failures, and modified artifacts remain non-proof. Quint
 verification requires the Java runtime used by TLC/Apalache; its absence is

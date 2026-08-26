@@ -39,13 +39,12 @@ describe("CI test tier manifest", () => {
     }
   });
 
-  it("keeps Z3 a WASM dependency by never executing a native z3 binary", () => {
-    const executesZ3 = Object.values(ciTestTiers).flat()
-      .filter((file) => /spawnSync\(\s*["']z3["']/.test(readFileSync(join(process.cwd(), file), "utf8")));
-    expect(executesZ3, "use createZ3Context from src/z3.ts; the toolchain ships the z3-solver WASM build").toEqual([]);
-    const sources = readdirSync(join(process.cwd(), "src")).filter((name) => name.endsWith(".ts"));
-    const nativeZ3 = sources.filter((name) => /spawnSync\(\s*["']z3["']/.test(readFileSync(join(process.cwd(), "src", name), "utf8")));
-    expect(nativeZ3, "the published toolchain must not require a native Z3 installation").toEqual([]);
+  it("keeps native Z3 optional and the WASM fallback in the published toolchain", () => {
+    const backend = readFileSync(join(process.cwd(), "src/z3.ts"), "utf8");
+    expect(backend).toContain('process.env.UNEFFECT_Z3_BACKEND');
+    expect(backend).toContain('process.env.UNEFFECT_Z3_PATH');
+    expect(backend).toContain('wasmDriver');
+    expect(backend).toContain('attempt(drivers.wasm)');
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     expect(workflow).not.toContain("install --yes z3");
   });

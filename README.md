@@ -260,7 +260,7 @@ The package publishes one binary, `uneffect`, with subcommands:
 | Command | Purpose |
 | --- | --- |
 | `check <file.ts> [...]` | Check effects, contracts, async safety, and opted-in React TSX semantics. This is the default command. |
-| `doctor` | Check Node, TypeScript, Z3 WASM, and optional model-runner prerequisites. |
+| `doctor` | Check Node, TypeScript, the selected Z3 backend, and optional model-runner prerequisites. |
 | `spec <backend> <file.ts> [function]` | Emit neutral IR or a Z3/Quint/composed model. |
 | `instrument <file.ts>` | Emit source with optional contract or ownership assertions. |
 | `evidence <file.ts>` | Emit a machine-readable effect evidence artifact. |
@@ -279,8 +279,13 @@ npx uneffect spec quint src/protocol.ts > protocol.qnt
 npx quint run protocol.qnt
 ```
 
-The Z3 checks use the `z3-solver` WASM package and do not require a system Z3
-binary.
+Hoare-contract and ownership-evidence checks prefer a native `z3` executable
+when one is available and fall back to the bundled `z3-solver` WASM build when
+it is not. Set `UNEFFECT_Z3_BACKEND=auto|native|wasm` to choose the policy and
+`UNEFFECT_Z3_PATH` to pin the native executable. Native Z3 remains optional.
+Temporal counterexample decoding, property generation, and typed-array checks
+still use the WASM API directly; `doctor` and evidence report the concrete
+runtime only for the checks that use the common SMT-LIB execution layer.
 
 ## Diagnostics and evidence
 
