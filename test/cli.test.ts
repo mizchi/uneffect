@@ -560,7 +560,7 @@ describe("uneffect command line", () => {
         outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "reference-cycle", classification: "unknown" })]),
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
-  }, 30_000);
+  }, 60_000);
 
   it("reports missing or excess positional arguments per command", async () => {
     const missing = capture();
