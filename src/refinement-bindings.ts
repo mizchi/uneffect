@@ -544,70 +544,62 @@ function normalizeRefinementExpression(
     && isDeclarationFileSymbol(checker, node.expression.name, node.expression.name.text)) {
     const from = node.expression.expression;
     const callback = node.arguments[0];
-    const fromType = checker?.getTypeAtLocation(from);
-    const fromSymbol = fromType?.getSymbol() ?? fromType?.aliasSymbol;
-    const builtinArray = fromSymbol?.getName() === "Array"
-      && (fromSymbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
-    if (builtinArray && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
-      && ts.isIdentifier(callback.parameters[0]!.name)) {
-      const collection = normalizeRefinementExpression(from, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
-      const parameter = callback.parameters[0]!.name.text;
+    const normalizePredicate = (candidate: ts.Expression): { parameter: string; body: TemporalExpression } | undefined => {
+      const declaration = ts.isArrowFunction(candidate)
+        ? candidate
+        : checker && (ts.isIdentifier(candidate) || ts.isPropertyAccessExpression(candidate))
+          ? resolveProgramFunction(checker, candidate)
+          : undefined;
+      if (!declaration?.body || declaration.parameters.length !== 1 || !ts.isIdentifier(declaration.parameters[0]!.name)) return undefined;
+      const parameter = declaration.parameters[0]!.name.text;
       const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
       const callbackSubstitutions = new Map(substitutions);
       let callbackExpression: ts.Expression | undefined;
-      if (ts.isBlock(callback.body)) {
-        const statements = [...callback.body.statements];
+      if (ts.isBlock(declaration.body)) {
+        const statements = [...declaration.body.statements];
         const returned = statements.pop();
         if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
         for (const statement of statements) {
           if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
-          for (const declaration of statement.declarationList.declarations) {
-            if (!ts.isIdentifier(declaration.name) || !declaration.initializer
-              || !normalizeRefinementExpression(declaration.initializer, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)) return undefined;
-            callbackSubstitutions.set(declaration.name.text, declaration.initializer);
+          for (const variable of statement.declarationList.declarations) {
+            if (!ts.isIdentifier(variable.name) || !variable.initializer
+              || !normalizeRefinementExpression(variable.initializer, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)) return undefined;
+            callbackSubstitutions.set(variable.name.text, variable.initializer);
           }
         }
         callbackExpression = returned.expression;
-      } else callbackExpression = callback.body;
-      const body = callbackExpression
-        ? normalizeRefinementExpression(callbackExpression, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)
-        : undefined;
-      if (collection && body) return {
+      } else callbackExpression = declaration.body;
+      if (!callbackExpression) return undefined;
+      const body = normalizeRefinementExpression(
+        callbackExpression, receiver, callbackSubstitutions, stateNames,
+        helpers, activeHelpers, nestedSymbols, checker,
+      );
+      return body ? { parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) } : undefined;
+    };
+    const fromType = checker?.getTypeAtLocation(from);
+    const fromSymbol = fromType?.getSymbol() ?? fromType?.aliasSymbol;
+    const builtinArray = fromSymbol?.getName() === "Array"
+      && (fromSymbol.declarations ?? []).some((declaration) => declaration.getSourceFile().isDeclarationFile);
+    if (builtinArray && callback) {
+      const collection = normalizeRefinementExpression(from, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
+      const predicate = normalizePredicate(callback);
+      if (collection && predicate) return {
         kind: "method", receiver: collection, name: node.expression.name.text === "some" ? "exists" : "forall",
-        arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
+        arguments: [{ kind: "lambda", parameter: predicate.parameter, body: predicate.body }],
       };
     }
     if (ts.isCallExpression(from) && ts.isPropertyAccessExpression(from.expression)
       && ts.isIdentifier(from.expression.expression) && from.expression.expression.text === "Array"
       && from.expression.name.text === "from" && from.arguments.length === 1
       && isDeclarationFileSymbol(checker, from.expression.name, "from")
-      && callback && ts.isArrowFunction(callback) && callback.parameters.length === 1
-      && ts.isIdentifier(callback.parameters[0]!.name)) {
+      && callback) {
       const collection = normalizeRefinementExpression(from.arguments[0]!, receiver, substitutions, stateNames, helpers, activeHelpers, symbolicSubstitutions, checker);
       const supportedCollection = builtinCollectionKind(checker, from.arguments[0]!) === "Set"
         || collection?.kind === "method" && (collection.name === "keys" || collection.name === "values");
-      const parameter = callback.parameters[0]!.name.text;
-      const nestedSymbols = new Map(symbolicSubstitutions).set(parameter, { kind: "name", name: parameter } as TemporalExpression);
-      const callbackSubstitutions = new Map(substitutions);
-      let callbackExpression: ts.Expression | undefined;
-      if (ts.isBlock(callback.body)) {
-        const statements = [...callback.body.statements];
-        const returned = statements.pop();
-        if (!returned || !ts.isReturnStatement(returned) || !returned.expression) return undefined;
-        for (const statement of statements) {
-          if (!ts.isVariableStatement(statement) || (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
-          for (const declaration of statement.declarationList.declarations) {
-            if (!ts.isIdentifier(declaration.name) || !declaration.initializer
-              || !normalizeRefinementExpression(declaration.initializer, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker)) return undefined;
-            callbackSubstitutions.set(declaration.name.text, declaration.initializer);
-          }
-        }
-        callbackExpression = returned.expression;
-      } else callbackExpression = callback.body;
-      const body = normalizeRefinementExpression(callbackExpression, receiver, callbackSubstitutions, stateNames, helpers, activeHelpers, nestedSymbols, checker);
-      if (collection && supportedCollection && body) return {
+      const predicate = normalizePredicate(callback);
+      if (collection && supportedCollection && predicate) return {
         kind: "method", receiver: collection, name: node.expression.name.text === "some" ? "exists" : "forall",
-        arguments: [{ kind: "lambda", parameter, body: replaceRefinementName(body, `\u0000local:${parameter}`, parameter) }],
+        arguments: [{ kind: "lambda", parameter: predicate.parameter, body: predicate.body }],
       };
     }
   }

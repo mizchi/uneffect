@@ -177,6 +177,75 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("resolves imported collection predicate values without trusting mutable callback aliases", () => {
+    const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgram");
+    const parseSpecification = futureApi("parseSpec");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-predicate-value-"));
+    const predicateFile = join(directory, "predicates.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import { isPositive, isPrimary } from "./predicates.js"
+      const selectedPrimary = isPrimary
+      /* uneffect:
+       * state owners: Set<int>
+       * init owners = Set(1)
+       * temporal allPositive: owners.forall(owner => owner > 0)
+       * temporal primaryPresent: owners.contains(1)
+       * abstraction routing@1 owners = Set(routing.activeOwnerIds)
+       */
+      interface Runtime { routing: { activeOwnerIds: number[] } }
+      /* uneffect: refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { routing: { activeOwnerIds: Array.from(initial.owners) } } }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.routing.activeOwnerIds) } }
+      /* uneffect: refinement routing@1 invariant allPositive */
+      export function allPositive(runtime: Runtime) { return runtime.routing.activeOwnerIds.every(isPositive) }
+      /* uneffect: refinement routing@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime) { return runtime.routing.activeOwnerIds.some(selectedPrimary) }
+    `;
+    try {
+      writeFileSync(predicateFile, `
+        export function isPositive(owner: number) { return owner > 0 }
+        export function isPrimary(owner: number) { return owner === 1 }
+      `);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, predicateFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const temporal = (parseSpecification(mainFile, source) as { temporal: unknown }).temporal;
+      expect(validateInvariants(program, mainFile, "routing", temporal)).toEqual([]);
+
+      writeFileSync(predicateFile, `
+        export function isPositive(owner: number) { return owner >= 0 }
+        export function isPrimary(owner: number) { return owner === 1 }
+      `);
+      const wrongProgram = ts.createProgram([mainFile, predicateFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(wrongProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "invariant-expression-mismatch", modelName: "allPositive" }),
+      );
+      writeFileSync(predicateFile, `
+        export function isPositive(owner: number) { return owner > 0 }
+        export function isPrimary(owner: number) { return owner === 1 }
+      `);
+
+      const mutable = source
+        .replace("interface Runtime", "let selectedPredicate = isPositive\n      interface Runtime")
+        .replace("every(isPositive)", "every(selectedPredicate)");
+      writeFileSync(mainFile, mutable);
+      const mutableProgram = ts.createProgram([mainFile, predicateFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(mutableProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allPositive" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
