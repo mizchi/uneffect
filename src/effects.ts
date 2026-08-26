@@ -954,6 +954,46 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const moduleRecords = new Map<string, {
     source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; dependencies: string[];
   }>();
+  const symbolWriteCache = new Map<ts.Symbol, boolean>();
+  const hasSymbolWrite = (target: ts.Symbol): boolean => {
+    const cached = symbolWriteCache.get(target);
+    if (cached !== undefined) return cached;
+    let written = false;
+    const symbolAt = (node: ts.Node): ts.Symbol | undefined => {
+      let symbol = checker.getSymbolAtLocation(node);
+      if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+      return symbol;
+    };
+    const containsTarget = (node: ts.Node): boolean => {
+      if (ts.isIdentifier(node) && symbolAt(node) === target) return true;
+      let found = false;
+      ts.forEachChild(node, (child) => { if (!found && containsTarget(child)) found = true; });
+      return found;
+    };
+    const scan = (node: ts.Node): void => {
+      if (written) return;
+      if (ts.isBinaryExpression(node) && isAssignmentOperator(node.operatorToken.kind) && containsTarget(node.left)) {
+        written = true;
+        return;
+      }
+      if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+        && (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+        && containsTarget(node.operand)) {
+        written = true;
+        return;
+      }
+      if ((ts.isForInStatement(node) || ts.isForOfStatement(node)) && containsTarget(node.initializer)) {
+        written = true;
+        return;
+      }
+      ts.forEachChild(node, scan);
+    };
+    const declarationSource = target.declarations?.[0]?.getSourceFile();
+    if (!declarationSource) return true;
+    scan(declarationSource);
+    symbolWriteCache.set(target, written);
+    return written;
+  };
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const executable = source.statements.filter((statement) => {
@@ -974,6 +1014,30 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const statement of source.statements) if (ts.isVariableStatement(statement)) {
       for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
     }
+    const resolveKnownCallbackEffects = (callback: ts.Expression): Effect[] | undefined => {
+      let declaration: ts.FunctionLikeDeclaration | undefined;
+      if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) {
+        declaration = callback;
+      } else if (ts.isIdentifier(callback)) {
+        let symbol = checker.getSymbolAtLocation(callback);
+        const importedBinding = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0;
+        if (importedBinding) symbol = checker.getAliasedSymbol(symbol!);
+        const resolved = symbol?.declarations?.find((candidate) => {
+          if (ts.isVariableDeclaration(candidate)) {
+            return (candidate.parent.flags & ts.NodeFlags.Const) !== 0
+              && candidate.initializer !== undefined
+              && (ts.isArrowFunction(candidate.initializer) || ts.isFunctionExpression(candidate.initializer));
+          }
+          return importedBinding && ts.isFunctionDeclaration(candidate) && symbol !== undefined && !hasSymbolWrite(symbol);
+        });
+        declaration = resolved && ts.isVariableDeclaration(resolved)
+          ? resolved.initializer as ts.ArrowFunction | ts.FunctionExpression
+          : resolved && ts.isFunctionDeclaration(resolved) ? resolved : undefined;
+      }
+      if (!declaration) return undefined;
+      const declarationSource = declaration.getSourceFile();
+      return inferred.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
+    };
     let unknown = false;
     const visit = (node: ts.Node, catches: boolean): void => {
       if (ts.isFunctionLike(node)) return;
@@ -1040,9 +1104,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (builtinCallback !== undefined) callbackIndices.add(builtinCallback);
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
-          if (!callback || (!ts.isArrowFunction(callback) && !ts.isFunctionExpression(callback))) { unknown = true; continue; }
-          const callbackId = `${callback.getSourceFile().fileName}:${callback.getStart(callback.getSourceFile())}`;
-          const callbackEffects = inferred.get(callbackId);
+          if (!callback) { unknown = true; continue; }
+          const callbackEffects = resolveKnownCallbackEffects(callback);
           if (!callbackEffects) { unknown = true; continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }

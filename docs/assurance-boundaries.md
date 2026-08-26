@@ -131,9 +131,13 @@ flow or turn an unmodeled API into verified semantics.
 
 Every checked TypeScript source now emits a source-attributed `<module>`
 may-effect summary. It includes direct operations, TypeChecker-resolved
-function/overload calls, known inline callback effects, and the transitive
-static-local-import closure. Cycles use a monotone effect-set fixed point;
-unresolved calls and dynamic imports remain `unknown`. This establishes an
+function/overload calls, known inline callback effects, immutable local and
+imported function identifiers passed to known callback owners, and the
+transitive static-local-import closure. Imported live bindings are accepted
+only when the exporting function symbol has no detected assignment; mutable,
+dynamically selected, and unresolved callbacks remain `unknown`. Cycles use a
+monotone effect-set fixed point; unresolved calls and dynamic imports remain
+`unknown`. This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
 ordering. Uneffect's dogfood includes all 59 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.

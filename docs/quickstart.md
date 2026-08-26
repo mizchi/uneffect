@@ -193,7 +193,11 @@ await main()
 ```
 
 The module summary is a may-effect set. It does not prove exact ESM or
-top-level-await ordering.
+top-level-await ordering. Known callback owners include effects from inline
+callbacks and immutable local/imported function identifiers. Mutable,
+reassigned, dynamically selected, or unresolved callbacks make the module
+summary `unknown`; adding a wider `module_effect` declaration does not discharge
+that uncertainty.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:

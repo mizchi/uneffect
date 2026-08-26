@@ -76,7 +76,74 @@ describe("multi-file call graph and effect polymorphism", () => {
       const module = result.summaries.find((item) => item.functionName === "<module>");
 
       expect(module).toMatchObject({ evidence: "verified" });
-      expect(module?.effects.map(formatEffect)).toEqual(["Console", "Timer"]);
+      expect(module?.effects.map(formatEffect).sort()).toEqual(["Console", "Timer"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("resolves immutable local and imported callback identifiers during module initialization", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-callback-identifiers-"));
+    try {
+      const callbacks = join(directory, "callbacks.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(callbacks, `
+        /* uneffect: effect Console */
+        export function importedCallback() { console.log("imported") }
+      `);
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console | Timer */
+        import { importedCallback } from "./callbacks.js"
+        const localCallback = () => console.log("local")
+        setTimeout(localCallback, 0)
+        setTimeout(importedCallback, 0)
+      `);
+      const program = ts.createProgram([callbacks, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+      const module = analyzeProgramEffects(program, { requireAnnotations: true }).summaries
+        .find((item) => item.functionName === "<module>" && item.fileName === entry);
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect).sort()).toEqual(["Console", "Timer"]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps reassigned callback identifiers unknown during module initialization", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-mutable-callback-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        let callback = () => console.log("first")
+        callback = () => console.log("second")
+        setTimeout(callback, 0)
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps imported live callback bindings unknown when the exporter reassigns them", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-live-callback-"));
+    try {
+      const callbacks = join(directory, "callbacks.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(callbacks, `
+        export function callback() { console.log("first") }
+        callback = () => console.log("second")
+      `);
+      writeFileSync(entry, `
+        import { callback } from "./callbacks.js"
+        setTimeout(callback, 0)
+      `);
+      const program = ts.createProgram([callbacks, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries
+        .find((item) => item.functionName === "<module>" && item.fileName === entry)).toMatchObject({ evidence: "unknown" });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
