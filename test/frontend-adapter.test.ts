@@ -10,6 +10,21 @@ import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-sa
 import { analyzeUneffectProject } from "../src/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
+  it("resolves named imports from export-equals Node modules", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-export-equals-"));
+    const fileName = join(directory, "input.ts");
+    writeFileSync(fileName, `
+      import { join as pathJoin } from "node:path";
+      const resolved = pathJoin("a", "b");
+      function join(...parts: string[]) { return parts.join("/") }
+      const local = join("a", "b");
+    `);
+    const program = ts.createProgram([fileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"] });
+    const source = program.getSourceFile(fileName)!;
+    expect(collectBuiltinCallRefinements(program, source).filter((call) => call.symbol.export === "join"))
+      .toEqual([expect.objectContaining({ symbol: { module: "node:path", export: "join" } })]);
+  });
+
   it("applies tmpdir refinement through aliased and namespace symbol identity only", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-symbols-"));
     const fileName = join(directory, "input.ts");

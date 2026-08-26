@@ -477,6 +477,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms.
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Attach a non-empty stable-coded `unknownReasons` ledger to every unknown Effect summary, require it in JSON Schema, surface it through assurance blockers, and reject unresolved top-level calls without analyzed/builtin/verified-contract evidence.
+- [x] Model reviewed synchronous ECMAScript collection callbacks as inline Effect edges, add narrow pure Node/ECMAScript helper contracts, and resolve named imports from export-equals Node declarations without name-based matching.
 - [x] Include compiler revision, tsconfig hash, source hash, builtin-contract digest, and Uneffect version in artifacts.
 - [x] Make unknown evidence stop transformations without blocking gradual lint adoption.
 - [x] Separate gradual lint success from explicit `no-unknown` and declaration-checked assurance profiles, with scoped blocker output and documented non-claims.

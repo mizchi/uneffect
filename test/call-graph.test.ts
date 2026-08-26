@@ -192,6 +192,23 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("composes reviewed synchronous collection callbacks at module initialization", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-inline-array-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `export const values = [1, 2].map((value) => { console.log(value); return value + 1 })`);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({
+        evidence: "inferred",
+        effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("composes a conditionally imported local literal module as a may-effect", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-dynamic-local-"));
     try {

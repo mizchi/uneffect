@@ -903,11 +903,13 @@ describe("Uneffect dogfood", () => {
     expect(result.summaries.length).toBeGreaterThan(200);
     expect(result.diagnostics).toEqual([]);
     const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
-    expect(unknown).toHaveLength(39);
+    expect(unknown).toHaveLength(2);
     expect(unknown.every((summary) => (summary.unknownReasons?.length ?? 0) > 0)).toBe(true);
     expect(Object.fromEntries([...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))]
       .map((code) => [code, unknown.filter((summary) => summary.unknownReasons?.some((reason) => reason.code === code)).length])))
-      .toEqual({ "unresolved-call": 8, "unknown-dependency": 31 });
+      .toEqual({ "unresolved-call": 2 });
+    expect(unknown.map((summary) => summary.fileName?.split("/").at(-1)).sort())
+      .toEqual(["corsa-checker-exporter.ts", "index.ts"]);
   }, 20_000);
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {

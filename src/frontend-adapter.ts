@@ -100,6 +100,16 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
       if (!moduleSymbol) continue;
       bindModuleContracts(moduleSymbol, contracts);
+      const named = statement.importClause?.namedBindings;
+      if (named && ts.isNamedImports(named)) for (const element of named.elements) {
+        const importedName = element.propertyName?.text ?? element.name.text;
+        const contract = contracts.find((candidate) => candidate.symbol.export === importedName);
+        if (!contract) continue;
+        const symbol = targetSymbol(this.#checker, element.name);
+        if (!symbol) continue;
+        this.#contracts.set(symbol, contract);
+        for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
+      }
     }
     for (const moduleSymbol of this.#checker.getAmbientModules()) {
       const moduleName = moduleSymbol.name.replace(/^"|"$/g, "");

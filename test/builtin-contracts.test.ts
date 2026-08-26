@@ -133,6 +133,21 @@ describe("builtin semantic overlays", () => {
     }));
   });
 
+  it("registers synchronous collection callbacks and pure host helpers", () => {
+    expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#map" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#flatMap" }, operation: { kind: "inline-callback", callbackArguments: [0] } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#slice" } }),
+      expect.objectContaining({ symbol: { module: "lib.es", export: "Array#join" } }),
+      expect.objectContaining({ symbol: { module: "node:module", export: "createRequire" } }),
+      expect.objectContaining({ symbol: { module: "node:path", export: "join" } }),
+      expect.objectContaining({ symbol: { module: "lib.node", export: "Process#cwd" } }),
+    ]));
+    for (const [module, name] of [["lib.es", "Array#slice"], ["lib.es", "Array#join"], ["node:module", "createRequire"], ["node:path", "join"], ["lib.node", "Process#cwd"]]) {
+      expect(builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.operation).toBeUndefined();
+    }
+  });
+
   it("registers Node next-tick and check-phase scheduling by builtin identity", () => {
     expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
       expect.objectContaining({ symbol: { module: "lib.node", export: "Process#nextTick" }, operation: expect.objectContaining({ kind: "timer", queue: "next-tick" }) }),

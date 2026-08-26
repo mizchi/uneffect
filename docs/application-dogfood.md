@@ -179,10 +179,13 @@ explicit callback-timing/effect-parameter contract, while the nine external
 module initializers require reviewed version-bound contracts rather than a
 broad Effect declaration.
 
-The repository's own strict `just dogfood` gate also now fails closed. Its 39
-unknown module summaries consist of eight direct `unresolved-call` roots and 31
-`unknown-dependency` propagations. The integration dogfood tests still pass,
-but that does not make the repository-wide `no-unknown` claim true. The strict
-target is intentionally left failing until those top-level calls have analyzed
-summaries or reviewed contracts; removing the profile would hide the newly
-exposed boundary.
+The repository's own strict `just dogfood` gate also fails closed. Reviewed
+ECMAScript synchronous-callback and pure helper contracts, Node helper
+contracts, and export-equals named-import resolution reduced its unknown module
+summaries from 39 to two. The remaining roots are the version-sensitive Corsa
+rule/plugin factories in `corsa-checker-exporter.ts` and Valibot schema factories
+in `index.ts`; both are `unresolved-call`, with no propagated dependency
+unknowns. The integration dogfood tests pass, but that does not make the
+repository-wide `no-unknown` claim true. The strict target remains failing until
+version-bound external function contracts can review those APIs; removing the
+profile would hide the boundary.

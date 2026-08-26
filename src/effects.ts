@@ -1449,13 +1449,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         } else if (!resolvedDynamicDependency && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target cannot be resolved by TypeChecker identity or a reviewed contract");
         const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
         const operation = resolvedBuiltin?.operation;
-        const builtinCallback = operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
-          ? operation.callbackArgument
+        const builtinCallbacks = operation?.kind === "inline-callback"
+          ? operation.callbackArguments
+          : operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
+          ? [operation.callbackArgument]
           : operation?.kind === "fs" && operation.callbackArgumentFromEnd
-            ? node.arguments.length - operation.callbackArgumentFromEnd
+            ? [node.arguments.length - operation.callbackArgumentFromEnd]
             : operation?.kind === "deferred-callback"
-              ? node.arguments.length - operation.callbackArgumentFromEnd : undefined;
-        if (builtinCallback !== undefined) callbackIndices.add(builtinCallback);
+              ? [node.arguments.length - operation.callbackArgumentFromEnd] : [];
+        for (const builtinCallback of builtinCallbacks) callbackIndices.add(builtinCallback);
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
           if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }

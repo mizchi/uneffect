@@ -269,6 +269,33 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
   ],
   contracts: [
+    ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight"] as const)
+      .flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
+        symbol: { module: "lib.es", export: `${owner}#${name}` },
+        operation: { kind: "inline-callback", callbackArguments: [0] },
+        trustReason: `ECMAScript ${owner}.${name} invokes its callback synchronously`,
+        trustOwner: "@mizchi/uneffect",
+      }))),
+    ...(["slice", "join"] as const).flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
+      symbol: { module: "lib.es", export: `${owner}#${name}` },
+      trustReason: `ECMAScript ${owner}.${name} has no callback or host authority`,
+      trustOwner: "@mizchi/uneffect",
+    }))),
+    trusted({
+      symbol: { module: "node:module", export: "createRequire" },
+      trustReason: "Node createRequire constructs a resolver without loading a target module",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    trusted({
+      symbol: { module: "node:path", export: "join" },
+      trustReason: "Node path.join is a deterministic lexical path operation",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    trusted({
+      symbol: { module: "lib.node", export: "Process#cwd" },
+      trustReason: "Node process.cwd reads launch configuration and requires no Deno-style runtime permission",
+      trustOwner: "@mizchi/uneffect",
+    }),
     trusted({
       symbol: { module: "typescript", export: "Program#emit" },
       operation: { kind: "inline-callback", callbackArguments: [1] },
