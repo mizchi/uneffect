@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { extractLocatedAnnotations } from "./annotations.js";
+import { extractLocatedAnnotations, validateUneffectAnnotations, type AnnotationDiagnostic } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
@@ -30,6 +30,7 @@ export type EffectUnknownReasonCode =
   | "unknown-external-evidence"
   | "unbounded-iterator-effect-parameter"
   | "effect-diagnostic"
+  | "invalid-annotation"
   | "unknown-external-module"
   | "unresolved-effect-instantiation"
   | "unreviewed-external-module"
@@ -192,6 +193,15 @@ function parseEffectDeclarations(text: string, directive: "effect" | "module_eff
     }
   });
   return { effects: problems.length > 0 ? [] : effects, present: annotations.length > 0, problems };
+}
+
+function annotationProblemDiagnostic(source: ts.SourceFile, problem: AnnotationDiagnostic): EffectDiagnostic {
+  return {
+    fileName: source.fileName, functionName: "<annotation>", effect: problem.directive,
+    kind: "invalid", severity: "error",
+    line: source.getLineAndCharacterOfPosition(problem.span.start).line + 1,
+    message: problem.message,
+  };
 }
 
 function effectDeclaration(source: ts.SourceFile, node: ts.Node): ParsedEffectDeclaration {
@@ -660,6 +670,7 @@ function processEnvEffects(checker: ts.TypeChecker | undefined, node: ts.Express
 
 function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, adapter: FrontendSymbolAdapter, checker?: ts.TypeChecker, promiseModel?: PromiseChainModel): EffectAnalysisResult {
   const fileName = source.fileName;
+  const annotationProblems = validateUneffectAnnotations(source.text);
   const functions = new Map<string, FunctionInfo>();
   source.forEachChild((node) => {
     if (ts.isFunctionDeclaration(node) && node.name && node.body) {
@@ -834,11 +845,12 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       }
     }
   }
-  const diagnostics: EffectDiagnostic[] = [...functions.values()].flatMap((info) => info.declarationProblems.map((problem) => ({
+  const diagnostics: EffectDiagnostic[] = annotationProblems.map((problem) => annotationProblemDiagnostic(source, problem));
+  diagnostics.push(...[...functions.values()].flatMap((info) => info.declarationProblems.map((problem) => ({
     fileName, functionName: info.name, effect: problem.payload, kind: "invalid" as const, severity: "error" as const,
     line: source.getLineAndCharacterOfPosition(problem.start).line + 1,
     message: `invalid effect declaration for ${info.name}: ${problem.message}`,
-  })));
+  }))));
   for (const info of functions.values()) {
     const line = source.getLineAndCharacterOfPosition(info.node.getStart(source)).line + 1;
     const actual = inferred.get(info.name)!;
@@ -862,10 +874,12 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   const summaries = [...functions.values()].map((info): EffectSummary => {
     const effects = inferred.get(info.name)!;
     const own = diagnostics.filter((diagnostic) => diagnostic.functionName === info.name);
-    const evidence: EvidenceStatus = !info.declaredPresent ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    const evidence: EvidenceStatus = annotationProblems.length > 0 ? "unknown" : !info.declaredPresent ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     return {
       functionName: info.name, effects, evidence,
-      ...(evidence === "unknown" ? { unknownReasons: [{ code: "effect-diagnostic", message: "an effect declaration or inferred authority diagnostic prevents proof-grade evidence" }] } : {}),
+      ...(evidence === "unknown" ? { unknownReasons: [annotationProblems.length > 0
+        ? { code: "invalid-annotation" as const, message: "an invalid Uneffect directive prevents proof-grade effect evidence" }
+        : { code: "effect-diagnostic" as const, message: "an effect declaration or inferred authority diagnostic prevents proof-grade evidence" }] } : {}),
     };
   });
   return { diagnostics, summaries };
@@ -919,6 +933,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
   const graph = buildProgramCallGraph(program, { externalIteratorEffects }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
+  const annotationProblems = new Map<string, AnnotationDiagnostic[]>();
+  for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) {
+    const problems = validateUneffectAnnotations(source.text);
+    if (problems.length > 0) annotationProblems.set(source.fileName, problems);
+  }
+  const invalidAnnotationSources = new Set(annotationProblems.keys());
   const invalidSources = new Set(
     [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
       .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.file !== undefined)
@@ -1127,7 +1147,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     return steps.length > 0 ? steps.join("; ") : undefined;
   };
-  const diagnostics: EffectDiagnostic[] = effectDeclarationProblems.map((problem) => {
+  const diagnostics: EffectDiagnostic[] = [...annotationProblems].flatMap(([fileName, problems]) => {
+    const source = program.getSourceFile(fileName)!;
+    return problems.map((problem) => annotationProblemDiagnostic(source, problem));
+  });
+  diagnostics.push(...effectDeclarationProblems.map((problem): EffectDiagnostic => {
     const graphNode = graphNodesById.get(problem.id)!;
     const source = program.getSourceFile(problem.fileName) ?? nodes.get(problem.id)!.getSourceFile();
     return {
@@ -1135,7 +1159,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       line: source.getLineAndCharacterOfPosition(problem.start).line + 1,
       message: `invalid effect declaration for ${graphNode.name}: ${problem.message}`,
     };
-  });
+  }));
   diagnostics.push(...effectParameterProblems.map((problem) => {
     invalidEffectParameterOwners.add(problem.id);
     const graphNode = graphNodesById.get(problem.id)!;
@@ -1252,6 +1276,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (!unknownReasons.some((reason) => reason.code === code)) unknownReasons.push({ code, message });
     };
     if (invalidSources.has(source.fileName)) addUnknownReason("typescript-errors", "TypeScript errors prevent proof-grade effect evidence");
+    if (invalidAnnotationSources.has(source.fileName)) addUnknownReason("invalid-annotation", "an invalid Uneffect directive prevents proof-grade effect evidence");
     if (unknownTiming.has(graphNode.id)) addUnknownReason("unknown-callback-timing", "a callback may run at an unresolved time");
     if (unknownGeneratorEvidence.has(graphNode.id)) addUnknownReason("unknown-generator-consumption", "generator body execution or consumption count is unresolved");
     if (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator) addUnknownReason("unknown-generator-parameter", "a caller-supplied iterator effect cannot be represented by this summary");
@@ -1259,7 +1284,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (invalidIteratorInstantiationCallers.has(graphNode.id)) addUnknownReason("invalid-iterator-instantiation", "an iterator effect argument exceeds or cannot satisfy its declared bound");
     if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
     if (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator) addUnknownReason("unbounded-iterator-effect-parameter", "a declared function consumes caller-supplied iterator effects without an effect_parameter upper bound");
-    const evidence: EvidenceStatus = invalidSources.has(source.fileName)
+    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || invalidAnnotationSources.has(source.fileName)
       || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
       || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
       || invalidEffectParameterOwners.has(graphNode.id)
@@ -1545,6 +1570,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const allowed = moduleDeclaration.effects;
     if (moduleDeclaration.problems.length > 0) markUnknown("effect-diagnostic", "the module effect declaration is invalid");
     if (invalidSources.has(source.fileName)) markUnknown("typescript-errors", "TypeScript errors prevent proof-grade module effect evidence");
+    if (invalidAnnotationSources.has(source.fileName)) markUnknown("invalid-annotation", "an invalid Uneffect directive prevents proof-grade module effect evidence");
     moduleRecords.set(source.fileName, { source, id, effects, allowed, declaredPresent: moduleDeclaration.present, declarationProblems: moduleDeclaration.problems, unknown, unknownReasons, trusted, dependencies });
   }
 

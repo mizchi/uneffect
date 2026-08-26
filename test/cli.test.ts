@@ -299,6 +299,30 @@ describe("uneffect command line", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("fails closed on an unknown Uneffect directive in the normal check path", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-directive-"));
+    const fileName = join(directory, "invalid.ts");
+    try {
+      writeFileSync(fileName, `/* uneffect: effects Console */ export function report() { console.log("x") }`);
+      const io = capture();
+      expect(await runCli(["check", "--infer", "--json", fileName], io)).toBe(exitCode.failed);
+      expect(io.stderr).toBe("");
+      const report = JSON.parse(io.stdout);
+      expect(report.diagnostics).toContainEqual(expect.objectContaining({
+        code: "effect/invalid", severity: "error", functionName: "<annotation>",
+        message: expect.stringContaining("unknown Uneffect directive `effects`"),
+      }));
+      expect(report.effects).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "report", evidence: "unknown", unknownReasons: expect.arrayContaining([
+          expect.objectContaining({ code: "invalid-annotation" }),
+        ]) }),
+        expect.objectContaining({ functionName: "<module>", evidence: "unknown", unknownReasons: expect.arrayContaining([
+          expect.objectContaining({ code: "invalid-annotation" }),
+        ]) }),
+      ]));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("fails assurance when the consumer TypeScript compiler is unresolved or version-drifted", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-ts-parity-"));
     const sourceDirectory = join(directory, "src"), fileName = join(sourceDirectory, "main.ts"), project = join(directory, "tsconfig.json");

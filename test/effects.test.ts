@@ -10,6 +10,17 @@ describe("effect checker", () => {
     }));
   });
 
+  it("rejects unknown and payload-less Uneffect directives instead of inferring around them", () => {
+    const source = `
+      /* uneffect: effects Console */ function misspelled() { console.log("x") }
+      /* uneffect: effect */ function missingPayload() {}
+    `;
+    expect(analyzeEffects("invalid-directives.ts", source)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ functionName: "<annotation>", kind: "invalid", severity: "error", message: expect.stringContaining("unknown Uneffect directive `effects`") }),
+      expect.objectContaining({ functionName: "<annotation>", kind: "invalid", severity: "error", message: expect.stringContaining("requires a payload") }),
+    ]));
+  });
+
   it("propagates effects from implicit using disposal", () => {
     const source = `
       class Resource {

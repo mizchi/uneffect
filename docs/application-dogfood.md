@@ -188,7 +188,7 @@ modeled Corsa 1.12.4 `RuleCreator`, including its synchronously invoked captured
 URL callback. The current repository self-analysis has zero unknown summaries.
 This is a statement about the checked source and exact dependency versions, not
 a claim that arbitrary package code or all JavaScript behavior is verified.
-The same 67-file boundary records 3,688 builtin and module-initialization
+The same 67-file boundary records 3,694 builtin and module-initialization
 assumption occurrences. Consequently `--assurance no-unknown` passes as
 `assumed`, while the new `--assurance verified` profile rejects the boundary.
 The count is an observation of this revision rather than a stable target; its

@@ -119,6 +119,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Complete WHATWG URL normalization and exact-or-unconstrained query semantics in the TypeScript prototype.
   - [x] Bring Rust URL normalization and query semantics to parity with the TypeScript frontend.
 - [x] Emit parse errors for malformed or unsupported Uneffect directives instead of silently ignoring them.
+  - [x] Apply directive-name and payload validation to the normal Effect/check path, emit structured `effect/invalid` diagnostics, and downgrade every function/module summary in the invalid source to `unknown`.
 - [x] Split temporal action assignments with an expression-aware comma scanner so comparison operators are not misread as generic type delimiters.
 
 ## P1 — Capability effects

@@ -57,6 +57,13 @@ function and module bounds as well as iterator `effect_parameter` bounds. For
 example, `none | Console` is rejected because `none` must be the complete empty
 set declaration.
 
+The normal Effect/check path also validates every marked block before relying
+on its contents. An unknown directive such as `effects Console` or a directive
+without its required payload is reported at the comment and makes every
+function and module Effect summary from that source `unknown` with reason code
+`invalid-annotation`. A misspelled contract therefore cannot disappear while a
+neighboring inferred summary remains proof-grade.
+
 ## The fixture corpus
 
 `fixtures/` holds one small TypeScript file per capability and per failure mode,

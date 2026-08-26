@@ -59,6 +59,10 @@ still walk its recovered AST. The default gradual check reports the same
 TypeScript errors and exits non-zero; Uneffect never upgrades an ill-typed
 source to proof-grade evidence.
 
+The same fail-closed rule applies to Uneffect comment syntax. Unknown
+directives, missing payloads, and malformed Effect sets are error diagnostics;
+all function and module Effect summaries in that source become `unknown`.
+
 Use `--project <tsconfig.json>` when checking consumer code. Otherwise the CLI
 uses Uneffect's analysis defaults, which need not match the consumer's module,
 library, strictness, JSX, or path-resolution semantics. The project file binds
