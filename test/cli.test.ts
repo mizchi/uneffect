@@ -139,13 +139,25 @@ describe("uneffect command line", () => {
       expect(declared.stderr).toContain("claim: every emitted function effect summary is declaration-checked");
       expect(declared.stderr).toContain("excluded: unannotated semantic domains are not checked by this profile");
 
+      const verifiedWithBuiltin = capture();
+      expect(await runCli(["check", "--assurance", "verified", declaredFile], verifiedWithBuiltin)).toBe(exitCode.failed);
+      expect(verifiedWithBuiltin.stderr).toContain("assurance verified: failed (unknown)");
+      expect(verifiedWithBuiltin.stderr).toContain("reviewed Console log semantic overlay");
+
+      const pureDeclaredFile = join(directory, "pure-declared.ts");
+      writeFileSync(pureDeclaredFile, `/* uneffect: effect Mutate<typeof value> */ export function update(value: { count: number }) { value.count++ }`);
+      const verifiedPure = capture();
+      expect(await runCli(["check", "--assurance", "verified", pureDeclaredFile], verifiedPure)).toBe(exitCode.success);
+      expect(verifiedPure.stderr).toContain("assurance verified: passed (verified)");
+      expect(verifiedPure.stderr).toContain("claim: the emitted assumption ledger is empty");
+
       const empty = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", emptyFile], empty)).toBe(exitCode.success);
-      expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 1 selected file");
+      expect(empty.stderr).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 assumptions, 1 selected file");
 
       const mixed = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", inferredFile, emptyFile], mixed)).toBe(exitCode.success);
-      expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 2 selected files");
+      expect(mixed.stderr).toContain("coverage: 3 effect summaries, 0 contract artifacts, 0 assumptions, 2 selected files");
 
       const invalid = capture();
       expect(await runCli(["check", "--assurance", "absolute", declaredFile], invalid)).toBe(exitCode.usage);
@@ -241,6 +253,11 @@ describe("uneffect command line", () => {
         outcome: "failed",
         counts: { errors: 0, warnings: 0 },
         diagnostics: [],
+        assumptions: {
+          schema: "uneffect-assumptions/v1",
+          entries: [expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("reviewed builtin") })],
+          violations: [],
+        },
         effects: expect.arrayContaining([expect.objectContaining({ functionName: "send", evidence: "inferred", effects: [
           "Fetch<POST, Unknown<dynamic-url>>", "Net<Unknown<dynamic-origin>>",
         ] })]),
@@ -252,7 +269,7 @@ describe("uneffect command line", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-check/v1" } },
-        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assurance", "project"]),
+        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assumptions", "assurance", "project"]),
         $defs: { assurance: { allOf: [expect.objectContaining({ then: { properties: { claims: { maxItems: 0 } } } })] } },
       });
 

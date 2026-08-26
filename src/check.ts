@@ -7,6 +7,7 @@ import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectC
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
+import { collectAssumptionLedger, type AssumptionLedger } from "./assumptions.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -38,6 +39,8 @@ export interface CheckResult {
   /** Evidence for what was checked, including the obligations that were proved. */
   artifacts: VerificationArtifact[];
   summaries: EffectSummary[];
+  /** Every trusted semantic input used by this exact check boundary. */
+  assumptions: AssumptionLedger;
   errors: number;
   warnings: number;
   project?: TypeScriptProjectProvenance;
@@ -107,8 +110,9 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     }
   }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
+  const assumptions = collectAssumptionLedger(program, Object.fromEntries(sources), undefined, {}, options.builtinRegistry).ledger;
   return {
-    diagnostics, sources, artifacts, summaries: effects.summaries, errors, warnings: diagnostics.length - errors,
+    diagnostics, sources, artifacts, summaries: effects.summaries, assumptions, errors, warnings: diagnostics.length - errors,
     ...(options.project === undefined ? {} : { project: options.project }),
   };
 }

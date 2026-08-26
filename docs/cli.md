@@ -43,8 +43,9 @@ npx quint run protocol.qnt
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
-`--assurance no-unknown|declared` (fail when emitted evidence does not meet the
-selected CI profile), and
+`--assurance no-unknown|declared|verified` (fail when emitted evidence does not
+meet the selected CI profile; `verified` also requires an empty collected
+assumption ledger), and
 `--evidence` (also print the proved obligations and the inferred effect of every
 function), and `--json` (write one `uneffect-check/v1` decision report to stdout
 and suppress the text report). JSON always contains normalized diagnostics,

@@ -30,6 +30,7 @@ diagnostic is never promoted into an unstated guarantee.
 uneffect check src/file.ts
 uneffect check --assurance no-unknown src/file.ts
 uneffect check --assurance declared src/file.ts
+uneffect check --assurance verified src/file.ts
 ```
 
 | Mode | Exit 0 establishes | It does not establish |
@@ -37,8 +38,9 @@ uneffect check --assurance declared src/file.ts
 | default gradual check | No enabled checker emitted an error. Warnings and unknown effect summaries may remain. | Completeness, purity, or whole-program safety. |
 | `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary, no capability argument contains an unresolved `Unknown<reason>` set, and every emitted contract artifact is verified. Inferred inventories, explicitly represented iterator-effect parameters, and reviewed `trusted` boundaries are accepted. A passing result is `assumed`, not `verified`, when any summary is trusted. | That inferred effects are declaration-checked, that trusted contracts prove their implementations, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
 | `--assurance declared` | In addition, every emitted function effect summary is checked against explicit body-effect declarations and/or complete iterator-effect parameter bounds. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
+| `--assurance verified` | Applies the `declared` checks and requires the assumption ledger collected for the exact check boundary to be present and empty. A reviewed builtin or module-initialization contract therefore blocks this profile even when its effect declaration is correct. | Semantics that were not opted into or emitted, arbitrary dependency implementations, compiler correctness, or an unbounded proof from bounded solver evidence. |
 
-Both assurance profiles print their scope and every blocker. They are intended
+All assurance profiles print their scope and every blocker. They are intended
 for CI on a deliberately selected file boundary. They do not silently broaden
 that boundary to dependencies, dynamically loaded code, native addons, or host
 behavior not represented by the builtin contract registry.
@@ -221,8 +223,9 @@ not infer support from a nearby example.
 3. Gate the selected boundary with `--assurance no-unknown`.
 4. Add explicit effect upper bounds and move that boundary to
    `--assurance declared`.
-5. Treat every escape hatch and trusted builtin as an owned assumption.
-6. Expand the checked boundary only after its unknown rate and false positives
+5. Use `--assurance verified` only where the collected ledger is empty.
+6. Treat every escape hatch and trusted builtin as an owned assumption.
+7. Expand the checked boundary only after its unknown rate and false positives
    are understood.
 
 Never replace an unknown with a broad declaration merely to make CI green. A

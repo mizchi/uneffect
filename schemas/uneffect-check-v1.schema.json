@@ -4,7 +4,7 @@
   "title": "Uneffect check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assurance", "project"],
+  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assumptions", "assurance", "project"],
   "properties": {
     "schema": { "const": "uneffect-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -20,6 +20,7 @@
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
     "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
     "contracts": { "type": "array", "items": { "$ref": "#/$defs/contract" } },
+    "assumptions": { "$ref": "#/$defs/assumptionLedger" },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
     "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }
   },
@@ -120,16 +121,17 @@
       }],
       "required": ["profile", "status", "passed", "blockers", "coverage", "claims", "exclusions"],
       "properties": {
-        "profile": { "enum": ["no-unknown", "declared"] },
+        "profile": { "enum": ["no-unknown", "declared", "verified"] },
         "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
         "passed": { "type": "boolean" },
         "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
         "coverage": {
           "type": "object", "additionalProperties": false,
-          "required": ["effectSummaries", "contractArtifacts", "checkedFiles", "uncoveredFiles"],
+          "required": ["effectSummaries", "contractArtifacts", "assumptions", "checkedFiles", "uncoveredFiles"],
           "properties": {
             "effectSummaries": { "type": "integer", "minimum": 0 },
             "contractArtifacts": { "type": "integer", "minimum": 0 },
+            "assumptions": { "type": "integer", "minimum": 0 },
             "checkedFiles": { "type": "integer", "minimum": 0 },
             "uncoveredFiles": { "type": "array", "items": { "type": "string" } }
           }
@@ -142,10 +144,50 @@
       "type": "object", "additionalProperties": false,
       "required": ["kind", "classification", "fileName", "functionName", "message"],
       "properties": {
-        "kind": { "enum": ["effect", "contract", "coverage", "typescript"] },
+        "kind": { "enum": ["effect", "contract", "coverage", "typescript", "assumption"] },
         "classification": { "enum": ["unknown", "violation"] },
         "fileName": { "type": "string" }, "functionName": { "type": "string" },
         "message": { "type": "string" }
+      }
+    },
+    "assumptionLedger": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "entries", "violations"],
+      "properties": {
+        "schema": { "const": "uneffect-assumptions/v1" },
+        "entries": { "type": "array", "items": { "$ref": "#/$defs/assumption" } },
+        "violations": { "type": "array", "items": { "$ref": "#/$defs/assumptionViolation" } }
+      }
+    },
+    "assumption": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "evidence", "domain", "reason", "scope"],
+      "properties": {
+        "id": { "type": "string" }, "evidence": { "const": "trusted" },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-summary", "dispatch-sealing"] },
+        "reason": { "type": "string" }, "owner": { "type": "string" }, "expiresOn": { "type": "string", "format": "date" },
+        "scope": {
+          "type": "object", "additionalProperties": false, "required": ["fileName", "span"],
+          "properties": { "fileName": { "type": "string" }, "functionName": { "type": "string" }, "span": { "$ref": "#/$defs/span" } }
+        },
+        "dependency": {
+          "type": "object", "additionalProperties": false, "required": ["module"],
+          "properties": { "module": { "type": "string" }, "packageVersion": { "type": "string" }, "nodeMajor": { "type": "integer", "minimum": 1 } }
+        }
+      }
+    },
+    "assumptionViolation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["assumptionId", "domain", "rule", "message", "scope"],
+      "properties": {
+        "assumptionId": { "type": "string" },
+        "domain": { "enum": ["builtin", "module-initialization", "typed-array", "temporal-summary", "dispatch-sealing"] },
+        "rule": { "enum": ["owner-required", "expiration-required", "invalid-expiration", "expired"] },
+        "message": { "type": "string" },
+        "scope": {
+          "type": "object", "additionalProperties": false, "required": ["fileName", "span"],
+          "properties": { "fileName": { "type": "string" }, "functionName": { "type": "string" }, "span": { "$ref": "#/$defs/span" } }
+        }
       }
     },
     "project": {

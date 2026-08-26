@@ -422,7 +422,10 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
     trusted({ symbol: { module: "global", export: "fetch" }, operation: { kind: "fetch" } }),
     ...["log", "info", "warn", "error", "debug", "trace", "dir", "table"].map((name): BuiltinContract => ({
-      ...trusted({ symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" } }),
+      ...trusted({
+        symbol: { module: "global", export: `console.${name}` }, operation: { kind: "effect", effect: "Console" },
+        trustReason: `reviewed Console ${name} semantic overlay`, trustOwner: "@mizchi/uneffect",
+      }),
     })),
     trusted({ symbol: { module: "global", export: "setTimeout" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: false, queue: "timer" } }),
     trusted({ symbol: { module: "global", export: "setInterval" }, operation: { kind: "timer", callbackArgument: 0, delayArgument: 1, repeats: true, queue: "timer" } }),

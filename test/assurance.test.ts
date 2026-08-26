@@ -22,7 +22,7 @@ describe("assurance claim boundaries", () => {
     expect(assessment.exclusions).toContain("unannotated semantic domains are not checked by this profile");
     expect(assessment.coverage).toMatchObject({ effectSummaries: 1, contractArtifacts: 0 });
     expect(formatAssuranceAssessment(assessment)).toContain("excluded: unannotated semantic domains");
-    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 1 effect summary, 0 contract artifacts");
+    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 1 effect summary, 0 contract artifacts, 0 assumptions");
   });
 
   it("does not claim declaration coverage for no-unknown", () => {
@@ -70,6 +70,46 @@ describe("assurance claim boundaries", () => {
     }, "declared")).toMatchObject({ status: "unknown", passed: false });
   });
 
+  it("requires an empty recorded assumption ledger for verified assurance", () => {
+    const summary = { functionName: "report", fileName: "src/report.ts", effects: [], evidence: "verified" as const };
+    const assumption = {
+      id: "builtin-console", evidence: "trusted" as const, domain: "builtin" as const,
+      reason: "reviewed Console contract", owner: "@mizchi/uneffect",
+      scope: { fileName: "src/report.ts", functionName: "report", span: { start: 10, end: 20 } },
+    };
+    const assessment = assessCheckAssurance({
+      summaries: [summary], artifacts: [],
+      assumptions: { schema: "uneffect-assumptions/v1", entries: [assumption], violations: [] },
+    }, "verified");
+
+    expect(assessment).toMatchObject({
+      profile: "verified", status: "unknown", passed: false, claims: [],
+      coverage: { assumptions: 1 },
+      blockers: [{
+        kind: "assumption", classification: "unknown", fileName: "src/report.ts",
+        message: expect.stringContaining("reviewed Console contract"),
+      }],
+    });
+    expect(assessCheckAssurance({
+      summaries: [summary], artifacts: [],
+      assumptions: { schema: "uneffect-assumptions/v1", entries: [], violations: [] },
+    }, "verified")).toMatchObject({
+      status: "verified", passed: true,
+      claims: expect.arrayContaining(["the emitted assumption ledger is empty"]),
+      coverage: { assumptions: 0 },
+    });
+  });
+
+  it("fails verified assurance when no assumption ledger was collected", () => {
+    expect(assessCheckAssurance({
+      summaries: [{ functionName: "pure", fileName: "src/pure.ts", effects: [], evidence: "verified" }],
+      artifacts: [],
+    }, "verified")).toMatchObject({
+      status: "unknown", passed: false,
+      blockers: [{ kind: "assumption", message: expect.stringContaining("was not collected") }],
+    });
+  });
+
   it("accepts a represented iterator-effect parameter without claiming a closed concrete effect set", () => {
     const summary = {
       functionName: "consume", fileName: "src/consume.ts", effects: [], evidence: "inferred" as const,
@@ -93,7 +133,7 @@ describe("assurance claim boundaries", () => {
       blockers: [{ kind: "coverage", classification: "unknown", message: expect.stringContaining("no effect summary or contract artifact") }],
     });
     expect(formatAssuranceAssessment(assessment)).not.toContain("claim:");
-    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts");
+    expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts, 0 assumptions");
   });
 
   it("rejects an effect error even when a stale summary is not unknown", () => {

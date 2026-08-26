@@ -106,7 +106,7 @@ export function evaluateAssumptionPolicy(entries: readonly AssumptionEntry[], po
 export function collectAssumptionLedger(
   program: ts.Program,
   files: Readonly<Record<string, string>>,
-  typedArrays: TypedArrayProgramSafetyResult,
+  typedArrays: TypedArrayProgramSafetyResult | undefined,
   policy: AssumptionPolicy = {},
   registry: BuiltinContractRegistry = builtinContractRegistry,
 ): { ledger: AssumptionLedger; diagnostics: AssumptionPolicyDiagnostic[] } {
@@ -167,7 +167,7 @@ export function collectAssumptionLedger(
         scope: { fileName, span: { start: declaration.getStart(source), end: declaration.getEnd() } },
       }));
     }
-    for (const obligation of typedArrays.files[fileName]?.obligations ?? []) {
+    for (const obligation of typedArrays?.files[fileName]?.obligations ?? []) {
       if (obligation.result !== "trusted") continue;
       const declaration = functions.get(obligation.functionName);
       entries.push(entry({

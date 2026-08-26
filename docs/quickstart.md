@@ -281,12 +281,22 @@ the stronger effect gate:
 npx uneffect check --assurance declared src/uneffect-example.ts
 ```
 
+For a deliberately narrow boundary that must use no recorded trusted semantic
+inputs, require both declaration checking and an empty collected ledger:
+
+```sh
+npx uneffect check --assurance verified src/uneffect-example.ts
+```
+
+A correctly declared call to a reviewed builtin still blocks this profile. Use
+`declared` when that reviewed contract is an accepted, owned assumption.
+
 These profiles cover emitted evidence for the explicit file boundary; they are
 not whole-program or assumption-free proofs. The CLI prints both the claims
 established by a passing profile and exclusions that remain outside it; API
 consumers receive the same data in `AssuranceAssessment.claims` and
 `.exclusions`. `AssuranceAssessment.coverage` reports selected files, effect
-summaries, contract artifacts, and uncovered files. The profile fails if it
+summaries, contract artifacts, assumptions, and uncovered files. The profile fails if it
 would be vacuous or if evidence from one input would hide another selected file
 that emitted no proof-relevant artifact. See
 [Assurance boundaries](./assurance-boundaries.md).

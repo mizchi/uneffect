@@ -95,8 +95,10 @@ npx uneffect check src/example.ts
 
 `check` reports effect, contract, and async-safety diagnostics. Exit 0 means no
 enabled checker found an error; it is not a whole-program proof and may retain
-explicit unknown evidence. CI can opt into `--assurance no-unknown` or the
-stronger effect-declaration gate `--assurance declared`. The command exits with
+explicit unknown evidence. CI can opt into `--assurance no-unknown`, the
+stronger effect-declaration gate `--assurance declared`, or `--assurance
+verified`, which additionally requires the emitted assumption ledger to be
+present and empty. The command exits with
 1 when the selected checks or assurance profile fail, and 2 for invalid CLI
 usage. TypeScript syntax, semantic, and compiler-option errors are fatal, and
 summaries from an ill-typed source remain `unknown`. Assurance also fails when no proof-relevant evidence is emitted for any
@@ -188,8 +190,8 @@ is:
    make state transitions important.
 7. Gate new diagnostics in CI while preserving explicit `unknown` and trusted
    evidence in reviewable artifacts.
-8. Move selected boundaries to `--assurance no-unknown`, then `declared`, only
-   after reviewing what each profile does and does not claim.
+8. Move selected boundaries to `--assurance no-unknown`, then `declared`, and
+   finally `verified` only where no recorded trusted semantic input is needed.
 
 The [Adoption patterns guide](./docs/adoption-patterns.md) describes these
 patterns, monorepo and library boundaries, CI ratcheting, escape hatches, and

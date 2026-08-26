@@ -1,11 +1,12 @@
 import type { CheckResult } from "./check.js";
 import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
+import type { AssumptionLedger } from "./assumptions.js";
 
-export type AssuranceProfile = "no-unknown" | "declared";
+export type AssuranceProfile = "no-unknown" | "declared" | "verified";
 export type AssuranceStatus = "verified" | "assumed" | "unknown" | "violated";
 
 export interface AssuranceBlocker {
-  kind: "effect" | "contract" | "coverage" | "typescript";
+  kind: "effect" | "contract" | "coverage" | "typescript" | "assumption";
   classification: "unknown" | "violation";
   fileName: string;
   functionName: string;
@@ -17,6 +18,7 @@ export interface AssuranceCoverage {
   contractArtifacts: number;
   checkedFiles: number;
   uncoveredFiles: string[];
+  assumptions: number;
 }
 
 export interface AssuranceAssessment {
@@ -52,7 +54,7 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project">>,
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project">> & { assumptions?: AssumptionLedger },
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
@@ -66,6 +68,7 @@ export function assessCheckAssurance(
     contractArtifacts: result.artifacts.length,
     checkedFiles: selectedFiles.length,
     uncoveredFiles,
+    assumptions: result.assumptions?.entries.length ?? 0,
   };
   if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0) blockers.push({
     kind: "coverage", classification: "unknown", fileName: "<assessment>", functionName: "<coverage>",
@@ -93,7 +96,7 @@ export function assessCheckAssurance(
       message: `${summary.functionName}: effect summary is unknown${summary.unknownReasons?.length
         ? ` (${summary.unknownReasons.map((reason) => `${reason.code}: ${reason.message}`).join("; ")})` : ""}`,
     });
-    else if (profile === "declared" && summary.evidence !== "verified") blockers.push({
+    else if ((profile === "declared" || profile === "verified") && summary.evidence !== "verified") blockers.push({
       kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
       message: `${summary.functionName}: effect summary is ${summary.evidence}, not declaration-checked`,
     });
@@ -111,9 +114,21 @@ export function assessCheckAssurance(
     functionName: artifact.obligation?.functionName ?? "<contract>",
     message: `${artifact.obligation?.functionName ?? "contract"}: contract evidence is ${artifact.status}, not verified`,
   });
-  const candidateClaims = profile === "declared"
+  if (profile === "verified") {
+    if (!result.assumptions) blockers.push({
+      kind: "assumption", classification: "unknown", fileName: "<assessment>", functionName: "<assumptions>",
+      message: "the assumption ledger was not collected for this assurance boundary",
+    });
+    else for (const assumption of result.assumptions.entries) blockers.push({
+      kind: "assumption", classification: "unknown", fileName: assumption.scope.fileName,
+      functionName: assumption.scope.functionName ?? "<module>",
+      message: `${assumption.domain} assumption: ${assumption.reason}`,
+    });
+  }
+  const candidateClaims = profile === "declared" || profile === "verified"
     ? [...commonClaims, "every emitted function effect summary is declaration-checked"]
     : [...commonClaims];
+  if (profile === "verified") candidateClaims.push("the emitted assumption ledger is empty");
   if (result.project?.compiler.parity === "exact") candidateClaims.push(
     "the consumer project and analyzer resolve the exact same TypeScript version",
   );
@@ -142,7 +157,7 @@ function countLabel(count: number, singular: string, plural = `${singular}s`): s
 export function formatAssuranceAssessment(assessment: AssuranceAssessment): string {
   const header = `assurance ${assessment.profile}: ${assessment.passed ? "passed" : "failed"} (${assessment.status})`;
   const scope = "  scope: emitted evidence for explicitly checked files and opted-in annotations only";
-  const coverage = `  coverage: ${countLabel(assessment.coverage.effectSummaries, "effect summary", "effect summaries")}, ${countLabel(assessment.coverage.contractArtifacts, "contract artifact")}, ${countLabel(assessment.coverage.checkedFiles, "selected file")}`;
+  const coverage = `  coverage: ${countLabel(assessment.coverage.effectSummaries, "effect summary", "effect summaries")}, ${countLabel(assessment.coverage.contractArtifacts, "contract artifact")}, ${countLabel(assessment.coverage.assumptions, "assumption")}, ${countLabel(assessment.coverage.checkedFiles, "selected file")}`;
   return `${[
     header,
     scope,

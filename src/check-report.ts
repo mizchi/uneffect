@@ -9,6 +9,7 @@ import type { TypeScriptWorkspace } from "./typescript-project.js";
 import type { WorkspaceEffectComposition } from "./workspace-effects.js";
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { EffectUnknownReason } from "./effects.js";
+import type { AssumptionLedger } from "./assumptions.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -31,6 +32,7 @@ export interface CheckJsonReport {
   diagnostics: ReportedDiagnostic[];
   effects: CheckReportEffect[];
   contracts: VerificationArtifact[];
+  assumptions: AssumptionLedger;
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
 }
@@ -106,6 +108,7 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
       }),
     })),
     contracts: result.artifacts,
+    assumptions: result.assumptions,
     assurance: assurance ?? null,
     project: result.project ?? null,
   };

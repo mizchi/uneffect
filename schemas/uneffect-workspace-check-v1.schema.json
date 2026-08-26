@@ -133,7 +133,7 @@
       }],
       "required": ["profile", "status", "passed", "blockers", "claims", "exclusions"],
       "properties": {
-        "profile": { "enum": ["no-unknown", "declared"] },
+        "profile": { "enum": ["no-unknown", "declared", "verified"] },
         "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
         "passed": { "type": "boolean" }, "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
         "claims": { "type": "array", "items": { "type": "string" } },

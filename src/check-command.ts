@@ -18,7 +18,7 @@ export const checkCommand: CliCommand = {
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
     "--evidence   also print the proved obligations and the inferred effect of every function",
-    "--assurance  fail on non-proof evidence: no-unknown, or declared",
+    "--assurance  fail on non-proof evidence: no-unknown, declared, or verified",
     "--config     load a versioned caller-owned semantic registry",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
@@ -44,8 +44,8 @@ export const checkCommand: CliCommand = {
       throw new CliUsageError("build-artifact assurance requires --project without positional files");
     }
     const assurance = values.assurance;
-    if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared") {
-      throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown or declared`);
+    if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared" && assurance !== "verified") {
+      throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown, declared, or verified`);
     }
     let builtinRegistry;
     try { builtinRegistry = values.config === undefined ? undefined : await loadBuiltinRegistryConfig(String(values.config)); }
