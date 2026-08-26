@@ -1,5 +1,6 @@
 import type { VerifyUneffectProjectResult } from "./project-verification.js";
 import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
+import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 
 export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
 
@@ -43,11 +44,17 @@ type AssessmentInput = Omit<VerifyUneffectProjectResult, "assurance">;
 export function assessProjectVerification(
   result: AssessmentInput,
   checkedFiles: readonly string[],
+  project?: TypeScriptProjectProvenance,
 ): ProjectAssuranceAssessment {
   const blockers: ProjectAssuranceBlocker[] = [];
   const add = (domain: ProjectAssuranceDomain, classification: "unknown" | "violation", fileName: string, subject: string, message: string): void => {
     blockers.push({ domain, classification, fileName, subject, message });
   };
+
+  if (project && project.compiler.parity !== "exact") add(
+    "typescript", "unknown", project.projectFile, "compiler-parity",
+    project.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
+  );
 
   for (const diagnostic of result.diagnostics) {
     if ("domain" in diagnostic && diagnostic.domain === "typescript") {
@@ -124,12 +131,14 @@ export function assessProjectVerification(
     "the configured assumption policy has no violation",
     ...(result.temporal ? ["every emitted temporal property is verified for its attributed source"] : []),
     ...(result.moduleInitialization ? ["the selected ESM module-initialization partial-order extraction is proof-grade"] : []),
+    ...(project ? ["the compiler domain resolves the exact analyzer TypeScript version"] : []),
   ];
   const hasOpenIteratorEffect = result.effects.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)));
   const exclusions = [
     "this assessment covers only explicitly supplied files and analyses represented in this result",
-    "the in-memory project API does not establish consumer tsconfig or TypeScript package-version parity",
+    ...(project ? ["this result covers one tsconfig compiler domain; referenced domains require workspace aggregation"]
+      : ["the in-memory project API does not establish consumer tsconfig or TypeScript package-version parity"]),
     "inferred effects need not have an explicit declaration",
     ...(hasOpenIteratorEffect ? ["unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set"] : []),
     "trusted typed-array, builtin, and module-initialization contracts remain assumptions, not derived proofs",

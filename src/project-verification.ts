@@ -2,7 +2,7 @@ import ts from "typescript";
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { analyzeAsyncPatterns, generateNodeEventLoopQuint, generateWebEventLoopQuint } from "./async-patterns.js";
 import { verifyContractObligations, type ContractDiagnostic, type VerificationArtifact } from "./contracts.js";
@@ -18,9 +18,9 @@ import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./di
 import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
+import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 
-export interface VerifyUneffectProjectOptions {
-  files: Record<string, string>;
+export interface VerifyUneffectProjectBaseOptions {
   runtimeAssertions?: "off" | "fallback";
   temporalRuntime?: "web" | "node";
   nodeTopLevelMode?: "commonjs" | "esm";
@@ -30,6 +30,18 @@ export interface VerifyUneffectProjectOptions {
   builtinRegistry?: BuiltinContractRegistry;
   /** Opt in to source-mapped ESM initialization-order evidence for one entry module. */
   moduleInitializationEntry?: string;
+}
+
+export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseOptions {
+  files: Record<string, string>;
+  projectFile?: never;
+}
+
+export interface VerifyUneffectWorkspaceOptions extends VerifyUneffectProjectBaseOptions {
+  projectFile: string;
+  files?: never;
+  /** Require TypeScript SolutionBuilder to report every composite output as current. */
+  buildArtifacts?: "ignore" | "require-fresh";
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -48,6 +60,42 @@ export interface VerifyUneffectProjectResult {
   assurance: ProjectAssuranceAssessment;
   temporal?: ProjectTemporalVerification;
   moduleInitialization?: ModuleInitializationOrder;
+}
+
+export interface ProjectWorkspaceVerificationBlocker {
+  kind: string;
+  classification: "unknown" | "violation";
+  projectFile: string;
+  message: string;
+  reference?: string;
+  subject?: string;
+}
+
+export interface ProjectWorkspaceAssurance {
+  status: "verified" | "assumed" | "unknown" | "violated";
+  passed: boolean;
+  assumptions: number;
+  blockers: ProjectWorkspaceVerificationBlocker[];
+  claims: readonly string[];
+  exclusions: readonly string[];
+}
+
+export interface ProjectWorkspaceVerificationDomain {
+  project: TypeScriptProjectProvenance;
+  rootFiles: string[];
+  verification: VerifyUneffectProjectResult;
+}
+
+export interface VerifyUneffectWorkspaceResult {
+  schema: "uneffect-project-workspace/v1";
+  rootProjectFile: string;
+  references: Array<{ from: string; to: string }>;
+  buildOrder: string[];
+  buildArtifacts: { status: "fresh" | "stale" | "unknown"; observations: Array<{ code: number; message: string }> };
+  configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
+  projects: ProjectWorkspaceVerificationDomain[];
+  blockers: ProjectWorkspaceVerificationBlocker[];
+  assurance: ProjectWorkspaceAssurance;
 }
 
 export interface ProjectOwnershipDiagnostic extends OwnershipDiagnostic {
@@ -79,8 +127,12 @@ function javascriptPath(fileName: string): string {
   return fileName.replace(/\.(?:mts|cts|tsx|ts)$/, ".js");
 }
 
-function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
-  const compilerOptions: ts.CompilerOptions = {
+function inMemoryProgram(
+  files: Readonly<Record<string, string>>,
+  configuredCompilerOptions?: ts.CompilerOptions,
+  projectReferences?: readonly ts.ProjectReference[],
+): ts.Program {
+  const compilerOptions: ts.CompilerOptions = configuredCompilerOptions ?? {
     target: ts.ScriptTarget.ES2024,
     module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext,
@@ -113,7 +165,7 @@ function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
     };
     return ts.resolveModuleName(moduleName, containingFile, compilerOptions, host).resolvedModule;
   });
-  return ts.createProgram(Object.keys(files), compilerOptions, host);
+  return ts.createProgram({ rootNames: Object.keys(files), options: compilerOptions, host, projectReferences });
 }
 
 function verifyQuintInvariant(fileName: string, program: string, invariant: string): ProjectTemporalProperty {
@@ -133,14 +185,21 @@ function verifyQuintInvariant(fileName: string, program: string, invariant: stri
   }
 }
 
-export async function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult> {
+interface ProjectVerificationCompilerContext {
+  project: TypeScriptProject;
+}
+
+async function verifyUneffectProjectFiles(
+  options: VerifyUneffectProjectOptions,
+  compilerContext?: ProjectVerificationCompilerContext,
+): Promise<VerifyUneffectProjectResult> {
   const obligations: ProjectVerificationObligation[] = [];
   const diagnostics: Array<ContractDiagnostic | InstrumentDiagnostic | TypedArrayDiagnostic | ProjectOwnershipDiagnostic | AssumptionPolicyDiagnostic | EffectDiagnostic | TypeScriptCheckerDiagnostic> = [];
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
   const typedArrays = await verifyTypedArraySafetyInProgram(options.files);
-  const program = inMemoryProgram(options.files);
+  const program = inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
   const typescriptDiagnostics = Object.keys(options.files).flatMap((fileName) => {
     const source = program.getSourceFile(fileName);
     return source ? [
@@ -238,5 +297,99 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
     obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects,
     ...(temporal ? { temporal } : {}), ...(moduleInitialization ? { moduleInitialization } : {}),
   };
-  return { ...partial, assurance: assessProjectVerification(partial, Object.keys(options.files)) };
+  return { ...partial, assurance: assessProjectVerification(partial, Object.keys(options.files), compilerContext?.project.provenance) };
+}
+
+function workspaceBlocker(blocker: TypeScriptWorkspaceBlocker): ProjectWorkspaceVerificationBlocker {
+  return {
+    kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
+    ...(blocker.reference === undefined ? {} : { reference: blocker.reference }),
+  };
+}
+
+function workspaceFiles(project: TypeScriptProject): { files: Record<string, string>; blocker?: ProjectWorkspaceVerificationBlocker } {
+  const files: Record<string, string> = {};
+  for (const fileName of project.fileNames) {
+    const source = ts.sys.readFile(fileName);
+    if (source === undefined) return { files, blocker: {
+      kind: "source-read", classification: "unknown", projectFile: project.projectFile,
+      subject: fileName, message: `cannot read selected TypeScript source ${fileName}`,
+    } };
+    files[fileName] = source;
+  }
+  return { files };
+}
+
+async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions): Promise<VerifyUneffectWorkspaceResult> {
+  const workspace = loadTypeScriptWorkspace(options.projectFile);
+  const blockers = workspace.blockers.map(workspaceBlocker);
+  if (options.buildArtifacts === "require-fresh" && workspace.buildArtifacts.status !== "fresh") blockers.push({
+    kind: "build-artifact", classification: "unknown", projectFile: workspace.rootProjectFile,
+    message: workspace.buildArtifacts.status === "stale"
+      ? "TypeScript SolutionBuilder reports stale or missing composite build artifacts"
+      : "TypeScript SolutionBuilder did not establish composite build-artifact freshness",
+  });
+  const projects: ProjectWorkspaceVerificationDomain[] = [];
+  const base: VerifyUneffectProjectBaseOptions = {
+    ...(options.runtimeAssertions === undefined ? {} : { runtimeAssertions: options.runtimeAssertions }),
+    ...(options.temporalRuntime === undefined ? {} : { temporalRuntime: options.temporalRuntime }),
+    ...(options.nodeTopLevelMode === undefined ? {} : { nodeTopLevelMode: options.nodeTopLevelMode }),
+    ...(options.temporalRoot === undefined ? {} : { temporalRoot: options.temporalRoot }),
+    ...(options.assumptionPolicy === undefined ? {} : { assumptionPolicy: options.assumptionPolicy }),
+    ...(options.builtinRegistry === undefined ? {} : { builtinRegistry: options.builtinRegistry }),
+  };
+  for (const project of workspace.projects) {
+    if (project.fileNames.length === 0) continue;
+    const selected = workspaceFiles(project);
+    if (selected.blocker) { blockers.push(selected.blocker); continue; }
+    const moduleInitializationEntry = options.moduleInitializationEntry === undefined
+      ? undefined : resolve(options.moduleInitializationEntry);
+    const verification = await verifyUneffectProjectFiles({
+      ...base, files: selected.files,
+      ...(moduleInitializationEntry !== undefined && project.fileNames.includes(moduleInitializationEntry)
+        ? { moduleInitializationEntry } : {}),
+    }, { project });
+    projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
+    for (const blocker of verification.assurance.blockers) blockers.push({
+      kind: blocker.domain, classification: blocker.classification, projectFile: project.projectFile,
+      subject: blocker.subject, message: blocker.message,
+    });
+  }
+  const checkedConfigs = new Set(projects.map((item) => item.project.projectFile));
+  for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
+    kind: "typescript", classification: "unknown", projectFile: project.projectFile,
+    message: project.provenance.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
+  });
+  const assumptions = projects.reduce((total, project) => total + project.verification.assurance.assumptions, 0);
+  const status: ProjectWorkspaceAssurance["status"] = blockers.some((blocker) => blocker.classification === "violation")
+    ? "violated" : blockers.length > 0 ? "unknown" : assumptions > 0 ? "assumed" : "verified";
+  const assurance: ProjectWorkspaceAssurance = {
+    status, passed: blockers.length === 0, assumptions, blockers,
+    claims: blockers.length === 0 ? [
+      "every referenced compiler domain passed project verification",
+      "every selected source root belongs to exactly one TypeScript project",
+      "every participating config resolves the exact analyzer TypeScript version",
+    ] : [],
+    exclusions: [
+      "effect, contract, ownership, and temporal evidence is not composed across project boundaries",
+      ...(options.buildArtifacts === "require-fresh" ? [] : ["composite build-artifact freshness was observed but not required"]),
+      "declaration output content integrity and semantic equivalence are not independently validated",
+      ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions)),
+    ],
+  };
+  return {
+    schema: "uneffect-project-workspace/v1", rootProjectFile: workspace.rootProjectFile,
+    references: workspace.references, buildOrder: workspace.buildOrder,
+    buildArtifacts: workspace.buildArtifacts,
+    configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })),
+    projects, blockers, assurance,
+  };
+}
+
+export function verifyUneffectProject(options: VerifyUneffectProjectOptions): Promise<VerifyUneffectProjectResult>;
+export function verifyUneffectProject(options: VerifyUneffectWorkspaceOptions): Promise<VerifyUneffectWorkspaceResult>;
+export function verifyUneffectProject(
+  options: VerifyUneffectProjectOptions | VerifyUneffectWorkspaceOptions,
+): Promise<VerifyUneffectProjectResult | VerifyUneffectWorkspaceResult> {
+  return options.projectFile !== undefined ? verifyUneffectWorkspace(options) : verifyUneffectProjectFiles(options);
 }

@@ -46,6 +46,18 @@ export interface TypeScriptWorkspace {
   blockers: TypeScriptWorkspaceBlocker[];
   /** Child-first topological order; meaningful only when no cycle blocker exists. */
   buildOrder: string[];
+  buildArtifacts: TypeScriptBuildArtifactEvidence;
+}
+
+export interface TypeScriptBuildArtifactObservation {
+  code: number;
+  message: string;
+}
+
+export interface TypeScriptBuildArtifactEvidence {
+  /** TypeScript SolutionBuilder freshness, not an independent output-content proof. */
+  status: "fresh" | "stale" | "unknown";
+  observations: TypeScriptBuildArtifactObservation[];
 }
 
 function diagnosticMessage(diagnostic: ts.Diagnostic): string {
@@ -162,13 +174,19 @@ export function loadTypeScriptWorkspace(projectFile: string): TypeScriptWorkspac
   };
 
   visit(rootProjectFile);
-  if (references.length > 0) {
+  const buildArtifactObservations: TypeScriptBuildArtifactObservation[] = [];
+  const hasBuildArtifacts = references.length > 0 || projects.some((project) => project.compilerOptions.composite || project.compilerOptions.incremental);
+  if (hasBuildArtifacts) {
     const diagnostics: ts.Diagnostic[] = [];
     const host = ts.createSolutionBuilderHost(ts.sys);
     host.reportDiagnostic = (diagnostic) => { diagnostics.push(diagnostic); };
-    host.reportSolutionBuilderStatus = () => undefined;
+    host.reportSolutionBuilderStatus = (diagnostic) => {
+      if (diagnostic.code !== 6355 && diagnostic.code !== 6357 && diagnostic.code !== 6374) {
+        buildArtifactObservations.push({ code: diagnostic.code, message: diagnosticMessage(diagnostic) });
+      }
+    };
     host.writeFile = () => undefined;
-    ts.createSolutionBuilder(host, [rootProjectFile], { dry: true }).build();
+    ts.createSolutionBuilder(host, [rootProjectFile], { dry: true, verbose: true }).build();
     for (const diagnostic of diagnostics) {
       if (diagnostic.category !== ts.DiagnosticCategory.Error || diagnostic.code === 5083 || diagnostic.code === 6202) continue;
       blockers.push({
@@ -181,5 +199,12 @@ export function loadTypeScriptWorkspace(projectFile: string): TypeScriptWorkspac
   if (root && root.fileNames.length === 0 && references.length === 0) {
     throw new Error(`TypeScript project ${rootProjectFile} does not select any source files`);
   }
-  return { rootProjectFile, projects, references, blockers, buildOrder: projects.map((project) => project.projectFile) };
+  const staleBuildCodes = new Set([6350, 6352, 6353, 6362, 6363, 6381, 6382, 6383, 6399, 6400, 6401, 6406, 6412, 6419, 6420]);
+  const freshBuildCodes = new Set([6351, 6354, 6361]);
+  const buildArtifactStatus = buildArtifactObservations.some((item) => staleBuildCodes.has(item.code)) ? "stale"
+    : buildArtifactObservations.some((item) => freshBuildCodes.has(item.code)) ? "fresh" : "unknown";
+  return {
+    rootProjectFile, projects, references, blockers, buildOrder: projects.map((project) => project.projectFile),
+    buildArtifacts: { status: buildArtifactStatus, observations: buildArtifactObservations },
+  };
 }

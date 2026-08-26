@@ -1,5 +1,6 @@
 import ts from "typescript";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
@@ -19,6 +20,83 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("verifies solution projects as independent compiler domains and aggregates provenance fail closed", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-project-workspace-"));
+    const root = join(directory, "tsconfig.json");
+    const packageDirectory = join(directory, "node_modules", "typescript");
+    const aDirectory = join(directory, "packages", "a");
+    const bDirectory = join(directory, "packages", "b");
+    try {
+      mkdirSync(join(aDirectory, "src"), { recursive: true });
+      mkdirSync(join(bDirectory, "src"), { recursive: true });
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
+      writeFileSync(join(aDirectory, "src", "a.ts"), "export const a: number = 1\n");
+      writeFileSync(join(bDirectory, "src", "b.ts"), "export function loose(value) { return value }\n");
+      writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"],
+      }));
+      writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: false, types: [] },
+        include: ["src/**/*.ts"],
+      }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+
+      const verified = await verifyUneffectProject({ projectFile: root });
+      expect(verified).toMatchObject({
+        schema: "uneffect-project-workspace/v1", rootProjectFile: root,
+        assurance: { status: "verified", passed: true },
+      });
+      expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
+        properties: { schema: { const: "uneffect-project-workspace/v1" } },
+        required: expect.arrayContaining(["buildArtifacts", "configs", "projects", "blockers", "assurance"]),
+      });
+      expect(verified.projects.map((item) => item.project.projectFile)).toEqual([
+        join(aDirectory, "tsconfig.json"), join(bDirectory, "tsconfig.json"),
+      ]);
+      expect(verified.projects.map((item) => item.project.compiler.parity)).toEqual(["exact", "exact"]);
+      expect(verified.projects.map((item) => item.verification.assurance.status)).toEqual(["verified", "verified"]);
+      expect(verified.assurance.claims).toContain("every referenced compiler domain passed project verification");
+      expect(verified.assurance.exclusions).toContain("effect, contract, ownership, and temporal evidence is not composed across project boundaries");
+      expect(verified.buildArtifacts.status).toBe("stale");
+
+      const staleArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(staleArtifacts.assurance).toMatchObject({ status: "unknown", passed: false });
+      expect(staleArtifacts.blockers).toContainEqual(expect.objectContaining({ kind: "build-artifact", classification: "unknown" }));
+
+      const buildHost = ts.createSolutionBuilderHost(ts.sys);
+      expect(ts.createSolutionBuilder(buildHost, [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const freshArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(freshArtifacts.buildArtifacts).toMatchObject({ status: "fresh" });
+      expect(freshArtifacts.assurance).toMatchObject({ status: "verified", passed: true });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), "export function broken(value) { return value }\n");
+      const invalidChild = await verifyUneffectProject({ projectFile: root });
+      expect(invalidChild.assurance).toMatchObject({ status: "violated", passed: false });
+      expect(invalidChild.blockers).toContainEqual(expect.objectContaining({
+        kind: "typescript", classification: "violation", projectFile: join(aDirectory, "tsconfig.json"),
+      }));
+      expect(invalidChild.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))?.verification.assurance)
+        .toMatchObject({ status: "verified", passed: true });
+      writeFileSync(join(aDirectory, "src", "a.ts"), "export const a: number = 1\n");
+
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/missing" }] }));
+      const missing = await verifyUneffectProject({ projectFile: root });
+      expect(missing.assurance).toMatchObject({ status: "unknown", passed: false });
+      expect(missing.blockers).toContainEqual(expect.objectContaining({ kind: "missing-reference", classification: "unknown" }));
+
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: "0.0.0-drift", main: "index.js" }));
+      const drifted = await verifyUneffectProject({ projectFile: root });
+      expect(drifted.assurance).toMatchObject({ status: "unknown", passed: false });
+      expect(drifted.blockers).toContainEqual(expect.objectContaining({ kind: "typescript", classification: "unknown" }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("makes module-order verification an explicit project assurance domain", async () => {
     const root = join(process.cwd(), "virtual-module-order");
     const dependency = join(root, "dependency.mts"), entry = join(root, "entry.mts");

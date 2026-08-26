@@ -75,6 +75,23 @@ This is a compatibility finding, not an application defect. Reliable assurance
 requires the consumer and Uneffect to agree on the TypeScript version and to
 make version-sensitive compiler defaults explicit.
 
+The new programmatic boundary was also run read-only against
+`mnemo-server/tsconfig.json` at revision
+`5cbf27107339dbbf92546065f3df5b6dec9dddce`:
+
+```ts
+await verifyUneffectProject({ projectFile: "/path/to/mnemo/mnemo-server/tsconfig.json" })
+```
+
+It returned `uneffect-project-workspace/v1` with one config/domain, no reference
+edges, and `assurance.status: "violated"`. The aggregate retained 124 TypeScript
+and 1,028 downstream unknown-effect/diagnostic blockers rather than allowing
+the large inferred inventory to hide the invalid compiler boundary. These
+counts describe this revision and local dependency state; they are regression
+observations, not stable quality metrics for mnemo.
+The config is not composite and produced no SolutionBuilder artifact status, so
+`buildArtifacts.status` is `unknown`; freshness was not required for this probe.
+
 ## workhub solution graph
 
 Observed read-only on 2026-08-26 against `mizchi/workhub` revision
@@ -102,3 +119,17 @@ workflows, nor has it composed effects across the packages. The actionable
 result is narrower: the requested assurance boundary is ambiguous and therefore
 cannot pass until the solution root's source ownership is made explicit and the
 consumer TypeScript installation is resolvable.
+
+The same revision was then exercised through
+`verifyUneffectProject({ projectFile })`. The programmatic result retained all
+eight configs and thirteen edges, ran eight independent verifier domains, and
+failed with the same 54 duplicate-root blockers plus 308 TypeScript and 468
+unknown-effect/diagnostic blockers. It recorded 207 trusted assumptions but did
+not let them override the violations. This parity check locks the intended
+relationship between the CLI graph decision and the richer verifier bundle;
+it still does not establish cross-package semantic composition.
+SolutionBuilder additionally reported eight TS6352 observations: every
+configured buildinfo output was absent, so `buildArtifacts.status` was `stale`.
+The adoption probe did not require prebuilt outputs. Enabling
+`buildArtifacts: "require-fresh"` or the CLI flag would add a separate unknown
+blocker before any result could authorize consumption of those artifacts.

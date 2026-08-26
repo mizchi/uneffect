@@ -23,6 +23,33 @@ instead of reconstructing it from diagnostics. Program-produced summaries
 include a stable `fileName:start` ID and source span, avoiding ambiguity between
 same-named functions in different modules.
 
+The overload that accepts a TypeScript configuration preserves solution
+boundaries rather than constructing one merged Program:
+
+```ts
+const workspace = await verifyUneffectProject({ projectFile: "tsconfig.json" })
+
+if (!workspace.assurance.passed) {
+  for (const blocker of workspace.blockers) console.error(blocker)
+}
+```
+
+Its `uneffect-project-workspace/v1` envelope contains the reference graph,
+child-first build order, every config/root/compiler provenance tuple, every
+per-domain `VerifyUneffectProjectResult`, and aggregate assurance. Different
+valid compiler options remain independent. Missing/malformed/cyclic graphs,
+ambiguous root ownership, unreadable sources, TypeScript version drift, and a
+failed child domain block the aggregate result. The published envelope schema
+is `schemas/uneffect-project-workspace-v1.schema.json`.
+
+This aggregation does not link function summaries or solver obligations across
+project declaration boundaries. It also does not establish that `.d.ts`,
+`.tsbuildinfo`, or emitted JavaScript bytes are semantically equivalent to the
+sources. Pass `buildArtifacts: "require-fresh"` to make TypeScript
+SolutionBuilder's dry-run freshness judgment load-bearing; missing/stale
+outputs, compiler/config drift, and incomplete buildinfo then block assurance.
+The stronger content-integrity claim remains a machine-readable exclusion.
+
 `uneffect evidence file.ts` emits `schemaVersion: 3`. Each summary retains its
 stable Program identity, source file, UTF-16 span, formatted concrete effects,
 and evidence status; polymorphic Generator consumers

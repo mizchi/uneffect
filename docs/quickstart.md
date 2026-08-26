@@ -100,6 +100,12 @@ the aggregate `outcome` and `assurance`, every child in `projects`, and graph
 empty leaf configs fail closed. Explicit positional files continue to select a
 single compiler domain; they do not request solution expansion.
 
+If downstream projects rely on checked-in or cached composite outputs, add
+`--require-build-artifacts`. This rejects missing/stale `.d.ts` and buildinfo
+according to TypeScript SolutionBuilder. It does not prove that independently
+modified output bytes match their source; retain trusted build isolation and
+artifact integrity controls for that stronger claim.
+
 To see a load-bearing failure, change the return to `return value - 1`. The
 postcondition must then fail with a source-mapped counterexample. Also replace
 `Console` on `report` with `Fetch`: the `console.log` call must produce a

@@ -53,6 +53,7 @@ export interface CheckWorkspaceJsonReport {
   rootProjectFile: string;
   references: Array<{ from: string; to: string }>;
   buildOrder: string[];
+  buildArtifacts: { status: "fresh" | "stale" | "unknown"; observations: Array<{ code: number; message: string }> };
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: CheckJsonReport[];
   blockers: WorkspaceCheckBlocker[];
@@ -91,11 +92,18 @@ export function createCheckWorkspaceJsonReport(
   workspace: TypeScriptWorkspace,
   projects: CheckJsonReport[],
   profile?: AssuranceProfile,
+  options: { requireFreshBuildArtifacts?: boolean } = {},
 ): CheckWorkspaceJsonReport {
   const blockers: WorkspaceCheckBlocker[] = workspace.blockers.map((blocker) => ({
     kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
     ...(blocker.reference === undefined ? {} : { reference: blocker.reference }),
   }));
+  if (options.requireFreshBuildArtifacts && workspace.buildArtifacts.status !== "fresh") blockers.push({
+    kind: "build-artifact", classification: "unknown", projectFile: workspace.rootProjectFile,
+    message: workspace.buildArtifacts.status === "stale"
+      ? "TypeScript SolutionBuilder reports stale or missing composite build artifacts"
+      : "TypeScript SolutionBuilder did not establish composite build-artifact freshness",
+  });
   const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
   if (profile) for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", projectFile: project.projectFile,
@@ -123,9 +131,12 @@ export function createCheckWorkspaceJsonReport(
         "every referenced compiler domain passed its selected assurance profile",
         "every selected source root belongs to exactly one checked TypeScript project",
         "every project config resolves the exact analyzer TypeScript version",
+        ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
+        ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
+        "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
       ],
     };
@@ -133,6 +144,7 @@ export function createCheckWorkspaceJsonReport(
   return {
     schema: "uneffect-workspace-check/v1", outcome: failed ? "failed" : "passed",
     rootProjectFile: workspace.rootProjectFile, references: workspace.references, buildOrder: workspace.buildOrder,
+    buildArtifacts: workspace.buildArtifacts,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
   };
 }

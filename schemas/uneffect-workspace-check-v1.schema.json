@@ -4,19 +4,30 @@
   "title": "Uneffect workspace check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "configs", "projects", "blockers", "assurance"],
+  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-workspace-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
     "rootProjectFile": { "type": "string" },
     "references": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
     "buildOrder": { "type": "array", "items": { "type": "string" } },
+    "buildArtifacts": { "$ref": "#/$defs/buildArtifacts" },
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "./uneffect-check-v1.schema.json" } },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
   },
   "$defs": {
+    "buildArtifacts": {
+      "type": "object", "additionalProperties": false, "required": ["status", "observations"],
+      "properties": {
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "observations": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["code", "message"],
+          "properties": { "code": { "type": "integer" }, "message": { "type": "string" } }
+        } }
+      }
+    },
     "reference": {
       "type": "object", "additionalProperties": false, "required": ["from", "to"],
       "properties": { "from": { "type": "string" }, "to": { "type": "string" } }

@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-project-workspace-v1.schema.json",
+  "title": "Uneffect programmatic project-workspace verification v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"],
+  "properties": {
+    "schema": { "const": "uneffect-project-workspace/v1" },
+    "rootProjectFile": { "type": "string" },
+    "references": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+    "buildOrder": { "type": "array", "items": { "type": "string" } },
+    "buildArtifacts": { "$ref": "#/$defs/buildArtifacts" },
+    "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
+    "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } },
+    "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+    "assurance": { "$ref": "#/$defs/assurance" }
+  },
+  "$defs": {
+    "buildArtifacts": {
+      "type": "object", "additionalProperties": false, "required": ["status", "observations"],
+      "properties": {
+        "status": { "enum": ["fresh", "stale", "unknown"] },
+        "observations": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["code", "message"],
+          "properties": { "code": { "type": "integer" }, "message": { "type": "string" } }
+        } }
+      }
+    },
+    "reference": {
+      "type": "object", "additionalProperties": false, "required": ["from", "to"],
+      "properties": { "from": { "type": "string" }, "to": { "type": "string" } }
+    },
+    "compiler": {
+      "type": "object", "additionalProperties": false,
+      "required": ["analyzerVersion", "analyzerPackageFile", "consumerVersion", "consumerPackageFile", "consumerModuleFile", "parity"],
+      "properties": {
+        "analyzerVersion": { "type": "string" }, "analyzerPackageFile": { "type": "string" },
+        "consumerVersion": { "type": ["string", "null"] }, "consumerPackageFile": { "type": ["string", "null"] },
+        "consumerModuleFile": { "type": ["string", "null"] }, "parity": { "enum": ["exact", "mismatch", "unknown"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler"],
+      "properties": { "projectFile": { "type": "string" }, "compiler": { "$ref": "#/$defs/compiler" } }
+    },
+    "config": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler", "rootFiles"],
+      "properties": {
+        "projectFile": { "type": "string" }, "compiler": { "$ref": "#/$defs/compiler" },
+        "rootFiles": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "blocker": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "classification", "projectFile", "message"],
+      "properties": {
+        "kind": { "type": "string" }, "classification": { "enum": ["unknown", "violation"] },
+        "projectFile": { "type": "string" }, "message": { "type": "string" },
+        "reference": { "type": "string" }, "subject": { "type": "string" }
+      }
+    },
+    "projectAssurance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "passed", "assumptions", "blockers", "coverage", "claims", "exclusions"],
+      "properties": {
+        "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
+        "passed": { "type": "boolean" }, "assumptions": { "type": "integer", "minimum": 0 },
+        "blockers": { "type": "array", "items": { "type": "object" } },
+        "coverage": { "type": "object" },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "verification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["obligations", "diagnostics", "emittedFiles", "typedArrays", "ownership", "assumptions", "effects", "assurance"],
+      "properties": {
+        "obligations": { "type": "array", "items": { "type": "object" } },
+        "diagnostics": { "type": "array", "items": { "type": "object" } },
+        "emittedFiles": { "type": "object", "additionalProperties": { "type": "string" } },
+        "typedArrays": { "type": "object" }, "ownership": { "type": "object" },
+        "assumptions": { "type": "object" }, "effects": { "type": "object" },
+        "assurance": { "$ref": "#/$defs/projectAssurance" },
+        "temporal": { "type": "object" }, "moduleInitialization": { "type": "object" }
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false, "required": ["project", "rootFiles", "verification"],
+      "properties": {
+        "project": { "$ref": "#/$defs/provenance" },
+        "rootFiles": { "type": "array", "items": { "type": "string" } },
+        "verification": { "$ref": "#/$defs/verification" }
+      }
+    },
+    "assurance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["status", "passed", "assumptions", "blockers", "claims", "exclusions"],
+      "properties": {
+        "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
+        "passed": { "type": "boolean" }, "assumptions": { "type": "integer", "minimum": 0 },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

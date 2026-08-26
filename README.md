@@ -116,6 +116,17 @@ checked as separate compiler domains and the command emits
 closed; this still does not compose cross-project proofs or validate build
 artifacts.
 
+The programmatic overload `verifyUneffectProject({ projectFile })` applies the
+same graph separation to the effect, contract, typed-array, ownership,
+assumption, and optional temporal verifier bundle. It returns
+`uneffect-project-workspace/v1` with every child result and one aggregate
+assurance decision. Cross-project evidence composition and declaration-output
+validation remain explicit exclusions.
+Use `--require-build-artifacts` in the CLI or
+`buildArtifacts: "require-fresh"` in the project API when TypeScript composite
+output freshness is part of the boundary. This is SolutionBuilder evidence,
+not an independent output-content proof.
+
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for
 both `verified` and policy-accepted `assumed` results. Consumers that must reject

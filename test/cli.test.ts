@@ -58,6 +58,9 @@ describe("uneffect command line", () => {
     expect(await runCli(["check", "--stict", "fixtures/effects/missing-console.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("--stict");
     expect(io.stderr).toContain("usage: uneffect check");
+    const misplacedBuildGate = capture();
+    expect(await runCli(["check", "--require-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedBuildGate)).toBe(exitCode.usage);
+    expect(misplacedBuildGate.stderr).toContain("requires --project without positional files");
   });
 
   it("loads an exact caller-owned registry and fails closed on runtime drift", async () => {
@@ -305,6 +308,7 @@ describe("uneffect command line", () => {
       expect(valid.stderr).toBe("");
       const validReport = JSON.parse(valid.stdout) as CheckWorkspaceJsonReport;
       expect(validReport).toMatchObject({ schema: "uneffect-workspace-check/v1", outcome: "passed", rootProjectFile: project, blockers: [] });
+      expect(validReport.buildArtifacts.status).toBe("stale");
       expect(validReport.buildOrder).toEqual([join(a, "tsconfig.json"), join(b, "tsconfig.json"), project]);
       expect(validReport.configs.find((item) => item.projectFile === join(a, "tsconfig.json"))?.rootFiles).toEqual([join(a, "src", "a.ts")]);
       expect(validReport.references).toEqual(expect.arrayContaining([
@@ -317,11 +321,24 @@ describe("uneffect command line", () => {
       ]);
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
-        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "configs", "projects", "blockers", "assurance"]),
+        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"]),
+      });
+      const staleArtifacts = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
+      expect(JSON.parse(staleArtifacts.stdout)).toMatchObject({
+        buildArtifacts: { status: "stale" },
+        blockers: expect.arrayContaining([expect.objectContaining({ kind: "build-artifact", classification: "unknown" })]),
+      });
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const freshArtifacts = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], freshArtifacts)).toBe(exitCode.success);
+      expect(JSON.parse(freshArtifacts.stdout)).toMatchObject({
+        outcome: "passed", buildArtifacts: { status: "fresh" }, assurance: { status: "verified", passed: true },
       });
       const validText = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown"], validText)).toBe(exitCode.success);
       expect(validText.stderr).toContain(`project ${join(a, "tsconfig.json")}`);
+      expect(validText.stderr).toContain("build artifacts: fresh (TypeScript SolutionBuilder dry run)");
       expect(validText.stderr).toContain("workspace: passed; 2 checked compiler domain(s), 0 blocker(s)");
 
       writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/missing" }] }));

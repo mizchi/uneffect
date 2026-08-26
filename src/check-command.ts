@@ -11,7 +11,7 @@ import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-r
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--require-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -19,6 +19,7 @@ export const checkCommand: CliCommand = {
     "--assurance  fail on non-proof evidence: no-unknown, or declared",
     "--config     load a versioned caller-owned semantic registry",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
+    "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
     "--json       emit a versioned decision report to stdout, including failures",
     "",
     "This is the default command: `uneffect <file.ts>` runs it.",
@@ -30,10 +31,14 @@ export const checkCommand: CliCommand = {
       assurance: { type: "string" },
       config: { type: "string" },
       project: { type: "string" },
+      "require-build-artifacts": { type: "boolean" },
       json: { type: "boolean" },
     });
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
+    if (values["require-build-artifacts"] && (values.project === undefined || positionals.length > 0)) {
+      throw new CliUsageError("--require-build-artifacts requires --project without positional files");
+    }
     const assurance = values.assurance;
     if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared") {
       throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown or declared`);
@@ -49,7 +54,7 @@ export const checkCommand: CliCommand = {
       }
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1)) {
+    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"])) {
       const reports = [];
       for (const domain of workspace.projects) {
         if (domain.fileNames.length === 0) continue;
@@ -61,7 +66,9 @@ export const checkCommand: CliCommand = {
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
       }
-      const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined);
+      const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
+        requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"]),
+      });
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {
         for (const item of reports) {
@@ -71,6 +78,7 @@ export const checkCommand: CliCommand = {
           if (item.assessment) io.err(formatAssuranceAssessment(item.assessment));
         }
         for (const blocker of report.blockers) io.err(`error workspace/${blocker.kind} ${blocker.projectFile}\n  message: ${blocker.message}\n`);
+        io.err(`build artifacts: ${report.buildArtifacts.status} (TypeScript SolutionBuilder dry run)\n`);
         io.err(`workspace: ${report.outcome}; ${reports.length} checked compiler domain(s), ${report.blockers.length} blocker(s)\n`);
       }
       return report.outcome === "passed" ? exitCode.success : exitCode.failed;

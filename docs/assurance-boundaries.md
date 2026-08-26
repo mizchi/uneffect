@@ -74,7 +74,8 @@ A passing workspace result establishes only that every listed domain passed
 the selected profile relative to the recorded assumptions and that root-source
 ownership was unambiguous. It is not a cross-project whole-program proof:
 effect/refinement summaries are not yet composed across declaration outputs,
-incremental build artifacts are not validated, and runtime package resolution
+build-artifact freshness is not load-bearing unless explicitly required,
+declaration contents are not independently attested, and runtime package resolution
 outside the selected Programs remains excluded. A graph with a cycle has no
 usable build-order claim even though its discovered nodes remain reportable.
 
@@ -82,12 +83,22 @@ The programmatic `verifyUneffectProject` boundary applies the same rule across
 domains: contract and typed-array obligations become `unknown`, and temporal
 properties become `error` without running their backend. The API can still
 return diagnostics, models, and emitted JavaScript for gradual adoption; those
-outputs are not proof evidence.
-It currently constructs an in-memory Program with Uneffect defaults rather
-than loading a consumer tsconfig, so its result does not establish consumer
-compiler parity. The CLI workspace behavior above is not yet available through
-this programmatic API; carrying referenced configs and compiler provenance
-through it remains tracked in issue #20.
+outputs are not proof evidence. `verifyUneffectProject({ files })` deliberately
+uses Uneffect defaults and therefore does not establish consumer tsconfig or
+compiler parity.
+
+`verifyUneffectProject({ projectFile })` instead loads the solution graph and
+runs the verifier bundle once per source-bearing config under that config's
+compiler options, native references, root selection, and compiler provenance.
+It returns `uneffect-project-workspace/v1`; graph blockers, compiler drift, and
+every child assurance blocker feed one fail-closed workspace assessment. Its
+success still excludes cross-project effect/refinement composition,
+and independent declaration-output content validation. SolutionBuilder
+freshness is always reported and can be made load-bearing with
+`--require-build-artifacts` or `buildArtifacts: "require-fresh"`; without that
+opt-in it remains an exclusion. Even `fresh` establishes TypeScript's
+timestamp/buildinfo/config/version judgment, not a content hash or semantic
+equivalence proof for emitted declarations.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
 It rejects unknown effect summaries, nested unknown capability scopes,

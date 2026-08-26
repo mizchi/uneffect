@@ -119,6 +119,20 @@ empty leaves, and duplicate root ownership fail closed. The workspace result
 does not claim cross-project effect/refinement composition or validate emitted
 build artifacts.
 
+Add `--require-build-artifacts` when the checked boundary consumes composite
+outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:
+
+```sh
+npx uneffect check --project tsconfig.json --infer \
+  --assurance no-unknown --require-build-artifacts --json
+```
+
+`buildArtifacts` always records the TypeScript SolutionBuilder dry-run status
+and source messages. Without the flag it is observational and appears as an
+exclusion. With the flag, `stale` or `unknown` adds an assurance blocker. A
+`fresh` result means TypeScript considers the configured build current; it is
+not a cryptographic or semantic attestation of output bytes.
+
 | Code | Meaning |
 | --- | --- |
 | 0 | Nothing to report. |

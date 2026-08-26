@@ -192,7 +192,7 @@ export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinReg
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
 export { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
-export type { TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "./typescript-project.js";
+export type { TypeScriptBuildArtifactEvidence, TypeScriptBuildArtifactObservation, TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
 export type { CheckJsonReport, CheckReportEffect, CheckWorkspaceJsonReport, WorkspaceCheckAssurance, WorkspaceCheckBlocker } from "./check-report.js";
 export type {
@@ -247,6 +247,6 @@ export type { ReactActionErrorBoundaryOptions, ReactActionQueueOptions, ReactCom
 export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProject } from "./custom-validators.js";
 export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
 export { verifyUneffectProject } from "./project-verification.js";
-export type { ProjectVerificationObligation, VerifyUneffectProjectOptions, VerifyUneffectProjectResult } from "./project-verification.js";
+export type { ProjectVerificationObligation, ProjectWorkspaceAssurance, ProjectWorkspaceVerificationBlocker, ProjectWorkspaceVerificationDomain, VerifyUneffectProjectBaseOptions, VerifyUneffectProjectOptions, VerifyUneffectProjectResult, VerifyUneffectWorkspaceOptions, VerifyUneffectWorkspaceResult } from "./project-verification.js";
 export { assessProjectVerification } from "./project-assurance.js";
 export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";
