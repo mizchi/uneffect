@@ -115,13 +115,15 @@ A verified child iterator consumer whose every parameter has an
 factories, supported stored iterators, forwarded iterator parameters, and
 standard pure iterators. Its bound is checked in the parent Program, including
 the declared Promise-consumer `Throw`-to-rejection behavior. Success still excludes cross-project refinements, contracts,
-ownership, temporal composition, and independent declaration-output content
-validation. SolutionBuilder
+ownership, and temporal composition. Every `.d.ts` consumed by an Effect link
+must exactly match a same-compiler in-memory declaration re-emission; missing or
+different bytes block the link even when SolutionBuilder says `fresh`. SolutionBuilder
 freshness is always reported and can be made load-bearing with
 `--require-build-artifacts` or `buildArtifacts: "require-fresh"`; without that
 opt-in it remains an exclusion. Even `fresh` establishes TypeScript's
-timestamp/buildinfo/config/version judgment, not a content hash or semantic
-equivalence proof for emitted declarations.
+timestamp/buildinfo/config/version judgment. The separate Effect-link integrity
+ledger records expected and actual SHA-256 digests. It trusts the exact selected
+TypeScript compiler and is not an independently checkable compiler proof.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
 It rejects unknown effect summaries, nested unknown capability scopes,

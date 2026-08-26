@@ -114,16 +114,18 @@ For a solution-style root with no positional files, referenced configs are
 checked as separate compiler domains and the command emits
 `uneffect-workspace-check/v1`. Graph errors and ambiguous source ownership fail
 closed. The CLI composes the same narrow, verified function and module Effect interface as
-the project API and records it in `effectComposition`; it does not compose the
-other proof domains or validate build artifact contents.
+the project API and records it in `effectComposition`; every consumed child
+`.d.ts` must exactly match an in-memory same-compiler declaration re-emission.
+It does not compose the other proof domains.
 
 The programmatic overload `verifyUneffectProject({ projectFile })` applies the
 same graph separation to the effect, contract, typed-array, ownership,
 assumption, and optional temporal verifier bundle. It returns
 `uneffect-project-workspace/v1` with every child result and one aggregate
-assurance decision. Cross-project evidence composition and declaration-output
-validation remain explicit exclusions except for verified function and module
-Effect summaries. Those summaries are composed child-first at resolved call sites/imports and
+assurance decision. Cross-project evidence composition remains limited to
+verified function and module Effect summaries. Those summaries are composed
+child-first at resolved call sites/imports only after the consumed declaration
+file exactly matches an in-memory re-emission, and
 reported in `effectComposition`. A verified function summary may substitute a
 parameter-rooted `Mutate` region into an addressable identifier/member argument at
 each call site. Missing, spread, call-result, and other unstable arguments
@@ -142,8 +144,10 @@ standard pure-iterator arguments; Promise consumer contracts preserve their
 `Throw`-to-rejection conversion.
 Use `--require-build-artifacts` in the CLI or
 `buildArtifacts: "require-fresh"` in the project API when TypeScript composite
-output freshness is part of the boundary. This is SolutionBuilder evidence,
-not an independent output-content proof.
+output freshness is part of the boundary. Independently of that opt-in freshness
+gate, every declaration consumed by Effect composition is SHA-256-bound to an
+exact same-compiler in-memory re-emission. This trusts the selected TypeScript
+compiler; it is not a proof certificate for TypeScript itself.
 
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for

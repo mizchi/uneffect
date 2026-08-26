@@ -53,11 +53,12 @@ function kindOf(node: ts.FunctionLikeDeclaration): CallableKind {
 function stableId(node: ts.FunctionLikeDeclaration): string { return `${node.getSourceFile().fileName}:${node.getStart()}`; }
 function isFunctionParameter(checker: ts.TypeChecker, parameter: ts.ParameterDeclaration): boolean { return checker.getTypeAtLocation(parameter).getCallSignatures().length > 0; }
 
-function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter: FrontendSymbolAdapter): InvocationTiming {
+function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter: FrontendSymbolAdapter, argumentIndex?: number): InvocationTiming {
   const operation = adapter.resolveCall(call)?.operation;
   if (operation?.kind === "timer" || operation?.kind === "scheduler-post-task" || operation?.kind === "scheduler-yield") return "deferred";
   if (operation?.kind === "fs" && operation.callbackQueue === "poll") return "deferred";
   if (operation?.kind === "deferred-callback") return "deferred";
+  if (operation?.kind === "inline-callback") return argumentIndex !== undefined && operation.callbackArguments.includes(argumentIndex) ? "inline" : "unknown";
   const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
   const symbol = resolvedSymbol(checker, lookup);
   if (symbol?.name === "catchAll" && symbol.declarations?.some((declaration) => declaration.getSourceFile().fileName.includes("/node_modules/effect/"))) return "deferred";
@@ -501,7 +502,7 @@ export function buildProgramCallGraph(
               ? previous ?? "unknown"
               : targetDeclaration
                 ? byId.get(stableId(targetDeclaration))?.effectParameters.find((item) => item.index === index)?.timing ?? "unknown"
-                : builtinTiming(node, checker, adapter);
+                : builtinTiming(node, checker, adapter, index);
             const joined: InvocationTiming = previous === "unknown" || timing === "unknown" ? "unknown" : previous === "deferred" || timing === "deferred" ? "deferred" : "inline";
             timings.set(parameterIndex, joined);
             edges.push({ caller, kind: "callback-argument", unresolvedName: argument.getText(), timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [] });
@@ -510,7 +511,7 @@ export function buildProgramCallGraph(
             : ts.isIdentifier(argument) ? symbolNodes.get(resolvedSymbol(checker, argument)!) : undefined;
           if (callbackDeclaration) {
             const calleeNode = targetDeclaration ? byId.get(stableId(targetDeclaration)) : undefined;
-            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node, checker, adapter);
+            const timing = calleeNode?.effectParameters.find((item) => item.index === index)?.timing ?? builtinTiming(node, checker, adapter, index);
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [], dischargesThrow: catchesThrow && timing === "inline" });
           }
         });

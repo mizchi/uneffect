@@ -435,8 +435,10 @@ same property is proved for arbitrary TypeScript.
   boundary. Inferred/trusted/unknown summaries, ambiguous matches, unstable
   mutation arguments, inaccessible/non-exported roots, host aliases and cross-realm globals, unbounded iterator
   parameters, and opaque iterator arguments block assurance.
-  Independent declaration-output content validation remains incomplete;
-  SolutionBuilder freshness can be reported or required.
+  Every declaration consumed by an Effect link must exactly match an in-memory
+  same-compiler re-emission, with expected/actual SHA-256 digests in the ledger;
+  SolutionBuilder freshness remains a separate reportable/required gate. This
+  is content integrity, not an independently checkable TypeScript compiler proof.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.

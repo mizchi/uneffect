@@ -19,7 +19,7 @@ import { assessProjectVerification, type ProjectAssuranceAssessment } from "./pr
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
-import { composeWorkspaceEffects, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
+import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
 
 export interface VerifyUneffectProjectBaseOptions {
   runtimeAssertions?: "off" | "fallback";
@@ -340,7 +340,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
   });
   const projects: ProjectWorkspaceVerificationDomain[] = [];
   const effectLinks: WorkspaceEffectLink[] = [], effectBlockers: WorkspaceEffectCompositionBlocker[] = [];
-  const completed: Array<{ project: TypeScriptProject; summaries: EffectAnalysisResult["summaries"] }> = [];
+  const completed: CompletedEffectProject[] = [];
   const base: VerifyUneffectProjectBaseOptions = {
     ...(options.runtimeAssertions === undefined ? {} : { runtimeAssertions: options.runtimeAssertions }),
     ...(options.temporalRuntime === undefined ? {} : { temporalRuntime: options.temporalRuntime }),
@@ -366,7 +366,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
         ? { moduleInitializationEntry } : {}),
     }, { project, program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts });
     projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
-    completed.push({ project, summaries: verification.effects.summaries });
+    completed.push({ project, summaries: verification.effects.summaries, declarationOutputs: inspectDeclarationOutputs(program) });
     for (const blocker of verification.assurance.blockers) blockers.push({
       kind: blocker.domain, classification: blocker.classification, projectFile: project.projectFile,
       subject: blocker.subject, message: blocker.message,
@@ -387,12 +387,13 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       "every selected source root belongs to exactly one TypeScript project",
       "every participating config resolves the exact analyzer TypeScript version",
       ...(effectLinks.length > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
+      ...(effectLinks.length > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
     ] : [],
     exclusions: [
       "contract, ownership, refinement, and temporal evidence is not composed across project boundaries",
       "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
       ...(options.buildArtifacts === "require-fresh" ? [] : ["composite build-artifact freshness was observed but not required"]),
-      "declaration output content integrity and semantic equivalence are not independently validated",
+      "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
       ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions)),
     ],
   };

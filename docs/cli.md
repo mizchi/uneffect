@@ -127,8 +127,9 @@ including re-export chains; JSON records its stable project/source/export identi
 Same-realm `globalThis` is recorded separately as
 `{ "kind": "ambient", "identity": "ecmascript:realm.globalThis" }`; this is
 not a claim about Workers, iframes, `window`, Node `global`, or `process`.
-Fully bounded iterator parameters are instantiated at resolved call sites. Other proof domains and emitted build-artifact contents are
-not composed or validated.
+Fully bounded iterator parameters are instantiated at resolved call sites. Each
+Effect link includes `declarationIntegrity`; the child `.d.ts` must byte-match a
+same-compiler in-memory declaration re-emission. Other proof domains are not composed.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite
 outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:
@@ -141,8 +142,9 @@ npx uneffect check --project tsconfig.json --infer \
 `buildArtifacts` always records the TypeScript SolutionBuilder dry-run status
 and source messages. Without the flag it is observational and appears as an
 exclusion. With the flag, `stale` or `unknown` adds an assurance blocker. A
-`fresh` result means TypeScript considers the configured build current; it is
-not a cryptographic or semantic attestation of output bytes.
+`fresh` result means TypeScript considers the configured build current. Effect
+composition additionally compares SHA-256-bound expected/actual declaration
+bytes and rejects post-build tampering; this still trusts the selected compiler.
 
 | Code | Meaning |
 | --- | --- |

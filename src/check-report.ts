@@ -69,6 +69,7 @@ export interface CheckWorkspaceJsonReport {
         { kind: "export"; root: string; exportName: string; identity: string }
         | { kind: "ambient"; root: "globalThis"; identity: "ecmascript:realm.globalThis" }
       >;
+      declarationIntegrity: { status: "verified" | "missing" | "mismatch" | "error"; fileName: string; expectedDigest?: string; actualDigest?: string; message?: string };
     }>;
     blockers: WorkspaceCheckBlocker[];
   };
@@ -152,13 +153,14 @@ export function createCheckWorkspaceJsonReport(
         "every selected source root belongs to exactly one checked TypeScript project",
         "every project config resolves the exact analyzer TypeScript version",
         ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
+        ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
         "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
-        "declaration output content integrity and semantic equivalence are not independently validated",
+        "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
       ],
     };

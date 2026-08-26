@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -114,6 +114,20 @@ describe("evidence and optimizer obligations", () => {
         ]),
         blockers: [],
       });
+
+      const childDeclaration = join(aDirectory, "dist", "src", "a.d.ts");
+      const originalDeclaration = readFileSync(childDeclaration, "utf8");
+      appendFileSync(childDeclaration, "// post-build tamper that remains newer than the source\n");
+      const tamperedDeclaration = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(tamperedDeclaration.buildArtifacts.status).toBe("fresh");
+      expect(tamperedDeclaration.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          kind: "effect-composition", subject: "report",
+          message: expect.stringContaining("declaration output content mismatch"),
+        })]),
+      });
+      writeFileSync(childDeclaration, originalDeclaration);
 
       writeFileSync(join(bDirectory, "src", "b.ts"), `
         /* uneffect: module_effect FsRead<"$CWD/**"> */

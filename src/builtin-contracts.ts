@@ -35,6 +35,7 @@ export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgum
 export interface AbortAnyBuiltinOperation { kind: "abort-any"; signalsArgument: number }
 export interface SchedulerPostTaskBuiltinOperation { kind: "scheduler-post-task"; callbackArgument: number; optionsArgument: number }
 export interface SchedulerYieldBuiltinOperation { kind: "scheduler-yield" }
+export interface InlineCallbackBuiltinOperation { kind: "inline-callback"; callbackArguments: readonly number[] }
 export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
 export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
 export type DomOperation =
@@ -62,7 +63,7 @@ export interface DomPropertyBuiltinOperation {
   invokesUserCodeOnWrite?: boolean;
 }
 
-export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
+export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | InlineCallbackBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
@@ -268,6 +269,12 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
   ],
   contracts: [
+    trusted({
+      symbol: { module: "typescript", export: "Program#emit" },
+      operation: { kind: "inline-callback", callbackArguments: [1] },
+      trustReason: "TypeScript Program.emit invokes writeFile during the synchronous emit operation",
+      trustOwner: "@mizchi/uneffect",
+    }),
     trusted({
       symbol: { module: "node:os", export: "tmpdir" },
       result: { kind: "path", pattern: "$TEMP" },

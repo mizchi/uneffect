@@ -1,4 +1,5 @@
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
 import ts from "typescript";
 import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract, ExternalMutationRoot } from "./effects.js";
 import type { IteratorEffectParameter } from "./call-graph.js";
@@ -18,6 +19,15 @@ export interface WorkspaceEffectLink {
   iteratorEffectParameters?: readonly IteratorEffectParameter[];
   iteratorEffectBounds?: ExternalFunctionEffectContract["iteratorEffectBounds"];
   mutationRoots?: readonly ExternalMutationRoot[];
+  declarationIntegrity: DeclarationOutputIntegrity;
+}
+
+export interface DeclarationOutputIntegrity {
+  status: "verified" | "missing" | "mismatch" | "error";
+  fileName: string;
+  expectedDigest?: string;
+  actualDigest?: string;
+  message?: string;
 }
 
 export interface WorkspaceEffectCompositionBlocker {
@@ -31,6 +41,7 @@ export interface WorkspaceEffectCompositionBlocker {
 export interface CompletedEffectProject {
   project: TypeScriptProject;
   summaries: readonly EffectSummary[];
+  declarationOutputs: ReadonlyMap<string, DeclarationOutputIntegrity>;
 }
 
 export interface WorkspaceEffectComposition {
@@ -43,6 +54,34 @@ export interface WorkspaceEffectComposition {
 function configuredPath(project: TypeScriptProject, value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   return isAbsolute(value) ? value : resolve(dirname(project.projectFile), value);
+}
+
+function digest(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
+/** Re-emit declarations in memory and compare the exact bytes consumed by parent Programs. */
+export function inspectDeclarationOutputs(program: ts.Program): Map<string, DeclarationOutputIntegrity> {
+  const expected = new Map<string, string>();
+  const result = program.emit(undefined, (fileName, text) => {
+    if (/\.d\.[cm]?ts$/u.test(fileName)) expected.set(resolve(fileName), text);
+  }, undefined, true);
+  const outputs = new Map<string, DeclarationOutputIntegrity>();
+  for (const [fileName, text] of expected) {
+    const actual = ts.sys.readFile(fileName);
+    const expectedDigest = digest(text), actualDigest = actual === undefined ? undefined : digest(actual);
+    outputs.set(fileName, actual === undefined
+      ? { status: "missing", fileName, expectedDigest, message: "declaration output is missing" }
+      : actualDigest !== expectedDigest
+        ? { status: "mismatch", fileName, expectedDigest, actualDigest, message: "declaration output content mismatch" }
+        : { status: "verified", fileName, expectedDigest, actualDigest });
+  }
+  if (result.emitSkipped && expected.size === 0) {
+    for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) outputs.set(resolve(source.fileName), {
+      status: "error", fileName: resolve(source.fileName), message: "declaration re-emission was skipped",
+    });
+  }
+  return outputs;
 }
 
 function contains(directory: string, fileName: string): boolean {
@@ -155,13 +194,16 @@ export function composeWorkspaceEffects(
         const exact = owner.summaries.filter((summary) => summary.id === key);
         const candidates = exact.length > 0 ? exact : owner.summaries.filter((summary) => summary.functionName === name && summary.functionName !== "<module>");
         const summary = candidates.length === 1 ? candidates[0] : undefined;
+        const declarationIntegrity = owner.declarationOutputs.get(resolve(declarationSource.fileName))
+          ?? { status: "missing" as const, fileName: declarationSource.fileName, message: "declaration output was not reproduced by the child Program" };
         const mutation = stableMutationRoots(checker, declarationSource, summary, owner);
         const unsupportedMutation = mutation.unsupported;
         const iteratorBounds = new Set(summary?.iteratorEffectBounds?.map((bound) => bound.index) ?? []);
         const unsupportedIterator = summary?.iteratorEffectParameters?.some((parameter) => !iteratorBounds.has(parameter.index)) ?? false;
-        const verified = summary?.evidence === "verified" && !unsupportedMutation && !unsupportedIterator;
+        const verified = summary?.evidence === "verified" && declarationIntegrity.status === "verified" && !unsupportedMutation && !unsupportedIterator;
         const reason = summary === undefined
           ? `cannot uniquely match ${name} to a child-project effect summary`
+          : declarationIntegrity.status !== "verified" ? `${declarationIntegrity.message ?? "declaration output integrity is unknown"} for ${declarationSource.fileName}`
           : unsupportedMutation ? `cross-project Mutate region root ${unsupportedMutation} is not a stable export of ${name}`
           : unsupportedIterator ? `cross-project iterator effect parameter ${name} has no verified bound`
           : summary.evidence !== "verified" ? `${name} has ${summary.evidence} child-project evidence`
@@ -179,6 +221,7 @@ export function composeWorkspaceEffects(
         links.push({ kind: "function",
           fromProject: current.projectFile, toProject: owner.project.projectFile, callerFile: source.fileName,
           callee: name, declarationFile: declarationSource.fileName, evidence: contract.evidence, effects: contract.effects,
+          declarationIntegrity,
           ...(contract.parameters ? { parameters: contract.parameters } : {}),
           ...(contract.iteratorEffectParameters ? { iteratorEffectParameters: contract.iteratorEffectParameters } : {}),
           ...(contract.iteratorEffectBounds ? { iteratorEffectBounds: contract.iteratorEffectBounds } : {}),
@@ -203,11 +246,14 @@ export function composeWorkspaceEffects(
       const owner = owningProject(declarationFile, completed);
       if (!owner) continue;
       const summary = childModuleSummary(owner, declarationFile);
+      const declarationIntegrity = owner.declarationOutputs.get(resolve(declarationFile))
+        ?? { status: "missing" as const, fileName: declarationFile, message: "declaration output was not reproduced by the child Program" };
       const mutation = stableMutationRoots(checker, program.getSourceFile(declarationFile) ?? source, summary, owner);
       const unsupportedMutation = mutation.unsupported;
-      const verified = summary?.evidence === "verified" && !unsupportedMutation;
+      const verified = summary?.evidence === "verified" && declarationIntegrity.status === "verified" && !unsupportedMutation;
       const reason = summary === undefined
         ? `cannot uniquely match ${declarationFile} to a child-project module summary`
+        : declarationIntegrity.status !== "verified" ? `${declarationIntegrity.message ?? "declaration output integrity is unknown"} for ${declarationFile}`
         : unsupportedMutation ? `cross-project module Mutate region root ${unsupportedMutation} is not a stable export of ${summary.fileName}`
         : summary.evidence !== "verified" ? `${summary.fileName} module has ${summary.evidence} child-project evidence`
         : undefined;
@@ -220,6 +266,7 @@ export function composeWorkspaceEffects(
       links.push({
         kind: "module", fromProject: current.projectFile, toProject: owner.project.projectFile,
         callerFile: source.fileName, callee: "<module>", declarationFile, evidence: contract.evidence, effects: contract.effects,
+        declarationIntegrity,
         ...(contract.mutationRoots ? { mutationRoots: contract.mutationRoots } : {}),
       });
       if (!verified) blockers.push({

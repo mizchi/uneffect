@@ -7,7 +7,7 @@ import { assessCheckAssurance, formatAssuranceAssessment, type AssuranceProfile 
 import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
-import { composeWorkspaceEffects, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
+import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
@@ -75,7 +75,7 @@ export const checkCommand: CliCommand = {
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
-        completed.push({ project: domain, summaries: domainResult.summaries });
+        completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs: inspectDeclarationOutputs(program) });
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"]),

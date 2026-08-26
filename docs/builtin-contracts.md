@@ -27,6 +27,14 @@ renamed or namespace imports do not degrade the summary to unknown timing.
 The legacy `analyzeEffects(fileName, text)` convenience path remains a shallow
 single-source check; proof/adoption tooling uses `analyzeProgramEffects`.
 
+`typescript`'s reviewed `Program#emit` overlay marks only argument 1, the
+`writeFile` callback, as synchronous/inline. Uneffect uses this contract when
+it re-emits declarations in memory for cross-project content-integrity checks.
+The contract is TypeChecker-symbol based; an unrelated method named `emit` does
+not inherit it. Exact compiler parity is load-bearing in workspace assurance,
+while standalone checks retain their documented compiler-parity exclusion.
+Other callable arguments or future overload changes remain unknown until reviewed.
+
 ## Module initialization contracts
 
 A static runtime import executes package initialization before application

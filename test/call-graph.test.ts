@@ -411,6 +411,30 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.effects).toHaveLength(1);
   });
 
+  it("uses the reviewed synchronous TypeScript Program.emit callback contract", () => {
+    const fileName = join(process.cwd(), "virtual-typescript-emit.ts");
+    const sourceText = `
+      import type ts from "typescript"
+      export function capture(program: ts.Program) {
+        program.emit(undefined, (_fileName, _text) => {}, undefined, true)
+      }
+    `;
+    const options: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+    };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, language, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, sourceText, language, true)
+      : original(name, language, onError, fresh);
+    const program = ts.createProgram([fileName], options, host);
+    const graph = buildProgramCallGraph(program);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+    expect(graph.edges).toContainEqual(expect.objectContaining({ kind: "callback-argument", timing: "inline" }));
+    expect(result.summaries.find((item) => item.functionName === "capture")).toMatchObject({ evidence: "inferred" });
+  });
+
   it("propagates effects across files, re-exports, methods, overloads, arrows, and callback arguments", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-program-effects-"));
     const library = join(directory, "library.ts"), barrel = join(directory, "index.ts"), main = join(directory, "main.ts");

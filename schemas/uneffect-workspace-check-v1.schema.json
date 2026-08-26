@@ -25,7 +25,7 @@
         "status": { "enum": ["verified", "unknown"] },
         "links": { "type": "array", "items": {
           "type": "object", "additionalProperties": false,
-          "required": ["kind", "fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects"],
+          "required": ["kind", "fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects", "declarationIntegrity"],
           "properties": {
             "kind": { "enum": ["function", "module"] },
             "fromProject": { "type": "string" }, "toProject": { "type": "string" },
@@ -35,6 +35,7 @@
             "iteratorEffectParameters": { "type": "array", "items": { "$ref": "#/$defs/iteratorEffectParameter" } },
             "iteratorEffectBounds": { "type": "array", "items": { "$ref": "#/$defs/iteratorEffectBound" } },
             "mutationRoots": { "type": "array", "items": { "$ref": "#/$defs/mutationRoot" } },
+            "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
             "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
             "effects": { "type": "array", "items": { "type": "string" } }
           }
@@ -62,6 +63,13 @@
           "properties": { "kind": { "const": "ambient" }, "root": { "const": "globalThis" }, "identity": { "const": "ecmascript:realm.globalThis" } }
         }
       ]
+    },
+    "declarationIntegrity": {
+      "type": "object", "additionalProperties": false, "required": ["status", "fileName"],
+      "properties": {
+        "status": { "enum": ["verified", "missing", "mismatch", "error"] }, "fileName": { "type": "string" },
+        "expectedDigest": { "type": "string" }, "actualDigest": { "type": "string" }, "message": { "type": "string" }
+      }
     },
     "buildArtifacts": {
       "type": "object", "additionalProperties": false, "required": ["status", "observations"],

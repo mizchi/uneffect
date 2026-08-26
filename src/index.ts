@@ -249,6 +249,6 @@ export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecializa
 export { verifyUneffectProject } from "./project-verification.js";
 export type { ProjectVerificationObligation, ProjectWorkspaceAssurance, ProjectWorkspaceVerificationBlocker, ProjectWorkspaceVerificationDomain, VerifyUneffectProjectBaseOptions, VerifyUneffectProjectOptions, VerifyUneffectProjectResult, VerifyUneffectWorkspaceOptions, VerifyUneffectWorkspaceResult } from "./project-verification.js";
 export { composeWorkspaceEffects } from "./workspace-effects.js";
-export type { CompletedEffectProject, WorkspaceEffectComposition, WorkspaceEffectCompositionBlocker, WorkspaceEffectLink } from "./workspace-effects.js";
+export type { CompletedEffectProject, DeclarationOutputIntegrity, WorkspaceEffectComposition, WorkspaceEffectCompositionBlocker, WorkspaceEffectLink } from "./workspace-effects.js";
 export { assessProjectVerification } from "./project-assurance.js";
 export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";

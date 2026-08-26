@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -365,6 +365,20 @@ describe("uneffect command line", () => {
           blockers: [],
         },
       });
+
+      const declarationFile = join(a, "dist", "src", "a.d.ts");
+      const declarationText = readFileSync(declarationFile, "utf8");
+      appendFileSync(declarationFile, "// tampered after a successful build\n");
+      const tamperedEffects = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], tamperedEffects)).toBe(exitCode.failed);
+      expect(JSON.parse(tamperedEffects.stdout)).toMatchObject({
+        effectComposition: {
+          status: "unknown",
+          links: expect.arrayContaining([expect.objectContaining({ declarationIntegrity: expect.objectContaining({ status: "mismatch" }) })]),
+          blockers: expect.arrayContaining([expect.objectContaining({ message: expect.stringContaining("declaration output content mismatch") })]),
+        },
+      });
+      writeFileSync(declarationFile, declarationText);
 
       writeFileSync(join(a, "src", "a.ts"), `
         /* uneffect: effect_parameter iterator extends Console */
