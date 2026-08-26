@@ -66,6 +66,18 @@ npx uneffect check --project tsconfig.json --infer src/entry.ts
 npx uneffect check --project tsconfig.json --infer
 ```
 
+For CI integrations that must not parse human-readable prose, request the
+versioned decision report. It is emitted even when the command exits 1:
+
+```sh
+npx uneffect check --project tsconfig.json --infer \
+  --assurance no-unknown --json > uneffect-check.json
+```
+
+Treat `outcome`, `assurance.status`, `blockers`, `claims`, and `exclusions` as a
+single decision. In particular, `assurance: null` means no assurance profile was
+requested; it is not equivalent to `verified`.
+
 Uneffect still runs through its supported TypeScript peer version. A consumer
 configuration that relies on defaults from an older TypeScript release should
 make those options explicit before treating the result as equivalent to its

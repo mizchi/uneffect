@@ -6,11 +6,12 @@ import { formatCheckEvidence, formatDiagnostics } from "./diagnostics.js";
 import { assessCheckAssurance, formatAssuranceAssessment, type AssuranceProfile } from "./assurance.js";
 import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadTypeScriptProject } from "./typescript-project.js";
+import { createCheckJsonReport } from "./check-report.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -18,6 +19,7 @@ export const checkCommand: CliCommand = {
     "--assurance  fail on non-proof evidence: no-unknown, or declared",
     "--config     load a versioned caller-owned semantic registry",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
+    "--json       emit a versioned decision report to stdout, including failures",
     "",
     "This is the default command: `uneffect <file.ts>` runs it.",
     "Exits 1 when any error-severity diagnostic is reported.",
@@ -28,6 +30,7 @@ export const checkCommand: CliCommand = {
       assurance: { type: "string" },
       config: { type: "string" },
       project: { type: "string" },
+      json: { type: "boolean" },
     });
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
@@ -48,10 +51,13 @@ export const checkCommand: CliCommand = {
       builtinRegistry,
       compilerOptions: project?.compilerOptions,
     });
-    io.err(formatDiagnostics(result.diagnostics, { cwd: process.cwd(), sources: result.sources }));
-    if (values.evidence) io.err(formatCheckEvidence(result));
     const assessment = assurance === undefined ? undefined : assessCheckAssurance(result, assurance as AssuranceProfile);
-    if (assessment) io.err(formatAssuranceAssessment(assessment));
+    if (values.json) io.out(`${JSON.stringify(createCheckJsonReport(result, assessment), null, 2)}\n`);
+    else {
+      io.err(formatDiagnostics(result.diagnostics, { cwd: process.cwd(), sources: result.sources }));
+      if (values.evidence) io.err(formatCheckEvidence(result));
+      if (assessment) io.err(formatAssuranceAssessment(assessment));
+    }
     return result.errors === 0 && (assessment?.passed ?? true) ? exitCode.success : exitCode.failed;
   },
 };

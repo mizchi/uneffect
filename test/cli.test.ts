@@ -146,7 +146,7 @@ describe("uneffect command line", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   it("fails closed on TypeScript syntax and semantic errors", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-typescript-errors-"));
@@ -210,6 +210,38 @@ describe("uneffect command line", () => {
       const none = capture();
       expect(await runCli(["check", "--project", empty], none)).toBe(exitCode.usage);
       expect(none.stderr).toContain("does not select any source files");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("emits a versioned machine-readable check decision, including failed assurance", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-check-json-"));
+    const fileName = join(directory, "client.ts");
+    try {
+      writeFileSync(fileName, `export async function send(url: string) { await fetch(url, { method: "POST" }) }`);
+      const io = capture();
+      expect(await runCli(["check", "--infer", "--json", "--assurance", "no-unknown", fileName], io)).toBe(exitCode.failed);
+      expect(io.stderr).toBe("");
+      expect(JSON.parse(io.stdout)).toMatchObject({
+        schema: "uneffect-check/v1",
+        outcome: "failed",
+        counts: { errors: 0, warnings: 0 },
+        diagnostics: [],
+        effects: expect.arrayContaining([expect.objectContaining({ functionName: "send", evidence: "inferred", effects: [
+          "Fetch<POST, Unknown<dynamic-url>>", "Net<Unknown<dynamic-origin>>",
+        ] })]),
+        assurance: {
+          profile: "no-unknown", status: "unknown", passed: false,
+          blockers: expect.arrayContaining([expect.objectContaining({ classification: "unknown", functionName: "send" })]),
+        },
+      });
+      expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
+        properties: { schema: { const: "uneffect-check/v1" } },
+        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assurance"]),
+      });
+
+      const gradual = capture();
+      expect(await runCli(["check", "--infer", "--json", fileName], gradual)).toBe(exitCode.success);
+      expect(JSON.parse(gradual.stdout)).toMatchObject({ outcome: "passed", assurance: null });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

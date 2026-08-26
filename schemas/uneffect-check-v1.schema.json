@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-check-v1.schema.json",
+  "title": "Uneffect check decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assurance"],
+  "properties": {
+    "schema": { "const": "uneffect-check/v1" },
+    "outcome": { "enum": ["passed", "failed"] },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["errors", "warnings"],
+      "properties": {
+        "errors": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
+    "contracts": { "type": "array", "items": { "$ref": "#/$defs/contract" } },
+    "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
+  },
+  "$defs": {
+    "note": {
+      "type": "object", "additionalProperties": false, "required": ["label", "detail"],
+      "properties": { "label": { "type": "string" }, "detail": { "type": "string" } }
+    },
+    "diagnostic": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "severity", "fileName", "line", "functionName", "message", "notes"],
+      "properties": {
+        "code": { "type": "string" }, "severity": { "enum": ["error", "warning"] },
+        "fileName": { "type": "string" }, "line": { "type": "integer", "minimum": 1 },
+        "functionName": { "type": "string" }, "message": { "type": "string" },
+        "notes": { "type": "array", "items": { "$ref": "#/$defs/note" } }
+      }
+    },
+    "span": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end"],
+      "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+    },
+    "effect": {
+      "type": "object", "additionalProperties": false,
+      "required": ["functionName", "effects", "evidence"],
+      "properties": {
+        "id": { "type": "string" }, "fileName": { "type": "string" }, "span": { "$ref": "#/$defs/span" },
+        "functionName": { "type": "string" }, "effects": { "type": "array", "items": { "type": "string" } },
+        "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
+        "iteratorEffectParameters": { "type": "array", "items": { "$ref": "#/$defs/iteratorParameter" } },
+        "iteratorEffectBounds": { "type": "array", "items": { "$ref": "#/$defs/iteratorBound" } }
+      }
+    },
+    "iteratorParameter": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index", "name", "convertsThrowToRejection"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" },
+        "convertsThrowToRejection": { "type": "boolean" }
+      }
+    },
+    "iteratorBound": {
+      "type": "object", "additionalProperties": false, "required": ["index", "name", "effects"],
+      "properties": {
+        "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" },
+        "effects": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "contract": {
+      "type": "object", "additionalProperties": false,
+      "required": ["obligationId", "status", "evidence", "source"],
+      "properties": {
+        "obligationId": { "type": "string" },
+        "status": { "enum": ["verified", "counterexample", "unknown", "unsupported"] },
+        "evidence": { "enum": ["verified", "unknown"] },
+        "source": {
+          "type": "object", "additionalProperties": false, "required": ["fileName", "span"],
+          "properties": { "fileName": { "type": "string" }, "span": { "$ref": "#/$defs/span" } }
+        },
+        "counterexample": {
+          "type": "object", "additionalProperties": false, "required": ["raw", "assignments"],
+          "properties": {
+            "raw": { "type": "string" },
+            "assignments": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
+        "message": { "type": "string" },
+        "obligation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["functionName", "clause", "source"],
+          "properties": {
+            "functionName": { "type": "string" },
+            "clause": { "enum": ["requires", "ensures", "invariant", "unsupported"] },
+            "source": { "type": "string" }
+          }
+        }
+      }
+    },
+    "assurance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile", "status", "passed", "blockers", "coverage", "claims", "exclusions"],
+      "properties": {
+        "profile": { "enum": ["no-unknown", "declared"] },
+        "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
+        "passed": { "type": "boolean" },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+        "coverage": {
+          "type": "object", "additionalProperties": false,
+          "required": ["effectSummaries", "contractArtifacts", "checkedFiles", "uncoveredFiles"],
+          "properties": {
+            "effectSummaries": { "type": "integer", "minimum": 0 },
+            "contractArtifacts": { "type": "integer", "minimum": 0 },
+            "checkedFiles": { "type": "integer", "minimum": 0 },
+            "uncoveredFiles": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "blocker": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "classification", "fileName", "functionName", "message"],
+      "properties": {
+        "kind": { "enum": ["effect", "contract", "coverage", "typescript"] },
+        "classification": { "enum": ["unknown", "violation"] },
+        "fileName": { "type": "string" }, "functionName": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    }
+  }
+}

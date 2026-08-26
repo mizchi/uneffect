@@ -45,7 +45,11 @@ are listed, its `include`/`files` roots),
 `--assurance no-unknown|declared` (fail when emitted evidence does not meet the
 selected CI profile), and
 `--evidence` (also print the proved obligations and the inferred effect of every
-function). Both `check` and `evidence` accept
+function), and `--json` (write one `uneffect-check/v1` decision report to stdout
+and suppress the text report). JSON always contains normalized diagnostics,
+effect summaries, contract artifacts, and the optional assurance assessment;
+therefore it remains useful on exit 1 and does not require `--evidence`. Its
+schema is published as `schemas/uneffect-check-v1.schema.json`. Both `check` and `evidence` accept
 `--config <uneffect.registry.json>` for a versioned caller-owned semantic
 registry. `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
@@ -94,6 +98,12 @@ points at `uneffect doctor` rather than printing a bare stack; set
 Generated output — instrumented source, Quint modules, SMT-LIB, JSON artifacts —
 goes to stdout, so it can be piped into a file or a verifier. Diagnostics and
 progress go to stderr.
+
+`check --json` is the deliberate exception to the usual diagnostic stream: it
+places the complete decision, including failed diagnostics and assurance
+blockers, on stdout and leaves stderr empty. CI should inspect both the process
+exit code and `outcome`; an omitted `--assurance` is represented as
+`"assurance": null`, not as proof-grade assurance.
 
 | Code | Meaning |
 | --- | --- |

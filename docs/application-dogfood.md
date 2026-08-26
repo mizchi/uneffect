@@ -37,6 +37,12 @@ origin. Before this dogfood pass it incorrectly returned `passed (verified)`
 because it inspected only the summary evidence tag and not unknown sets nested
 inside a capability. Unit and CLI regression tests retain both fixes.
 
+The same boundary is also exercised through `check --json`. Its
+`uneffect-check/v1` report returns `outcome: "failed"`, zero ordinary
+diagnostic errors, `assurance.status: "unknown"`, and the two source-attributed
+capability blockers. This distinction is intentional: the analyzed program is
+well typed, while the requested assurance claim is not established.
+
 This result does not prove the OpenAI request succeeds, that the response parser
 is complete, that every rejection is handled by callers, or that the dynamic
 base URL is safe. A consumer can make the network authority finite by proving

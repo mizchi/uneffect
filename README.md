@@ -104,6 +104,11 @@ explicitly selected file; a green result cannot be borrowed from a covered
 sibling file. See [Assurance boundaries](./docs/assurance-boundaries.md) before relying
 on a successful check as evidence.
 
+Use `check --json` when CI needs a stable `uneffect-check/v1` report rather
+than human-readable diagnostics. The report is emitted on both success and
+failure and keeps `outcome`, evidence, assurance blockers, claims, exclusions,
+and coverage together; omitting `--assurance` produces `assurance: null`.
+
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for
 both `verified` and policy-accepted `assumed` results. Consumers that must reject
