@@ -302,7 +302,11 @@ function synthesizedRelationalStrengtheningProperties(
     }) : [];
   });
   const boundedConservationExpressions = [...new Set([...seededExpressions, ...conservationExpressions])].slice(0, candidateLimit);
-  const expressions = [...new Set([...pairwiseExpressions, ...boundedConservationExpressions])];
+  // Guards point directly at the relation needed to discharge the current
+  // unreachable-action obligation. Keep those bounded seeds ahead of the
+  // generic pairwise pool so arity-four models do not prove hundreds of
+  // irrelevant candidates before reaching the load-bearing conservation law.
+  const expressions = [...new Set([...boundedConservationExpressions, ...pairwiseExpressions])];
   return expressions.map((expression) => ({
     name: `<synth:${expression}>`,
     expression,

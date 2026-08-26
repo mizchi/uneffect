@@ -442,8 +442,11 @@ same property is proved for arbitrary TypeScript.
   verdict/failure kind, exit status, duration, and process memory snapshots.
   A clean first attempt is removed; failed/retried attempts are uploaded from CI
   even if a later attempt passes. This makes transient failures reviewable but
-  does not yet automatically distinguish deterministic complexity from runtime
-  corruption.
+  classifies only comparable cross-process observations: transient recovery,
+  repeated time/memory exhaustion, reproducible runtime failure, or
+  inconclusive evidence. The WASM CI job repeats the telemetry-routing
+  conservation dogfood in three fresh processes with identical digest/call-count
+  checks and a 64-execution budget.
 - Diagnostics from every checker share one reportable shape with explanation
   notes: a counterexample is replayed over the invariant IR as concrete values,
   an effect is traced back to the operation that produces it, and a construct

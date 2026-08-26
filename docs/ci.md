@@ -96,10 +96,24 @@ contain application literals, so evidence recording is disabled outside the
 isolated runner unless `Z3ExecutionOptions.evidence` or
 `UNEFFECT_SOLVER_EVIDENCE_DIR` explicitly enables it.
 
-This preserves the incident needed to distinguish a later deterministic limit
-from process corruption; it does not yet make that classification automatically.
-Repeated timeouts still fail after the bounded attempts, and the retained
-bundle is diagnostic evidence rather than proof evidence.
+This preserves the incident needed to distinguish a deterministic limit from
+process corruption. Repeated timeouts still fail after the bounded attempts,
+and the retained bundle is diagnostic evidence rather than proof evidence.
+
+The retry manifest now classifies only cross-process observations tied to one
+recorded SMT-LIB digest. A failed digest that passes in a fresh process is
+`transient-runtime-failure`; the same digest exhausting time or memory through
+the full attempt budget is `deterministic-resource-limit`; repeated assertion,
+heap-corruption, or memory-fault signatures are
+`reproducible-runtime-failure`. Missing or changing digests remain
+`inconclusive`. A passed retry is therefore never serialized as an ordinary
+clean pass.
+
+The WASM job separately runs the telemetry-routing conservation dogfood three
+times in fresh processes. It requires identical digest sets and solver-call
+counts, caps the combined positive/negative-control run at 64 executions, and
+uploads per-run duration/RSS evidence. This is a bounded repeat regression for
+one realistic model, not a general Z3 stress guarantee.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds

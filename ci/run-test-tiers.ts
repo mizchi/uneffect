@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, type CiTestTier } from "./test-tiers.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
@@ -60,15 +60,16 @@ for (const tier of tiers) {
           emit(result);
           const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
           const hardTimeout = isIsolatedSolverHardTimeout(result.error);
-          const recognizedFailure = shouldRetryIsolatedSolverFailure(output);
+          const classifiedFailure = classifyIsolatedSolverFailure(output);
           const retryReason = hardTimeout ? "hard-timeout" as const
-            : recognizedFailure ? "recognized-wasm-failure" as const : undefined;
+            : classifiedFailure ? "recognized-wasm-failure" as const : undefined;
           evidence.recordAttempt({
             attempt,
             status: result.status,
             signal: result.signal,
             hardTimeout,
             retryReason,
+            failureKind: hardTimeout ? "hard-timeout" : classifiedFailure,
             durationMs: Date.now() - startedAt,
           });
           if (result.status === 0 || attempt >= maxSolverAttempts || !retryReason) break;

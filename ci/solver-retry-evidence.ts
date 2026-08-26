@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface SolverProcessAttempt {
@@ -8,7 +8,39 @@ export interface SolverProcessAttempt {
   signal: NodeJS.Signals | null;
   hardTimeout: boolean;
   retryReason?: "recognized-wasm-failure" | "hard-timeout";
+  failureKind?: SolverFailureKind;
+  /** The SMT-LIB execution that was incomplete or returned an infrastructure error. */
+  programDigest?: string;
+  /** Every SMT-LIB input entered by this fresh process attempt. */
+  programDigests?: readonly string[];
   durationMs?: number;
+}
+
+export type SolverFailureKind =
+  | "hard-timeout"
+  | "wasm-oom"
+  | "wasm-memory-fault"
+  | "wasm-heap-corruption"
+  | "z3-internal-assertion"
+  | "known-timeout";
+
+export type SolverRetryClassification =
+  | "clean-first-attempt"
+  | "transient-runtime-failure"
+  | "deterministic-resource-limit"
+  | "reproducible-runtime-failure"
+  | "inconclusive";
+
+export interface RecordedSolverProcessAttempt extends SolverProcessAttempt {
+  timestamp: string;
+  process: ReturnType<typeof processTelemetry>;
+}
+
+export interface SolverRetryAssessment {
+  classification: SolverRetryClassification;
+  finalOutcome: "passed" | "passed-after-retry" | "failed";
+  programDigest?: string;
+  reason: string;
 }
 
 function processTelemetry() {
@@ -16,25 +48,87 @@ function processTelemetry() {
   return { pid: process.pid, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, externalBytes: memory.external };
 }
 
+export function classifySolverRetryAttempts(
+  attempts: readonly RecordedSolverProcessAttempt[],
+  maxAttempts: number,
+): SolverRetryAssessment {
+  const finalAttempt = attempts.at(-1);
+  if (!finalAttempt) return { classification: "inconclusive", finalOutcome: "failed", reason: "no process attempts were recorded" };
+  if (attempts.length === 1 && finalAttempt.status === 0) {
+    return { classification: "clean-first-attempt", finalOutcome: "passed", reason: "the first process attempt passed" };
+  }
+  const failures = attempts.filter(({ status }) => status !== 0);
+  if (failures.some(({ programDigest }) => !programDigest)) {
+    return { classification: "inconclusive", finalOutcome: finalAttempt.status === 0 ? "passed-after-retry" : "failed", reason: "a failed attempt has no recorded SMT-LIB digest" };
+  }
+  const failureDigests = [...new Set(failures.map(({ programDigest }) => programDigest!))];
+  if (failureDigests.length !== 1) {
+    return { classification: "inconclusive", finalOutcome: finalAttempt.status === 0 ? "passed-after-retry" : "failed", reason: "attempts did not fail on one recorded SMT-LIB digest" };
+  }
+  const programDigest = failureDigests[0]!;
+  if (finalAttempt.status === 0) {
+    const completedDigests = new Set(finalAttempt.programDigests ?? (finalAttempt.programDigest ? [finalAttempt.programDigest] : []));
+    if (!completedDigests.has(programDigest)) {
+      return { classification: "inconclusive", finalOutcome: "passed-after-retry", programDigest, reason: "the successful retry did not execute the failed SMT-LIB digest" };
+    }
+    return { classification: "transient-runtime-failure", finalOutcome: "passed-after-retry", programDigest, reason: "the same SMT-LIB digest passed in a fresh process after an infrastructure failure" };
+  }
+  if (attempts.length < maxAttempts) {
+    return { classification: "inconclusive", finalOutcome: "failed", programDigest, reason: "the retry budget was not exhausted" };
+  }
+  const kinds = failures.map(({ failureKind }) => failureKind);
+  if (kinds.every((kind) => kind === "hard-timeout" || kind === "known-timeout" || kind === "wasm-oom")) {
+    return { classification: "deterministic-resource-limit", finalOutcome: "failed", programDigest, reason: "the same SMT-LIB digest exhausted time or memory in every fresh process attempt" };
+  }
+  if (kinds.every((kind) => kind === "wasm-memory-fault" || kind === "wasm-heap-corruption" || kind === "z3-internal-assertion")) {
+    return { classification: "reproducible-runtime-failure", finalOutcome: "failed", programDigest, reason: "the same SMT-LIB digest reproduced a solver runtime failure in every fresh process attempt" };
+  }
+  return { classification: "inconclusive", finalOutcome: "failed", programDigest, reason: "attempt failure kinds were missing or heterogeneous" };
+}
+
+function readAttemptPrograms(directory: string): Pick<SolverProcessAttempt, "programDigest" | "programDigests"> {
+  const executions = readdirSync(directory).filter((file) => file.endsWith(".jsonl")).sort().flatMap((file) => {
+    try {
+      const records = readFileSync(join(directory, file), "utf8").trim().split("\n")
+        .filter(Boolean).flatMap((line) => {
+          try { return [JSON.parse(line) as { event?: string; programDigest?: string; status?: string; timestamp?: string }]; }
+          catch { return []; }
+        });
+      const start = records.find(({ event }) => event === "start");
+      const complete = records.findLast(({ event }) => event === "complete");
+      return start?.programDigest ? [{ digest: start.programDigest, timestamp: start.timestamp ?? "", failed: !complete || complete.status === "error" }] : [];
+    } catch {
+      return [];
+    }
+  });
+  const programDigests = [...new Set(executions.map(({ digest }) => digest))];
+  const failed = executions.filter(({ failed }) => failed).sort((left, right) => left.timestamp.localeCompare(right.timestamp)).at(-1);
+  return { programDigest: failed?.digest, programDigests };
+}
+
 /**
  * Owns evidence directories for one isolated Vitest selector. A clean first
  * attempt is discarded; once a retry occurs all process and solver evidence is
  * retained so a later green attempt cannot erase the original failure.
  */
-export function createSolverRetryEvidenceSession(root: string, tier: string, source: string, testName: string) {
+export function createSolverRetryEvidenceSession(root: string, tier: string, source: string, testName: string, maxAttempts = 3) {
   const identity = createHash("sha256").update(`${tier}\0${source}\0${testName}`).digest("hex").slice(0, 16);
   const directory = join(root, tier, `${identity}-${process.pid}-${Date.now()}`);
   const startedAt = new Date().toISOString();
-  const attempts: Array<SolverProcessAttempt & { timestamp: string; process: ReturnType<typeof processTelemetry> }> = [];
+  const attempts: RecordedSolverProcessAttempt[] = [];
+  const attemptDirectories = new Map<number, string>();
   return {
     directory,
     environmentForAttempt(attempt: number): NodeJS.ProcessEnv {
       const attemptDirectory = join(directory, `attempt-${attempt}`);
       mkdirSync(attemptDirectory, { recursive: true });
+      attemptDirectories.set(attempt, attemptDirectory);
       return { UNEFFECT_SOLVER_EVIDENCE_DIR: attemptDirectory };
     },
     recordAttempt(attempt: SolverProcessAttempt) {
-      attempts.push({ ...attempt, timestamp: new Date().toISOString(), process: processTelemetry() });
+      const attemptDirectory = attemptDirectories.get(attempt.attempt);
+      const programs = attemptDirectory ? readAttemptPrograms(attemptDirectory) : {};
+      attempts.push({ ...programs, ...attempt, timestamp: new Date().toISOString(), process: processTelemetry() });
     },
     finish(): string | undefined {
       if (attempts.length === 1 && attempts[0]?.status === 0 && !attempts[0].hardTimeout) {
@@ -43,6 +137,7 @@ export function createSolverRetryEvidenceSession(root: string, tier: string, sou
       }
       mkdirSync(directory, { recursive: true });
       const manifest = join(directory, "manifest.json");
+      const assessment = classifySolverRetryAttempts(attempts, maxAttempts);
       writeFileSync(manifest, `${JSON.stringify({
         schema: "uneffect.solver-retry-evidence/v1",
         tier,
@@ -51,6 +146,7 @@ export function createSolverRetryEvidenceSession(root: string, tier: string, sou
         startedAt,
         finishedAt: new Date().toISOString(),
         attempts,
+        assessment,
       }, null, 2)}\n`, "utf8");
       return manifest;
     },

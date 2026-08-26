@@ -16,6 +16,13 @@ import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintT
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
+const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
+
+function telemetryRoutingFixture() {
+  const source = readFileSync(telemetryRoutingFileName, "utf8");
+  return { fileName: telemetryRoutingFileName, source, temporal: parseSpec(telemetryRoutingFileName, source).temporal };
+}
+
 describe("Uneffect dogfood", () => {
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
@@ -562,10 +569,8 @@ describe("Uneffect dogfood", () => {
     );
   });
 
-  it("proves telemetry routing accounting, including caught failure, and rejects missing updates", async () => {
-    const fileName = "examples/dogfood/telemetry-routing-accounting.ts";
-    const source = readFileSync(fileName, "utf8");
-    const temporal = parseSpec(fileName, source).temporal;
+  it("proves telemetry routing accounting and rejects basic control-flow regressions", async () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
     const program = ts.createProgram([fileName], {
       target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
       moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
@@ -597,6 +602,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingEarlyReturn, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "nestedPostProcess", target: "postProcessed" }),
     );
+  });
+
+  it("rejects telemetry routing throw and catch regressions", async () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
     const effectfulThrow = source.replace("throw runtime.auditArmed;", "throw makeTelemetryError(runtime);");
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "reject" }),
@@ -632,6 +641,10 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulCatchRethrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "recoverOrRethrow" }),
     );
+  });
+
+  it("rejects telemetry routing finally and switch regressions", async () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
     const missingFinallyOverride = source.replace("      return;\n    }\n    if (runtime.attempted < 0) throw \"telemetry cleanup failed\";", "      // missing finally override\n    }\n    if (runtime.attempted < 0) throw \"telemetry cleanup failed\";");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingFinallyOverride, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "finalizeRecovery", target: "finalized" }),
@@ -660,16 +673,28 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
     );
-    const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
-      maxSteps: 2,
-      synthesizeRelationalStrengtheningProperties: true,
-      relationalStrengtheningMaxArity: 4,
-    });
-    expect(diagnostics).toContainEqual(expect.objectContaining({
-      code: "strengthened-unreachable-action",
-      name: "observeLostOutcome",
-      relatedName: "<synth:delivered + dropped + buffered === attempted>",
-    }));
+  });
+
+  it("proves telemetry routing conservation and rejects an unbalanced action", async () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const inheritedEvidenceDirectory = process.env.UNEFFECT_SOLVER_EVIDENCE_DIR;
+    const evidenceDirectory = inheritedEvidenceDirectory ?? mkdtempSync(join(tmpdir(), "uneffect-routing-solver-budget-"));
+    try {
+      const diagnostics = await lintTemporalReachabilityWithZ3(temporal, {
+        maxSteps: 2,
+        synthesizeRelationalStrengtheningProperties: true,
+        relationalStrengtheningMaxArity: 4,
+        z3: { evidence: { directory: evidenceDirectory, source: fileName, obligation: "routing conservation" } },
+      });
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        code: "strengthened-unreachable-action",
+        name: "observeLostOutcome",
+        relatedName: "<synth:delivered + dropped + buffered === attempted>",
+      }));
+      expect(globSync(join(evidenceDirectory, "*.jsonl")).length).toBeLessThanOrEqual(32);
+    } finally {
+      if (!inheritedEvidenceDirectory) rmSync(evidenceDirectory, { recursive: true, force: true });
+    }
 
     const broken = parseSpec(fileName, source.replace(
       "action buffer: buffered' = buffered + 1, attempted' = attempted + 1",

@@ -27,6 +27,9 @@ formal:
 formal-z3:
     pnpm tsx ci/run-test-tiers.ts z3
 
+formal-z3-stress:
+    pnpm tsx ci/run-solver-stress.ts
+
 formal-quint:
     pnpm tsx ci/run-test-tiers.ts quint
 

@@ -59,6 +59,16 @@ jobs:
       - *install-just
       - run: pnpm install --frozen-lockfile
       - run: just formal-z3
+      - run: just formal-z3-stress
+      - name: Upload solver stress evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: solver-stress-evidence-${{ github.run_id }}-${{ github.job }}
+          path: .uneffect/solver-stress-evidence
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14
 
   quint-simulation:
     runs-on: ubuntu-latest
@@ -112,6 +122,7 @@ jobs:
           name: solver-retry-evidence-${{ github.run_id }}-${{ github.job }}
           path: .uneffect/solver-retry-evidence
           if-no-files-found: ignore
+          include-hidden-files: true
           retention-days: 14
 
   exhaustive:

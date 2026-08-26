@@ -112,22 +112,30 @@ export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readon
 }
 
 export function shouldRetryIsolatedSolverFailure(output: string): boolean {
+  return classifyIsolatedSolverFailure(output) !== undefined;
+}
+
+export function classifyIsolatedSolverFailure(output: string): import("./solver-retry-evidence.js").SolverFailureKind | undefined {
+  const wasmOom = output.includes("z3-built.wasm") && output.includes("Cannot enlarge memory arrays");
+  if (wasmOom) return "wasm-oom";
   const wasmCrash = output.includes("z3-built.wasm") && (
-    output.includes("memory access out of bounds")
-    || output.includes("table index is out of bounds")
-    || output.includes("Cannot enlarge memory arrays")
+    output.includes("memory access out of bounds") || output.includes("table index is out of bounds")
   );
+  if (wasmCrash) return "wasm-memory-fault";
   const wasmHeapCorruption = output.includes("z3-solver/build/z3-built.js")
     && output.includes("corrupted its heap memory area (address zero)");
+  if (wasmHeapCorruption) return "wasm-heap-corruption";
   const z3InternalAssertion = output.includes("ASSERTION VIOLATION")
     && output.includes("File: ../src/ast/")
     && output.includes("UNEXPECTED CODE WAS REACHED")
     && /Z3 \d+\.\d+\.\d+/.test(output);
+  if (z3InternalAssertion) return "z3-internal-assertion";
   const knownLeaseTimeout = output.includes("test/node-lease.test.ts")
     && [
       "uses a proven lease-domain invariant to exclude invalid epoch actions",
       "synthesizes a lease-domain invariant to exclude invalid epoch actions",
     ].some((name) => output.includes(name))
     && output.includes("Test timed out in 60000ms");
-  return wasmCrash || wasmHeapCorruption || z3InternalAssertion || knownLeaseTimeout;
+  if (knownLeaseTimeout) return "known-timeout";
+  return undefined;
 }

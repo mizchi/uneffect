@@ -1076,6 +1076,23 @@ reachability and vacuity checks that are unaffected by candidate ordering, so
 the smaller three-counter gain is expected. More samples are needed before
 treating these one-shot ratios as stable performance claims.
 
+On 2026-08-27, the eight-state, arity-four telemetry-routing conservation
+dogfood exposed a more severe ordering regression: native Z3 performed 853
+executions and took 5.58 seconds, while the bundled WASM process exceeded its
+2 GiB heap. Moving guard-derived conservation seeds ahead of the generic
+pairwise pool reduced the positive proof to 26 executions and one observed
+native run to 205 ms; the same proof then completed with WASM in 485 ms of test
+time. These before/after values are single diagnostic observations, not stable
+benchmark estimates.
+
+The committed stress gate repeats the positive proof and its unbalanced
+negative control in three fresh WASM processes. The first post-fix run recorded
+47 total executions over 23 unique SMT digests each time, process durations of
+1.348, 1.395, and 1.306 seconds, and peak observed RSS of 755.1, 755.3, and
+757.0 MB. CI requires identical digest sets and execution counts and rejects
+more than 64 executions. RSS is recorded for diagnosis but is not yet a fixed
+portable threshold because allocator and runner differences are substantial.
+
 ## Grouped resource-release switches
 
 On 2026-08-23, analyzing the `grouped-resource-release.ts` dogfood measured

@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
-import { createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
+import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
+import { boundedRepetitions } from "../ci/run-solver-stress.js";
 
 describe("CI test tier manifest", () => {
   it("supports an explicit remote verification run when a push event is absent", () => {
@@ -84,6 +85,24 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain("if: always()");
     expect(workflow).toContain(".uneffect/solver-retry-evidence");
     expect(workflow).toContain("if-no-files-found: ignore");
+    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(2);
+  });
+
+  it("repeats the telemetry accounting proof in fresh WASM processes", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
+    const runner = readFileSync(join(process.cwd(), "ci/run-solver-stress.ts"), "utf8");
+    expect(justfile).toContain("tsx ci/run-solver-stress.ts");
+    expect(workflow).toContain("just formal-z3-stress");
+    expect(workflow).toContain(".uneffect/solver-stress-evidence");
+    expect(runner).toContain('const repetitions = boundedRepetitions(process.env.UNEFFECT_SOLVER_STRESS_REPETITIONS);');
+    expect(runner).toContain('UNEFFECT_Z3_BACKEND: "wasm"');
+    expect(runner).toContain("programDigests");
+    expect(runner).toContain("solverExecutions > 64");
+    expect(boundedRepetitions(undefined)).toBe(3);
+    expect(boundedRepetitions("2")).toBe(2);
+    expect(() => boundedRepetitions("1")).toThrow(/2 through 10/);
+    expect(() => boundedRepetitions("many")).toThrow(/safe integer/);
   });
 
   it("keeps per-test process isolation selectors synchronized with their files", () => {
@@ -129,6 +148,34 @@ describe("CI test tier manifest", () => {
     expect(shouldRetryIsolatedSolverFailure("AssertionError: expected counterexample")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("Test timed out in 30000ms")).toBe(false);
     expect(shouldRetryIsolatedSolverFailure("FAIL test/other.test.ts\nTest timed out in 60000ms")).toBe(false);
+    expect(classifyIsolatedSolverFailure("Aborted(Cannot enlarge memory arrays to size 2148876288 bytes (OOM))\nat z3-built.wasm")).toBe("wasm-oom");
+    expect(classifyIsolatedSolverFailure("RuntimeError: memory access out of bounds\nat z3-built.wasm")).toBe("wasm-memory-fault");
+    expect(classifyIsolatedSolverFailure("Runtime error: The application has corrupted its heap memory area (address zero)!\nat z3-solver/build/z3-built.js")).toBe("wasm-heap-corruption");
+    expect(classifyIsolatedSolverFailure("ASSERTION VIOLATION\nFile: ../src/ast/ast.cpp\nUNEXPECTED CODE WAS REACHED.\nZ3 4.16.0.0")).toBe("z3-internal-assertion");
+    expect(classifyIsolatedSolverFailure("AssertionError: expected counterexample")).toBeUndefined();
+  });
+
+  it("classifies only comparable repeated solver attempts", () => {
+    const attempt = (attemptNumber: number, status: number, failureKind: "wasm-oom" | "hard-timeout" | "z3-internal-assertion" | undefined, programDigest = "sha256:model") => ({
+      attempt: attemptNumber, status, signal: null, hardTimeout: failureKind === "hard-timeout",
+      failureKind, programDigest, timestamp: "2026-08-27T00:00:00.000Z",
+      process: { pid: attemptNumber, rssBytes: 1, heapUsedBytes: 1, externalBytes: 1 },
+    });
+    expect(classifySolverRetryAttempts([
+      attempt(1, 1, "wasm-oom"), attempt(2, 0, undefined),
+    ], 3)).toMatchObject({ classification: "transient-runtime-failure", programDigest: "sha256:model", finalOutcome: "passed-after-retry" });
+    expect(classifySolverRetryAttempts([
+      attempt(1, 1, "wasm-oom"), attempt(2, 1, "wasm-oom"), attempt(3, 1, "wasm-oom"),
+    ], 3)).toMatchObject({ classification: "deterministic-resource-limit", finalOutcome: "failed" });
+    expect(classifySolverRetryAttempts([
+      attempt(1, 1, "z3-internal-assertion"), attempt(2, 1, "z3-internal-assertion"), attempt(3, 1, "z3-internal-assertion"),
+    ], 3)).toMatchObject({ classification: "reproducible-runtime-failure", finalOutcome: "failed" });
+    expect(classifySolverRetryAttempts([
+      attempt(1, 1, "hard-timeout"), attempt(2, 1, "hard-timeout", "sha256:different"), attempt(3, 1, "hard-timeout"),
+    ], 3)).toMatchObject({ classification: "inconclusive", reason: "attempts did not fail on one recorded SMT-LIB digest" });
+    expect(classifySolverRetryAttempts([
+      { ...attempt(1, 1, "wasm-oom"), programDigest: undefined }, attempt(2, 0, undefined),
+    ], 3)).toMatchObject({ classification: "inconclusive", reason: "a failed attempt has no recorded SMT-LIB digest" });
   });
 
   it("hard-stops an isolated solver process when synchronous WASM blocks Vitest's timer", () => {
@@ -143,21 +190,33 @@ describe("CI test tier manifest", () => {
   });
 
   it("retains retry attempts and removes evidence for a clean first attempt", () => {
-    const root = mkdtempSync(join(tmpdir(), "uneffect-ci-evidence-"));
+      const root = mkdtempSync(join(tmpdir(), "uneffect-ci-evidence-"));
     try {
       const retried = createSolverRetryEvidenceSession(root, "z3", "test/z3-backend.test.ts", "fallback telemetry");
-      expect(retried.environmentForAttempt(1).UNEFFECT_SOLVER_EVIDENCE_DIR).toContain("attempt-1");
-      retried.recordAttempt({ attempt: 1, status: 1, signal: null, hardTimeout: false, retryReason: "recognized-wasm-failure" });
-      expect(retried.environmentForAttempt(2).UNEFFECT_SOLVER_EVIDENCE_DIR).toContain("attempt-2");
+      const firstDirectory = retried.environmentForAttempt(1).UNEFFECT_SOLVER_EVIDENCE_DIR!;
+      expect(firstDirectory).toContain("attempt-1");
+      writeFileSync(join(firstDirectory, "execution-1.jsonl"), [
+        JSON.stringify({ event: "start", timestamp: "2026-08-27T00:00:00.000Z", programDigest: "sha256:model" }),
+        JSON.stringify({ event: "complete", timestamp: "2026-08-27T00:00:01.000Z", status: "error" }),
+        "{truncated-after-process-crash",
+      ].join("\n"));
+      retried.recordAttempt({ attempt: 1, status: 1, signal: null, hardTimeout: false, retryReason: "recognized-wasm-failure", failureKind: "wasm-oom" });
+      const secondDirectory = retried.environmentForAttempt(2).UNEFFECT_SOLVER_EVIDENCE_DIR!;
+      expect(secondDirectory).toContain("attempt-2");
+      writeFileSync(join(secondDirectory, "execution-2.jsonl"), [
+        JSON.stringify({ event: "start", timestamp: "2026-08-27T00:00:02.000Z", programDigest: "sha256:model" }),
+        JSON.stringify({ event: "complete", timestamp: "2026-08-27T00:00:03.000Z", status: "unsat" }),
+      ].join("\n"));
       retried.recordAttempt({ attempt: 2, status: 0, signal: null, hardTimeout: false });
       const manifestPath = retried.finish();
       if (!manifestPath) throw new Error("retried solver session did not retain evidence");
-      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { attempts: unknown[]; source: string; testName: string };
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { attempts: unknown[]; source: string; testName: string; assessment: unknown };
       expect(manifest).toMatchObject({ source: "test/z3-backend.test.ts", testName: "fallback telemetry" });
       expect(manifest.attempts).toEqual([
         expect.objectContaining({ attempt: 1, status: 1, retryReason: "recognized-wasm-failure", process: expect.objectContaining({ rssBytes: expect.any(Number) }) }),
         expect.objectContaining({ attempt: 2, status: 0, process: expect.objectContaining({ rssBytes: expect.any(Number) }) }),
       ]);
+      expect(manifest.assessment).toMatchObject({ classification: "transient-runtime-failure", programDigest: "sha256:model", finalOutcome: "passed-after-retry" });
 
       const clean = createSolverRetryEvidenceSession(root, "z3", "test/z3-backend.test.ts", "clean");
       clean.environmentForAttempt(1);
