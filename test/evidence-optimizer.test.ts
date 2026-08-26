@@ -1140,7 +1140,7 @@ describe("evidence and optimizer obligations", () => {
     expect(result.assumptions.schema).toBe("uneffect-assumptions/v1");
     expect(result.assumptions.entries).toEqual(expect.arrayContaining([
       expect.objectContaining({ domain: "typed-array", reason: "validated by the wire-format review", owner: "binary-platform", expiresOn: "2027-01-31", scope: expect.objectContaining({ fileName, functionName: "decode", span: expect.any(Object) }) }),
-      expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("reviewed builtin"), owner: "@mizchi/uneffect", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
+      expect.objectContaining({ domain: "builtin", reason: "reviewed Console log semantic overlay", owner: "@mizchi/uneffect", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
       expect.objectContaining({ domain: "temporal-summary", owner: "runtime-team", expiresOn: "2026-12-31", scope: expect.objectContaining({ functionName: "start" }) }),
       expect.objectContaining({ domain: "dispatch-sealing", reason: "application owns the complete class graph", owner: "runtime-team", expiresOn: "2027-02-28", scope: expect.objectContaining({ fileName, span: expect.any(Object) }) }),
     ]));

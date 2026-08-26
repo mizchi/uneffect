@@ -255,7 +255,7 @@ describe("uneffect command line", () => {
         diagnostics: [],
         assumptions: {
           schema: "uneffect-assumptions/v1",
-          entries: [expect.objectContaining({ domain: "builtin", reason: expect.stringContaining("reviewed builtin") })],
+          entries: [expect.objectContaining({ domain: "builtin", reason: "reviewed builtin semantic overlay" })],
           violations: [],
         },
         effects: expect.arrayContaining([expect.objectContaining({ functionName: "send", evidence: "inferred", effects: [
