@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 
 describe("CI test tier manifest", () => {
+  it("supports an explicit remote verification run when a push event is absent", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).toMatch(/^\s*workflow_dispatch:\s*$/m);
+  });
+
   it("assigns every TypeScript test file to exactly one tier", () => {
     const discovered = readdirSync(join(process.cwd(), "test"))
       .filter((name) => name.endsWith(".test.ts"))
