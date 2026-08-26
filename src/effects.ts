@@ -1379,6 +1379,32 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const declarationSource = declaration.getSourceFile();
     return inferred.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
   };
+  const directlyReturnedFunction = (declaration: ts.FunctionLikeDeclaration): ts.FunctionLikeDeclaration | undefined => {
+    if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)
+      && (ts.isArrowFunction(declaration.body) || ts.isFunctionExpression(declaration.body))) return declaration.body;
+    if (!declaration.body || !ts.isBlock(declaration.body) || declaration.body.statements.length !== 1) return undefined;
+    const statement = declaration.body.statements[0];
+    return statement && ts.isReturnStatement(statement) && statement.expression
+      && (ts.isArrowFunction(statement.expression) || ts.isFunctionExpression(statement.expression))
+      ? statement.expression : undefined;
+  };
+  const resolveStableFunctionChainEffects = (expression: ts.Expression, returnDepth: number): Effect[] | undefined => {
+    let declaration = resolveStableFunctionDeclaration(expression);
+    if (!declaration) return undefined;
+    const effects: Effect[] = [];
+    for (let depth = 0; depth <= returnDepth; depth += 1) {
+      const declarationSource = declaration.getSourceFile();
+      const current = inferred.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
+      if (!current) return undefined;
+      for (const effect of current) addEffect(effects, effect);
+      if (depth < returnDepth) {
+        const returned = directlyReturnedFunction(declaration);
+        if (!returned) return undefined;
+        declaration = returned;
+      }
+    }
+    return effects;
+  };
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const executable = source.statements.filter((statement) => {
@@ -1550,10 +1576,34 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         for (const builtinCallback of builtinCallbacks) callbackIndices.add(builtinCallback);
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
-          if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }
+          if (!callback) {
+            if (operation?.kind !== "inline-callback" || !operation.optionalCallbackArguments?.includes(index)) {
+              markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument");
+            }
+            continue;
+          }
           const callbackEffects = resolveStableFunctionEffects(callback);
           if (!callbackEffects) { markUnknown("unresolved-callback", "a callback argument is mutable, dynamic, or lacks an analyzed function body"); continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        }
+        if (operation?.kind === "inline-callback") for (const index of operation.callbackArrayArguments ?? []) {
+          const argument = node.arguments[index];
+          if (!argument || !ts.isArrayLiteralExpression(argument)) {
+            markUnknown("unresolved-callback", "a reviewed callback-array argument is not an array literal");
+            continue;
+          }
+          for (const element of argument.elements) {
+            if (!ts.isExpression(element)) {
+              markUnknown("unresolved-callback", "a reviewed callback array contains a spread or omitted element");
+              continue;
+            }
+            const callbackEffects = resolveStableFunctionChainEffects(element, operation.callbackArrayReturnDepth ?? 0);
+            if (!callbackEffects) {
+              markUnknown("unresolved-callback", "a callback-array element or its invoked return is mutable, dynamic, or lacks an analyzed function body");
+              continue;
+            }
+            for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+          }
         }
         for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {
           const callbackEffects = resolveStableFunctionEffects(callback);

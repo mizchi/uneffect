@@ -65,7 +65,7 @@ function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter
   const text = call.expression.getText();
   if (["setTimeout", "setInterval", "queueMicrotask"].includes(text)) return "deferred";
   if (text === "Array.from" || text === "JSON.stringify") return "inline";
-  if (ts.isPropertyAccessExpression(call.expression) && ["map", "flatMap", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find", "findIndex", "sort", "forEachChild"].includes(call.expression.name.text)) return "inline";
+  if (ts.isPropertyAccessExpression(call.expression) && ["map", "flatMap", "filter", "forEach", "reduce", "reduceRight", "some", "every", "find", "findIndex", "sort"].includes(call.expression.name.text)) return "inline";
   if (ts.isPropertyAccessExpression(call.expression) && ["then", "catch", "finally"].includes(call.expression.name.text)) return "deferred";
   return "unknown";
 }
@@ -110,6 +110,15 @@ export function buildProgramCallGraph(
     return { id: stableId(declaration), name: nameNode?.getText() ?? "<anonymous>", kind: kindOf(declaration), fileName: declaration.getSourceFile().fileName, span: { start: declaration.getStart(), end: declaration.getEnd() }, overloads, effectParameters: [], iteratorEffectParameters: [] };
   });
   const byId = new Map(nodes.map((node) => [node.id, node]));
+  const directlyReturnedCallable = (declaration: ts.FunctionLikeDeclaration): ts.FunctionLikeDeclaration | undefined => {
+    if (ts.isArrowFunction(declaration) && !ts.isBlock(declaration.body)
+      && (ts.isArrowFunction(declaration.body) || ts.isFunctionExpression(declaration.body))) return declaration.body;
+    if (!declaration.body || !ts.isBlock(declaration.body) || declaration.body.statements.length !== 1) return undefined;
+    const statement = declaration.body.statements[0];
+    return statement && ts.isReturnStatement(statement) && statement.expression
+      && (ts.isArrowFunction(statement.expression) || ts.isFunctionExpression(statement.expression))
+      ? statement.expression : undefined;
+  };
   type ReturnFlow = { expressions: ts.Expression[]; definite: boolean };
   const returnedGeneratorDeclarations = (
     declaration: ts.FunctionLikeDeclaration | undefined,
@@ -516,6 +525,30 @@ export function buildProgramCallGraph(
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [], dischargesThrow: catchesThrow && timing === "inline" });
           }
         });
+        if (resolvedBuiltin?.operation?.kind === "inline-callback") {
+          for (const index of resolvedBuiltin.operation.callbackArrayArguments ?? []) {
+            const argument = node.arguments[index];
+            const elements = argument && ts.isArrayLiteralExpression(argument)
+              ? argument.elements.filter(ts.isExpression) : undefined;
+            if (!elements) {
+              edges.push({ caller, kind: "callback-argument", unresolvedName: argument?.getText() ?? `<argument ${index}>`, timing: "unknown", span: { start: argument?.getStart() ?? node.getStart(), end: argument?.getEnd() ?? node.getEnd() }, arguments: [] });
+              continue;
+            }
+            for (const element of elements) {
+              const callbackDeclaration = (ts.isArrowFunction(element) || ts.isFunctionExpression(element)) ? element
+                : ts.isIdentifier(element) ? symbolNodes.get(resolvedSymbol(checker, element)!) : undefined;
+              if (!callbackDeclaration) {
+                edges.push({ caller, kind: "callback-argument", unresolvedName: element.getText(), timing: "unknown", span: { start: element.getStart(), end: element.getEnd() }, arguments: [] });
+                continue;
+              }
+              let invoked: ts.FunctionLikeDeclaration | undefined = callbackDeclaration;
+              for (let depth = 0; invoked && depth <= (resolvedBuiltin.operation.callbackArrayReturnDepth ?? 0); depth += 1) {
+                edges.push({ caller, callee: stableId(invoked), kind: "callback-argument", timing: "inline", span: { start: element.getStart(), end: element.getEnd() }, arguments: [], dischargesThrow: catchesThrow });
+                invoked = directlyReturnedCallable(invoked);
+              }
+            }
+          }
+        }
         for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {
           const callbackDeclaration = (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) ? callback
             : ts.isIdentifier(callback) ? symbolNodes.get(resolvedSymbol(checker, callback)!) : undefined;

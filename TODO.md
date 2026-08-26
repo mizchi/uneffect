@@ -51,7 +51,7 @@ documentation are all updated.
   - [x] Migrate temporal semantic lint, bounded reachability, and structured scalar/Set/Map/record counterexample replay through named `get-value` observations; report backend failures instead of silently omitting lint findings.
   - [x] Migrate solver-backed property generation without losing model enumeration and shrinking.
   - [x] Migrate typed-array verification without losing structured obligation witnesses.
-- [ ] Restore the zero-unknown self-dogfood gate with reviewed, TypeChecker-identified synchronous callback contracts for the TypeScript compiler traversal APIs used internally; same-spelled user APIs must remain unknown. ([#21](https://github.com/mizchi/uneffect/issues/21))
+- [x] Restore the zero-unknown self-dogfood gate with reviewed, TypeChecker-identified synchronous callback contracts for the TypeScript compiler traversal APIs used internally; same-spelled user APIs remain unknown. ([#21](https://github.com/mizchi/uneffect/issues/21))
 - [x] Eliminate an unreachable `catch` edge when the supported refinement fragment proves the `try` body has no throw completion, while keeping unknown/effectful try edges fail-closed. ([#3](https://github.com/mizchi/uneffect/issues/3))
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.

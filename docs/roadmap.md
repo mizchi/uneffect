@@ -8,8 +8,8 @@ reflects dependency and soundness risk, not a release date commitment.
 ## Phase 1 — Make proof boundaries dependable
 
 1. [Reviewed synchronous compiler callback timing](https://github.com/mizchi/uneffect/issues/21)
-   is the immediate CI blocker: restore the zero-unknown self-dogfood gate with
-   TypeChecker symbol identity and retain same-spelled user APIs as unknown.
+   has a local Red/Green implementation with TypeChecker symbol identity and
+   same-spelled negative controls; remote CI remains the closure gate.
 2. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point.

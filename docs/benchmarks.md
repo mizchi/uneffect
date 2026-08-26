@@ -1318,3 +1318,13 @@ imported Effect lifecycles plus 128 imported external-store snapshot and
 subscription lifecycles. These results are observations, not a regression
 budget; workload growth and run-to-run noise prevent attributing the difference
 from the prior run solely to callback-environment lookup.
+
+On 2026-08-27, building a warm-Program call graph for 32 TypeScript transformer
+chains measured 6.0510 ms mean (165.26 operations/second over 83 samples, 9.95%
+relative margin of error). Each chain contains an array-literal
+TransformerFactory, its returned Transformer, and a nested `visitEachChild`
+visitor. The benchmark includes TypeChecker symbol resolution and graph edge
+construction but reuses the parsed Program and does not run effect fixed points
+or TypeScript transforms. It is an observation rather than a regression budget;
+the relatively high margin of error makes it unsuitable for small comparative
+claims.

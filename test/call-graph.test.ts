@@ -540,6 +540,112 @@ describe("multi-file call graph and effect polymorphism", () => {
     expect(result.summaries.find((item) => item.functionName === "capture")).toMatchObject({ evidence: "inferred" });
   });
 
+  it("composes reviewed synchronous TypeScript traversal callbacks by symbol identity", () => {
+    const fileName = join(process.cwd(), "virtual-typescript-traversal.ts");
+    const sourceText = `
+      import ts from "typescript"
+      export function traverse(node: ts.Node, context: ts.TransformationContext) {
+        node.forEachChild((child) => console.log(child.kind))
+        ts.forEachChild(node, (child) => console.log(child.kind))
+        ts.visitNode(node, (child) => { console.log(child.kind); return child })
+        ts.visitEachChild(node, (child) => { console.log(child.kind); return child }, context)
+      }
+      export function rewrite(node: ts.Node) {
+        const result = ts.transform(node, [
+          (context) => (root) => ts.visitEachChild(root, (child) => {
+            console.log(child.kind)
+            return child
+          }, context),
+        ])
+        result.dispose()
+      }
+    `;
+    const options: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+    };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, language, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, sourceText, language, true)
+      : original(name, language, onError, fresh);
+    const program = ts.createProgram([fileName], options, host);
+    const graph = buildProgramCallGraph(program);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+    expect(graph.edges.filter((edge) => edge.kind === "callback-argument" && edge.timing === "inline"))
+      .toHaveLength(7);
+    for (const name of ["traverse", "rewrite"]) {
+      expect(result.summaries.find((item) => item.functionName === name)).toMatchObject({
+        evidence: "inferred",
+        effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
+      });
+    }
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+  });
+
+  it("keeps same-spelled user traversal callbacks at unknown timing", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-typescript-lookalike-"));
+    const source = join(directory, "lookalike.ts");
+    writeFileSync(source, `
+      class FakeNode {
+        forEachChild(callback: () => void) { queueMicrotask(callback) }
+      }
+      const fakeTs = {
+        visitNode(_node: unknown, callback: () => void) { queueMicrotask(callback) },
+        visitEachChild(_node: unknown, callback: () => void) { queueMicrotask(callback) },
+        transform(_node: unknown, callbacks: Array<() => void>) { callbacks.forEach(queueMicrotask) },
+      }
+      export function inspect(node: FakeNode) {
+        node.forEachChild(() => console.log("later"))
+        fakeTs.visitNode(node, () => console.log("later"))
+        fakeTs.visitEachChild(node, () => console.log("later"))
+        fakeTs.transform(node, [() => console.log("later")])
+      }
+    `);
+    const program = ts.createProgram([source], {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+    });
+    const graph = buildProgramCallGraph(program);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+    rmSync(directory, { recursive: true, force: true });
+
+    expect(graph.edges.filter((edge) => edge.kind === "callback-argument" && edge.timing === "unknown").length)
+      .toBeGreaterThanOrEqual(3);
+    expect(result.summaries.find((item) => item.functionName === "inspect")).toMatchObject({
+      evidence: "unknown",
+      unknownReasons: [expect.objectContaining({ code: "unknown-callback-timing" })],
+    });
+  });
+
+  it("composes a reviewed TypeScript transform callback array during module initialization", () => {
+    const fileName = join(process.cwd(), "virtual-typescript-module-transform.ts");
+    const sourceText = `
+      import ts from "typescript"
+      declare const source: ts.SourceFile
+      ts.forEachChild(source, (child) => console.log(child.kind))
+      ts.transform(source, [(context) => (root) => {
+        console.log(root.kind)
+        return ts.visitEachChild(root, (child) => child, context)
+      }])
+    `;
+    const options: ts.CompilerOptions = {
+      target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+    };
+    const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
+    host.getSourceFile = (name, language, onError, fresh) => name === fileName
+      ? ts.createSourceFile(fileName, sourceText, language, true)
+      : original(name, language, onError, fresh);
+    const program = ts.createProgram([fileName], options, host);
+    const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+    expect(result.summaries.find((item) => item.functionName === "<module>")).toMatchObject({
+      evidence: "trusted",
+      effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
+    });
+  });
+
   it("propagates effects across files, re-exports, methods, overloads, arrows, and callback arguments", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-program-effects-"));
     const library = join(directory, "library.ts"), barrel = join(directory, "index.ts"), main = join(directory, "main.ts");

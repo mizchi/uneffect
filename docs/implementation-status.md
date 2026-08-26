@@ -27,6 +27,10 @@ same property is proved for arbitrary TypeScript.
   call graphs, and diagnosed when declared but unused.
 - Builtins are identified by TypeScript symbol identity, including supported
   aliases and namespace imports, rather than by source spelling.
+- TypeScript 6.0.3 compiler traversal contracts synchronously compose callbacks
+  for reviewed `Node.forEachChild`, `forEachChild`, `visitNode`,
+  `visitEachChild`, and array-literal `transform` TransformerFactory chains.
+  User-defined lookalikes and other compiler versions remain unknown.
 - Structured effects include `Console`, `Fetch`, `Throw`, DOM operations,
   mutation regions, transfer ownership, and Deno-compatible permission
   categories (`FsRead`, `FsWrite`, `Net`, `Env`, `Run`, `Sys`, `Ffi`, and

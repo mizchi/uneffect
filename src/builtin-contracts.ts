@@ -35,7 +35,17 @@ export interface AbortStaticBuiltinOperation { kind: "abort-static"; reasonArgum
 export interface AbortAnyBuiltinOperation { kind: "abort-any"; signalsArgument: number }
 export interface SchedulerPostTaskBuiltinOperation { kind: "scheduler-post-task"; callbackArgument: number; optionsArgument: number }
 export interface SchedulerYieldBuiltinOperation { kind: "scheduler-yield" }
-export interface InlineCallbackBuiltinOperation { kind: "inline-callback"; callbackArguments: readonly number[] }
+export interface InlineCallbackBuiltinOperation {
+  kind: "inline-callback";
+  /** Arguments that are themselves invoked synchronously. */
+  callbackArguments: readonly number[];
+  /** Callback positions that may be omitted by the selected overload. */
+  optionalCallbackArguments?: readonly number[];
+  /** Array-literal arguments whose function elements are invoked synchronously. */
+  callbackArrayArguments?: readonly number[];
+  /** Number of callable-return layers synchronously invoked for each callback-array element. */
+  callbackArrayReturnDepth?: number;
+}
 export type PromiseCombinator = "all" | "allSettled" | "race" | "any";
 export interface PromiseCombinatorBuiltinOperation { kind: "promise-combinator"; combinator: PromiseCombinator; iterableArgument: number }
 export type DomOperation =
@@ -312,7 +322,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`,
       trustOwner: "@mizchi/uneffect",
     })),
-    ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight"] as const)
+    ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight", "sort"] as const)
       .flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
         symbol: { module: "lib.es", export: `${owner}#${name}` },
         operation: { kind: "inline-callback", callbackArguments: [0] },
@@ -344,6 +354,25 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
       runtime: { kind: "package", version: "6.0.3" },
       operation: { kind: "inline-callback", callbackArguments: [1] },
       trustReason: "TypeScript Program.emit invokes writeFile during the synchronous emit operation",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    ...([
+      ["Node#forEachChild", [0, 1], [1]],
+      ["forEachChild", [1, 2], [2]],
+      ["visitNode", [1]],
+      ["visitEachChild", [1]],
+    ] as const).map(([name, callbackArguments, optionalCallbackArguments]): BuiltinContract => trusted({
+      symbol: { module: "typescript", export: name },
+      runtime: { kind: "package", version: "6.0.3" },
+      operation: { kind: "inline-callback", callbackArguments, ...(optionalCallbackArguments ? { optionalCallbackArguments } : {}) },
+      trustReason: `TypeScript 6.0.3 ${name} invokes its visitor callbacks synchronously`,
+      trustOwner: "@mizchi/uneffect",
+    })),
+    trusted({
+      symbol: { module: "typescript", export: "transform" },
+      runtime: { kind: "package", version: "6.0.3" },
+      operation: { kind: "inline-callback", callbackArguments: [], callbackArrayArguments: [1], callbackArrayReturnDepth: 1 },
+      trustReason: "TypeScript 6.0.3 transform synchronously invokes each array-literal TransformerFactory and its returned Transformer",
       trustOwner: "@mizchi/uneffect",
     }),
     trusted({

@@ -148,6 +148,16 @@ describe("builtin semantic overlays", () => {
     }
   });
 
+  it("pins reviewed synchronous TypeScript traversal callback shapes", () => {
+    expect(builtinContractRegistry.contracts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ symbol: { module: "typescript", export: "Node#forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [0, 1], optionalCallbackArguments: [1] } }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "forEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1, 2], optionalCallbackArguments: [2] } }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "visitNode" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1] } }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "visitEachChild" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [1] } }),
+      expect.objectContaining({ symbol: { module: "typescript", export: "transform" }, runtime: { kind: "package", version: "6.0.3" }, operation: { kind: "inline-callback", callbackArguments: [], callbackArrayArguments: [1], callbackArrayReturnDepth: 1 } }),
+    ]));
+  });
+
   it("binds reviewed Valibot schema factories to the exact package version", () => {
     for (const name of ["pipe", "number", "safeInteger", "brand", "minValue", "maxValue", "finite"]) {
       expect(findBuiltinContract(builtinContractRegistry, { module: "valibot", export: name })).toMatchObject({
