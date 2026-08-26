@@ -242,6 +242,36 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * state audited: int
+       * init pending = 0
+       * init processed = 0
+       * init audited = 0
+       * action refillAndDrain: pending' = pending + 1 > 0 ? 0 : pending + 1, processed' = processed + (pending + 1 > 0 ? pending + 1 : 0), audited' = audited + 1
+       */
+      interface Runtime { pending: number; processed: number; audited: number }
+      /* uneffect: refinement affineEntry@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement affineEntry@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement affineEntry@1 action refillAndDrain */
+      export function refillAndDrain(runtime: Runtime) {
+        runtime.pending++
+        while (runtime.pending > 0) {
+          runtime.pending--
+          runtime.processed++
+        }
+        runtime.audited++
+      }
+    `;
+    const temporal = (parseSpecification("affine-entry.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("affine-entry.ts", source, "affineEntry", temporal)).resolves.toEqual([]);
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

@@ -1488,8 +1488,13 @@ function validateRefinementActionBodiesInSource(
         if (!normalizedGuard || normalizedGuard.kind !== "binary" || normalizedGuard.operator !== "gt"
           || normalizedGuard.left.kind !== "name" || normalizedGuard.right.kind !== "integer"
           || normalizedGuard.right.value !== "0" || !stateNames.has(normalizedGuard.left.name)
-          || updates.size > 0) return undefined;
+        ) return undefined;
         const counterName = normalizedGuard.left.name;
+        const entryValues = new Map<string, TemporalExpression>();
+        for (const name of stateNames) {
+          entryValues.set(name, expandLocalSnapshots(resolveCurrentState({ kind: "name", name })));
+        }
+        const entryGuard = expandLocalSnapshots(resolveCurrentState(normalizedGuard));
         const loopUpdates = new Map<string, TemporalExpression>();
         const loopCompletion = collect(
           asBlock(statement.statement), receiver, runtimeClass, substitutions,
@@ -1523,17 +1528,18 @@ function validateRefinementActionBodiesInSource(
           deltas.set(name, delta);
         }
         if (deltas.get(counterName) !== -1) return undefined;
-        const guard: TemporalExpression = normalizedGuard;
         const zero: TemporalExpression = { kind: "integer", value: "0" };
+        const entryCounter = entryValues.get(counterName)!;
         const iterations: TemporalExpression = {
-          kind: "conditional", condition: guard,
-          whenTrue: { kind: "name", name: counterName }, whenFalse: zero,
+          kind: "conditional", condition: entryGuard,
+          whenTrue: entryCounter, whenFalse: zero,
         };
         for (const [name, delta] of deltas) {
+          const entryValue = entryValues.get(name)!;
           if (name === counterName) {
             updates.set(name, {
-              kind: "conditional", condition: guard,
-              whenTrue: zero, whenFalse: { kind: "name", name },
+              kind: "conditional", condition: entryGuard,
+              whenTrue: zero, whenFalse: entryValue,
             });
             continue;
           }
@@ -1545,7 +1551,7 @@ function validateRefinementActionBodiesInSource(
             kind: "binary", operator: "multiply", left: coefficient, right: iterations,
           };
           updates.set(name, {
-            kind: "binary", operator: "add", left: { kind: "name", name }, right: totalDelta,
+            kind: "binary", operator: "add", left: entryValue, right: totalDelta,
           });
         }
         continue;

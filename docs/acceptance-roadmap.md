@@ -232,14 +232,16 @@ specialization, not a general loop fixed point.
 A distinct symbolic affine fragment summarizes `while (runtime.counter > 0)`
 without finite expansion. It proves termination only when the loop body
 decrements that counter by exactly one, every other state write is a
-safe-integer constant delta per iteration, the body completes normally, and no
-state write precedes the loop. The derived trip count is
-`counter > 0 ? counter : 0`; the closed-form updates then enter the ordinary
-lexical continuation. The telemetry-backlog dogfood checks exact accounting,
-double-accounting mismatch, and a nonterminating increment control. Changed
-guards, non-unit steps, coupled recurrences, prior writes, break/continue,
-throw/return, and general loop invariants remain fail-closed. This is one
-affine fixed-point rule, not a general TypeScript CFG proof.
+safe-integer constant delta per iteration, and the body completes normally.
+The loop-entry state may itself be a supported symbolic update: the derived
+trip count and closed-form results are substituted over that entry snapshot
+before entering the ordinary lexical continuation. The telemetry-backlog
+dogfood first accounts for the sample that triggered the flush, then checks
+exact backlog accounting, a double-accounting mismatch, and a nonterminating
+increment control. Changed guards, non-unit steps, coupled recurrences, opaque
+entry updates, break/continue, throw/return, and general loop invariants remain
+fail-closed. This is one affine fixed-point rule, not a general TypeScript CFG
+proof.
 
 An unlabeled `break` inside a supported finite loop is represented as its own
 conditional completion, rather than rewritten as a function return. It passes

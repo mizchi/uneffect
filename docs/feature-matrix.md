@@ -40,8 +40,9 @@ successful verification.
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > 0)` is summarized symbolically when
 the counter decreases by exactly one, every other state write is a safe-integer
-constant delta, the body completes normally, and no state write precedes the
-loop. Changed guards, non-unit steps, coupled recurrences, prior writes, and
+constant delta, and the body completes normally. Supported symbolic updates at
+loop entry are substituted through the guard, trip count, and final values.
+Changed guards, non-unit steps, coupled recurrences, opaque entry updates, and
 abrupt exits remain unsupported. This is a closed-form affine rule, not a
 general loop fixed point.
 

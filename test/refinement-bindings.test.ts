@@ -2487,12 +2487,24 @@ describe("annotated refinement bindings", () => {
       ["countdown-step.ts", source.replace("pending--", "pending -= 2")],
       ["countdown-growing.ts", source.replace("pending--", "pending++")],
       ["countdown-coupled.ts", source.replace("processed++", "processed += runtime.pending")],
-      ["countdown-prefix.ts", source.replace("        while", "        runtime.audited++\n        while")],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "countdown", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
       );
     }
+
+    const prefixed = source
+      .replace("audited' = audited + 1", "audited' = audited + 2")
+      .replace("        while", "        runtime.audited++\n        while");
+    const prefixedTemporal = parseSpec("countdown-prefix.ts", prefixed).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "countdown-prefix.ts", prefixed, "countdown", prefixedTemporal,
+    )).resolves.toEqual([]);
+
+    const opaquePrefix = source.replace("        while", "        runtime.pending = Math.random()\n        while");
+    expect(validateRefinementActionBodies("countdown-opaque-prefix.ts", opaquePrefix, "countdown", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+    );
   });
 
   it("unrolls only canonical bounded local-counter while loops", () => {
