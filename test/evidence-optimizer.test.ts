@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
+import { assessEvidenceArtifactEligibility, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
 import { analyzeEffectSummariesInProgram } from "../src/effects.js";
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
@@ -175,6 +175,31 @@ describe("evidence and optimizer obligations", () => {
     });
     expect(() => createEvidenceArtifact(program, source, [{ functionName: "manual", effects: [], evidence: "verified" }]))
       .toThrow(/source identity/);
+  });
+
+  it("separates fresh evidence inventory from proof eligibility", () => {
+    const located = { id: "safe.ts:0", fileName: "safe.ts", span: { start: 0, end: 10 }, functionName: "safe", effects: [] };
+    expect(assessEvidenceArtifactEligibility({ summaries: [{ ...located, evidence: "verified" }] })).toEqual({
+      eligible: true, vacuous: false, blockers: [],
+    });
+    for (const evidence of ["inferred", "trusted", "unknown"] as const) {
+      expect(assessEvidenceArtifactEligibility({ summaries: [{ ...located, evidence }] })).toMatchObject({
+        eligible: false, blockers: [expect.objectContaining({ summaryId: located.id, reason: evidence })],
+      });
+    }
+    expect(assessEvidenceArtifactEligibility({ summaries: [] })).toEqual({
+      eligible: false, vacuous: true, blockers: [{ reason: "vacuous", summaryId: "<artifact>" }],
+    });
+    expect(assessEvidenceArtifactEligibility({ summaries: [{
+      ...located, evidence: "verified", iteratorEffectParameters: [{ index: 0, name: "items", convertsThrowToRejection: false }],
+    }] })).toMatchObject({
+      eligible: false, blockers: [expect.objectContaining({ reason: "open-iterator-effect" })],
+    });
+    expect(assessEvidenceArtifactEligibility({ summaries: [
+      { ...located, evidence: "verified" }, { ...located, functionName: "duplicate", evidence: "verified" },
+    ] })).toMatchObject({
+      eligible: false, blockers: [expect.objectContaining({ reason: "duplicate-summary-id" })],
+    });
   });
 
   it("allows stable-read reuse only with proof-grade evidence and no invalidation", () => {

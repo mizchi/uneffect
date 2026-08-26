@@ -48,6 +48,18 @@ analyzer trusted computing base. It does not turn an analyzer attestation into
 an independently checkable proof certificate; that remains tracked in issue
 #7.
 
+Freshness is deliberately separate from proof eligibility. After validation,
+consumers must also call `assessEvidenceArtifactEligibility(artifact)` before
+using an effect artifact as proof-grade input. Eligibility requires a non-empty
+set of uniquely identified `verified` summaries and closed bounds for every
+iterator-effect parameter. It fails with explicit blockers for `trusted`,
+`inferred`, or `unknown` summaries, open iterator effects, duplicate summary
+IDs, and vacuous artifacts. A result can therefore be fresh (`valid: true`) but
+ineligible. Conversely, eligibility alone says nothing about staleness. Even
+when both checks pass, the claim remains relative to Uneffect's analyzer and
+builtin-contract trusted computing base; it is not an independently checkable
+proof or a replacement for the project-wide assurance and assumption ledger.
+
 Project verification is fail-closed on TypeScript syntax, semantic, and
 compiler-option errors. These errors appear in `result.diagnostics`; function
 and module summaries, contract obligations, and typed-array obligations from

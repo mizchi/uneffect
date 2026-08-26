@@ -541,6 +541,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Preserve iterator-effect parameters and formatted bounds in evidence schema v2 and the public `uneffect evidence` JSON command.
   - [x] Bind evidence schema v2 to the root identity and hashes of every non-declaration Program source, not only the command-line file.
   - [x] Upgrade effect evidence to schema v3 with mandatory per-summary source identity and a fail-closed validator for schema/tool/config/source-set/builtin/summary drift; this is TCB-relative freshness, not an independent proof certificate.
+  - [x] Separate artifact freshness from proof eligibility; reject trusted/inferred/unknown summaries, open iterator effects, duplicate identities, and vacuous inventories with machine-readable blockers.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
   - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
   - [x] Track iterator identities in one-level local object slots with constant property keys, including local object aliases and flow-sensitive slot reassignment; keep dynamic keys unknown.

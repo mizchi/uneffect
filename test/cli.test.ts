@@ -157,8 +157,9 @@ describe("uneffect command line", () => {
       `);
       const io = capture();
       expect(await runCli(["evidence", fileName], io)).toBe(exitCode.success);
-      const output = JSON.parse(io.stdout) as { artifact: { schemaVersion: number; summaries: Array<Record<string, unknown>> } };
+      const output = JSON.parse(io.stdout) as { artifact: { schemaVersion: number; summaries: Array<Record<string, unknown>> }; eligibility: { eligible: boolean; vacuous: boolean; blockers: unknown[] } };
       expect(output.artifact.schemaVersion).toBe(3);
+      expect(output.eligibility).toEqual({ eligible: true, vacuous: false, blockers: [] });
       expect(output.artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
         evidence: "verified",
         iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],

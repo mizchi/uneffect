@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import ts from "typescript";
 import { exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
 import { analyzeEffectSummariesInProgram } from "./effects.js";
-import { createEvidenceArtifact } from "./evidence.js";
+import { assessEvidenceArtifactEligibility, createEvidenceArtifact } from "./evidence.js";
 
 export const evidenceCommand: CliCommand = {
   name: "evidence",
@@ -20,7 +20,9 @@ export const evidenceCommand: CliCommand = {
     host.getSourceFile = (name, language, onError, fresh) => name === fileName ? ts.createSourceFile(fileName, text, language, true) : original(name, language, onError, fresh);
     const program = ts.createProgram([fileName], options, host), source = program.getSourceFile(fileName)!;
     const analysis = analyzeEffectSummariesInProgram(program, source);
-    io.out(`${JSON.stringify({ artifact: createEvidenceArtifact(program, source, analysis.summaries), diagnostics: analysis.diagnostics }, null, 2)}\n`);
+    const artifact = createEvidenceArtifact(program, source, analysis.summaries);
+    const eligibility = assessEvidenceArtifactEligibility(artifact);
+    io.out(`${JSON.stringify({ artifact, eligibility, diagnostics: analysis.diagnostics }, null, 2)}\n`);
     return exitCode.success;
   },
 };

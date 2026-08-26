@@ -33,7 +33,7 @@ npx quint run protocol.qnt
 | `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
-| `evidence <file.ts>` | The machine-readable effect evidence artifact, as JSON. |
+| `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 

@@ -51,6 +51,23 @@ export interface EvidenceArtifactValidation {
   reasons: EvidenceArtifactValidationReason[];
 }
 
+export type EvidenceArtifactEligibilityReason =
+  | Exclude<EvidenceStatus, "verified">
+  | "open-iterator-effect"
+  | "duplicate-summary-id"
+  | "vacuous";
+
+export interface EvidenceArtifactEligibilityBlocker {
+  summaryId: string;
+  reason: EvidenceArtifactEligibilityReason;
+}
+
+export interface EvidenceArtifactEligibility {
+  eligible: boolean;
+  vacuous: boolean;
+  blockers: EvidenceArtifactEligibilityBlocker[];
+}
+
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 export const uneffectVersion = "0.0.0-alpha.0";
 export function builtinContractDigest(): string { return digest(JSON.stringify(builtinContractRegistry)); }
@@ -123,6 +140,43 @@ export function validateEvidenceArtifact(
   if (actual.builtinContractDigest !== expected.builtinContractDigest) reasons.push("builtin-contract-mismatch");
   if (canonicalJson(actual.summaries) !== canonicalJson(expected.summaries)) reasons.push("summary-mismatch");
   return { valid: reasons.length === 0, reasons };
+}
+
+/**
+ * Determines whether a fresh artifact contains only proof-grade, closed effect
+ * summaries. Call this only after validateEvidenceArtifact: eligibility is not
+ * a freshness check and remains relative to Uneffect's analyzer TCB.
+ */
+export function assessEvidenceArtifactEligibility(
+  artifact: Pick<EvidenceArtifact, "summaries">,
+): EvidenceArtifactEligibility {
+  if (artifact.summaries.length === 0) {
+    return {
+      eligible: false,
+      vacuous: true,
+      blockers: [{ summaryId: "<artifact>", reason: "vacuous" }],
+    };
+  }
+
+  const blockers: EvidenceArtifactEligibilityBlocker[] = [];
+  const seenIds = new Set<string>();
+  for (const summary of artifact.summaries) {
+    if (seenIds.has(summary.id)) {
+      blockers.push({ summaryId: summary.id, reason: "duplicate-summary-id" });
+    }
+    seenIds.add(summary.id);
+
+    if (summary.evidence !== "verified") {
+      blockers.push({ summaryId: summary.id, reason: summary.evidence });
+    }
+
+    const boundedIndexes = new Set(summary.iteratorEffectBounds?.map((bound) => bound.index) ?? []);
+    if (summary.iteratorEffectParameters?.some((parameter) => !boundedIndexes.has(parameter.index))) {
+      blockers.push({ summaryId: summary.id, reason: "open-iterator-effect" });
+    }
+  }
+
+  return { eligible: blockers.length === 0, vacuous: false, blockers };
 }
 
 export function trustedSummary(functionName: string, effects: EffectSummary["effects"]): EffectSummary {
