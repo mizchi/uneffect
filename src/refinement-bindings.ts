@@ -1478,9 +1478,76 @@ function validateRefinementActionBodiesInSource(
         }
       }
       if (ts.isWhileStatement(statement)) {
-        // This is an exact zero-iteration reduction, not a loop invariant or
-        // fixed-point proof. Any non-literal condition remains unsupported.
-        if (statement.expression.kind !== ts.SyntaxKind.FalseKeyword) return undefined;
+        // Literal false is an exact zero-iteration reduction. The additional
+        // affine countdown fragment computes a symbolic loop fixed point
+        // without bounding or expanding the number of iterations.
+        if (statement.expression.kind === ts.SyntaxKind.FalseKeyword) continue;
+        const normalizedGuard = normalizeRefinementExpression(
+          statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+        );
+        if (!normalizedGuard || normalizedGuard.kind !== "binary" || normalizedGuard.operator !== "gt"
+          || normalizedGuard.left.kind !== "name" || normalizedGuard.right.kind !== "integer"
+          || normalizedGuard.right.value !== "0" || !stateNames.has(normalizedGuard.left.name)
+          || updates.size > 0) return undefined;
+        const counterName = normalizedGuard.left.name;
+        const loopUpdates = new Map<string, TemporalExpression>();
+        const loopCompletion = collect(
+          asBlock(statement.statement), receiver, runtimeClass, substitutions,
+          loopUpdates, new Map(localValues), activeCalls,
+          false, false, false, false,
+          undefined, undefined, activeBreakLabels, activeContinueLabels,
+        );
+        if (loopCompletion !== "normal") return undefined;
+        const deltaFor = (name: string, expression: TemporalExpression): number | undefined => {
+          const safeInteger = (value: string): number | undefined => {
+            const parsed = Number(value);
+            return Number.isSafeInteger(parsed) ? parsed : undefined;
+          };
+          if (expression.kind === "name" && expression.name === name) return 0;
+          if (expression.kind !== "binary") return undefined;
+          if (expression.operator === "add") {
+            if (expression.left.kind === "name" && expression.left.name === name && expression.right.kind === "integer") return safeInteger(expression.right.value);
+            if (expression.right.kind === "name" && expression.right.name === name && expression.left.kind === "integer") return safeInteger(expression.left.value);
+          }
+          if (expression.operator === "subtract" && expression.left.kind === "name"
+            && expression.left.name === name && expression.right.kind === "integer") {
+            const value = safeInteger(expression.right.value);
+            return value === undefined ? undefined : -value;
+          }
+          return undefined;
+        };
+        const deltas = new Map<string, number>();
+        for (const name of stateNames) {
+          const delta = deltaFor(name, loopUpdates.get(name) ?? { kind: "name", name });
+          if (delta === undefined) return undefined;
+          deltas.set(name, delta);
+        }
+        if (deltas.get(counterName) !== -1) return undefined;
+        const guard: TemporalExpression = normalizedGuard;
+        const zero: TemporalExpression = { kind: "integer", value: "0" };
+        const iterations: TemporalExpression = {
+          kind: "conditional", condition: guard,
+          whenTrue: { kind: "name", name: counterName }, whenFalse: zero,
+        };
+        for (const [name, delta] of deltas) {
+          if (name === counterName) {
+            updates.set(name, {
+              kind: "conditional", condition: guard,
+              whenTrue: zero, whenFalse: { kind: "name", name },
+            });
+            continue;
+          }
+          if (delta === 0) continue;
+          const coefficient: TemporalExpression = delta >= 0
+            ? { kind: "integer", value: String(delta) }
+            : { kind: "unary", operator: "negate", operand: { kind: "integer", value: String(-delta) } };
+          const totalDelta: TemporalExpression = delta === 1 ? iterations : {
+            kind: "binary", operator: "multiply", left: coefficient, right: iterations,
+          };
+          updates.set(name, {
+            kind: "binary", operator: "add", left: { kind: "name", name }, right: totalDelta,
+          });
+        }
         continue;
       }
       if (ts.isDoStatement(statement)) {

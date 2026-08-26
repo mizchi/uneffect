@@ -203,6 +203,45 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("summarizes a state-dependent affine countdown loop without finite expansion", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * state audited: int
+       * init pending = 0
+       * init processed = 0
+       * init audited = 0
+       * action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1
+       */
+      interface Runtime { pending: number; processed: number; audited: number }
+      /* uneffect: refinement drain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement drain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement drain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          runtime.processed++
+        }
+        runtime.audited++
+      }
+    `;
+    const temporal = (parseSpecification("affine-countdown.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("affine-countdown.ts", source, "drain", temporal)).resolves.toEqual([]);
+
+    const wrongCoupling = source.replace("processed++", "processed += 2");
+    await expect(validateActions("affine-countdown-wrong.ts", wrongCoupling, "drain", temporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "drain", target: "processed" }),
+    );
+
+    const unsupportedExit = source.replace("runtime.processed++", "if (runtime.processed > 10) break\n          runtime.processed++");
+    await expect(validateActions("affine-countdown-break.ts", unsupportedExit, "drain", temporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+    );
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

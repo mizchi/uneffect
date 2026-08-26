@@ -229,6 +229,18 @@ iterations. Dynamic bounds, non-unit increments, uses of the final mutable
 counter, `continue`, and labeled transfers are rejected. This remains finite
 specialization, not a general loop fixed point.
 
+A distinct symbolic affine fragment summarizes `while (runtime.counter > 0)`
+without finite expansion. It proves termination only when the loop body
+decrements that counter by exactly one, every other state write is a
+safe-integer constant delta per iteration, the body completes normally, and no
+state write precedes the loop. The derived trip count is
+`counter > 0 ? counter : 0`; the closed-form updates then enter the ordinary
+lexical continuation. The telemetry-backlog dogfood checks exact accounting,
+double-accounting mismatch, and a nonterminating increment control. Changed
+guards, non-unit steps, coupled recurrences, prior writes, break/continue,
+throw/return, and general loop invariants remain fail-closed. This is one
+affine fixed-point rule, not a general TypeScript CFG proof.
+
 An unlabeled `break` inside a supported finite loop is represented as its own
 conditional completion, rather than rewritten as a function return. It passes
 through supported branches and `try`/`finally`, stops later iterations, is

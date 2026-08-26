@@ -115,6 +115,9 @@ const finiteTelemetryBatchSpec = parseSpec(finiteTelemetryBatchFile, finiteTelem
 const labeledTelemetryFile = "examples/dogfood/labeled-telemetry-delivery.ts";
 const labeledTelemetrySource = readFileSync(labeledTelemetryFile, "utf8");
 const labeledTelemetrySpec = parseSpec(labeledTelemetryFile, labeledTelemetrySource).temporal;
+const telemetryBacklogFile = "examples/dogfood/telemetry-backlog-drain.ts";
+const telemetryBacklogSource = readFileSync(telemetryBacklogFile, "utf8");
+const telemetryBacklogSpec = parseSpec(telemetryBacklogFile, telemetryBacklogSource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
 const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
 const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
@@ -1000,6 +1003,15 @@ describe("typed-array static verification", () => {
       }
     `;
     validateRefinementActionBodies("nested-scan.ts", source, "nestedScan", parseSpec("nested-scan.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
+
+  bench("summarize a symbolic telemetry backlog countdown", () => {
+    validateRefinementActionBodies(
+      telemetryBacklogFile,
+      telemetryBacklogSource,
+      "telemetryBacklog",
+      telemetryBacklogSpec,
+    );
   }, { time: 500, iterations: 20 });
 
   bench("reduce exact and ownership-aware bounded loops", () => {

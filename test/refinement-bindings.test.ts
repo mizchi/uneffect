@@ -2426,7 +2426,7 @@ describe("annotated refinement bindings", () => {
     ]);
   });
 
-  it("only lowers while forms whose iteration count is statically exact", () => {
+  it("only lowers literal while forms whose iteration count is statically exact", () => {
     const model = `/* uneffect:
       state value: int
       state enabled: bool
@@ -2455,6 +2455,44 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("repeated-loop.ts", repeated, "loop", parseSpec("repeated-loop.ts", repeated).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
     );
+  });
+
+  it("summarizes only terminating constant-delta state countdown loops", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state processed: int
+      state audited: int
+      init pending = 0
+      init processed = 0
+      init audited = 0
+      action drain: pending' = pending > 0 ? 0 : pending, processed' = processed + (pending > 0 ? pending : 0), audited' = audited + 1
+    */
+      interface Runtime { pending: number; processed: number; audited: number }
+      /* uneffect: refinement countdown@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement countdown@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement countdown@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          runtime.processed++
+        }
+        runtime.audited++
+      }
+    `;
+    const temporal = parseSpec("countdown.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3("countdown.ts", source, "countdown", temporal)).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["countdown-gte.ts", source.replace("while (runtime.pending > 0)", "while (runtime.pending >= 0)")],
+      ["countdown-step.ts", source.replace("pending--", "pending -= 2")],
+      ["countdown-growing.ts", source.replace("pending--", "pending++")],
+      ["countdown-coupled.ts", source.replace("processed++", "processed += runtime.pending")],
+      ["countdown-prefix.ts", source.replace("        while", "        runtime.audited++\n        while")],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "countdown", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
   });
 
   it("unrolls only canonical bounded local-counter while loops", () => {

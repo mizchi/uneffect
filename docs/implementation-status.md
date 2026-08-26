@@ -100,6 +100,13 @@ same property is proved for arbitrary TypeScript.
   The canonical while form is `let i = start; while (i < end) { ...; i++ }`
   with literal safe-integer bounds and at most 64 iterations. Dynamic bounds,
   other steps, and general loop invariants remain unsupported. Within the
+  separate symbolic affine fragment, `while (counter > 0)` is summarized
+  without expansion when the counter decreases by exactly one, all other
+  state writes have safe-integer constant per-iteration deltas, the body has
+  no abrupt completion, and no state write precedes the loop. Its closed form
+  uses `counter > 0 ? counter : 0` iterations and composes the lexical suffix.
+  Other guards, steps, coupled recurrences, prior state writes, and abrupt
+  exits remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also

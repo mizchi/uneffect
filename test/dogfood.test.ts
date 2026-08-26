@@ -70,6 +70,24 @@ describe("Uneffect dogfood", () => {
     );
   });
 
+  it("proves telemetry backlog accounting through a symbolic countdown loop", async () => {
+    const fileName = "examples/dogfood/telemetry-backlog-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "telemetryBacklog", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "telemetryBacklog", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "telemetryBacklog", temporal)).toEqual([]);
+
+    const doubleAccounting = source.replace("runtime.accounted++;", "runtime.accounted += 2;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, doubleAccounting, "telemetryBacklog", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "drain", target: "accounted" }),
+    );
+    const nonTerminating = source.replace("runtime.queued--;", "runtime.queued++;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, nonTerminating, "telemetryBacklog", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+    );
+  });
+
   it("accepts mandatory finally release of a loop-local upload session alias", () => {
     const fileName = "examples/dogfood/upload-session-finally.ts";
     const source = readFileSync(fileName, "utf8");

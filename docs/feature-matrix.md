@@ -37,6 +37,14 @@ successful verification.
 | Native Rust/Corsa frontend | Partial | A neutral IR, Rust parser/lattice, deterministic project-wide UTF-8 spans, transitive reference parity, mandatory producer provenance, and a real corsa-bind multi-file exporter for top-level function declarations, single immutable arrow/function-expression bindings, identifier-named methods of top-level classes, named-function overload candidates/selections, direct intra-project calls, type text, and trivia exist. Unsupported nested callbacks do not leak their calls into an outer immediate-call summary, and annotated computed methods fail coverage. `requireCorsaCheckerFacts` passes only with authenticated checker-backed input. | Computed/polymorphic methods, nested callbacks/timing, method/generic overload edge cases, Promise/resource records, and the rest of the neutral IR are not checker-exported. See [#8](https://github.com/mizchi/uneffect/issues/8). |
 | Proof-guided optimization | Planned | Narrow authorization and ownership-assertion-elision prototypes establish the fail-closed shape of a transformation. | General compression, mangling, reordering, and dead-code elimination are not implemented. See [#13](https://github.com/mizchi/uneffect/issues/13). |
 
+For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
+one explicit exception: `while (counter > 0)` is summarized symbolically when
+the counter decreases by exactly one, every other state write is a safe-integer
+constant delta, the body completes normally, and no state write precedes the
+loop. Changed guards, non-unit steps, coupled recurrences, prior writes, and
+abrupt exits remain unsupported. This is a closed-form affine rule, not a
+general loop fixed point.
+
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks
 reached through transitive `const` aliases. Program analysis also accepts
