@@ -1,6 +1,7 @@
 import ts from "typescript";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { createEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
+import { createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
 import { analyzeEffectSummariesInProgram } from "../src/effects.js";
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
@@ -89,15 +90,19 @@ describe("evidence and optimizer obligations", () => {
     `);
     const result = analyzeEffectSummariesInProgram(program, source);
     const artifact = createEvidenceArtifact(program, source, result.summaries);
+    expect(artifact.uneffectVersion).toBe((JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version);
     expect(artifact.summaries.filter((item) => item.functionName !== "<module>").map((item) => item.evidence))
       .toEqual(["verified", "inferred", "unknown"]);
     expect(artifact).toMatchObject({
-      schemaVersion: 2, sourceFile: source.fileName,
+      schemaVersion: 3, sourceFile: source.fileName,
       compilerRevision: expect.any(String), tsconfigHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       sourceHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       sourceHashes: { [source.fileName]: expect.stringMatching(/^[a-f0-9]{64}$/) },
       builtinContractDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
     });
+    expect(artifact.summaries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: expect.any(String), fileName: source.fileName, span: expect.any(Object) }),
+    ]));
   });
 
   it("preserves polymorphic iterator contracts and bounds in evidence artifacts", () => {
@@ -124,12 +129,52 @@ describe("evidence and optimizer obligations", () => {
       host.getSourceFile = (name, language, onError, fresh) => files.has(name)
         ? ts.createSourceFile(name, files.get(name)!, language, true) : original(name, language, onError, fresh);
       const program = ts.createProgram([...files.keys()], options, host), source = program.getSourceFile(root)!;
-      return createEvidenceArtifact(program, source, []);
+      return { program, source, artifact: createEvidenceArtifact(program, source, []) };
     };
     const before = build(`export const dependency = 1`), after = build(`export const dependency = 2`);
-    expect(before.sourceHash).toBe(after.sourceHash);
-    expect(before.sourceHashes[root]).toBe(after.sourceHashes[root]);
-    expect(before.sourceHashes[dependency]).not.toBe(after.sourceHashes[dependency]);
+    expect(before.artifact.sourceHash).toBe(after.artifact.sourceHash);
+    expect(before.artifact.sourceHashes[root]).toBe(after.artifact.sourceHashes[root]);
+    expect(before.artifact.sourceHashes[dependency]).not.toBe(after.artifact.sourceHashes[dependency]);
+    expect(validateEvidenceArtifact(after.program, after.source, [], before.artifact)).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["source-hashes-mismatch"]),
+    });
+    const reordered = { ...after.artifact, sourceHashes: Object.fromEntries(Object.entries(after.artifact.sourceHashes).reverse()) };
+    expect(validateEvidenceArtifact(after.program, after.source, [], reordered)).toEqual({ valid: true, reasons: [] });
+  });
+
+  it("validates effect evidence against every regenerated dependency and summary", () => {
+    const { program, source } = programOf(`
+      /* uneffect: effect Console */ function report() { console.log("ok") }
+    `);
+    const summaries = analyzeEffectSummariesInProgram(program, source).summaries;
+    const artifact = createEvidenceArtifact(program, source, summaries);
+    expect(validateEvidenceArtifact(program, source, summaries, artifact)).toEqual({ valid: true, reasons: [] });
+
+    const tamperedSummary = structuredClone(artifact);
+    tamperedSummary.summaries[0]!.effects = [];
+    expect(validateEvidenceArtifact(program, source, summaries, tamperedSummary)).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["summary-mismatch"]),
+    });
+
+    const partialSources = structuredClone(artifact);
+    partialSources.sourceHashes = {};
+    expect(validateEvidenceArtifact(program, source, summaries, partialSources)).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["source-hashes-mismatch"]),
+    });
+
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, compilerRevision: "stale" })).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["compiler-revision-mismatch"]),
+    });
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, builtinContractDigest: "modified" })).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["builtin-contract-mismatch"]),
+    });
+    expect(validateEvidenceArtifact(program, source, summaries, null)).toEqual({ valid: false, reasons: ["invalid-artifact"] });
+
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, schemaVersion: 2 })).toMatchObject({
+      valid: false, reasons: expect.arrayContaining(["schema-mismatch"]),
+    });
+    expect(() => createEvidenceArtifact(program, source, [{ functionName: "manual", effects: [], evidence: "verified" }]))
+      .toThrow(/source identity/);
   });
 
   it("allows stable-read reuse only with proof-grade evidence and no invalidation", () => {

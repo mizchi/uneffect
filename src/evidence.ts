@@ -12,6 +12,9 @@ import type { EffectSummary, EvidenceStatus } from "./effects.js";
 import { createZ3Context, z3Version } from "./z3.js";
 
 export interface EvidenceArtifactSummary {
+  id: string;
+  fileName: string;
+  span: { start: number; end: number };
   functionName: string;
   effects: string[];
   evidence: EvidenceStatus;
@@ -19,7 +22,7 @@ export interface EvidenceArtifactSummary {
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
 export interface EvidenceArtifact {
-  schemaVersion: 2;
+  schemaVersion: 3;
   uneffectVersion: string;
   compilerRevision: string;
   tsconfigHash: string;
@@ -31,7 +34,25 @@ export interface EvidenceArtifact {
   summaries: EvidenceArtifactSummary[];
 }
 
+export type EvidenceArtifactValidationReason =
+  | "invalid-artifact"
+  | "schema-mismatch"
+  | "uneffect-version-mismatch"
+  | "compiler-revision-mismatch"
+  | "tsconfig-mismatch"
+  | "source-file-mismatch"
+  | "source-hash-mismatch"
+  | "source-hashes-mismatch"
+  | "builtin-contract-mismatch"
+  | "summary-mismatch";
+
+export interface EvidenceArtifactValidation {
+  valid: boolean;
+  reasons: EvidenceArtifactValidationReason[];
+}
+
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+export const uneffectVersion = "0.0.0-alpha.0";
 export function builtinContractDigest(): string { return digest(JSON.stringify(builtinContractRegistry)); }
 export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFile, summaries: readonly EffectSummary[]): EvidenceArtifact {
   const sourceHashes = Object.fromEntries(program.getSourceFiles()
@@ -39,24 +60,69 @@ export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFil
     .sort((left, right) => left.fileName.localeCompare(right.fileName))
     .map((item) => [item.fileName, digest(item.text)]));
   return {
-    schemaVersion: 2,
-    uneffectVersion: "0.1.0",
+    schemaVersion: 3,
+    uneffectVersion,
     compilerRevision: ts.version,
     tsconfigHash: digest(JSON.stringify(program.getCompilerOptions(), Object.keys(program.getCompilerOptions()).sort())),
     sourceFile: source.fileName,
     sourceHash: digest(source.text),
     sourceHashes,
     builtinContractDigest: builtinContractDigest(),
-    summaries: summaries.map((summary) => ({
-      functionName: summary.functionName,
-      effects: summary.effects.map(formatEffect).sort(),
-      evidence: summary.evidence,
-      ...(summary.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
-      ...(summary.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds.map((bound) => ({
-        index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect).sort(),
-      })) } : {}),
-    })),
+    summaries: summaries.map((summary) => {
+      if (!summary.id || !summary.fileName || !summary.span) {
+        throw new Error(`cannot create proof evidence for ${summary.functionName} without Program source identity`);
+      }
+      return {
+        id: summary.id, fileName: summary.fileName, span: summary.span,
+        functionName: summary.functionName,
+        effects: summary.effects.map(formatEffect).sort(),
+        evidence: summary.evidence,
+        ...(summary.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
+        ...(summary.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds.map((bound) => ({
+          index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect).sort(),
+        })) } : {}),
+      };
+    }),
   };
+}
+
+function canonicalJson(value: unknown): string {
+  const normalize = (item: unknown): unknown => {
+    if (Array.isArray(item)) return item.map(normalize);
+    if (typeof item !== "object" || item === null) return item;
+    return Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => [key, normalize(nested)]));
+  };
+  return JSON.stringify(normalize(value));
+}
+
+/**
+ * Regenerates every analyzer-controlled input and rejects stale, partial, or
+ * modified effect evidence. This checks freshness/integrity within Uneffect's
+ * analyzer TCB; it is not an independently checkable proof certificate.
+ */
+export function validateEvidenceArtifact(
+  program: ts.Program,
+  source: ts.SourceFile,
+  summaries: readonly EffectSummary[],
+  artifact: unknown,
+): EvidenceArtifactValidation {
+  if (typeof artifact !== "object" || artifact === null || Array.isArray(artifact)) {
+    return { valid: false, reasons: ["invalid-artifact"] };
+  }
+  const actual = artifact as Partial<EvidenceArtifact>;
+  const expected = createEvidenceArtifact(program, source, summaries);
+  const reasons: EvidenceArtifactValidationReason[] = [];
+  if (actual.schemaVersion !== expected.schemaVersion) reasons.push("schema-mismatch");
+  if (actual.uneffectVersion !== expected.uneffectVersion) reasons.push("uneffect-version-mismatch");
+  if (actual.compilerRevision !== expected.compilerRevision) reasons.push("compiler-revision-mismatch");
+  if (actual.tsconfigHash !== expected.tsconfigHash) reasons.push("tsconfig-mismatch");
+  if (actual.sourceFile !== expected.sourceFile) reasons.push("source-file-mismatch");
+  if (actual.sourceHash !== expected.sourceHash) reasons.push("source-hash-mismatch");
+  if (canonicalJson(actual.sourceHashes) !== canonicalJson(expected.sourceHashes)) reasons.push("source-hashes-mismatch");
+  if (actual.builtinContractDigest !== expected.builtinContractDigest) reasons.push("builtin-contract-mismatch");
+  if (canonicalJson(actual.summaries) !== canonicalJson(expected.summaries)) reasons.push("summary-mismatch");
+  return { valid: reasons.length === 0, reasons };
 }
 
 export function trustedSummary(functionName: string, effects: EffectSummary["effects"]): EffectSummary {

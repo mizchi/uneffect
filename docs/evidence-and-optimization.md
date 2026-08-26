@@ -23,18 +23,30 @@ instead of reconstructing it from diagnostics. Program-produced summaries
 include a stable `fileName:start` ID and source span, avoiding ambiguity between
 same-named functions in different modules.
 
-`uneffect evidence file.ts` emits `schemaVersion: 2`. Each summary retains its
-formatted concrete effects and evidence status; polymorphic Generator consumers
+`uneffect evidence file.ts` emits `schemaVersion: 3`. Each summary retains its
+stable Program identity, source file, UTF-16 span, formatted concrete effects,
+and evidence status; polymorphic Generator consumers
 also retain `iteratorEffectParameters` and their formatted
 `iteratorEffectBounds`. Consequently a downstream auditor can distinguish an
 empty function-body effect set from an unbounded lazy-effect parameter and can
 inspect the declaration that justified a bounded `verified` result. Schema v1
-artifacts predate this distinction and must not be used to authorize claims
-about iterator-polymorphic functions. The artifact identifies its `sourceFile`
+predates iterator polymorphism and schema v2 lacks mandatory per-summary source
+identity; neither may authorize a current claim. The artifact identifies its `sourceFile`
 and binds `sourceHashes` for every non-declaration source in the analyzed
 TypeScript Program; `sourceHash` remains the root-file hash for compatibility.
 Changing an imported implementation therefore changes the evidence inputs even
 when the root source is unchanged.
+
+Consumers should call `validateEvidenceArtifact(program, source, summaries,
+artifact)` after regenerating the current Program analysis. It compares the
+schema and Uneffect/TypeScript/builtin revisions, compiler options, root source,
+the exact complete Program source-hash set, and every source-attributed summary.
+Missing dependency hashes, reordered JSON object keys, changed summaries, old
+schemas, and malformed values fail closed with machine-readable reasons. This
+validator establishes freshness and integrity relative to the current Uneffect
+analyzer trusted computing base. It does not turn an analyzer attestation into
+an independently checkable proof certificate; that remains tracked in issue
+#7.
 
 Project verification is fail-closed on TypeScript syntax, semantic, and
 compiler-option errors. These errors appear in `result.diagnostics`; function

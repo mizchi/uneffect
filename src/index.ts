@@ -212,10 +212,10 @@ export { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements, TypeScript
 export type { DeclarationDriftDiagnostic, FrontendSymbolAdapter, ResolvedCallSite } from "./frontend-adapter.js";
 export { analyzeOwnership, checkOwnership, collectOwnershipEvents, generateOwnershipQuint } from "./ownership.js";
 export type { OwnershipDiagnostic, OwnershipEvent, OwnershipOperation, OwnershipState } from "./ownership.js";
-export { builtinContractDigest, createEvidenceArtifact, trustedSummary, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
+export { builtinContractDigest, createEvidenceArtifact, trustedSummary, uneffectVersion, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "./evidence.js";
 export { collectAssumptionLedger, evaluateAssumptionPolicy } from "./assumptions.js";
 export type { AssumptionDomain, AssumptionEntry, AssumptionLedger, AssumptionPolicy, AssumptionPolicyDiagnostic, AssumptionScope, AssumptionViolation } from "./assumptions.js";
-export type { EvidenceArtifact, EvidenceArtifactSummary, OwnershipEvidenceArtifact } from "./evidence.js";
+export type { EvidenceArtifact, EvidenceArtifactSummary, EvidenceArtifactValidation, EvidenceArtifactValidationReason, OwnershipEvidenceArtifact } from "./evidence.js";
 export { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "./optimizer.js";
 export type { OptimizationDecision, OptimizationEvent, OptimizationObligation, OwnershipAssertionRewrite, OwnershipGuardElisionObligation, PropertyMangleObligation, StableReadReuseObligation, StableReadRewrite } from "./optimizer.js";
 export { optimizeUneffectProject } from "./project-optimizer.js";
