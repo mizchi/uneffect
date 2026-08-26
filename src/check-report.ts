@@ -153,7 +153,7 @@ export function createCheckWorkspaceJsonReport(
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
-        "cross-project inaccessible/non-exported function and module Mutate identities, plus unbounded iterator effect parameters, are not composed",
+        "cross-project inaccessible/non-exported or unclassified ambient Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),

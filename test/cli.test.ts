@@ -411,6 +411,28 @@ describe("uneffect command line", () => {
       });
       expect(composedStableMutation.stdout).not.toContain("declarationKey");
 
+      writeFileSync(join(a, "src", "state.ts"), "export const shared = { value: 0 }\n");
+      writeFileSync(join(a, "src", "bridge.ts"), "export { shared } from './state.js'\n");
+      writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: module_effect Mutate<typeof shared.value> */
+        import { shared } from "./bridge.js"
+        export { shared } from "./bridge.js"
+        shared.value = 1
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof shared.value> */
+        import { shared } from "../../a/src/a.js"
+        export const value = shared.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const composedModuleMutation = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedModuleMutation)).toBe(exitCode.success);
+      expect(JSON.parse(composedModuleMutation.stdout)).toMatchObject({
+        effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
+          kind: "module", callee: "<module>", mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+        })]) },
+      });
+
       writeFileSync(join(a, "src", "a.ts"), `export function report() { console.log("a") }`);
       writeFileSync(join(b, "src", "b.ts"), `
         /* uneffect: module_effect Console */

@@ -422,7 +422,7 @@ describe("evidence and optimizer obligations", () => {
     }
   }, 30_000);
 
-  it("substitutes verified child-project Mutate parameter regions at parent call sites", async () => {
+  it("substitutes verified child-project Mutate regions through exact parameter and export identities", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-project-mutate-"));
     const root = join(directory, "tsconfig.json");
     const packageDirectory = join(directory, "node_modules", "typescript");
@@ -580,6 +580,46 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(inaccessibleExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(aDirectory, "src", "state.ts"), "export const shared = { value: 0 }\n");
+      writeFileSync(join(aDirectory, "src", "bridge.ts"), "export { shared } from './state.js'\n");
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: module_effect Mutate<typeof shared.value> */
+        import { shared } from "./bridge.js"
+        export { shared } from "./bridge.js"
+        shared.value = 1
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof shared.value> */
+        import { shared } from "../../a/src/a.js"
+        export const value = shared.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const moduleExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(moduleExport.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({
+          kind: "module", callee: "<module>", evidence: "verified",
+          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+        })]),
+        blockers: [],
+      });
+      expect(moduleExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "<module>" && item.fileName === join(bDirectory, "src", "b.ts"))).toMatchObject({
+          evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "shared.value" })],
+        });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof shared.value> */
+        import "../../a/src/a.js"
+        import { shared } from "./other.js"
+        export const value = shared.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const collidingModuleExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(collidingModuleExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "<module>" && item.fileName === join(bDirectory, "src", "b.ts")))
+        .toMatchObject({ evidence: "unknown" });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

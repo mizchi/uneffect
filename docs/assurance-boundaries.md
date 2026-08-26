@@ -101,10 +101,11 @@ the call site when the corresponding argument is an identifier, `this`, a
 property chain, or a string-literal element chain. Missing/spread arguments and
 fresh or computed expressions remain unknown rather than inventing an alias.
 Inferred, trusted, unknown, or ambiguous summaries, non-exported or parent-inaccessible
-function-closure mutation regions, module mutation regions, unbounded iterator
-parameters, and opaque iterator arguments remain blockers. Exported closure
-roots use a project/source/export identity and are substituted only through a
-parent named or namespace import whose TypeChecker declaration identity matches;
+mutation regions, ambient singleton roots without an explicit identity, unbounded
+iterator parameters, and opaque iterator arguments remain blockers. Exported
+function-closure and module-initialization roots use a project/source/export
+identity and are substituted only through a parent named or namespace import
+whose TypeChecker declaration identity matches, including across re-export chains;
 same-spelled symbols are a negative case. A verified child iterator consumer whose every parameter has
 an `effect_parameter` bound is instantiated through resolved generator
 factories, supported stored iterators, forwarded iterator parameters, and

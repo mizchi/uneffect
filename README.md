@@ -128,11 +128,12 @@ reported in `effectComposition`. A verified function summary may substitute a
 parameter-rooted `Mutate` region into an addressable identifier/member argument at
 each call site. Missing, spread, call-result, and other unstable arguments
 produce an explicit unknown diagnostic. Ambiguous matches, inferred/trusted/unknown
-child evidence, non-exported/inaccessible function-closure or module mutation
-regions, and unbounded iterator Effect parameters fail closed. An exported
-function-closure mutation root is composed only when the parent imports that
-exact declaration (named or namespace import); a project/source/export identity
-is recorded and a same-named different symbol does not match. Fully bounded iterator Effect parameters are
+child evidence, non-exported/inaccessible mutation regions, and unbounded
+iterator Effect parameters fail closed. An exported function-closure or
+module-initialization mutation root is composed only when the parent imports
+that exact declaration (named or namespace import), including through re-export
+chains; a project/source/export identity is recorded and a same-named different
+symbol does not match. Fully bounded iterator Effect parameters are
 instantiated from resolved generator, stored iterator, forwarded parameter, or
 standard pure-iterator arguments; Promise consumer contracts preserve their
 `Throw`-to-rejection conversion.

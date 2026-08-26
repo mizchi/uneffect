@@ -105,8 +105,12 @@ function stableMutationRoots(
   const exports = moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : [];
   const stable: ExternalMutationRoot[] = [];
   for (const root of roots) {
-    const exported = exports.find((item) => item.name === root);
-    const declaration = exported?.declarations?.find((item) => item.getSourceFile() === declarationSource);
+    const exported = exports.find((item) => {
+      const target = (item.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(item) : item;
+      return target.name === root;
+    });
+    const target = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(exported) : exported;
+    const declaration = target?.declarations?.[0];
     if (!declaration) return { roots: stable, unsupported: root };
     stable.push({
       root, exportName: exported!.name,
@@ -115,7 +119,7 @@ function stableMutationRoots(
           ?? dirname(owner.project.projectFile),
         summary.fileName ?? declarationSource.fileName,
       ).replaceAll("\\", "/")}#${exported!.name}`,
-      declarationKey: `${declarationSource.fileName}:${declaration.getStart(declarationSource)}`,
+      declarationKey: `${declaration.getSourceFile().fileName}:${declaration.getStart(declaration.getSourceFile())}`,
     });
   }
   return { roots: stable };
@@ -195,20 +199,24 @@ export function composeWorkspaceEffects(
       const owner = owningProject(declarationFile, completed);
       if (!owner) continue;
       const summary = childModuleSummary(owner, declarationFile);
-      const unsupportedMutation = summary?.effects.some((effect) => effect.kind === "mutate") ?? false;
+      const mutation = stableMutationRoots(checker, program.getSourceFile(declarationFile) ?? source, summary, owner);
+      const unsupportedMutation = mutation.unsupported;
       const verified = summary?.evidence === "verified" && !unsupportedMutation;
       const reason = summary === undefined
         ? `cannot uniquely match ${declarationFile} to a child-project module summary`
-        : unsupportedMutation ? `cross-project module Mutate region composition is not implemented for ${summary.fileName}`
+        : unsupportedMutation ? `cross-project module Mutate region root ${unsupportedMutation} is not a stable export of ${summary.fileName}`
         : summary.evidence !== "verified" ? `${summary.fileName} module has ${summary.evidence} child-project evidence`
         : undefined;
       const contract: ExternalModuleEffectContract = {
-        effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
+        effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown",
+        ...(mutation.roots.length > 0 ? { mutationRoots: mutation.roots } : {}),
+        ...(reason ? { reason } : {}),
       };
       moduleContracts.set(declarationFile, contract);
       links.push({
         kind: "module", fromProject: current.projectFile, toProject: owner.project.projectFile,
         callerFile: source.fileName, callee: "<module>", declarationFile, evidence: contract.evidence, effects: contract.effects,
+        ...(contract.mutationRoots ? { mutationRoots: contract.mutationRoots } : {}),
       });
       if (!verified) blockers.push({
         kind: "effect-composition", classification: "unknown", projectFile: current.projectFile,

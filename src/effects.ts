@@ -499,30 +499,53 @@ function instantiateExternalEffect(
   const root = regionRoot(effect.region);
   const stable = contract.mutationRoots?.find((item) => item.root === root);
   if (stable) {
-    let visibleRoot: string | undefined;
-    for (const statement of call.getSourceFile().statements) {
-      if (!ts.isImportDeclaration(statement) || !statement.importClause || !statement.moduleSpecifier) continue;
-      const bindings = statement.importClause.namedBindings;
-      if (bindings && ts.isNamedImports(bindings)) for (const binding of bindings.elements) {
-        let symbol = checker.getSymbolAtLocation(binding.name);
-        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
-        if (symbol?.declarations?.some((declaration) => {
-          const source = declaration.getSourceFile();
-          return `${source.fileName}:${declaration.getStart(source)}` === stable.declarationKey;
-        })) visibleRoot = binding.name.text;
-      }
-      if (bindings && ts.isNamespaceImport(bindings)) {
-        const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
-        const exported = moduleSymbol && checker.getExportsOfModule(moduleSymbol).find((item) => item.name === stable.exportName);
-        if (exported?.declarations?.some((declaration) => {
-          const source = declaration.getSourceFile();
-          return `${source.fileName}:${declaration.getStart(source)}` === stable.declarationKey;
-        })) visibleRoot = `${bindings.name.text}.${stable.exportName}`;
-      }
-    }
+    const visibleRoot = visibleImportedMutationRoot(call.getSourceFile(), checker, stable);
     return visibleRoot === undefined ? undefined : { kind: "mutate", region: `${visibleRoot}${effect.region.slice(root.length)}` };
   }
   return undefined;
+}
+
+function symbolHasDeclarationKey(symbol: ts.Symbol | undefined, checker: ts.TypeChecker, declarationKey: string): boolean {
+  const target = symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(symbol) : symbol;
+  return target?.declarations?.some((declaration) => {
+    const source = declaration.getSourceFile();
+    return `${source.fileName}:${declaration.getStart(source)}` === declarationKey;
+  }) ?? false;
+}
+
+function visibleImportedMutationRoot(
+  source: ts.SourceFile,
+  checker: ts.TypeChecker,
+  stable: ExternalMutationRoot,
+): string | undefined {
+  let visibleRoot: string | undefined;
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !statement.importClause || !statement.moduleSpecifier) continue;
+    const bindings = statement.importClause.namedBindings;
+    if (bindings && ts.isNamedImports(bindings)) for (const binding of bindings.elements) {
+      if (symbolHasDeclarationKey(checker.getSymbolAtLocation(binding.name), checker, stable.declarationKey)) visibleRoot = binding.name.text;
+    }
+    if (bindings && ts.isNamespaceImport(bindings)) {
+      const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+      const exported = moduleSymbol && checker.getExportsOfModule(moduleSymbol).find((item) => item.name === stable.exportName);
+      if (symbolHasDeclarationKey(exported, checker, stable.declarationKey)) visibleRoot = `${bindings.name.text}.${stable.exportName}`;
+    }
+  }
+  return visibleRoot;
+}
+
+function instantiateExternalModuleEffect(
+  effect: Effect,
+  contract: ExternalModuleEffectContract,
+  source: ts.SourceFile,
+  checker: ts.TypeChecker,
+): Effect | undefined {
+  if (effect.kind !== "mutate") return effect;
+  const root = regionRoot(effect.region);
+  const stable = contract.mutationRoots?.find((item) => item.root === root);
+  if (!stable) return undefined;
+  const visibleRoot = visibleImportedMutationRoot(source, checker, stable);
+  return visibleRoot === undefined ? undefined : { kind: "mutate", region: `${visibleRoot}${effect.region.slice(root.length)}` };
 }
 
 function unboundedExternalIteratorParameter(contract: ExternalFunctionEffectContract): IteratorEffectParameter | undefined {
@@ -1252,7 +1275,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (!external) return undefined;
         if (external.evidence === "trusted") trusted = true;
         else if (external.evidence !== "verified") unknown = true;
-        for (const effect of external.effects) addEffect(effects, effect);
+        for (const rawEffect of external.effects) {
+          const effect = instantiateExternalModuleEffect(rawEffect, external, source, checker);
+          if (effect === undefined) unknown = true;
+          else addEffect(effects, effect);
+        }
         return resolvedFileName;
       }
       if (dependencySource.fileName === source.fileName) return source.fileName;
