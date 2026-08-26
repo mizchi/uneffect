@@ -423,8 +423,10 @@ same property is proved for arbitrary TypeScript.
   aggregate assurance. Missing/malformed references, cycles, empty leaves, and
   duplicate source ownership fail closed. The CLI and programmatic workspace
   API compose uniquely resolved `verified` function and module Effect summaries
-  child-first and emit a provenance ledger; inferred/trusted/unknown summaries, ambiguous matches,
-  function/module `Mutate` substitution, and iterator Effect parameters block assurance.
+  child-first and emit a provenance ledger. Verified parameter-rooted function
+  `Mutate` effects are instantiated for addressable identifier/member arguments;
+  inferred/trusted/unknown summaries, ambiguous matches, unstable arguments,
+  non-parameter/module mutation regions, and iterator Effect parameters block assurance.
   Independent declaration-output content validation remains incomplete;
   SolutionBuilder freshness can be reported or required.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are

@@ -96,9 +96,12 @@ every child assurance blocker feed one fail-closed workspace assessment. The
 programmatic verifier composes a deliberately narrow cross-project interface:
 a uniquely resolved function call or runtime import may consume a child summary only when that
 summary is `verified`. The machine-readable `effectComposition` ledger records
-each link. Inferred, trusted, unknown, or ambiguous summaries become blockers;
-cross-project function/module `Mutate` substitution and iterator Effect parameters are not yet
-supported. Success still excludes cross-project refinements, contracts,
+each link. A function `Mutate` rooted at a declared parameter is substituted at
+the call site when the corresponding argument is an identifier, `this`, a
+property chain, or a string-literal element chain. Missing/spread arguments and
+fresh or computed expressions remain unknown rather than inventing an alias.
+Inferred, trusted, unknown, or ambiguous summaries, non-parameter/module
+mutation regions, and iterator Effect parameters remain blockers. Success still excludes cross-project refinements, contracts,
 ownership, temporal composition, and independent declaration-output content
 validation. SolutionBuilder
 freshness is always reported and can be made load-bearing with

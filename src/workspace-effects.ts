@@ -13,6 +13,7 @@ export interface WorkspaceEffectLink {
   declarationFile: string;
   evidence: ExternalFunctionEffectContract["evidence"];
   effects: ExternalFunctionEffectContract["effects"];
+  parameters?: readonly string[];
 }
 
 export interface WorkspaceEffectCompositionBlocker {
@@ -83,6 +84,12 @@ function childModuleSummary(owner: CompletedEffectProject, declarationFile: stri
   return modules.length === 1 ? modules[0] : undefined;
 }
 
+function hasUnsupportedMutation(summary: EffectSummary | undefined): boolean {
+  if (!summary) return false;
+  const parameters = new Set(summary.parameters ?? []);
+  return summary.effects.some((effect) => effect.kind === "mutate" && !parameters.has(/^[A-Za-z_$][\w$]*/u.exec(effect.region)?.[0] ?? ""));
+}
+
 /** Bind child-first verified summaries to the declarations resolved by a parent Program. */
 export function composeWorkspaceEffects(
   program: ts.Program,
@@ -109,22 +116,24 @@ export function composeWorkspaceEffects(
         const exact = owner.summaries.filter((summary) => summary.id === key);
         const candidates = exact.length > 0 ? exact : owner.summaries.filter((summary) => summary.functionName === name && summary.functionName !== "<module>");
         const summary = candidates.length === 1 ? candidates[0] : undefined;
-        const unsupportedMutation = summary?.effects.some((effect) => effect.kind === "mutate") ?? false;
+        const unsupportedMutation = hasUnsupportedMutation(summary);
         const unsupportedIterator = (summary?.iteratorEffectParameters?.length ?? 0) > 0;
         const verified = summary?.evidence === "verified" && !unsupportedMutation && !unsupportedIterator;
         const reason = summary === undefined
           ? `cannot uniquely match ${name} to a child-project effect summary`
-          : unsupportedMutation ? `cross-project Mutate region substitution is not implemented for ${name}`
+          : unsupportedMutation ? `cross-project non-parameter Mutate region identity is not proved for ${name}`
           : unsupportedIterator ? `cross-project iterator effect instantiation is not implemented for ${name}`
           : summary.evidence !== "verified" ? `${name} has ${summary.evidence} child-project evidence`
           : undefined;
         const contract: ExternalFunctionEffectContract = {
-          effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
+          effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown",
+          ...(summary?.parameters ? { parameters: summary.parameters } : {}), ...(reason ? { reason } : {}),
         };
         contracts.set(key, contract);
         links.push({ kind: "function",
           fromProject: current.projectFile, toProject: owner.project.projectFile, callerFile: source.fileName,
           callee: name, declarationFile: declarationSource.fileName, evidence: contract.evidence, effects: contract.effects,
+          ...(contract.parameters ? { parameters: contract.parameters } : {}),
         });
         if (!verified) blockers.push({
           kind: "effect-composition", classification: "unknown", projectFile: current.projectFile,

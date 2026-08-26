@@ -30,6 +30,7 @@
             "fromProject": { "type": "string" }, "toProject": { "type": "string" },
             "callerFile": { "type": "string" }, "callee": { "type": "string" },
             "declarationFile": { "type": "string" },
+            "parameters": { "type": "array", "items": { "type": "string" } },
             "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
             "effects": { "type": "array", "items": { "type": "object" } }
           }

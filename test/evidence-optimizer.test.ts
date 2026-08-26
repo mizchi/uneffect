@@ -247,6 +247,122 @@ describe("evidence and optimizer obligations", () => {
     }
   }, 30_000);
 
+  it("substitutes verified child-project Mutate parameter regions at parent call sites", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-project-mutate-"));
+    const root = join(directory, "tsconfig.json");
+    const packageDirectory = join(directory, "node_modules", "typescript");
+    const aDirectory = join(directory, "packages", "a");
+    const bDirectory = join(directory, "packages", "b");
+    try {
+      mkdirSync(join(aDirectory, "src"), { recursive: true });
+      mkdirSync(join(bDirectory, "src"), { recursive: true });
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        export interface Box { value: number }
+        /* uneffect: effect Mutate<typeof box.value> */
+        export function setValue(box: Box) { box.value = 1 }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setValue, type Box } from "../../a/src/a.js"
+        /* uneffect: effect Mutate<typeof state.value> */
+        export function update(state: Box) { setValue(state) }
+      `);
+      writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"],
+      }));
+      writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../a" }],
+      }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const result = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const update = result.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update");
+      expect(update).toMatchObject({
+        evidence: "verified",
+        effects: [expect.objectContaining({ kind: "mutate", region: "state.value" })],
+      });
+      expect(result.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({ kind: "function", callee: "setValue", evidence: "verified", parameters: ["box"] })]),
+        blockers: [],
+      });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setValue as apply, type Box } from "../../a/src/a.js"
+        interface Parent { child: Box }
+        /* uneffect: effect Mutate<typeof state.child.value> */
+        export function update(state: Parent) { apply(state.child) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const nested = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(nested.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({
+          evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "state.child.value" })],
+        });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setValue, type Box } from "../../a/src/a.js"
+        declare function select(): Box
+        /* uneffect: effect Mutate<typeof state.value> */
+        export function update(state: Box) { setValue(select()) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const unstable = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const unstableVerification = unstable.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(unstableVerification.effects.summaries.find((item) => item.functionName === "update"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(unstableVerification.effects.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "update", kind: "unknown", severity: "error",
+        message: expect.stringContaining("cannot instantiate Mutate<typeof box.value>"),
+      }));
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        export interface Box { value: number }
+        /* uneffect: effect Mutate<typeof box.value> */
+        export function setValue(box: Box = { value: 0 }) { box.value = 1 }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setValue } from "../../a/src/a.js"
+        export function update() { setValue() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const omitted = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const omittedVerification = omitted.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(omittedVerification.effects.summaries.find((item) => item.functionName === "update"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(omittedVerification.effects.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "update", kind: "unknown", message: expect.stringContaining("corresponding argument is missing"),
+      }));
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        export const shared = { value: 0 }
+        /* uneffect: effect Mutate<typeof shared.value> */
+        export function setShared() { shared.value = 1 }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setShared } from "../../a/src/a.js"
+        /* uneffect: effect Mutate<typeof shared.value> */
+        export function update() { setShared() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const nonParameter = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(nonParameter.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: [expect.objectContaining({ subject: "setShared", message: expect.stringContaining("non-parameter Mutate") })],
+      });
+      expect(nonParameter.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({ evidence: "unknown" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("makes module-order verification an explicit project assurance domain", async () => {
     const root = join(process.cwd(), "virtual-module-order");
     const dependency = join(root, "dependency.mts"), entry = join(root, "entry.mts");

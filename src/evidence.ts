@@ -18,6 +18,7 @@ export interface EvidenceArtifactSummary {
   functionName: string;
   effects: string[];
   evidence: EvidenceStatus;
+  parameters?: string[];
   iteratorEffectParameters?: Array<{ index: number; name: string; convertsThrowToRejection: boolean }>;
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
@@ -102,6 +103,7 @@ export function createEvidenceArtifact(
         functionName: summary.functionName,
         effects: summary.effects.map(formatEffect).sort(),
         evidence: summary.evidence,
+        ...(summary.parameters ? { parameters: summary.parameters } : {}),
         ...(summary.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
         ...(summary.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds.map((bound) => ({
           index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect).sort(),

@@ -23,6 +23,8 @@ export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
 export interface ExternalFunctionEffectContract {
   effects: readonly Effect[];
   evidence: EvidenceStatus;
+  /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
+  parameters?: readonly string[];
   reason?: string;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
@@ -34,6 +36,8 @@ export interface EffectSummary {
   id?: string;
   fileName?: string;
   span?: { start: number; end: number };
+  /** Declaration-order parameter names. Present on Program-produced function summaries. */
+  parameters?: string[];
   /** Iterator parameters whose lazy body effects are supplied and instantiated by each call site. */
   iteratorEffectParameters?: IteratorEffectParameter[];
   /** Explicit upper bounds for polymorphic iterator effects, indexed by the TypeScript parameter. */
@@ -444,6 +448,42 @@ function externalContractForCall(
   return undefined;
 }
 
+function addressableMutationArgumentRegion(expression: ts.Expression): string | undefined {
+  if (ts.isParenthesizedExpression(expression) || ts.isNonNullExpression(expression)
+    || ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
+    return addressableMutationArgumentRegion(expression.expression);
+  }
+  if (ts.isIdentifier(expression) || expression.kind === ts.SyntaxKind.ThisKeyword) return expression.getText();
+  if (ts.isPropertyAccessExpression(expression)) {
+    const base = addressableMutationArgumentRegion(expression.expression);
+    return base === undefined ? undefined : `${base}.${expression.name.text}`;
+  }
+  if (ts.isElementAccessExpression(expression) && ts.isStringLiteralLike(expression.argumentExpression)) {
+    const base = addressableMutationArgumentRegion(expression.expression);
+    if (base === undefined) return undefined;
+    return plainMember.test(expression.argumentExpression.text)
+      ? `${base}.${expression.argumentExpression.text}`
+      : `${base}[${JSON.stringify(expression.argumentExpression.text)}]`;
+  }
+  return undefined;
+}
+
+function instantiateExternalEffect(
+  effect: Effect,
+  contract: ExternalFunctionEffectContract,
+  call: ts.CallExpression,
+): Effect | undefined {
+  if (effect.kind !== "mutate") return effect;
+  for (const [index, parameter] of (contract.parameters ?? []).entries()) {
+    if (effect.region !== parameter && !effect.region.startsWith(`${parameter}.`) && !effect.region.startsWith(`${parameter}[`)) continue;
+    const argument = call.arguments[index];
+    if (!argument || ts.isSpreadElement(argument)) return undefined;
+    const region = addressableMutationArgumentRegion(argument);
+    return region === undefined ? undefined : { kind: "mutate", region: `${region}${effect.region.slice(parameter.length)}` };
+  }
+  return undefined;
+}
+
 function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.FunctionLikeDeclaration): boolean {
   if (!model || !node.body) return false;
   const start = node.body.getStart(node.getSourceFile()), end = node.body.getEnd();
@@ -731,6 +771,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
   const invalidEffectParameterOwners = new Set<string>();
   const unknownExternalEvidence = new Set<string>();
+  const externalInstantiationProblems: Array<{ id: string; effect: Effect; call: ts.CallExpression }> = [];
   const witnesses = new Map<string, Map<string, EffectWitness>>(), propagation = new Map<string, Map<string, EffectPropagation>>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
@@ -821,7 +862,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         const external = externalContractForCall(checker, child, options.externalFunctionEffects);
         if (external) {
           if (external.evidence !== "verified") unknownExternalEvidence.add(graphNode.id);
-          for (const effect of external.effects) {
+          for (const rawEffect of external.effects) {
+            const effect = instantiateExternalEffect(rawEffect, external, child);
+            if (effect === undefined) {
+              unknownExternalEvidence.add(graphNode.id);
+              externalInstantiationProblems.push({ id: graphNode.id, effect: rawEffect, call: child });
+              continue;
+            }
             if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
             if (observableMutation(effect, locals)) observe(effect, child);
           }
@@ -904,6 +951,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const source = nodes.get(problem.id)!.getSourceFile();
     return { fileName: source.fileName, functionName: graphNode.name, effect: problem.payload, kind: "unknown", severity: "error", line: source.getLineAndCharacterOfPosition(problem.start).line + 1, message: problem.message };
   }), summaries: EffectSummary[] = [];
+  for (const problem of externalInstantiationProblems) {
+    const graphNode = graphNodesById.get(problem.id)!, source = problem.call.getSourceFile();
+    diagnostics.push({
+      fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(problem.effect), kind: "unknown", severity: "error",
+      line: source.getLineAndCharacterOfPosition(problem.call.getStart(source)).line + 1,
+      message: `${graphNode.name} cannot instantiate ${formatEffect(problem.effect)} at ${snippet(problem.call, source)}; its region is not parameter-rooted or the corresponding argument is missing, spread, or not an addressable member region`,
+      notes: [{ label: "because", detail: "cross-project Mutate substitution currently accepts only parameter-rooted effects with identifier, this, property-access, or string-literal element-access arguments" }],
+    });
+  }
   const invalidIteratorInstantiationCallers = new Set<string>();
   type IteratorParameterRef = { consumer: string; parameterIndex: number };
   const parameterKey = (reference: IteratorParameterRef): string => `${reference.consumer}#${reference.parameterIndex}`;
@@ -1000,6 +1056,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({
       functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span,
+      parameters: parameters.get(graphNode.id) ?? [],
       ...(polymorphicIterator ? { iteratorEffectParameters: graphNode.iteratorEffectParameters } : {}),
       ...(bounds.size > 0 ? { iteratorEffectBounds: [...bounds].map(([index, bound]) => ({ index, ...bound })) } : {}),
     });

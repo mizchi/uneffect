@@ -15,6 +15,7 @@ export interface CheckReportEffect {
   functionName: string;
   effects: string[];
   evidence: "verified" | "trusted" | "inferred" | "unknown";
+  parameters?: string[];
   iteratorEffectParameters?: Array<{ index: number; name: string; convertsThrowToRejection: boolean }>;
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
 }
@@ -59,7 +60,7 @@ export interface CheckWorkspaceJsonReport {
   projects: CheckJsonReport[];
   effectComposition: {
     status: "verified" | "unknown";
-    links: Array<{ kind: "function" | "module"; fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string; evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[] }>;
+    links: Array<{ kind: "function" | "module"; fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string; evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[]; parameters?: readonly string[] }>;
     blockers: WorkspaceCheckBlocker[];
   };
   blockers: WorkspaceCheckBlocker[];
@@ -80,6 +81,7 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
       functionName: summary.functionName,
       effects: summary.effects.map(formatEffect),
       evidence: summary.evidence,
+      ...(summary.parameters === undefined ? {} : { parameters: summary.parameters }),
       ...(summary.iteratorEffectParameters === undefined ? {} : { iteratorEffectParameters: summary.iteratorEffectParameters }),
       ...(summary.iteratorEffectBounds === undefined ? {} : {
         iteratorEffectBounds: summary.iteratorEffectBounds.map((bound) => ({

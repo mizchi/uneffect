@@ -124,9 +124,12 @@ assumption, and optional temporal verifier bundle. It returns
 assurance decision. Cross-project evidence composition and declaration-output
 validation remain explicit exclusions except for verified function and module
 Effect summaries. Those summaries are composed child-first at resolved call sites/imports and
-reported in `effectComposition`. Ambiguous matches, inferred/trusted/unknown
-child evidence, `Mutate` region substitution, module mutation regions, and iterator Effect parameters
-fail closed as `effect-composition` blockers.
+reported in `effectComposition`. A verified function summary may substitute a
+parameter-rooted `Mutate` region into an addressable identifier/member argument at
+each call site. Missing, spread, call-result, and other unstable arguments
+produce an explicit unknown diagnostic. Ambiguous matches, inferred/trusted/unknown
+child evidence, non-parameter or module mutation regions, and iterator Effect
+parameters fail closed.
 Use `--require-build-artifacts` in the CLI or
 `buildArtifacts: "require-fresh"` in the project API when TypeScript composite
 output freshness is part of the boundary. This is SolutionBuilder evidence,
