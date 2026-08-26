@@ -80,7 +80,7 @@ describe("CI test tier manifest", () => {
 
   it("uploads retained solver retry evidence even when a later attempt passes", () => {
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
-    expect(workflow).toContain("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02");
+    expect(workflow).toContain("actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f");
     expect(workflow).toContain("if: always()");
     expect(workflow).toContain(".uneffect/solver-retry-evidence");
     expect(workflow).toContain("if-no-files-found: ignore");
