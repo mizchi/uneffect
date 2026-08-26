@@ -82,10 +82,10 @@ export interface ModuleInitializationContract {
   trustReason: string;
   trustOwner: string;
   trustExpiresOn?: string;
-  /** Exact reviewed package version. Required for npm package contracts. */
-  packageVersion?: string;
-  /** Reviewed Node runtime major. Required for `node:*` contracts. */
-  nodeMajor?: number;
+  /** The runtime artifact against which initialization was reviewed. */
+  runtime:
+    | { kind: "package"; version: string }
+    | { kind: "node"; major: number };
 }
 
 export interface ModuleInitializationEnvironment {
@@ -104,6 +104,30 @@ export interface BuiltinContractRegistry {
   declarations: readonly DeclarationFingerprint[];
 }
 
+export interface BuiltinContractRegistryExtension {
+  contracts?: readonly BuiltinContract[];
+  moduleInitializations?: readonly ModuleInitializationContract[];
+  declarations?: readonly DeclarationFingerprint[];
+}
+
+/**
+ * Add caller-owned contracts ahead of defaults. Exact module contracts still
+ * outrank wildcard contracts, so a narrow review can refine `node:*` safely.
+ */
+export function extendBuiltinContractRegistry(
+  base: BuiltinContractRegistry,
+  extension: BuiltinContractRegistryExtension,
+): BuiltinContractRegistry {
+  return {
+    version: 2,
+    contracts: extension.contracts ? [...extension.contracts, ...base.contracts] : base.contracts,
+    moduleInitializations: extension.moduleInitializations
+      ? [...extension.moduleInitializations, ...base.moduleInitializations]
+      : base.moduleInitializations,
+    declarations: extension.declarations ? [...extension.declarations, ...base.declarations] : base.declarations,
+  };
+}
+
 export interface DeclarationFingerprint { library: string; compilerVersion: string; sha256: string }
 
 export function builtinSymbolId(symbol: BuiltinSymbolKey): string {
@@ -120,14 +144,15 @@ export function findModuleInitializationContract(
   moduleName: string,
   environment: ModuleInitializationEnvironment,
 ): ModuleInitializationContract | undefined {
-  return registry.moduleInitializations.find((contract) => {
-    const nameMatches = contract.module.endsWith("*")
+  const nameMatches = registry.moduleInitializations.filter((contract) => contract.module.endsWith("*")
       ? moduleName.startsWith(contract.module.slice(0, -1))
-      : contract.module === moduleName;
-    return nameMatches
-      && (contract.packageVersion === undefined || contract.packageVersion === environment.packageVersion)
-      && (contract.nodeMajor === undefined || contract.nodeMajor === environment.nodeMajor);
-  });
+      : contract.module === moduleName);
+  const exactMatches = nameMatches.filter((contract) => !contract.module.endsWith("*"));
+  const candidates = exactMatches.length > 0 ? exactMatches : nameMatches;
+  const nodeRuntime = moduleName.startsWith("node:");
+  return candidates.find((contract) => nodeRuntime
+    ? contract.runtime.kind === "node" && contract.runtime.major === environment.nodeMajor
+    : contract.runtime.kind === "package" && contract.runtime.version === environment.packageVersion);
 }
 
 function packageName(moduleName: string): string {
@@ -224,14 +249,14 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
   moduleInitializations: [
     {
       module: "node:*", effects: [], evidence: "trusted",
-      nodeMajor: 24,
+      runtime: { kind: "node", major: 24 },
       trustReason: "reviewed Node builtin module initialization boundary", trustOwner: "@mizchi/uneffect",
     },
     ...([
       ["@oxlint/plugins", "1.80.0"], ["corsa-oxlint", "1.12.4"], ["effect", "3.22.1"],
       ["typescript", "6.0.3"], ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
     ] as const).map(([module, packageVersion]): ModuleInitializationContract => ({
-      module, packageVersion, effects: [], evidence: "trusted",
+      module, runtime: { kind: "package", version: packageVersion }, effects: [], evidence: "trusted",
       trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",
     })),
   ],

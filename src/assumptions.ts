@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
-import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
+import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
@@ -108,6 +108,7 @@ export function collectAssumptionLedger(
   files: Readonly<Record<string, string>>,
   typedArrays: TypedArrayProgramSafetyResult,
   policy: AssumptionPolicy = {},
+  registry: BuiltinContractRegistry = builtinContractRegistry,
 ): { ledger: AssumptionLedger; diagnostics: AssumptionPolicyDiagnostic[] } {
   const entries: AssumptionEntry[] = [];
   for (const fileName of Object.keys(files)) {
@@ -117,7 +118,7 @@ export function collectAssumptionLedger(
       if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
         || !statement.moduleSpecifier || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
       if (!isRuntimeModuleDependency(statement)) continue;
-      const contract = resolveModuleInitializationContract(program, source.fileName, statement.moduleSpecifier.text);
+      const contract = resolveModuleInitializationContract(program, source.fileName, statement.moduleSpecifier.text, registry);
       if (!contract) continue;
       entries.push(entry({
         domain: "module-initialization",
@@ -126,8 +127,8 @@ export function collectAssumptionLedger(
         ...(contract.trustExpiresOn ? { expiresOn: contract.trustExpiresOn } : {}),
         dependency: {
           module: statement.moduleSpecifier.text,
-          ...(contract.packageVersion ? { packageVersion: contract.packageVersion } : {}),
-          ...(contract.nodeMajor !== undefined ? { nodeMajor: contract.nodeMajor } : {}),
+          ...(contract.runtime.kind === "package" ? { packageVersion: contract.runtime.version } : {}),
+          ...(contract.runtime.kind === "node" ? { nodeMajor: contract.runtime.major } : {}),
         },
         scope: {
           fileName,
@@ -137,7 +138,7 @@ export function collectAssumptionLedger(
       }));
     }
     for (const call of collectBuiltinCallRefinements(program, source)) {
-      const contract = findBuiltinContract(builtinContractRegistry, call.symbol);
+      const contract = findBuiltinContract(registry, call.symbol);
       if (!contract || contract.evidence !== "trusted") continue;
       entries.push(entry({
         domain: "builtin",

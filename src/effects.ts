@@ -3,7 +3,7 @@ import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js"
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import { resolveModuleInitializationContract, type FsBuiltinOperation } from "./builtin-contracts.js";
+import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry, type FsBuiltinOperation } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
@@ -410,7 +410,12 @@ function permits(declared: Effect[], actual: Effect): boolean {
   return declared.some((allowed) => effectPermits(allowed, actual));
 }
 
-export interface EffectAnalysisOptions { mode?: "gradual" | "strict"; requireAnnotations?: boolean }
+export interface EffectAnalysisOptions {
+  mode?: "gradual" | "strict";
+  requireAnnotations?: boolean;
+  /** Versioned builtin and external-module contracts owned by the caller. */
+  builtinRegistry?: BuiltinContractRegistry;
+}
 
 function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.FunctionLikeDeclaration): boolean {
   if (!model || !node.body) return false;
@@ -653,11 +658,11 @@ export function analyzeEffects(fileName: string, text: string, options: EffectAn
     : original(name, languageVersion, onError, shouldCreateNewSourceFile);
   const program = ts.createProgram([fileName], compilerOptions, host);
   const source = program.getSourceFile(fileName)!;
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
+  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program, options.builtinRegistry), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
 }
 
 export function analyzeEffectsInProgram(program: ts.Program, source: ts.SourceFile, options: EffectAnalysisOptions = {}): EffectDiagnostic[] {
-  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
+  return analyzeSource(source, options, new TypeScriptFrontendAdapter(program, options.builtinRegistry), program.getTypeChecker(), analyzePromiseChainsInProgram(program, source)).diagnostics;
 }
 
 export function analyzeEffectSummariesInProgram(program: ts.Program, source: ts.SourceFile, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
@@ -683,7 +688,8 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
 
 /** Program-wide path used by the CLI/native frontend: all edges come from TypeChecker identities. */
 export function analyzeProgramEffects(program: ts.Program, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
-  const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program), checker = program.getTypeChecker();
+  const registry = options.builtinRegistry ?? builtinContractRegistry;
+  const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const invalidSources = new Set(
     [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
       .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.file !== undefined)
@@ -1067,7 +1073,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (!isRuntimeModuleDependency(statement)) continue;
       if (addResolvedDependency(statement.moduleSpecifier)) continue;
       const moduleName = ts.isStringLiteralLike(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
-      const contract = resolveModuleInitializationContract(program, source.fileName, moduleName);
+      const contract = resolveModuleInitializationContract(program, source.fileName, moduleName, registry);
       if (!contract) { unknown = true; continue; }
       trusted = true;
       for (const expression of contract.effects) addEffect(effects, parseEffectExpression(expression));

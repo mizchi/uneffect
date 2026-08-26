@@ -151,6 +151,12 @@ Such a contract contributes its declared may-effects but makes the importing
 module and its local importers `trusted`, never `verified`; project verification
 records the import in the assumption ledger. Type-only imports do not execute
 module initialization and therefore do not require this assumption.
+Programmatic callers may inject an extended builtin registry, but this does not
+upgrade its contracts to proof: matching external initialization remains
+`trusted`, is recorded in the same ledger, and produces `assumed` at best. An
+exact contract with a mismatched package version or Node major shadows broader
+wildcards and fails closed as `unknown`. CLI loading of caller-owned registries
+is not implemented.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
 ordering. Uneffect's dogfood includes all 61 `src/*.ts` files, including the

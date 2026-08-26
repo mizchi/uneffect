@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import ts from "typescript";
 import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type OwnershipGuardObligation } from "./async-safety.js";
-import { builtinContractRegistry } from "./builtin-contracts.js";
+import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
 import { formatEffect } from "./capabilities.js";
 import type { EffectSummary, EvidenceStatus } from "./effects.js";
 import { createZ3Context, z3Version } from "./z3.js";
@@ -70,8 +70,15 @@ export interface EvidenceArtifactEligibility {
 
 const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
 export const uneffectVersion = "0.0.0-alpha.0";
-export function builtinContractDigest(): string { return digest(JSON.stringify(builtinContractRegistry)); }
-export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFile, summaries: readonly EffectSummary[]): EvidenceArtifact {
+export function builtinContractDigest(registry: BuiltinContractRegistry = builtinContractRegistry): string {
+  return digest(JSON.stringify(registry));
+}
+export function createEvidenceArtifact(
+  program: ts.Program,
+  source: ts.SourceFile,
+  summaries: readonly EffectSummary[],
+  registry: BuiltinContractRegistry,
+): EvidenceArtifact {
   const sourceHashes = Object.fromEntries(program.getSourceFiles()
     .filter((item) => !item.isDeclarationFile)
     .sort((left, right) => left.fileName.localeCompare(right.fileName))
@@ -84,7 +91,7 @@ export function createEvidenceArtifact(program: ts.Program, source: ts.SourceFil
     sourceFile: source.fileName,
     sourceHash: digest(source.text),
     sourceHashes,
-    builtinContractDigest: builtinContractDigest(),
+    builtinContractDigest: builtinContractDigest(registry),
     summaries: summaries.map((summary) => {
       if (!summary.id || !summary.fileName || !summary.span) {
         throw new Error(`cannot create proof evidence for ${summary.functionName} without Program source identity`);
@@ -123,12 +130,13 @@ export function validateEvidenceArtifact(
   source: ts.SourceFile,
   summaries: readonly EffectSummary[],
   artifact: unknown,
+  registry: BuiltinContractRegistry,
 ): EvidenceArtifactValidation {
   if (typeof artifact !== "object" || artifact === null || Array.isArray(artifact)) {
     return { valid: false, reasons: ["invalid-artifact"] };
   }
   const actual = artifact as Partial<EvidenceArtifact>;
-  const expected = createEvidenceArtifact(program, source, summaries);
+  const expected = createEvidenceArtifact(program, source, summaries, registry);
   const reasons: EvidenceArtifactValidationReason[] = [];
   if (actual.schemaVersion !== expected.schemaVersion) reasons.push("schema-mismatch");
   if (actual.uneffectVersion !== expected.uneffectVersion) reasons.push("uneffect-version-mismatch");

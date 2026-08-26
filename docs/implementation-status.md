@@ -454,7 +454,11 @@ same property is proved for arbitrary TypeScript.
   imports remain unknown. This is still not an ESM/TLA ordering proof.
   Reviewed static external-package initialization is an exact package-version
   or Node-major-bound trusted assumption; unreviewed or drifted packages remain
-  unknown. Exact ESM/TLA temporal ordering remains an explicit non-claim.
+  unknown. Programmatic API consumers can extend the registry and pass the same
+  instance through analysis, assumption collection, and evidence validation;
+  these entries remain trusted assumptions. CLI configuration for caller-owned
+  registries is not implemented. Exact ESM/TLA temporal ordering remains an
+  explicit non-claim.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize

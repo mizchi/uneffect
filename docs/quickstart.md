@@ -212,6 +212,13 @@ Package contracts match the exact resolved package version and Node contracts
 match the reviewed runtime major. Upgrades fail closed until the registry entry
 is reviewed and updated.
 
+Library consumers can pass a caller-owned `builtinRegistry` to
+`verifyUneffectProject`, `analyzeProgramEffects`, or `checkFiles`. Build it
+with `extendBuiltinContractRegistry` so the platform defaults remain present.
+Such entries remain reviewable assumptions: they can make a result `assumed`,
+not `verified`. Registry extensions are programmatic only at present; the CLI
+does not load an application registry file.
+
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
 

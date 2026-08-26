@@ -16,6 +16,7 @@ import { parseTemporalComposition } from "./temporal-compose.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -24,6 +25,8 @@ export interface VerifyUneffectProjectOptions {
   nodeTopLevelMode?: "commonjs" | "esm";
   temporalRoot?: string;
   assumptionPolicy?: AssumptionPolicy;
+  /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
+  builtinRegistry?: BuiltinContractRegistry;
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -143,7 +146,7 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   if (typescriptDiagnostics.some((item) => item.kind === "options" && item.severity === "error")) {
     for (const fileName of Object.keys(options.files)) invalidSources.add(fileName);
   }
-  const effects = analyzeProgramEffects(program, { requireAnnotations: false });
+  const effects = analyzeProgramEffects(program, { requireAnnotations: false, builtinRegistry: options.builtinRegistry });
   diagnostics.push(...effects.diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
   for (const fileName of Object.keys(options.files)) {
@@ -175,7 +178,7 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   typedArrays.obligations = Object.values(typedArrays.files).flatMap((result) => result.obligations);
   typedArrays.diagnostics = Object.values(typedArrays.files).flatMap((result) => result.diagnostics);
   diagnostics.push(...typedArrays.diagnostics, ...ownershipDiagnostics);
-  const assumptions = collectAssumptionLedger(program, options.files, typedArrays, options.assumptionPolicy);
+  const assumptions = collectAssumptionLedger(program, options.files, typedArrays, options.assumptionPolicy, options.builtinRegistry);
   diagnostics.push(...assumptions.diagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
     const verification = await verifyContractObligations(fileName, source);

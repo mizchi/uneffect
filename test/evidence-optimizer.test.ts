@@ -1,11 +1,12 @@
 import ts from "typescript";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { assessEvidenceArtifactEligibility, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
+import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
 import { analyzeEffectSummariesInProgram } from "../src/effects.js";
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 function programOf(text: string) {
   const fileName = "/virtual/evidence.ts";
@@ -17,6 +18,25 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("binds persisted evidence to the caller-owned builtin registry", () => {
+    const { program, source } = programOf("export function identity(value: number) { return value }");
+    const summaries = analyzeEffectSummariesInProgram(program, source).summaries;
+    const custom = extendBuiltinContractRegistry(builtinContractRegistry, {
+      moduleInitializations: [{
+        module: "node:path", runtime: { kind: "node", major: 24 }, effects: ["Console"], evidence: "trusted",
+        trustReason: "application review", trustOwner: "platform-team",
+      }],
+    });
+    const artifact = createEvidenceArtifact(program, source, summaries, custom);
+
+    expect(artifact.builtinContractDigest).toBe(builtinContractDigest(custom));
+    expect(artifact.builtinContractDigest).not.toBe(builtinContractDigest());
+    expect(validateEvidenceArtifact(program, source, summaries, artifact, custom)).toEqual({ valid: true, reasons: [] });
+    expect(validateEvidenceArtifact(program, source, summaries, artifact, builtinContractRegistry)).toEqual({
+      valid: false, reasons: ["builtin-contract-mismatch"],
+    });
+  });
+
   it("rejects a vacuous project verification result", async () => {
     const result = await verifyUneffectProject({ files: {} });
     expect(result.assurance).toMatchObject({ status: "unknown", passed: false, coverage: { checkedFiles: 0 } });
@@ -53,6 +73,31 @@ describe("evidence and optimizer obligations", () => {
       scope: expect.objectContaining({ fileName }),
     }));
     expect(result.assurance).toMatchObject({ status: "assumed", passed: true });
+  });
+
+  it("uses one caller-owned registry for module effects and the assumption ledger", async () => {
+    const registry = (nodeMajor: number): BuiltinContractRegistry => extendBuiltinContractRegistry(builtinContractRegistry, {
+      moduleInitializations: [{
+        module: "node:path", runtime: { kind: "node", major: nodeMajor }, effects: ["Console"], evidence: "trusted",
+        trustReason: "application review of path initialization", trustOwner: "platform-team",
+        trustExpiresOn: "2027-01-01",
+      }],
+    });
+    const files = { "src/custom-module.ts": 'import "node:path"; export const loaded = true' };
+
+    const matched = await verifyUneffectProject({ files, builtinRegistry: registry(24) });
+    expect(matched.effects.summaries.find((item) => item.functionName === "<module>"))
+      .toMatchObject({ evidence: "trusted", effects: [expect.objectContaining({ kind: "capability", name: "Console" })] });
+    expect(matched.assumptions.entries).toContainEqual(expect.objectContaining({
+      reason: "application review of path initialization", owner: "platform-team", expiresOn: "2027-01-01",
+      dependency: { module: "node:path", nodeMajor: 24 },
+    }));
+
+    const drifted = await verifyUneffectProject({ files, builtinRegistry: registry(23) });
+    expect(drifted.effects.summaries.find((item) => item.functionName === "<module>"))
+      .toMatchObject({ evidence: "unknown" });
+    expect(drifted.assumptions.entries).toEqual([]);
+    expect(drifted.assurance).toMatchObject({ status: "unknown", passed: false });
   });
 
   it("makes runtime instrumentation failures project assurance blockers", async () => {
@@ -105,7 +150,7 @@ describe("evidence and optimizer obligations", () => {
       /* uneffect: effect Console */ function unknown() { fetch("https://example.com") }
     `);
     const result = analyzeEffectSummariesInProgram(program, source);
-    const artifact = createEvidenceArtifact(program, source, result.summaries);
+    const artifact = createEvidenceArtifact(program, source, result.summaries, builtinContractRegistry);
     expect(artifact.uneffectVersion).toBe((JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version);
     expect(artifact.summaries.filter((item) => item.functionName !== "<module>").map((item) => item.evidence))
       .toEqual(["verified", "inferred", "unknown"]);
@@ -128,7 +173,7 @@ describe("evidence and optimizer obligations", () => {
       function consume(iterator: IteratorObject<unknown>) { iterator.next() }
       /* uneffect: effect Console */ function main() { consume(generate()) }
     `);
-    const artifact = createEvidenceArtifact(program, source, analyzeEffectSummariesInProgram(program, source).summaries);
+    const artifact = createEvidenceArtifact(program, source, analyzeEffectSummariesInProgram(program, source).summaries, builtinContractRegistry);
     expect(artifact.summaries.find((summary) => summary.functionName === "consume")).toMatchObject({
       evidence: "verified",
       iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
@@ -145,17 +190,17 @@ describe("evidence and optimizer obligations", () => {
       host.getSourceFile = (name, language, onError, fresh) => files.has(name)
         ? ts.createSourceFile(name, files.get(name)!, language, true) : original(name, language, onError, fresh);
       const program = ts.createProgram([...files.keys()], options, host), source = program.getSourceFile(root)!;
-      return { program, source, artifact: createEvidenceArtifact(program, source, []) };
+      return { program, source, artifact: createEvidenceArtifact(program, source, [], builtinContractRegistry) };
     };
     const before = build(`export const dependency = 1`), after = build(`export const dependency = 2`);
     expect(before.artifact.sourceHash).toBe(after.artifact.sourceHash);
     expect(before.artifact.sourceHashes[root]).toBe(after.artifact.sourceHashes[root]);
     expect(before.artifact.sourceHashes[dependency]).not.toBe(after.artifact.sourceHashes[dependency]);
-    expect(validateEvidenceArtifact(after.program, after.source, [], before.artifact)).toMatchObject({
+    expect(validateEvidenceArtifact(after.program, after.source, [], before.artifact, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["source-hashes-mismatch"]),
     });
     const reordered = { ...after.artifact, sourceHashes: Object.fromEntries(Object.entries(after.artifact.sourceHashes).reverse()) };
-    expect(validateEvidenceArtifact(after.program, after.source, [], reordered)).toEqual({ valid: true, reasons: [] });
+    expect(validateEvidenceArtifact(after.program, after.source, [], reordered, builtinContractRegistry)).toEqual({ valid: true, reasons: [] });
   });
 
   it("validates effect evidence against every regenerated dependency and summary", () => {
@@ -163,33 +208,33 @@ describe("evidence and optimizer obligations", () => {
       /* uneffect: effect Console */ function report() { console.log("ok") }
     `);
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;
-    const artifact = createEvidenceArtifact(program, source, summaries);
-    expect(validateEvidenceArtifact(program, source, summaries, artifact)).toEqual({ valid: true, reasons: [] });
+    const artifact = createEvidenceArtifact(program, source, summaries, builtinContractRegistry);
+    expect(validateEvidenceArtifact(program, source, summaries, artifact, builtinContractRegistry)).toEqual({ valid: true, reasons: [] });
 
     const tamperedSummary = structuredClone(artifact);
     tamperedSummary.summaries[0]!.effects = [];
-    expect(validateEvidenceArtifact(program, source, summaries, tamperedSummary)).toMatchObject({
+    expect(validateEvidenceArtifact(program, source, summaries, tamperedSummary, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["summary-mismatch"]),
     });
 
     const partialSources = structuredClone(artifact);
     partialSources.sourceHashes = {};
-    expect(validateEvidenceArtifact(program, source, summaries, partialSources)).toMatchObject({
+    expect(validateEvidenceArtifact(program, source, summaries, partialSources, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["source-hashes-mismatch"]),
     });
 
-    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, compilerRevision: "stale" })).toMatchObject({
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, compilerRevision: "stale" }, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["compiler-revision-mismatch"]),
     });
-    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, builtinContractDigest: "modified" })).toMatchObject({
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, builtinContractDigest: "modified" }, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["builtin-contract-mismatch"]),
     });
-    expect(validateEvidenceArtifact(program, source, summaries, null)).toEqual({ valid: false, reasons: ["invalid-artifact"] });
+    expect(validateEvidenceArtifact(program, source, summaries, null, builtinContractRegistry)).toEqual({ valid: false, reasons: ["invalid-artifact"] });
 
-    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, schemaVersion: 2 })).toMatchObject({
+    expect(validateEvidenceArtifact(program, source, summaries, { ...artifact, schemaVersion: 2 }, builtinContractRegistry)).toMatchObject({
       valid: false, reasons: expect.arrayContaining(["schema-mismatch"]),
     });
-    expect(() => createEvidenceArtifact(program, source, [{ functionName: "manual", effects: [], evidence: "verified" }]))
+    expect(() => createEvidenceArtifact(program, source, [{ functionName: "manual", effects: [], evidence: "verified" }], builtinContractRegistry))
       .toThrow(/source identity/);
   });
 

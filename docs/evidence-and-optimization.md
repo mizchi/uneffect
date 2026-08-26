@@ -38,7 +38,11 @@ Changing an imported implementation therefore changes the evidence inputs even
 when the root source is unchanged.
 
 Consumers should call `validateEvidenceArtifact(program, source, summaries,
-artifact)` after regenerating the current Program analysis. It compares the
+artifact, builtinRegistry)` after regenerating the current Program analysis.
+Both `createEvidenceArtifact` and `validateEvidenceArtifact` require the exact
+registry used for analysis. This explicit argument prevents evidence produced
+with caller-owned contracts from being accidentally bound to or checked
+against the default registry digest. The validator compares the
 schema and Uneffect/TypeScript/builtin revisions, compiler options, root source,
 the exact complete Program source-hash set, and every source-attributed summary.
 Missing dependency hashes, reordered JSON object keys, changed summaries, old

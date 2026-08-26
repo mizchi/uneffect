@@ -4,6 +4,7 @@ import ts from "typescript";
 import { exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type CliCommand } from "./cli-support.js";
 import { analyzeEffectSummariesInProgram } from "./effects.js";
 import { assessEvidenceArtifactEligibility, createEvidenceArtifact } from "./evidence.js";
+import { builtinContractRegistry } from "./builtin-contracts.js";
 
 export const evidenceCommand: CliCommand = {
   name: "evidence",
@@ -20,7 +21,7 @@ export const evidenceCommand: CliCommand = {
     host.getSourceFile = (name, language, onError, fresh) => name === fileName ? ts.createSourceFile(fileName, text, language, true) : original(name, language, onError, fresh);
     const program = ts.createProgram([fileName], options, host), source = program.getSourceFile(fileName)!;
     const analysis = analyzeEffectSummariesInProgram(program, source);
-    const artifact = createEvidenceArtifact(program, source, analysis.summaries);
+    const artifact = createEvidenceArtifact(program, source, analysis.summaries, builtinContractRegistry);
     const eligibility = assessEvidenceArtifactEligibility(artifact);
     io.out(`${JSON.stringify({ artifact, eligibility, diagnostics: analysis.diagnostics }, null, 2)}\n`);
     return exitCode.success;

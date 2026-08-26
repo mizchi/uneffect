@@ -3,20 +3,52 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("builtin semantic overlays", () => {
   it("binds reviewed module initialization to the observed runtime version", () => {
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
-      .toMatchObject({ module: "effect", packageVersion: "3.22.1" });
+      .toMatchObject({ module: "effect", runtime: { kind: "package", version: "3.22.1" } });
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.23.0" }))
       .toBeUndefined();
     expect(findModuleInitializationContract(builtinContractRegistry, "effect", {}))
       .toBeUndefined();
 
     expect(findModuleInitializationContract(builtinContractRegistry, "node:path", { nodeMajor: 24 }))
-      .toMatchObject({ module: "node:*", nodeMajor: 24 });
+      .toMatchObject({ module: "node:*", runtime: { kind: "node", major: 24 } });
     expect(findModuleInitializationContract(builtinContractRegistry, "node:path", { nodeMajor: 25 }))
+      .toBeUndefined();
+  });
+
+  it("extends the registry without losing defaults and prefers an exact module contract", () => {
+    const extended = extendBuiltinContractRegistry(builtinContractRegistry, {
+      moduleInitializations: [{
+        module: "node:path", runtime: { kind: "node", major: 24 }, effects: ["Console"], evidence: "trusted",
+        trustReason: "application-specific review", trustOwner: "platform-team",
+      }],
+    });
+
+    expect(extended.contracts).toBe(builtinContractRegistry.contracts);
+    expect(findModuleInitializationContract(extended, "node:path", { nodeMajor: 24 }))
+      .toMatchObject({ module: "node:path", effects: ["Console"], trustOwner: "platform-team" });
+    expect(findModuleInitializationContract(extended, "node:fs", { nodeMajor: 24 }))
+      .toMatchObject({ module: "node:*", effects: [] });
+  });
+
+  it("never trusts a module contract bound to the wrong runtime kind", () => {
+    const unversioned: BuiltinContractRegistry = {
+      version: 2, declarations: [], contracts: [], moduleInitializations: [{
+        module: "opaque-package", runtime: { kind: "node", major: 24 }, effects: [], evidence: "trusted",
+        trustReason: "incomplete review", trustOwner: "test",
+      }, {
+        module: "node:path", runtime: { kind: "package", version: "24.0.0" }, effects: [], evidence: "trusted",
+        trustReason: "incomplete review", trustOwner: "test",
+      }],
+    };
+
+    expect(findModuleInitializationContract(unversioned, "opaque-package", { packageVersion: "1.0.0" }))
+      .toBeUndefined();
+    expect(findModuleInitializationContract(unversioned, "node:path", { nodeMajor: 24 }))
       .toBeUndefined();
   });
 
@@ -36,13 +68,13 @@ describe("builtin semantic overlays", () => {
       });
       const registry = (packageVersion: string): BuiltinContractRegistry => ({
         version: 2, declarations: [], contracts: [], moduleInitializations: [{
-          module: "reviewed-package", packageVersion, effects: [], evidence: "trusted",
+          module: "reviewed-package", runtime: { kind: "package", version: packageVersion }, effects: [], evidence: "trusted",
           trustReason: "test review", trustOwner: "test owner",
         }],
       });
 
       expect(resolveModuleInitializationContract(program, entry, "reviewed-package", registry("1.2.3")))
-        .toMatchObject({ packageVersion: "1.2.3" });
+        .toMatchObject({ runtime: { kind: "package", version: "1.2.3" } });
       expect(resolveModuleInitializationContract(program, entry, "reviewed-package", registry("1.2.4")))
         .toBeUndefined();
     } finally { rmSync(directory, { recursive: true, force: true }); }

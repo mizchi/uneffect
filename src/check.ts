@@ -5,6 +5,7 @@ import { verifyContractObligations, type VerificationArtifact } from "./contract
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
+import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -13,6 +14,8 @@ export interface CheckOptions {
   requireAnnotations?: boolean;
   /** Reusable host; `createCheckHost()` shares parsed library files across many one-file programs. */
   host?: ts.CompilerHost;
+  /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
+  builtinRegistry?: BuiltinContractRegistry;
 }
 
 export interface CheckResult {
@@ -46,7 +49,10 @@ export function createCheckHost(): ts.CompilerHost {
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const program = ts.createProgram([...fileNames], compilerOptions, options.host);
-  const effects = analyzeProgramEffects(program, { mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true });
+  const effects = analyzeProgramEffects(program, {
+    mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
+    builtinRegistry: options.builtinRegistry,
+  });
   const react = analyzeReactProgram(program);
   const diagnostics: CheckerDiagnostic[] = [];
   for (const fileName of fileNames) {

@@ -49,6 +49,42 @@ unreviewed transitive package code remain outside this contract. Exact pins are
 deliberately conservative: dependency or Node-major upgrades require review
 and a registry update before assurance can pass again.
 
+Applications may extend the reviewed registry through the programmatic API.
+This is intended for internal packages whose initialization behavior has an
+identified reviewer and maintenance owner:
+
+```ts
+import {
+  builtinContractRegistry,
+  extendBuiltinContractRegistry,
+  verifyUneffectProject,
+} from "@mizchi/uneffect"
+
+const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, {
+  moduleInitializations: [{
+    module: "@acme/telemetry",
+    runtime: { kind: "package", version: "4.2.1" },
+    effects: ['Net<"intake.example.com:443">'],
+    evidence: "trusted",
+    trustReason: "reviewed package initialization",
+    trustOwner: "observability-platform",
+    trustExpiresOn: "2027-01-01",
+  }],
+})
+
+const result = await verifyUneffectProject({
+  files: { "src/main.ts": source },
+  builtinRegistry,
+})
+```
+
+Caller entries precede the default registry. An exact module contract shadows
+a wildcard contract even when its runtime version does not match; the mismatch
+therefore fails closed instead of silently falling back to a broader rule.
+Declared effects are reviewed may-effects, not an implementation proof. The
+same registry must be supplied when creating or validating persisted evidence.
+Loading these extensions from a CLI configuration file is not implemented yet.
+
 ## Contract lookup
 
 String matching such as `callee.getText() === "document.createElement"` is insufficient because of shadowing, aliases, inheritance, and overloads. The native frontend must resolve a call to a stable symbol key:
