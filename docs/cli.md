@@ -109,6 +109,15 @@ When `--project` is present, `project.compiler` records the analyzer and
 consumer package paths, versions, and `exact | mismatch | unknown` parity.
 Assurance requires `exact`; resolution failure and even patch-version drift are
 unknown evidence because TypeChecker behavior can change between releases.
+When a no-positional-file project is a solution root, the command emits
+`uneffect-workspace-check/v1`: referenced configs are checked as separate
+compiler domains and `projects` retains their individual
+`uneffect-check/v1` decisions. The workspace also records `references`,
+child-first `buildOrder`, per-config root files and provenance, graph/assurance
+`blockers`, and one aggregate decision. Missing or invalid references, cycles,
+empty leaves, and duplicate root ownership fail closed. The workspace result
+does not claim cross-project effect/refinement composition or validate emitted
+build artifacts.
 
 | Code | Meaning |
 | --- | --- |

@@ -13,8 +13,10 @@ reflects dependency and soundness risk, not a release date commitment.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
-   must preserve separate referenced-project compiler domains and expose version
-   drift before a consumer relies on TypeChecker-derived evidence.
+   now preserves separate referenced-project compiler domains in the CLI and
+   exposes version drift before a consumer relies on TypeChecker-derived
+   evidence; the programmatic API, cross-project summaries, and declaration
+   build-artifact validation remain.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,

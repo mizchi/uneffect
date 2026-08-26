@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-workspace-check-v1.schema.json",
+  "title": "Uneffect workspace check decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "configs", "projects", "blockers", "assurance"],
+  "properties": {
+    "schema": { "const": "uneffect-workspace-check/v1" },
+    "outcome": { "enum": ["passed", "failed"] },
+    "rootProjectFile": { "type": "string" },
+    "references": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
+    "buildOrder": { "type": "array", "items": { "type": "string" } },
+    "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
+    "projects": { "type": "array", "items": { "$ref": "./uneffect-check-v1.schema.json" } },
+    "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+    "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object", "additionalProperties": false, "required": ["from", "to"],
+      "properties": { "from": { "type": "string" }, "to": { "type": "string" } }
+    },
+    "compiler": {
+      "type": "object", "additionalProperties": false,
+      "required": ["analyzerVersion", "analyzerPackageFile", "consumerVersion", "consumerPackageFile", "consumerModuleFile", "parity"],
+      "properties": {
+        "analyzerVersion": { "type": "string" }, "analyzerPackageFile": { "type": "string" },
+        "consumerVersion": { "type": ["string", "null"] }, "consumerPackageFile": { "type": ["string", "null"] },
+        "consumerModuleFile": { "type": ["string", "null"] }, "parity": { "enum": ["exact", "mismatch", "unknown"] },
+        "reason": { "type": "string" }
+      }
+    },
+    "config": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler", "rootFiles"],
+      "properties": {
+        "projectFile": { "type": "string" }, "compiler": { "$ref": "#/$defs/compiler" },
+        "rootFiles": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "blocker": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "classification", "projectFile", "message"],
+      "properties": {
+        "kind": { "type": "string" }, "classification": { "enum": ["unknown", "violation"] },
+        "projectFile": { "type": "string" }, "message": { "type": "string" },
+        "reference": { "type": "string" }
+      }
+    },
+    "assurance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile", "status", "passed", "blockers", "claims", "exclusions"],
+      "properties": {
+        "profile": { "enum": ["no-unknown", "declared"] },
+        "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
+        "passed": { "type": "boolean" }, "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
+        "claims": { "type": "array", "items": { "type": "string" } },
+        "exclusions": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

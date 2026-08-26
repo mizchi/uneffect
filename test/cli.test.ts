@@ -7,6 +7,7 @@ import { cliCommands, cliVersion, formatCliHelp, runCli } from "../src/cli-runne
 import { exitCode, type CliStreams } from "../src/cli-support.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
 import { builtinContractDigest } from "../src/evidence.js";
+import type { CheckWorkspaceJsonReport } from "../src/check-report.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
   const io = {
@@ -278,6 +279,81 @@ describe("uneffect command line", () => {
       expect(JSON.parse(exactIo.stdout)).toMatchObject({
         outcome: "passed", project: { compiler: { analyzerVersion: ts.version, consumerVersion: ts.version, parity: "exact" } },
         assurance: { status: "verified", passed: true },
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 30_000);
+
+  it("checks solution references as separate compiler domains and fails closed on broken graphs", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-ts-workspace-"));
+    const project = join(directory, "tsconfig.json"), a = join(directory, "packages", "a"), b = join(directory, "packages", "b");
+    const packageDirectory = join(directory, "node_modules", "typescript");
+    try {
+      mkdirSync(join(a, "src"), { recursive: true });
+      mkdirSync(join(b, "src"), { recursive: true });
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}");
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(a, "src", "a.ts"), "export const a = 1");
+      writeFileSync(join(b, "src", "b.ts"), "export function b() { console.log('b') }");
+      for (const child of [a, b]) writeFileSync(join(child, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", types: [] }, include: ["src/**/*.ts"],
+      }));
+      writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+
+      const valid = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], valid)).toBe(exitCode.success);
+      expect(valid.stderr).toBe("");
+      const validReport = JSON.parse(valid.stdout) as CheckWorkspaceJsonReport;
+      expect(validReport).toMatchObject({ schema: "uneffect-workspace-check/v1", outcome: "passed", rootProjectFile: project, blockers: [] });
+      expect(validReport.buildOrder).toEqual([join(a, "tsconfig.json"), join(b, "tsconfig.json"), project]);
+      expect(validReport.configs.find((item) => item.projectFile === join(a, "tsconfig.json"))?.rootFiles).toEqual([join(a, "src", "a.ts")]);
+      expect(validReport.references).toEqual(expect.arrayContaining([
+        { from: project, to: join(a, "tsconfig.json") },
+        { from: project, to: join(b, "tsconfig.json") },
+      ]));
+      expect(validReport.projects.map((item) => ({ projectFile: item.project!.projectFile, passed: item.assurance!.passed }))).toEqual([
+        { projectFile: join(a, "tsconfig.json"), passed: true },
+        { projectFile: join(b, "tsconfig.json"), passed: true },
+      ]);
+      expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
+        properties: { schema: { const: "uneffect-workspace-check/v1" } },
+        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "configs", "projects", "blockers", "assurance"]),
+      });
+      const validText = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown"], validText)).toBe(exitCode.success);
+      expect(validText.stderr).toContain(`project ${join(a, "tsconfig.json")}`);
+      expect(validText.stderr).toContain("workspace: passed; 2 checked compiler domain(s), 0 blocker(s)");
+
+      writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/missing" }] }));
+      const missing = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], missing)).toBe(exitCode.failed);
+      expect(JSON.parse(missing.stdout)).toMatchObject({
+        schema: "uneffect-workspace-check/v1", outcome: "failed",
+        blockers: expect.arrayContaining([expect.objectContaining({ kind: "missing-reference", classification: "unknown" })]),
+      });
+
+      writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }] }));
+      writeFileSync(join(a, "tsconfig.json"), "{");
+      const malformed = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], malformed)).toBe(exitCode.failed);
+      expect(JSON.parse(malformed.stdout)).toMatchObject({
+        outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "invalid-reference", classification: "unknown" })]),
+      });
+
+      writeFileSync(join(a, "tsconfig.json"), JSON.stringify({ compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", types: [] }, include: ["src/**/*.ts"] }));
+      writeFileSync(project, JSON.stringify({ files: ["packages/a/src/a.ts"], references: [{ path: "./packages/a" }] }));
+      const duplicate = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], duplicate)).toBe(exitCode.failed);
+      expect(JSON.parse(duplicate.stdout)).toMatchObject({
+        outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "duplicate-root-file", classification: "unknown" })]),
+      });
+
+      writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/a" }] }));
+      writeFileSync(join(a, "tsconfig.json"), JSON.stringify({ files: [], references: [{ path: "../.." }] }));
+      const cycle = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], cycle)).toBe(exitCode.failed);
+      expect(JSON.parse(cycle.stdout)).toMatchObject({
+        outcome: "failed", blockers: expect.arrayContaining([expect.objectContaining({ kind: "reference-cycle", classification: "unknown" })]),
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 30_000);

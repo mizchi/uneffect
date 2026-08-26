@@ -191,10 +191,10 @@ export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry
 export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
-export { loadTypeScriptProject } from "./typescript-project.js";
-export type { TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance } from "./typescript-project.js";
-export { createCheckJsonReport } from "./check-report.js";
-export type { CheckJsonReport, CheckReportEffect } from "./check-report.js";
+export { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
+export type { TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "./typescript-project.js";
+export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
+export type { CheckJsonReport, CheckReportEffect, CheckWorkspaceJsonReport, WorkspaceCheckAssurance, WorkspaceCheckBlocker } from "./check-report.js";
 export type {
   BuiltinContract,
   BuiltinOperation,

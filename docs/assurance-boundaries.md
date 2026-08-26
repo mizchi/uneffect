@@ -58,8 +58,25 @@ TypeScript package and module from that project boundary, then compares its
 exact version with the analyzer module. The machine report classifies parity as
 `exact`, `mismatch`, or `unknown`; both assurance profiles reject the latter
 two. Package metadata remains part of the trusted installation base, not a
-cryptographic attestation of compiler bytes. Solution-style project references
-remain unsupported and are not flattened.
+cryptographic attestation of compiler bytes.
+
+For a solution-style project, `check --project` follows project references and
+checks every source-bearing config as a separate TypeScript Program with its
+own compiler options, references, root files, and compiler provenance. It does
+not flatten the solution into a guessed common configuration. Missing or
+malformed references, cycles, empty leaf projects, duplicate root-file
+ownership, child assurance failures, and non-exact compiler provenance are
+workspace blockers. The resulting `uneffect-workspace-check/v1` decision lists
+the graph, child-first build order, per-config roots, child decisions, and the
+aggregate assurance result.
+
+A passing workspace result establishes only that every listed domain passed
+the selected profile relative to the recorded assumptions and that root-source
+ownership was unambiguous. It is not a cross-project whole-program proof:
+effect/refinement summaries are not yet composed across declaration outputs,
+incremental build artifacts are not validated, and runtime package resolution
+outside the selected Programs remains excluded. A graph with a cycle has no
+usable build-order claim even though its discovered nodes remain reportable.
 
 The programmatic `verifyUneffectProject` boundary applies the same rule across
 domains: contract and typed-array obligations become `unknown`, and temporal
@@ -68,8 +85,9 @@ return diagnostics, models, and emitted JavaScript for gradual adoption; those
 outputs are not proof evidence.
 It currently constructs an in-memory Program with Uneffect defaults rather
 than loading a consumer tsconfig, so its result does not establish consumer
-compiler parity. Carrying referenced configs and compiler provenance through
-that API remains tracked in issue #20.
+compiler parity. The CLI workspace behavior above is not yet available through
+this programmatic API; carrying referenced configs and compiler provenance
+through it remains tracked in issue #20.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
 It rejects unknown effect summaries, nested unknown capability scopes,

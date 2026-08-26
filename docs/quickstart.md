@@ -84,9 +84,21 @@ The JSON report records both compiler package locations and versions.
 Assurance fails with a TypeScript `unknown` blocker when the consumer package
 cannot be resolved or its exact version differs. A gradual check can still
 produce diagnostics and inventories, but is not presented as project-compatible
-TypeChecker evidence. Solution-style project references without selected root
-files are not expanded yet and fail as an empty project rather than being
-flattened into one guessed compiler-option domain.
+TypeChecker evidence.
+
+For a solution-style root, the no-positional-file form follows project
+references and checks each config independently:
+
+```sh
+npx uneffect check --project tsconfig.json --infer \
+  --assurance no-unknown --json > uneffect-workspace-check.json
+```
+
+The output uses `uneffect-workspace-check/v1`, not `uneffect-check/v1`. Inspect
+the aggregate `outcome` and `assurance`, every child in `projects`, and graph
+`blockers`. Missing/malformed references, cycles, duplicate root ownership, and
+empty leaf configs fail closed. Explicit positional files continue to select a
+single compiler domain; they do not request solution expansion.
 
 To see a load-bearing failure, change the return to `return value - 1`. The
 postcondition must then fail with a source-mapped counterexample. Also replace

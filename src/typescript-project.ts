@@ -22,10 +22,41 @@ export interface TypeScriptProject {
   fileNames: string[];
   compilerOptions: ts.CompilerOptions;
   provenance: TypeScriptProjectProvenance;
+  projectReferences: readonly ts.ProjectReference[];
+}
+
+export interface TypeScriptProjectReference {
+  from: string;
+  to: string;
+}
+
+export interface TypeScriptWorkspaceBlocker {
+  kind: "missing-reference" | "invalid-reference" | "reference-cycle" | "empty-project" | "duplicate-root-file";
+  classification: "unknown";
+  projectFile: string;
+  message: string;
+  reference?: string;
+}
+
+export interface TypeScriptWorkspace {
+  rootProjectFile: string;
+  /** Child-first order; every config retains its own compiler options. */
+  projects: TypeScriptProject[];
+  references: TypeScriptProjectReference[];
+  blockers: TypeScriptWorkspaceBlocker[];
+  /** Child-first topological order; meaningful only when no cycle blocker exists. */
+  buildOrder: string[];
 }
 
 function diagnosticMessage(diagnostic: ts.Diagnostic): string {
   return ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+}
+
+class TypeScriptProjectConfigError extends Error {
+  constructor(message: string, readonly kind: "missing" | "invalid") {
+    super(message);
+    this.name = "TypeScriptProjectConfigError";
+  }
 }
 
 const analyzerRequire = createRequire(import.meta.url);
@@ -55,19 +86,100 @@ function compilerProvenance(projectFile: string): TypeScriptCompilerProvenance {
   }
 }
 
-/** Load the consumer's TypeScript file set and compiler semantics without mutating them. */
-export function loadTypeScriptProject(projectFile: string): TypeScriptProject {
-  const absolute = resolve(projectFile);
+function parseTypeScriptProject(absolute: string, allowEmpty: boolean): { project: TypeScriptProject; references: readonly ts.ProjectReference[] } {
   const loaded = ts.readConfigFile(absolute, ts.sys.readFile);
-  if (loaded.error) throw new Error(`cannot read TypeScript project ${absolute}: ${diagnosticMessage(loaded.error)}`);
+  if (loaded.error) throw new TypeScriptProjectConfigError(
+    `cannot read TypeScript project ${absolute}: ${diagnosticMessage(loaded.error)}`,
+    loaded.error.code === 5083 ? "missing" : "invalid",
+  );
   const parsed = ts.parseJsonConfigFileContent(loaded.config, ts.sys, dirname(absolute), undefined, absolute);
   const errors = parsed.errors.filter((diagnostic) => diagnostic.code !== 18003);
   if (errors.length > 0) {
-    throw new Error(`cannot read TypeScript project ${absolute}: ${errors.map(diagnosticMessage).join("; ")}`);
+    throw new TypeScriptProjectConfigError(`cannot read TypeScript project ${absolute}: ${errors.map(diagnosticMessage).join("; ")}`, "invalid");
   }
-  if (parsed.fileNames.length === 0) throw new Error(`TypeScript project ${absolute} does not select any source files`);
-  return {
+  if (!allowEmpty && parsed.fileNames.length === 0) throw new Error(`TypeScript project ${absolute} does not select any source files`);
+  const references = parsed.projectReferences ?? [];
+  return { project: {
     projectFile: absolute, fileNames: parsed.fileNames, compilerOptions: parsed.options,
     provenance: { projectFile: absolute, compiler: compilerProvenance(absolute) },
+    projectReferences: references,
+  }, references };
+}
+
+/** Load one compiler domain. Project references are intentionally not flattened here. */
+export function loadTypeScriptProject(projectFile: string): TypeScriptProject {
+  return parseTypeScriptProject(resolve(projectFile), false).project;
+}
+
+/** Resolve a solution graph while preserving one compiler-option domain per tsconfig. */
+/* uneffect: effect Throw<Error> */
+export function loadTypeScriptWorkspace(projectFile: string): TypeScriptWorkspace {
+  const rootProjectFile = resolve(projectFile);
+  const projects: TypeScriptProject[] = [], references: TypeScriptProjectReference[] = [], blockers: TypeScriptWorkspaceBlocker[] = [];
+  const state = new Map<string, "visiting" | "visited">();
+  const roots = new Map<string, string>();
+
+  const visit = (fileName: string, owner?: string): void => {
+    const current = state.get(fileName);
+    if (current === "visited") return;
+    if (current === "visiting") {
+      blockers.push({ kind: "reference-cycle", classification: "unknown", projectFile: owner ?? fileName, reference: fileName,
+        message: `TypeScript project reference cycle reaches ${fileName}` });
+      return;
+    }
+    state.set(fileName, "visiting");
+    let parsed: ReturnType<typeof parseTypeScriptProject>;
+    try { parsed = parseTypeScriptProject(fileName, true); }
+    catch (cause) {
+      const message = cause instanceof Error ? cause.message : String(cause);
+      if (fileName === rootProjectFile) throw new Error(message, { cause });
+      blockers.push({
+        kind: cause instanceof TypeScriptProjectConfigError && cause.kind === "missing" ? "missing-reference" : "invalid-reference",
+        classification: "unknown", projectFile: owner ?? rootProjectFile, reference: fileName, message,
+      });
+      state.set(fileName, "visited");
+      return;
+    }
+    for (const reference of parsed.references) {
+      const target = ts.resolveProjectReferencePath(reference);
+      references.push({ from: fileName, to: target });
+      visit(target, fileName);
+    }
+    if (parsed.project.fileNames.length === 0 && parsed.references.length === 0) blockers.push({
+      kind: "empty-project", classification: "unknown", projectFile: fileName,
+      message: `TypeScript project ${fileName} does not select source files or reference another project`,
+    });
+    for (const source of parsed.project.fileNames) {
+      const previous = roots.get(source);
+      if (previous && previous !== fileName) blockers.push({
+        kind: "duplicate-root-file", classification: "unknown", projectFile: fileName, reference: previous,
+        message: `${source} is selected by both ${previous} and ${fileName}`,
+      });
+      else roots.set(source, fileName);
+    }
+    state.set(fileName, "visited");
+    projects.push(parsed.project);
   };
+
+  visit(rootProjectFile);
+  if (references.length > 0) {
+    const diagnostics: ts.Diagnostic[] = [];
+    const host = ts.createSolutionBuilderHost(ts.sys);
+    host.reportDiagnostic = (diagnostic) => { diagnostics.push(diagnostic); };
+    host.reportSolutionBuilderStatus = () => undefined;
+    host.writeFile = () => undefined;
+    ts.createSolutionBuilder(host, [rootProjectFile], { dry: true }).build();
+    for (const diagnostic of diagnostics) {
+      if (diagnostic.category !== ts.DiagnosticCategory.Error || diagnostic.code === 5083 || diagnostic.code === 6202) continue;
+      blockers.push({
+        kind: "invalid-reference", classification: "unknown", projectFile: diagnostic.file?.fileName ?? rootProjectFile,
+        message: `TypeScript solution graph TS${diagnostic.code}: ${diagnosticMessage(diagnostic)}`,
+      });
+    }
+  }
+  const root = projects.find((project) => project.projectFile === rootProjectFile);
+  if (root && root.fileNames.length === 0 && references.length === 0) {
+    throw new Error(`TypeScript project ${rootProjectFile} does not select any source files`);
+  }
+  return { rootProjectFile, projects, references, blockers, buildOrder: projects.map((project) => project.projectFile) };
 }

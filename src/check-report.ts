@@ -4,6 +4,8 @@ import type { CheckResult } from "./check.js";
 import type { VerificationArtifact } from "./contracts.js";
 import { reportDiagnostic, type ReportedDiagnostic } from "./diagnostics.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
+import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
+import type { TypeScriptWorkspace } from "./typescript-project.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -26,6 +28,35 @@ export interface CheckJsonReport {
   contracts: VerificationArtifact[];
   assurance: AssuranceAssessment | null;
   project: TypeScriptProjectProvenance | null;
+}
+
+export interface WorkspaceCheckBlocker {
+  kind: string;
+  classification: "unknown" | "violation";
+  projectFile: string;
+  message: string;
+  reference?: string;
+}
+
+export interface WorkspaceCheckAssurance {
+  profile: AssuranceProfile;
+  status: AssuranceStatus;
+  passed: boolean;
+  blockers: WorkspaceCheckBlocker[];
+  claims: string[];
+  exclusions: string[];
+}
+
+export interface CheckWorkspaceJsonReport {
+  schema: "uneffect-workspace-check/v1";
+  outcome: "passed" | "failed";
+  rootProjectFile: string;
+  references: Array<{ from: string; to: string }>;
+  buildOrder: string[];
+  configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
+  projects: CheckJsonReport[];
+  blockers: WorkspaceCheckBlocker[];
+  assurance: WorkspaceCheckAssurance | null;
 }
 
 export function createCheckJsonReport(result: CheckResult, assurance?: AssuranceAssessment): CheckJsonReport {
@@ -52,5 +83,56 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
     contracts: result.artifacts,
     assurance: assurance ?? null,
     project: result.project ?? null,
+  };
+}
+
+/** Aggregate independent compiler domains without pretending they formed one TypeScript Program. */
+export function createCheckWorkspaceJsonReport(
+  workspace: TypeScriptWorkspace,
+  projects: CheckJsonReport[],
+  profile?: AssuranceProfile,
+): CheckWorkspaceJsonReport {
+  const blockers: WorkspaceCheckBlocker[] = workspace.blockers.map((blocker) => ({
+    kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
+    ...(blocker.reference === undefined ? {} : { reference: blocker.reference }),
+  }));
+  const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
+  if (profile) for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
+    kind: "typescript", classification: "unknown", projectFile: project.projectFile,
+    message: project.provenance.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
+  });
+  for (const project of projects) {
+    if (project.assurance) for (const blocker of project.assurance.blockers) blockers.push({
+      kind: blocker.kind, classification: blocker.classification, projectFile: project.project?.projectFile ?? blocker.fileName,
+      message: blocker.message,
+    });
+    else if (project.outcome === "failed") blockers.push({
+      kind: "project", classification: "violation", projectFile: project.project?.projectFile ?? "<project>",
+      message: "the compiler domain emitted error diagnostics",
+    });
+  }
+  const failed = blockers.length > 0 || projects.some((project) => project.outcome === "failed");
+  const assurance = profile === undefined ? null : (() => {
+    const status: AssuranceStatus = blockers.some((blocker) => blocker.classification === "violation") ? "violated"
+      : blockers.length > 0 ? "unknown"
+      : projects.some((project) => project.assurance?.status === "assumed") ? "assumed" : "verified";
+    return {
+      profile, status, passed: blockers.length === 0,
+      blockers,
+      claims: blockers.length === 0 ? [
+        "every referenced compiler domain passed its selected assurance profile",
+        "every selected source root belongs to exactly one checked TypeScript project",
+        "every project config resolves the exact analyzer TypeScript version",
+      ] : [],
+      exclusions: [
+        "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
+        ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
+      ],
+    };
+  })();
+  return {
+    schema: "uneffect-workspace-check/v1", outcome: failed ? "failed" : "passed",
+    rootProjectFile: workspace.rootProjectFile, references: workspace.references, buildOrder: workspace.buildOrder,
+    configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
   };
 }

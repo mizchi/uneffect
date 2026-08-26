@@ -21,6 +21,8 @@ export interface CheckOptions {
   compilerOptions?: ts.CompilerOptions;
   /** Exact project/compiler identity used to qualify TypeChecker-derived assurance. */
   project?: TypeScriptProjectProvenance;
+  /** Native TypeScript project-reference edges for this compiler domain. */
+  projectReferences?: readonly ts.ProjectReference[];
 }
 
 export interface CheckResult {
@@ -55,7 +57,10 @@ export function createCheckHost(options: ts.CompilerOptions = compilerOptions): 
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
   const effectiveCompilerOptions = options.compilerOptions ?? compilerOptions;
-  const program = ts.createProgram([...fileNames], effectiveCompilerOptions, options.host);
+  const program = ts.createProgram({
+    rootNames: [...fileNames], options: effectiveCompilerOptions, host: options.host,
+    projectReferences: options.projectReferences,
+  });
   const effects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,

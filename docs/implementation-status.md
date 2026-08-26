@@ -417,6 +417,13 @@ same property is proved for arbitrary TypeScript.
   together instead of asking CI to infer a safety result from text. An
   explicitly supplied project also records analyzer/consumer TypeScript
   package provenance; unresolved or non-exact versions make assurance unknown.
+  A no-positional-file solution root is expanded into separate Programs rather
+  than flattened: `uneffect-workspace-check/v1` records the reference graph,
+  child-first build order, config roots/provenance, child decisions, and
+  aggregate assurance. Missing/malformed references, cycles, empty leaves, and
+  duplicate source ownership fail closed. Cross-project summary composition,
+  declaration-output validation, and the equivalent programmatic API remain
+  incomplete.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.

@@ -110,6 +110,11 @@ failure and keeps `outcome`, evidence, assurance blockers, claims, exclusions,
 and coverage together; omitting `--assurance` produces `assurance: null`.
 With `--project`, it also records analyzer/consumer TypeScript package
 provenance, and assurance rejects unresolved or non-exact compiler versions.
+For a solution-style root with no positional files, referenced configs are
+checked as separate compiler domains and the command emits
+`uneffect-workspace-check/v1`. Graph errors and ambiguous source ownership fail
+closed; this still does not compose cross-project proofs or validate build
+artifacts.
 
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for
