@@ -171,6 +171,14 @@ call escapes, cycles, member/destructuring aliases, and dynamically selected
 targets remain unsupported rather than being treated as the original runtime.
 The finite telemetry batch dogfood uses this alias form before its loop.
 
+Invariant refinement follows acyclic imported helpers through the Program
+TypeChecker. A helper may materialize a builtin `Set` from the concrete array or
+a builtin `Map` from the concrete entry array named by a computed abstraction;
+the result is canonicalized back to that abstract collection before membership
+or lookup comparison. The constructor symbol and exact abstraction argument are
+load-bearing: a same-named user class or unrelated conversion remains
+`unsupported-invariant-body`.
+
 A separate labeled-delivery acceptance path models cancellation with
 `attempt: { ... break attempt }`. The local break is consumed only after the
 selected path runs its `finally`, and the audit statement following the label

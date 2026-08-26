@@ -82,7 +82,12 @@ same property is proved for arbitrary TypeScript.
   exact zero-shot `while (false)` and one-shot `do...while (false)`, and
   acyclic symbol-resolved helpers. Whole-runtime reads and writes may pass
   through lexical, non-escaping `const` alias chains; mutable, escaping,
-  member, destructured, or cyclic aliases remain unsupported. A reviewed local
+  member, destructured, or cyclic aliases remain unsupported. A Program-resolved
+  acyclic invariant helper may also return a builtin `new Set(array)`
+  or `new Map(entries)` view when that constructor and argument exactly match a
+  declared computed abstraction. This requires TypeChecker identity; local
+  same-named constructors and conversions without an abstraction relation are
+  not treated as proof evidence. A reviewed local
   runtime-class method may use the same alias chain as its receiver; its body is
   specialized with the existing argument substitution and recursion guard.
   In the Program-backed path, the runtime class may be imported: its parameter

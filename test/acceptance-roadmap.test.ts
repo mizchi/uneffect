@@ -110,6 +110,73 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("normalizes an imported collection-producing invariant helper with builtin identity evidence", () => {
+    const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgram");
+    const parseSpecification = futureApi("parseSpec");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-collection-helper-"));
+    const helperFile = join(directory, "collections.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import { activeEpochs, activeOwners } from "./collections.js"
+      /* uneffect:
+       * state owners: Set<int>
+       * state epochs: Map<int, int>
+       * init owners = Set(1)
+       * init epochs = Map([[1, 0]])
+       * temporal primaryPresent: owners.contains(1)
+       * temporal primaryCurrent: epochs.keys().contains(1) && epochs.get(1) === 0
+       * abstraction routing@1 owners = Set(routing.activeOwnerIds)
+       * abstraction routing@1 epochs = Map(routing.epochEntries)
+       */
+      interface Runtime { routing: { activeOwnerIds: number[]; epochEntries: Array<[number, number]> } }
+      /* uneffect: refinement routing@1 create */ export function create(initial: { owners: Set<number>; epochs: Map<number, number> }): Runtime { return { routing: { activeOwnerIds: Array.from(initial.owners), epochEntries: Array.from(initial.epochs) } } }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.routing.activeOwnerIds), epochs: new Map(runtime.routing.epochEntries) } }
+      /* uneffect: refinement routing@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime) { return activeOwners(runtime).has(1) }
+      /* uneffect: refinement routing@1 invariant primaryCurrent */
+      export function primaryCurrent(runtime: Runtime) { return activeEpochs(runtime).has(1) && activeEpochs(runtime).get(1) === 0 }
+    `;
+    try {
+      writeFileSync(helperFile, `
+        export interface Runtime { routing: { activeOwnerIds: number[]; epochEntries: Array<[number, number]> } }
+        export function activeOwners(runtime: Runtime): Set<number> {
+          return new Set(runtime.routing.activeOwnerIds)
+        }
+        export function activeEpochs(runtime: Runtime): Map<number, number> {
+          return new Map(runtime.routing.epochEntries)
+        }
+      `);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const temporal = (parseSpecification(mainFile, source) as { temporal: unknown }).temporal;
+      expect(validateInvariants(program, mainFile, "routing", temporal)).toEqual([]);
+
+      writeFileSync(helperFile, `
+        export interface Runtime { routing: { activeOwnerIds: number[]; epochEntries: Array<[number, number]> } }
+        class Set<T> { constructor(_values: Iterable<T>) {} has(_value: T) { return true } }
+        class Map<K, V> { constructor(_values: Iterable<[K, V]>) {} has(_key: K) { return true } get(_key: K): V | undefined { return undefined } }
+        export function activeOwners(runtime: Runtime): Set<number> {
+          return new Set(runtime.routing.activeOwnerIds)
+        }
+        export function activeEpochs(runtime: Runtime): Map<number, number> {
+          return new Map(runtime.routing.epochEntries)
+        }
+      `);
+      const lookalikeProgram = ts.createProgram([mainFile, helperFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(lookalikeProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "primaryPresent" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

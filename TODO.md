@@ -15,7 +15,6 @@ create a second work queue from them.
 
 | Phase | Issue | Area | Remaining boundary |
 | --- | --- | --- | --- |
-| 1 | [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
 | 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
 | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | One general Promise/exception/disposal CFG fixed point |
 | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
@@ -313,6 +312,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Expand declaration-ordered immutable `const` aliases in quantified callback blocks while rejecting mutable locals and general statements.
           - [x] Normalize TypeChecker-identified `Array.from(Set|Map views).some` existential predicates and lower `exists` consistently to Quint, runtime assertions, and Z3.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
+          - [x] Normalize imported acyclic helpers that construct builtin `Set`/`Map` views matching a declared computed abstraction; require TypeChecker constructor identity and reject same-named lookalikes.
           - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.

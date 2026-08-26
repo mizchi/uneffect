@@ -56,7 +56,6 @@ describe("TODO hierarchy consistency", () => {
     );
 
     expect(rows).toEqual([
-      [1, 17],
       [1, 3],
       [1, 9],
       [1, 20],

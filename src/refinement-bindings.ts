@@ -307,6 +307,15 @@ function canonicalizeAbstractionExpression(expression: TemporalExpression, abstr
       return { kind: "method", receiver: { kind: "name", name: abstract }, name: "size", arguments: [] };
     }
   }
+  if (expression.kind === "call" && (expression.name === "Set" || expression.name === "Map")
+    && expression.arguments.length === 1) {
+    const argumentPath = expressionPath(expression.arguments[0]!)?.join(".");
+    if (argumentPath) for (const [abstract, value] of abstraction) {
+      const parsed = parseAbstractionValue(value);
+      const expectedKind = expression.name === "Set" ? "set-from-array" : "map-from-entries";
+      if (parsed.kind === expectedKind && parsed.path === argumentPath) return { kind: "name", name: abstract };
+    }
+  }
   if (expression.kind === "integer" || expression.kind === "boolean" || expression.kind === "name") return expression;
   if (expression.kind === "unary") return { ...expression, operand: canonicalizeAbstractionExpression(expression.operand, abstraction) };
   if (expression.kind === "binary") return { ...expression, left: canonicalizeAbstractionExpression(expression.left, abstraction), right: canonicalizeAbstractionExpression(expression.right, abstraction) };
@@ -485,6 +494,20 @@ function normalizeRefinementExpression(
       fields[name] = value;
     }
     return { kind: "record", ...(base ? { base } : {}), fields };
+  }
+  if (checker && ts.isNewExpression(node) && ts.isIdentifier(node.expression)
+    && (node.expression.text === "Set" || node.expression.text === "Map")
+    && node.arguments?.length === 1
+    && isDeclarationFileSymbol(checker, node.expression, node.expression.text)) {
+    const argument = normalizeRefinementExpression(
+      node.arguments[0]!, receiver, substitutions, stateNames, helpers,
+      activeHelpers, symbolicSubstitutions, checker,
+    );
+    if (argument) return {
+      kind: "call",
+      name: node.expression.text,
+      arguments: [argument],
+    };
   }
   if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
     && node.expression.name.text === "find" && node.arguments.length === 1
