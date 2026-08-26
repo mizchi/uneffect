@@ -82,6 +82,15 @@ export interface ModuleInitializationContract {
   trustReason: string;
   trustOwner: string;
   trustExpiresOn?: string;
+  /** Exact reviewed package version. Required for npm package contracts. */
+  packageVersion?: string;
+  /** Reviewed Node runtime major. Required for `node:*` contracts. */
+  nodeMajor?: number;
+}
+
+export interface ModuleInitializationEnvironment {
+  packageVersion?: string;
+  nodeMajor?: number;
 }
 
 function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract {
@@ -109,10 +118,54 @@ export function findBuiltinContract(registry: BuiltinContractRegistry, symbol: B
 export function findModuleInitializationContract(
   registry: BuiltinContractRegistry,
   moduleName: string,
+  environment: ModuleInitializationEnvironment,
 ): ModuleInitializationContract | undefined {
-  return registry.moduleInitializations.find((contract) => contract.module.endsWith("*")
-    ? moduleName.startsWith(contract.module.slice(0, -1))
-    : contract.module === moduleName);
+  return registry.moduleInitializations.find((contract) => {
+    const nameMatches = contract.module.endsWith("*")
+      ? moduleName.startsWith(contract.module.slice(0, -1))
+      : contract.module === moduleName;
+    return nameMatches
+      && (contract.packageVersion === undefined || contract.packageVersion === environment.packageVersion)
+      && (contract.nodeMajor === undefined || contract.nodeMajor === environment.nodeMajor);
+  });
+}
+
+function packageName(moduleName: string): string {
+  if (!moduleName.startsWith("@")) return moduleName.split("/")[0]!;
+  return moduleName.split("/").slice(0, 2).join("/");
+}
+
+function resolvedPackageVersion(program: ts.Program, containingFile: string, moduleName: string): string | undefined {
+  const resolved = ts.resolveModuleName(moduleName, containingFile, program.getCompilerOptions(), ts.sys).resolvedModule;
+  if (!resolved) return undefined;
+  const expectedName = packageName(moduleName);
+  let directory = dirname(resolved.resolvedFileName);
+  while (true) {
+    const manifest = join(directory, "package.json");
+    const text = ts.sys.readFile(manifest);
+    if (text !== undefined) {
+      try {
+        const value = JSON.parse(text) as { name?: unknown; version?: unknown };
+        if (value.name === expectedName && typeof value.version === "string") return value.version;
+      } catch { return undefined; }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return undefined;
+    directory = parent;
+  }
+}
+
+/** Resolve a reviewed contract against the runtime/package actually analyzed. */
+export function resolveModuleInitializationContract(
+  program: ts.Program,
+  containingFile: string,
+  moduleName: string,
+  registry: BuiltinContractRegistry = builtinContractRegistry,
+): ModuleInitializationContract | undefined {
+  const environment: ModuleInitializationEnvironment = moduleName.startsWith("node:")
+    ? { nodeMajor: Number.parseInt(process.versions.node.split(".")[0]!, 10) }
+    : { packageVersion: resolvedPackageVersion(program, containingFile, moduleName) };
+  return findModuleInitializationContract(registry, moduleName, environment);
 }
 
 const fsReadNames = [
@@ -171,10 +224,14 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
   moduleInitializations: [
     {
       module: "node:*", effects: [], evidence: "trusted",
+      nodeMajor: 24,
       trustReason: "reviewed Node builtin module initialization boundary", trustOwner: "@mizchi/uneffect",
     },
-    ...["@oxlint/plugins", "corsa-oxlint", "effect", "typescript", "valibot", "z3-solver"].map((module): ModuleInitializationContract => ({
-      module, effects: [], evidence: "trusted",
+    ...([
+      ["@oxlint/plugins", "1.80.0"], ["corsa-oxlint", "1.12.4"], ["effect", "3.22.1"],
+      ["typescript", "6.0.3"], ["valibot", "1.4.2"], ["z3-solver", "4.16.0"],
+    ] as const).map(([module, packageVersion]): ModuleInitializationContract => ({
+      module, packageVersion, effects: [], evidence: "trusted",
       trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",
     })),
   ],
@@ -412,3 +469,5 @@ function domPropertyBuiltinContracts(): BuiltinContract[] {
   ];
   return entries.map(([key, operation]) => trusted({ symbol: { module: "lib.dom", export: key }, operation }));
 }
+import { dirname, join } from "node:path";
+import ts from "typescript";

@@ -3,7 +3,7 @@ import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js"
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import { builtinContractRegistry, findModuleInitializationContract, type FsBuiltinOperation } from "./builtin-contracts.js";
+import { resolveModuleInitializationContract, type FsBuiltinOperation } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
@@ -1067,7 +1067,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (!isRuntimeModuleDependency(statement)) continue;
       if (addResolvedDependency(statement.moduleSpecifier)) continue;
       const moduleName = ts.isStringLiteralLike(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
-      const contract = findModuleInitializationContract(builtinContractRegistry, moduleName);
+      const contract = resolveModuleInitializationContract(program, source.fileName, moduleName);
       if (!contract) { unknown = true; continue; }
       trusted = true;
       for (const expression of contract.effects) addEffect(effects, parseEffectExpression(expression));

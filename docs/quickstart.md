@@ -208,6 +208,9 @@ Static runtime imports from external packages likewise remain `unknown` unless
 their initialization has a reviewed, versioned registry contract. A matched
 contract is reported as `trusted` and is recorded as a project assumption;
 `--assurance no-unknown` may pass it as `assumed`, never as `verified`.
+Package contracts match the exact resolved package version and Node contracts
+match the reviewed runtime major. Upgrades fail closed until the registry entry
+is reviewed and updated.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:

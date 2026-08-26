@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
-import { builtinContractRegistry, findBuiltinContract, findModuleInitializationContract } from "./builtin-contracts.js";
+import { builtinContractRegistry, findBuiltinContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
@@ -22,6 +22,11 @@ export interface AssumptionEntry {
   scope: AssumptionScope;
   owner?: string;
   expiresOn?: string;
+  dependency?: {
+    module: string;
+    packageVersion?: string;
+    nodeMajor?: number;
+  };
 }
 
 export interface AssumptionPolicy {
@@ -112,13 +117,18 @@ export function collectAssumptionLedger(
       if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
         || !statement.moduleSpecifier || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
       if (!isRuntimeModuleDependency(statement)) continue;
-      const contract = findModuleInitializationContract(builtinContractRegistry, statement.moduleSpecifier.text);
+      const contract = resolveModuleInitializationContract(program, source.fileName, statement.moduleSpecifier.text);
       if (!contract) continue;
       entries.push(entry({
         domain: "module-initialization",
         reason: contract.trustReason,
         owner: contract.trustOwner,
         ...(contract.trustExpiresOn ? { expiresOn: contract.trustExpiresOn } : {}),
+        dependency: {
+          module: statement.moduleSpecifier.text,
+          ...(contract.packageVersion ? { packageVersion: contract.packageVersion } : {}),
+          ...(contract.nodeMajor !== undefined ? { nodeMajor: contract.nodeMajor } : {}),
+        },
         scope: {
           fileName,
           functionName: "<module>",

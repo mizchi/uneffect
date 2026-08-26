@@ -1,7 +1,53 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractRegistry, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("builtin semantic overlays", () => {
+  it("binds reviewed module initialization to the observed runtime version", () => {
+    expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.22.1" }))
+      .toMatchObject({ module: "effect", packageVersion: "3.22.1" });
+    expect(findModuleInitializationContract(builtinContractRegistry, "effect", { packageVersion: "3.23.0" }))
+      .toBeUndefined();
+    expect(findModuleInitializationContract(builtinContractRegistry, "effect", {}))
+      .toBeUndefined();
+
+    expect(findModuleInitializationContract(builtinContractRegistry, "node:path", { nodeMajor: 24 }))
+      .toMatchObject({ module: "node:*", nodeMajor: 24 });
+    expect(findModuleInitializationContract(builtinContractRegistry, "node:path", { nodeMajor: 25 }))
+      .toBeUndefined();
+  });
+
+  it("reads the version from the package resolved for the importing source", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-contract-version-"));
+    try {
+      const packageDirectory = join(directory, "node_modules", "reviewed-package");
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({
+        name: "reviewed-package", version: "1.2.3", types: "index.d.ts",
+      }));
+      writeFileSync(join(packageDirectory, "index.d.ts"), "export declare const value: number\n");
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, 'import "reviewed-package"\n');
+      const program = ts.createProgram([entry], {
+        module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const registry = (packageVersion: string): BuiltinContractRegistry => ({
+        version: 2, declarations: [], contracts: [], moduleInitializations: [{
+          module: "reviewed-package", packageVersion, effects: [], evidence: "trusted",
+          trustReason: "test review", trustOwner: "test owner",
+        }],
+      });
+
+      expect(resolveModuleInitializationContract(program, entry, "reviewed-package", registry("1.2.3")))
+        .toMatchObject({ packageVersion: "1.2.3" });
+      expect(resolveModuleInitializationContract(program, entry, "reviewed-package", registry("1.2.4")))
+        .toBeUndefined();
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("refines node:os tmpdir as the symbolic temporary root", () => {
     expect(builtinContractRegistry.contracts).toContainEqual({
       symbol: { module: "node:os", export: "tmpdir" },

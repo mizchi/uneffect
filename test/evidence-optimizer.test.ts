@@ -48,7 +48,9 @@ describe("evidence and optimizer obligations", () => {
     expect(result.effects.summaries.find((item) => item.functionName === "<module>"))
       .toMatchObject({ evidence: "trusted" });
     expect(result.assumptions.entries).toContainEqual(expect.objectContaining({
-      domain: "module-initialization", scope: expect.objectContaining({ fileName }),
+      domain: "module-initialization",
+      dependency: { module: "node:path", nodeMajor: 24 },
+      scope: expect.objectContaining({ fileName }),
     }));
     expect(result.assurance).toMatchObject({ status: "assumed", passed: true });
   });

@@ -145,14 +145,15 @@ non-declaration source in the current Program contributes that module's closure
 as a conditional may-effect, including when directly awaited. Computed,
 external, declaration-only, and unresolved dynamic imports remain `unknown`.
 Static runtime imports of external packages also fail closed unless the
-versioned builtin registry contains a reviewed module-initialization contract.
+versioned builtin registry contains a reviewed module-initialization contract
+whose exact resolved package version or Node runtime major matches.
 Such a contract contributes its declared may-effects but makes the importing
 module and its local importers `trusted`, never `verified`; project verification
 records the import in the assumption ledger. Type-only imports do not execute
 module initialization and therefore do not require this assumption.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
-ordering. Uneffect's dogfood includes all 59 `src/*.ts` files, including the
+ordering. Uneffect's dogfood includes all 61 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.
 
 A type-only or otherwise evidence-free file intentionally cannot pass an

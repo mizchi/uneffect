@@ -103,7 +103,8 @@ Builtin overlays are `trusted`; Z3 `unsat` obligations are `verified`; Z3 counte
 records every trusted builtin call that the frontend resolves, every
 function-level `trust typed-array` escape hatch, and every user-supplied
 temporal function summary, dispatch-sealing assumption, and reviewed external
-module-initialization contract use. Each entry has a stable content-derived ID, reason,
+module-initialization contract use, including its resolved package version or
+Node runtime major. Each entry has a stable content-derived ID, reason,
 domain, file/function scope, UTF-16 source span, and optional owner and
 expiration date. Builtin defaults are owned by `@mizchi/uneffect`; their
 expiration is deliberately unbounded and must be explicitly allowed by policy.

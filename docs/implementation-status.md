@@ -452,8 +452,10 @@ same property is proved for arbitrary TypeScript.
   TypeScript-resolved string-literal relative local dynamic imports contribute their
   conditional dependency closure, while computed/external/unresolved dynamic
   imports remain unknown. This is still not an ESM/TLA ordering proof.
-  Exact ESM/TLA temporal ordering and external-package initialization remain
-  explicit non-claims. Dogfood includes the executable `src/cli.ts` entrypoint.
+  Reviewed static external-package initialization is an exact package-version
+  or Node-major-bound trusted assumption; unreviewed or drifted packages remain
+  unknown. Exact ESM/TLA temporal ordering remains an explicit non-claim.
+  Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize
   the lazy body effects, while opaque arguments remain unknown. `no-unknown`

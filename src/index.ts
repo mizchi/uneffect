@@ -187,12 +187,13 @@ export { checkClockConformance, createBrowserClockObserver, createDenoClockObser
 export type { ClockConformanceDiagnostic, ClockConformancePolicy, ClockConformanceResult, ClockObservation, ClockRateRange, HostClockObserver, HostClockSources } from "./clock-conformance.js";
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
-export { builtinContractRegistry, builtinSymbolId, findBuiltinContract, findModuleInitializationContract } from "./builtin-contracts.js";
+export { builtinContractRegistry, builtinSymbolId, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
 export type {
   BuiltinContract,
   BuiltinOperation,
   BuiltinContractRegistry,
   ModuleInitializationContract,
+  ModuleInitializationEnvironment,
   BuiltinSymbolKey,
   PathResultRefinement,
   FsBuiltinOperation,

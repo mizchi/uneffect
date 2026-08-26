@@ -35,14 +35,19 @@ external package's implementation is absent from the current TypeScript
 Program. An unregistered external import makes the importing module summary
 `unknown`, and that evidence propagates through its local importers.
 
-The versioned registry may contain a reviewed exact package name or a trailing
-`*` prefix such as `node:*`, together with its initialization may-effects,
-owner, reason, and optional review expiration. A match changes evidence to
-`trusted`, never `verified`, and `verifyUneffectProject` records each use in the
+The versioned registry may contain a reviewed exact package name plus exact
+package version, or a trailing `*` prefix such as `node:*` plus Node runtime
+major, together with its initialization may-effects, owner, reason, and
+optional review expiration. Uneffect resolves the import from the containing
+source, finds that package's manifest, and rejects a missing or mismatched
+version as `unknown`. A match changes evidence to `trusted`, never `verified`,
+and `verifyUneffectProject` records the module and reviewed version in the
 `module-initialization` assumption domain. Type-only imports and exports do not
 execute module initialization and are ignored. Dynamic external imports,
 declaration-only resolution, conditional exports, exact ESM/TLA ordering, and
-unreviewed transitive package code remain outside this contract.
+unreviewed transitive package code remain outside this contract. Exact pins are
+deliberately conservative: dependency or Node-major upgrades require review
+and a registry update before assurance can pass again.
 
 ## Contract lookup
 
