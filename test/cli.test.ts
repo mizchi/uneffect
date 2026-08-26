@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cliCommands, cliVersion, formatCliHelp, runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
+import { builtinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractDigest } from "../src/evidence.js";
 
 function capture(): CliStreams & { stdout: string; stderr: string } {
   const io = {
@@ -54,6 +56,46 @@ describe("uneffect command line", () => {
     expect(await runCli(["check", "--stict", "fixtures/effects/missing-console.ts"], io)).toBe(exitCode.usage);
     expect(io.stderr).toContain("--stict");
     expect(io.stderr).toContain("usage: uneffect check");
+  });
+
+  it("loads an exact caller-owned registry and fails closed on runtime drift", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-registry-"));
+    const fileName = join(directory, "main.ts"), config = join(directory, "registry.json");
+    const nodeMajor = Number.parseInt(process.versions.node.split(".")[0]!, 10);
+    try {
+      writeFileSync(fileName, '/* uneffect: module_effect Console */\nimport "node:path"; export const ready = true');
+      const registry = (major: number) => JSON.stringify({
+        schema: "uneffect-registry/v1", builtinRegistryVersion: 2,
+        moduleInitializations: [{
+          module: "node:path", runtime: { kind: "node", major },
+          effects: ["Console"], evidence: "trusted",
+          trustReason: "reviewed test initialization", trustOwner: "test-platform",
+        }],
+      });
+
+      writeFileSync(config, registry(nodeMajor));
+      const matched = capture();
+      expect(await runCli(["check", "--config", config, "--evidence", "--assurance", "no-unknown", fileName], matched)).toBe(exitCode.success);
+      expect(matched.stderr).toContain("<module>: Console (trusted)");
+      expect(matched.stderr).toContain("assurance no-unknown: passed (assumed)");
+
+      const evidence = capture();
+      expect(await runCli(["evidence", "--config", config, fileName], evidence)).toBe(exitCode.success);
+      expect((JSON.parse(evidence.stdout) as { artifact: { builtinContractDigest: string } }).artifact.builtinContractDigest)
+        .not.toBe(builtinContractDigest(builtinContractRegistry));
+
+      writeFileSync(config, registry(nodeMajor + 1));
+      const drifted = capture();
+      expect(await runCli(["check", "--config", config, "--assurance", "no-unknown", fileName], drifted)).toBe(exitCode.failed);
+      expect(drifted.stderr).toContain("<module>: effect summary is unknown");
+
+      writeFileSync(config, '{"schema":"uneffect-registry/v1","builtinRegistryVersion":2,"ignored":true}');
+      const malformed = capture();
+      expect(await runCli(["check", "--config", config, fileName], malformed)).toBe(exitCode.usage);
+      expect(malformed.stderr).toContain("unknown key");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("separates gradual lint success from explicit assurance profiles", async () => {

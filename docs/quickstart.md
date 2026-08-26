@@ -216,8 +216,10 @@ Library consumers can pass a caller-owned `builtinRegistry` to
 `verifyUneffectProject`, `analyzeProgramEffects`, or `checkFiles`. Build it
 with `extendBuiltinContractRegistry` so the platform defaults remain present.
 Such entries remain reviewable assumptions: they can make a result `assumed`,
-not `verified`. Registry extensions are programmatic only at present; the CLI
-does not load an application registry file.
+not `verified`. The same extension is available to `check` and `evidence` with
+`--config uneffect.registry.json`; see [Command line](./cli.md). Invalid schema
+versions, unknown keys, duplicate identities, malformed effects, and runtime
+version drift fail closed.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:

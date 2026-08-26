@@ -456,9 +456,10 @@ same property is proved for arbitrary TypeScript.
   or Node-major-bound trusted assumption; unreviewed or drifted packages remain
   unknown. Programmatic API consumers can extend the registry and pass the same
   instance through analysis, assumption collection, and evidence validation;
-  these entries remain trusted assumptions. CLI configuration for caller-owned
-  registries is not implemented. Exact ESM/TLA temporal ordering remains an
-  explicit non-claim.
+  these entries remain trusted assumptions. `check` and `evidence` load the
+  same extension from a strict `uneffect-registry/v1` JSON configuration.
+  Specialized platform operation records are still code-owned rather than
+  configurable. Exact ESM/TLA temporal ordering remains an explicit non-claim.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize

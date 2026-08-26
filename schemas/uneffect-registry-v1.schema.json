@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-registry-v1.schema.json",
+  "title": "Uneffect caller-owned semantic registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "builtinRegistryVersion"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schema": { "const": "uneffect-registry/v1" },
+    "builtinRegistryVersion": { "const": 2 },
+    "contracts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/builtinContract" }
+    },
+    "moduleInitializations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/moduleInitialization" }
+    },
+    "declarations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/declaration" }
+    }
+  },
+  "$defs": {
+    "nonEmptyString": { "type": "string", "minLength": 1 },
+    "trust": {
+      "type": "object",
+      "required": ["evidence", "trustReason", "trustOwner"],
+      "properties": {
+        "evidence": { "const": "trusted" },
+        "trustReason": { "$ref": "#/$defs/nonEmptyString" },
+        "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
+        "trustExpiresOn": { "type": "string", "format": "date" }
+      }
+    },
+    "runtime": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "version"],
+          "properties": {
+            "kind": { "const": "package" },
+            "version": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "major"],
+          "properties": {
+            "kind": { "const": "node" },
+            "major": { "type": "integer", "minimum": 1 }
+          }
+        }
+      ]
+    },
+    "moduleInitialization": {
+      "allOf": [
+        { "$ref": "#/$defs/trust" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["module", "runtime", "effects", "evidence", "trustReason", "trustOwner"],
+          "properties": {
+            "module": { "$ref": "#/$defs/nonEmptyString" },
+            "runtime": { "$ref": "#/$defs/runtime" },
+            "effects": { "type": "array", "items": { "$ref": "#/$defs/nonEmptyString" } },
+            "evidence": { "const": "trusted" },
+            "trustReason": { "$ref": "#/$defs/nonEmptyString" },
+            "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
+            "trustExpiresOn": { "type": "string", "format": "date" }
+          }
+        }
+      ]
+    },
+    "symbol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["module", "export"],
+      "properties": {
+        "module": { "$ref": "#/$defs/nonEmptyString" },
+        "export": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "operation": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "effect"],
+          "properties": {
+            "kind": { "const": "effect" },
+            "effect": { "$ref": "#/$defs/nonEmptyString" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "effect"],
+          "properties": {
+            "kind": { "const": "scoped-effect" },
+            "effect": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*$" },
+            "effectScopeArgument": { "type": "integer", "minimum": 0 },
+            "effectScopeKind": { "enum": ["literal", "run-program"] }
+          }
+        }
+      ]
+    },
+    "pathResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "pattern"],
+      "properties": {
+        "kind": { "const": "path" },
+        "pattern": { "$ref": "#/$defs/nonEmptyString" }
+      }
+    },
+    "builtinContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "evidence", "trustReason", "trustOwner", "operation"],
+      "properties": {
+        "symbol": { "$ref": "#/$defs/symbol" },
+        "evidence": { "const": "trusted" },
+        "trustReason": { "$ref": "#/$defs/nonEmptyString" },
+        "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
+        "trustExpiresOn": { "type": "string", "format": "date" },
+        "result": { "$ref": "#/$defs/pathResult" },
+        "operation": { "$ref": "#/$defs/operation" }
+      }
+    },
+    "declaration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["library", "compilerVersion", "sha256"],
+      "properties": {
+        "library": { "$ref": "#/$defs/nonEmptyString" },
+        "compilerVersion": { "$ref": "#/$defs/nonEmptyString" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

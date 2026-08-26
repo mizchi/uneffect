@@ -42,7 +42,9 @@ npx quint run protocol.qnt
 `--assurance no-unknown|declared` (fail when emitted evidence does not meet the
 selected CI profile), and
 `--evidence` (also print the proved obligations and the inferred effect of every
-function). `instrument` takes `--ownership`, `--verify-ownership`, and
+function). Both `check` and `evidence` accept
+`--config <uneffect.registry.json>` for a versioned caller-owned semantic
+registry. `instrument` takes `--ownership`, `--verify-ownership`, and
 `--ownership-evidence <cache.json>`. `spec lint` takes the strengthening and
 synthesis options listed by its own `--help`.
 
@@ -99,6 +101,52 @@ progress go to stderr.
 Options are parsed strictly. A misspelled flag such as `--stict` is a usage
 error rather than a silently ignored word, so a typo never turns a strict run
 into a permissive one.
+
+## Caller-owned semantic registry
+
+Internal package and platform contracts can be supplied without changing
+Uneffect's installed registry:
+
+```json
+{
+  "$schema": "./node_modules/@mizchi/uneffect/schemas/uneffect-registry-v1.schema.json",
+  "schema": "uneffect-registry/v1",
+  "builtinRegistryVersion": 2,
+  "moduleInitializations": [{
+    "module": "@acme/telemetry",
+    "runtime": { "kind": "package", "version": "4.2.1" },
+    "effects": ["Net<\"intake.example.com:443\">"],
+    "evidence": "trusted",
+    "trustReason": "reviewed package initialization",
+    "trustOwner": "observability-platform",
+    "trustExpiresOn": "2027-01-01"
+  }]
+}
+```
+
+```sh
+npx uneffect check --config uneffect.registry.json --assurance no-unknown src/main.ts
+npx uneffect evidence --config uneffect.registry.json src/main.ts
+```
+
+The runtime parser is intentionally stricter than ordinary JSON loading. It
+rejects unknown keys, unknown schema or builtin-registry revisions, duplicate
+identities, invalid effects and dates, unsupported operation kinds, and a
+package/Node runtime-kind mismatch. Caller entries replace default entries with
+the same identity. Therefore a stale caller review cannot silently fall back to
+an older default contract. Other default entries remain available.
+
+All caller contracts are `trusted` assumptions and require a reason and owner;
+they never become `verified` merely because they came from configuration.
+Package initialization is bound to an exact resolved package version and Node
+initialization to an exact runtime major. A mismatch becomes `unknown`.
+Evidence artifacts include the digest of the effective merged registry.
+
+Registry v1 supports module-initialization may-effects and symbol-resolved
+`effect`/`scoped-effect` builtin overlays, plus declaration fingerprints and
+path-result refinements. Specialized scheduler, DOM, Promise, filesystem, and
+ownership operation records are deliberately not accepted from JSON yet; their
+semantics remain curated code-owned contracts.
 
 ## Versions
 

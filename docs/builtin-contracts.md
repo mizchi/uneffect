@@ -83,7 +83,13 @@ a wildcard contract even when its runtime version does not match; the mismatch
 therefore fails closed instead of silently falling back to a broader rule.
 Declared effects are reviewed may-effects, not an implementation proof. The
 same registry must be supplied when creating or validating persisted evidence.
-Loading these extensions from a CLI configuration file is not implemented yet.
+The `check` and `evidence` commands load the same extension through
+`--config <registry.json>`. The published
+`schemas/uneffect-registry-v1.schema.json` provides editor validation, while the
+runtime loader additionally rejects semantic mismatches and unknown keys.
+Caller entries replace same-identity defaults instead of leaving a stale
+fallback. Registry v1 exposes static and scoped effect overlays; specialized
+platform operation records remain curated code-owned contracts.
 
 ## Contract lookup
 

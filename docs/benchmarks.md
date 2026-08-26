@@ -1,12 +1,12 @@
 # Benchmarks
 
-On 2026-08-26, a warm TypeScript Program covering all 61 `src/*.ts` inputs was
+On 2026-08-26, a warm TypeScript Program covering all 62 `src/*.ts` inputs was
 analyzed for function effects plus source-attributed module initialization
-may-effects in 1,187.89 ms mean over 3 samples (12.57% RME). This includes
+may-effects in 1,203.44 ms mean over 3 samples (1.03% RME). This includes
 TypeChecker-resolved top-level calls/overloads, known inline and immutable
 local/imported callback identifiers, TypeScript-resolved relative local dynamic imports,
 and the static/conditional local-import fixed point
-over 3,036 emitted summaries, polymorphic iterator-constraint reachability,
+over 3,068 emitted summaries, polymorphic iterator-constraint reachability,
 plus the syntax/semantic diagnostic scan that prevents proof-grade evidence for
 invalid sources. Program construction is outside the timed body. The small
 sample is an expensive-path

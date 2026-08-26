@@ -118,13 +118,20 @@ export function extendBuiltinContractRegistry(
   base: BuiltinContractRegistry,
   extension: BuiltinContractRegistryExtension,
 ): BuiltinContractRegistry {
+  const contractIds = new Set(extension.contracts?.map((item) => builtinSymbolId(item.symbol)) ?? []);
+  const moduleIds = new Set(extension.moduleInitializations?.map((item) => item.module) ?? []);
+  const declarationIds = new Set(extension.declarations?.map((item) => item.library) ?? []);
   return {
     version: 2,
-    contracts: extension.contracts ? [...extension.contracts, ...base.contracts] : base.contracts,
+    contracts: extension.contracts
+      ? [...extension.contracts, ...base.contracts.filter((item) => !contractIds.has(builtinSymbolId(item.symbol)))]
+      : base.contracts,
     moduleInitializations: extension.moduleInitializations
-      ? [...extension.moduleInitializations, ...base.moduleInitializations]
+      ? [...extension.moduleInitializations, ...base.moduleInitializations.filter((item) => !moduleIds.has(item.module))]
       : base.moduleInitializations,
-    declarations: extension.declarations ? [...extension.declarations, ...base.declarations] : base.declarations,
+    declarations: extension.declarations
+      ? [...extension.declarations, ...base.declarations.filter((item) => !declarationIds.has(item.library))]
+      : base.declarations,
   };
 }
 

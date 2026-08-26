@@ -155,11 +155,13 @@ Programmatic callers may inject an extended builtin registry, but this does not
 upgrade its contracts to proof: matching external initialization remains
 `trusted`, is recorded in the same ledger, and produces `assumed` at best. An
 exact contract with a mismatched package version or Node major shadows broader
-wildcards and fails closed as `unknown`. CLI loading of caller-owned registries
-is not implemented.
+wildcards and fails closed as `unknown`. `check --config` and
+`evidence --config` use the same strict versioned registry loader. Caller-owned
+contracts remain assumptions and their merged-registry digest is bound into
+persisted effect evidence.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
-ordering. Uneffect's dogfood includes all 61 `src/*.ts` files, including the
+ordering. Uneffect's dogfood includes all 62 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.
 
 A type-only or otherwise evidence-free file intentionally cannot pass an

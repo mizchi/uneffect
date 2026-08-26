@@ -5,14 +5,16 @@ import { exitCode, formatCommandHelp, parseCommandArgs, singleFileArgument, type
 import { analyzeEffectSummariesInProgram } from "./effects.js";
 import { assessEvidenceArtifactEligibility, createEvidenceArtifact } from "./evidence.js";
 import { builtinContractRegistry } from "./builtin-contracts.js";
+import { loadBuiltinRegistryConfig } from "./registry-config.js";
+import { CliUsageError } from "./cli-support.js";
 
 export const evidenceCommand: CliCommand = {
   name: "evidence",
   summary: "Print the machine-readable effect evidence artifact for one file as JSON.",
-  arguments: "<file.ts>",
-  details: ["The artifact records each function's effects with the evidence state that justifies them."],
+  arguments: "<file.ts> [--config <registry.json>]",
+  details: ["The artifact records each function's effects with the evidence state that justifies them.", "--config  load a versioned caller-owned semantic registry"],
   async run(args, io) {
-    const { values, positionals } = parseCommandArgs(args, {});
+    const { values, positionals } = parseCommandArgs(args, { config: { type: "string" } });
     if (values.help) { io.out(formatCommandHelp(evidenceCommand)); return exitCode.success; }
     const fileName = resolve(singleFileArgument(positionals, "evidence"));
     const text = await readFile(fileName, "utf8");
@@ -20,8 +22,11 @@ export const evidenceCommand: CliCommand = {
     const host = ts.createCompilerHost(options), original = host.getSourceFile.bind(host);
     host.getSourceFile = (name, language, onError, fresh) => name === fileName ? ts.createSourceFile(fileName, text, language, true) : original(name, language, onError, fresh);
     const program = ts.createProgram([fileName], options, host), source = program.getSourceFile(fileName)!;
-    const analysis = analyzeEffectSummariesInProgram(program, source);
-    const artifact = createEvidenceArtifact(program, source, analysis.summaries, builtinContractRegistry);
+    let registry = builtinContractRegistry;
+    try { if (values.config !== undefined) registry = await loadBuiltinRegistryConfig(String(values.config)); }
+    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    const analysis = analyzeEffectSummariesInProgram(program, source, { builtinRegistry: registry });
+    const artifact = createEvidenceArtifact(program, source, analysis.summaries, registry);
     const eligibility = assessEvidenceArtifactEligibility(artifact);
     io.out(`${JSON.stringify({ artifact, eligibility, diagnostics: analysis.diagnostics }, null, 2)}\n`);
     return exitCode.success;

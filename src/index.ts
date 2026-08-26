@@ -188,6 +188,7 @@ export type { ClockConformanceDiagnostic, ClockConformancePolicy, ClockConforman
 export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js";
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
+export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
 export type {
   BuiltinContract,
   BuiltinOperation,
