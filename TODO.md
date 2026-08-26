@@ -8,26 +8,27 @@ traceability and map to those issues rather than forming a second active queue.
 
 ## Active issue index
 
-GitHub Issues are the active queue. This table maps each open issue to the
-unchecked historical sections below; priority is defined in
-`docs/roadmap.md`.
+GitHub Issues and their milestones are the active queue. The table is ordered
+by execution phase and then dependency order, not by issue number. Unchecked
+entries later in this file are historical detail mapped to these issues; do not
+create a second work queue from them.
 
-| Issue | Area | Remaining boundary |
-| --- | --- | --- |
-| [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | General polyhedral/quantified invariants and nested formulas |
-| [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
-| [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Higher-order, recursive, and user-defined predicates |
-| [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | Collection-valued state and remaining TLC values/traces |
-| [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
-| [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Independently checkable certificates or a measured rejection |
-| [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Complete real Corsa checker fact parity |
-| [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | One general Promise/exception/disposal CFG fixed point |
-| [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
-| [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | Evidence-gated transformations; general optimization remains unimplemented |
-| [#16](https://github.com/mizchi/uneffect/issues/16) | React | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
-| [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
-| [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
+| Phase | Issue | Area | Remaining boundary |
+| --- | --- | --- | --- |
+| 1 | [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
+| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | One general Promise/exception/disposal CFG fixed point |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
+| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
+| 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | General polyhedral/quantified invariants and nested formulas |
+| 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | Collection-valued state and remaining TLC values/traces |
+| 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Higher-order, recursive, and user-defined predicates |
+| 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Complete real Corsa checker fact parity |
+| 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
+| 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Independently checkable certificates or a measured rejection |
+| 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
+| 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | Evidence-gated transformations; general optimization remains unimplemented |
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),

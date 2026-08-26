@@ -2,26 +2,30 @@
 
 Completed implementation details live in `implementation-status.md` and the
 historical `TODO.md` ledger. `feature-matrix.md` is the compact boundary view.
-GitHub Issues are the source of truth for future work. The ordering below
-reflects dependency and soundness risk, not a release date commitment.
+GitHub Issues and their matching Phase milestones are the source of truth for
+future work. The ordering below reflects dependency and soundness risk, not a
+release date commitment.
 
 ## Phase 1 — Make proof boundaries dependable
 
-1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
+1. [Solver backend reliability](https://github.com/mizchi/uneffect/issues/17)
+   must preserve failing inputs and resource telemetry, distinguish deterministic
+   complexity from corrupted WASM state, and keep fallback/retry visible.
+2. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point. A first unbounded directional affine-loop rule now
    derives a closed form from a symbolic loop-entry state and signed constant
    bound without finite expansion, including positive constant step magnitudes
    and exact overshoot in both countdown and scale-up directions; arbitrary
    loop joins and exception-heavy recurrences remain.
-2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
+3. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
-3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
+4. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
    build-artifact validation remain.
-4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
+5. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
 
@@ -62,10 +66,6 @@ explicit conservative boundaries rather than untracked support.
 4. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
    component/Hook flow, server boundaries, and broader concurrent scheduling.
-5. [Solver backend reliability](https://github.com/mizchi/uneffect/issues/17)
-   preserves failing inputs and resource telemetry, distinguishes deterministic
-   complexity from corrupted WASM state, and keeps fallback/retry visible.
-
 [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
 is complete for the reviewed overlay. Unreviewed Web IDL members and dynamic
 DOM keys remain explicit conservative boundaries in `feature-matrix.md`, not

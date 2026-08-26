@@ -48,6 +48,31 @@ describe("TODO hierarchy consistency", () => {
     }
   });
 
+  it("keeps the active issue index in roadmap execution order", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
+    const rows = [...activeIndex.matchAll(/^\| (\d) \| \[#(\d+)\]/gm)].map(
+      ([, phase, issue]) => [Number(phase), Number(issue)],
+    );
+
+    expect(rows).toEqual([
+      [1, 17],
+      [1, 3],
+      [1, 9],
+      [1, 20],
+      [1, 18],
+      [2, 2],
+      [2, 5],
+      [2, 4],
+      [2, 6],
+      [3, 8],
+      [3, 10],
+      [3, 7],
+      [3, 16],
+      [4, 13],
+    ]);
+  });
+
   it("keeps closed issue history outside the active issue table", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
