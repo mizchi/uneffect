@@ -28,11 +28,11 @@ unchecked historical sections below; priority is defined in
 | [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
-| [#21](https://github.com/mizchi/uneffect/issues/21) | Callback timing | Restore self-dogfood with symbol-identified synchronous TypeScript traversal contracts |
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
-and the reviewed DOM overlay expansion closed [#14](https://github.com/mizchi/uneffect/issues/14).
+the reviewed DOM overlay expansion closed [#14](https://github.com/mizchi/uneffect/issues/14),
+and reviewed TypeScript traversal callback timing closed [#21](https://github.com/mizchi/uneffect/issues/21).
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

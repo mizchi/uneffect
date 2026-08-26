@@ -40,7 +40,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 17, 18, 20, 21];
+    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 17, 18, 20];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -54,7 +54,9 @@ describe("TODO hierarchy consistency", () => {
 
     expect(activeIndex).not.toContain("issues/1)");
     expect(activeIndex).not.toContain("issues/14)");
+    expect(activeIndex).not.toContain("issues/21)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
+    expect(todo).toContain("closed [#21]");
   });
 });

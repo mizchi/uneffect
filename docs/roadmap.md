@@ -7,20 +7,17 @@ reflects dependency and soundness risk, not a release date commitment.
 
 ## Phase 1 — Make proof boundaries dependable
 
-1. [Reviewed synchronous compiler callback timing](https://github.com/mizchi/uneffect/issues/21)
-   has a local Red/Green implementation with TypeChecker symbol identity and
-   same-spelled negative controls; remote CI remains the closure gate.
-2. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
+1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point.
-3. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
+2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
-4. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
+3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
    build-artifact validation remain.
-5. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
+4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
 
@@ -32,6 +29,11 @@ rule applies; absence of a bounded witness is never promoted to a proof.
 
 These are the highest-priority soundness gaps because they determine whether a
 local result survives composition with real application control flow.
+
+[Reviewed synchronous compiler callback timing](https://github.com/mizchi/uneffect/issues/21)
+is complete for the exact TypeScript 6.0.3 symbol-identified fragment documented
+in `feature-matrix.md`; dynamic arrays and other compiler versions remain
+explicit conservative boundaries rather than untracked support.
 
 ## Phase 2 — Increase specification and test expressiveness
 
