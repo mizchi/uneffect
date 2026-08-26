@@ -65,14 +65,24 @@ export interface DomPropertyBuiltinOperation {
 
 export type BuiltinOperation = FsBuiltinOperation | StaticEffectBuiltinOperation | ScopedEffectBuiltinOperation | FetchBuiltinOperation | TimerBuiltinOperation | DeferredCallbackBuiltinOperation | TimerClearBuiltinOperation | AbortTimeoutBuiltinOperation | AbortStaticBuiltinOperation | AbortAnyBuiltinOperation | SchedulerPostTaskBuiltinOperation | SchedulerYieldBuiltinOperation | InlineCallbackBuiltinOperation | PromiseCombinatorBuiltinOperation | DomBuiltinOperation | DomPropertyBuiltinOperation | MutationBuiltinOperation | CloneBuiltinOperation;
 
+export interface CallableResultContract {
+  /** Operation performed when the returned function is called. Omission means zero reviewed authority. */
+  operation?: BuiltinOperation;
+  /** Factory argument positions captured and synchronously invoked by the returned function. */
+  capturedCallbackArguments?: readonly number[];
+}
+
 export interface BuiltinContract {
   symbol: BuiltinSymbolKey;
+  /** Exact host/package artifact against which this function contract was reviewed. */
+  runtime?: { kind: "package"; version: string } | { kind: "node"; major: number };
   evidence: "trusted";
   trustReason?: string;
   trustOwner?: string;
   trustExpiresOn?: string;
   result?: PathResultRefinement;
   operation?: BuiltinOperation;
+  callableResult?: CallableResultContract;
 }
 
 export interface ModuleInitializationContract {
@@ -188,6 +198,20 @@ function resolvedPackageVersion(program: ts.Program, containingFile: string, mod
   }
 }
 
+/** Fail-closed runtime binding for reviewed function contracts. */
+export function builtinContractApplies(
+  program: ts.Program,
+  containingFile: string,
+  contract: BuiltinContract,
+): boolean {
+  if (contract.runtime === undefined) return true;
+  return contract.runtime.kind === "node"
+    ? contract.symbol.module.startsWith("node:")
+      && contract.runtime.major === Number.parseInt(process.versions.node.split(".")[0]!, 10)
+    : !contract.symbol.module.startsWith("node:")
+      && contract.runtime.version === resolvedPackageVersion(program, containingFile, contract.symbol.module);
+}
+
 /** Resolve a reviewed contract against the runtime/package actually analyzed. */
 export function resolveModuleInitializationContract(
   program: ts.Program,
@@ -269,6 +293,25 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     })),
   ],
   contracts: [
+    trusted({
+      symbol: { module: "corsa-oxlint", export: "OxlintUtils#RuleCreator" },
+      runtime: { kind: "package", version: "1.12.4" },
+      callableResult: { capturedCallbackArguments: [0] },
+      trustReason: "Corsa 1.12.4 RuleCreator returns a synchronous decorator that invokes its captured URL creator",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    trusted({
+      symbol: { module: "corsa-oxlint", export: "definePlugin" },
+      runtime: { kind: "package", version: "1.12.4" },
+      trustReason: "Corsa 1.12.4 definePlugin constructs plugin metadata without executing rule code",
+      trustOwner: "@mizchi/uneffect",
+    }),
+    ...(["pipe", "number", "safeInteger", "brand", "minValue", "maxValue", "finite"] as const).map((name): BuiltinContract => trusted({
+      symbol: { module: "valibot", export: name },
+      runtime: { kind: "package", version: "1.4.2" },
+      trustReason: `Valibot 1.4.2 ${name} constructs schema metadata without executing validation`,
+      trustOwner: "@mizchi/uneffect",
+    })),
     ...(["map", "flatMap", "filter", "forEach", "every", "some", "find", "findIndex", "findLast", "findLastIndex", "reduce", "reduceRight"] as const)
       .flatMap((name): BuiltinContract[] => ["Array", "ReadonlyArray"].map((owner) => trusted({
         symbol: { module: "lib.es", export: `${owner}#${name}` },
@@ -298,6 +341,7 @@ export const builtinContractRegistry: BuiltinContractRegistry = {
     }),
     trusted({
       symbol: { module: "typescript", export: "Program#emit" },
+      runtime: { kind: "package", version: "6.0.3" },
       operation: { kind: "inline-callback", callbackArguments: [1] },
       trustReason: "TypeScript Program.emit invokes writeFile during the synchronous emit operation",
       trustOwner: "@mizchi/uneffect",

@@ -78,6 +78,13 @@ const builtinRegistry = extendBuiltinContractRegistry(builtinContractRegistry, {
     trustOwner: "observability-platform",
     trustExpiresOn: "2027-01-01",
   }],
+  contracts: [{
+    symbol: { module: "@acme/telemetry", export: "createEnvelope" },
+    runtime: { kind: "package", version: "4.2.1" },
+    evidence: "trusted",
+    trustReason: "reviewed pure envelope factory",
+    trustOwner: "observability-platform",
+  }],
 })
 
 const result = await verifyUneffectProject({
@@ -97,7 +104,17 @@ The `check` and `evidence` commands load the same extension through
 runtime loader additionally rejects semantic mismatches and unknown keys.
 Caller entries replace same-identity defaults instead of leaving a stale
 fallback. Registry v1 exposes static and scoped effect overlays; specialized
-platform operation records remain curated code-owned contracts.
+platform operation records remain curated code-owned contracts. An external
+package function contract must carry an exact package runtime. A missing or
+mismatched version leaves the call unresolved and records no builtin
+assumption. Omitting `operation` explicitly reviews a zero-authority call; it
+does not prove arbitrary functions in that package pure.
+
+A reviewed factory may declare `callableResult`. Its `operation` describes the
+authority of calling the returned function, and `capturedCallbackArguments`
+lists factory arguments synchronously invoked by that returned function. The
+frontend follows this contract only through an immutable `const` initializer;
+mutable or otherwise dynamic bindings remain unknown.
 
 ## Contract lookup
 

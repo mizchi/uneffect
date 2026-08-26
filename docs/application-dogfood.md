@@ -182,10 +182,9 @@ broad Effect declaration.
 The repository's own strict `just dogfood` gate also fails closed. Reviewed
 ECMAScript synchronous-callback and pure helper contracts, Node helper
 contracts, and export-equals named-import resolution reduced its unknown module
-summaries from 39 to two. The remaining roots are the version-sensitive Corsa
-rule/plugin factories in `corsa-checker-exporter.ts` and Valibot schema factories
-in `index.ts`; both are `unresolved-call`, with no propagated dependency
-unknowns. The integration dogfood tests pass, but that does not make the
-repository-wide `no-unknown` claim true. The strict target remains failing until
-version-bound external function contracts can review those APIs; removing the
-profile would hide the boundary.
+summaries from 39 to two. Exact-version external function contracts reviewed the
+Valibot 1.4.2 schema factories. A version-bound callable-result contract then
+modeled Corsa 1.12.4 `RuleCreator`, including its synchronously invoked captured
+URL callback. The current repository self-analysis has zero unknown summaries.
+This is a statement about the checked source and exact dependency versions, not
+a claim that arbitrary package code or all JavaScript behavior is verified.

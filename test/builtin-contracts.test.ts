@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { builtinContractRegistry, extendBuiltinContractRegistry, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
 
 describe("builtin semantic overlays", () => {
   it("binds reviewed module initialization to the observed runtime version", () => {
@@ -145,6 +145,15 @@ describe("builtin semantic overlays", () => {
     ]));
     for (const [module, name] of [["lib.es", "Array#slice"], ["lib.es", "Array#join"], ["node:module", "createRequire"], ["node:path", "join"], ["lib.node", "Process#cwd"]]) {
       expect(builtinContractRegistry.contracts.find((contract) => contract.symbol.module === module && contract.symbol.export === name)?.operation).toBeUndefined();
+    }
+  });
+
+  it("binds reviewed Valibot schema factories to the exact package version", () => {
+    for (const name of ["pipe", "number", "safeInteger", "brand", "minValue", "maxValue", "finite"]) {
+      expect(findBuiltinContract(builtinContractRegistry, { module: "valibot", export: name })).toMatchObject({
+        runtime: { kind: "package", version: "1.4.2" },
+        evidence: "trusted",
+      });
     }
   });
 

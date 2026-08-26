@@ -450,6 +450,7 @@ export function buildProgramCallGraph(
           node.arguments[0], promiseIterableConsumerArgument(node, node.arguments[0]),
         );
       if (ts.isCallExpression(node)) {
+        const resolvedBuiltin = adapter.resolveCall(node);
         for (const argument of node.arguments) invalidateObjectSlots(argument);
         if (ts.isPropertyAccessExpression(node.expression) || ts.isElementAccessExpression(node.expression)) {
           invalidateObjectSlots(node.expression.expression);
@@ -515,6 +516,30 @@ export function buildProgramCallGraph(
             edges.push({ caller, callee: stableId(callbackDeclaration), kind: "callback-argument", timing, span: { start: argument.getStart(), end: argument.getEnd() }, arguments: [], dischargesThrow: catchesThrow && timing === "inline" });
           }
         });
+        for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {
+          const callbackDeclaration = (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) ? callback
+            : ts.isIdentifier(callback) ? symbolNodes.get(resolvedSymbol(checker, callback)!) : undefined;
+          if (callbackDeclaration) {
+            edges.push({
+              caller,
+              callee: stableId(callbackDeclaration),
+              kind: "callback-argument",
+              timing: "inline",
+              span: { start: callback.getStart(), end: callback.getEnd() },
+              arguments: [],
+              dischargesThrow: catchesThrow,
+            });
+          } else {
+            edges.push({
+              caller,
+              kind: "callback-argument",
+              unresolvedName: callback.getText(),
+              timing: "unknown",
+              span: { start: callback.getStart(), end: callback.getEnd() },
+              arguments: [],
+            });
+          }
+        }
       }
       ts.forEachChild(node, (child) => visit(child, catchesThrow));
     };

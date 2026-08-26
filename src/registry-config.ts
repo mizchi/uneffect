@@ -88,6 +88,28 @@ function effectName(value: unknown, path: string): string {
   return text;
 }
 
+function builtinOperation(value: unknown, path: string): BuiltinContract["operation"] {
+  const operation = record(value, path);
+  if (operation.kind === "effect") {
+    keys(operation, ["kind", "effect"], path);
+    return { kind: "effect", effect: effect(operation.effect, `${path}.effect`) };
+  }
+  if (operation.kind === "scoped-effect") {
+    keys(operation, ["kind", "effect", "effectScopeArgument", "effectScopeKind"], path);
+    const scopeKind = operation.effectScopeKind;
+    if (scopeKind !== undefined && scopeKind !== "literal" && scopeKind !== "run-program") {
+      fail(`${path}.effectScopeKind`, "expected literal or run-program");
+    }
+    return {
+      kind: "scoped-effect",
+      effect: effectName(operation.effect, `${path}.effect`),
+      ...(operation.effectScopeArgument === undefined ? {} : { effectScopeArgument: integer(operation.effectScopeArgument, `${path}.effectScopeArgument`) }),
+      ...(scopeKind === undefined ? {} : { effectScopeKind: scopeKind }),
+    };
+  }
+  return fail(`${path}.kind`, "unsupported operation; expected effect or scoped-effect");
+}
+
 function moduleInitialization(value: unknown, path: string): ModuleInitializationContract {
   const input = record(value, path);
   keys(input, ["module", "runtime", "effects", "evidence", "trustReason", "trustOwner", "trustExpiresOn"], path);
@@ -117,40 +139,43 @@ function moduleInitialization(value: unknown, path: string): ModuleInitializatio
 
 function builtin(value: unknown, path: string): BuiltinContract {
   const input = record(value, path);
-  keys(input, ["symbol", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "result", "operation"], path);
+  keys(input, ["symbol", "runtime", "evidence", "trustReason", "trustOwner", "trustExpiresOn", "result", "operation", "callableResult"], path);
   const symbol = record(input.symbol, `${path}.symbol`);
   keys(symbol, ["module", "export"], `${path}.symbol`);
-  const operation = record(input.operation, `${path}.operation`);
-  let operationValue: BuiltinContract["operation"];
-  if (operation.kind === "effect") {
-    keys(operation, ["kind", "effect"], `${path}.operation`);
-    operationValue = { kind: "effect", effect: effect(operation.effect, `${path}.operation.effect`) };
-  } else if (operation.kind === "scoped-effect") {
-    keys(operation, ["kind", "effect", "effectScopeArgument", "effectScopeKind"], `${path}.operation`);
-    const scopeKind = operation.effectScopeKind;
-    if (scopeKind !== undefined && scopeKind !== "literal" && scopeKind !== "run-program") {
-      fail(`${path}.operation.effectScopeKind`, "expected literal or run-program");
-    }
-    operationValue = {
-      kind: "scoped-effect",
-      effect: effectName(operation.effect, `${path}.operation.effect`),
-      ...(operation.effectScopeArgument === undefined ? {} : { effectScopeArgument: integer(operation.effectScopeArgument, `${path}.operation.effectScopeArgument`) }),
-      ...(scopeKind === undefined ? {} : { effectScopeKind: scopeKind }),
-    };
-  } else {
-    fail(`${path}.operation.kind`, "unsupported operation; expected effect or scoped-effect");
-  }
+  const module = string(symbol.module, `${path}.symbol.module`);
+  const runtime = input.runtime === undefined ? undefined : record(input.runtime, `${path}.runtime`);
+  if (runtime) keys(runtime, ["kind", runtime.kind === "node" ? "major" : "version"], `${path}.runtime`);
+  const runtimeValue = runtime?.kind === "node"
+    ? { kind: "node" as const, major: integer(runtime.major, `${path}.runtime.major`, 1) }
+    : runtime?.kind === "package"
+      ? { kind: "package" as const, version: string(runtime.version, `${path}.runtime.version`) }
+      : runtime === undefined ? undefined : fail(`${path}.runtime.kind`, "expected node or package");
+  if (module.startsWith("node:") && runtimeValue?.kind === "package") fail(path, "node: function contracts require a node runtime");
+  const externalPackage = module !== "global" && !module.startsWith("lib.") && !module.startsWith("node:");
+  if (externalPackage && runtimeValue?.kind !== "package") fail(path, "package contracts require a package runtime");
+  const operationValue = input.operation === undefined ? undefined : builtinOperation(input.operation, `${path}.operation`);
+  const callableResult = input.callableResult === undefined ? undefined : record(input.callableResult, `${path}.callableResult`);
+  if (callableResult) keys(callableResult, ["operation", "capturedCallbackArguments"], `${path}.callableResult`);
+  const callableResultValue: BuiltinContract["callableResult"] = callableResult ? {
+    ...(callableResult.operation === undefined ? {} : { operation: builtinOperation(callableResult.operation, `${path}.callableResult.operation`) }),
+    ...(callableResult.capturedCallbackArguments === undefined ? {} : {
+      capturedCallbackArguments: array(callableResult.capturedCallbackArguments, `${path}.callableResult.capturedCallbackArguments`)
+        .map((item, index) => integer(item, `${path}.callableResult.capturedCallbackArguments[${index}]`)),
+    }),
+  } : undefined;
   const result = input.result === undefined ? undefined : record(input.result, `${path}.result`);
   if (result) keys(result, ["kind", "pattern"], `${path}.result`);
   if (result && result.kind !== "path") fail(`${path}.result.kind`, "expected path");
   return {
-    symbol: { module: string(symbol.module, `${path}.symbol.module`), export: string(symbol.export, `${path}.symbol.export`) },
+    symbol: { module, export: string(symbol.export, `${path}.symbol.export`) },
+    ...(runtimeValue === undefined ? {} : { runtime: runtimeValue }),
     evidence: trusted(input.evidence, `${path}.evidence`),
     trustReason: string(input.trustReason, `${path}.trustReason`),
     trustOwner: string(input.trustOwner, `${path}.trustOwner`),
     ...(expiration(input.trustExpiresOn, `${path}.trustExpiresOn`) ? { trustExpiresOn: input.trustExpiresOn as string } : {}),
     ...(result ? { result: { kind: "path", pattern: string(result.pattern, `${path}.result.pattern`) } } : {}),
-    operation: operationValue,
+    ...(operationValue === undefined ? {} : { operation: operationValue }),
+    ...(callableResultValue === undefined ? {} : { callableResult: callableResultValue }),
   };
 }
 

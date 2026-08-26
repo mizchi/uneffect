@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
-import { builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinSymbolKey, type PathResultRefinement } from "./builtin-contracts.js";
+import { builtinContractApplies, builtinContractRegistry, type BuiltinContract, type BuiltinContractRegistry, type BuiltinOperation, type BuiltinSymbolKey, type PathResultRefinement } from "./builtin-contracts.js";
 import type { SourceSpan } from "./annotations.js";
 
 export interface ResolvedCallSite {
@@ -8,6 +8,8 @@ export interface ResolvedCallSite {
   span: SourceSpan;
   result?: PathResultRefinement;
   operation?: BuiltinOperation;
+  callableResult?: BuiltinContract["callableResult"];
+  capturedCallbacks?: readonly ts.Expression[];
   queryRefinement?: { kind: "css-selector"; selector: string };
 }
 export interface ResolvedPropertySite {
@@ -85,8 +87,15 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
         const exported = exportName ? exports.get(exportName) : undefined;
         const exportedTarget = exported && (exported.flags & ts.SymbolFlags.Alias) !== 0 ? this.#checker.getAliasedSymbol(exported) : exported;
         const symbol = memberName && exportedTarget
-          ? this.#checker.getPropertyOfType(this.#checker.getDeclaredTypeOfSymbol(exportedTarget), memberName)
-          : exported;
+          ? this.#checker.getPropertyOfType(
+              (exportedTarget.flags & (ts.SymbolFlags.Class | ts.SymbolFlags.Interface)) !== 0
+                ? this.#checker.getDeclaredTypeOfSymbol(exportedTarget)
+                : exportedTarget.valueDeclaration
+                ? this.#checker.getTypeOfSymbolAtLocation(exportedTarget, exportedTarget.valueDeclaration)
+                : this.#checker.getDeclaredTypeOfSymbol(exportedTarget),
+              memberName,
+            )
+          : exportedTarget;
         if (symbol) {
           this.#contracts.set(symbol, contract);
           for (const declaration of symbol.declarations ?? []) this.#declarationContracts.set(declaration, contract);
@@ -95,8 +104,10 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     };
     for (const source of program.getSourceFiles()) for (const statement of source.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-      const contracts = modules.get(statement.moduleSpecifier.text);
-      if (!contracts) continue;
+      const registered = modules.get(statement.moduleSpecifier.text);
+      if (!registered) continue;
+      const contracts = registered.filter((contract) => builtinContractApplies(program, source.fileName, contract));
+      if (contracts.length === 0) continue;
       const moduleSymbol = this.#checker.getSymbolAtLocation(statement.moduleSpecifier);
       if (!moduleSymbol) continue;
       bindModuleContracts(moduleSymbol, contracts);
@@ -113,7 +124,9 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
     }
     for (const moduleSymbol of this.#checker.getAmbientModules()) {
       const moduleName = moduleSymbol.name.replace(/^"|"$/g, "");
-      const contracts = moduleName.startsWith("node:") ? modules.get(moduleName) : undefined;
+      const contracts = moduleName.startsWith("node:")
+        ? modules.get(moduleName)?.filter((contract) => builtinContractApplies(program, program.getCurrentDirectory(), contract))
+        : undefined;
       if (contracts) bindModuleContracts(moduleSymbol, contracts);
     }
   }
@@ -142,8 +155,7 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
   resolveCall(call: ts.CallExpression): ResolvedCallSite | undefined {
     const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
     const symbol = targetSymbol(this.#checker, lookup);
-    if (!symbol) return undefined;
-    let contract = this.#resolveMemberContract(lookup);
+    let contract = symbol ? this.#resolveMemberContract(lookup) : undefined;
     if (!contract) {
       const path = ts.isIdentifier(call.expression) ? call.expression.text
         : ts.isPropertyAccessExpression(call.expression) && ts.isIdentifier(call.expression.expression)
@@ -154,12 +166,38 @@ export class TypeScriptFrontendAdapter implements FrontendSymbolAdapter {
       const isLibraryGlobal = rootSymbol?.declarations?.some((declaration) => declaration.getSourceFile().isDeclarationFile) ?? false;
       if (path && isLibraryGlobal) contract = this.#globalContracts.get(path);
     }
-    if (!contract) return undefined;
+    if (!contract) {
+      const factoryCall = ts.isCallExpression(call.expression)
+        ? call.expression
+        : ts.isIdentifier(call.expression)
+          ? (() => {
+              const declaration = symbol?.valueDeclaration;
+              return declaration && ts.isVariableDeclaration(declaration) && declaration.initializer
+                && ts.isVariableDeclarationList(declaration.parent)
+                && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+                && ts.isCallExpression(declaration.initializer)
+                ? declaration.initializer : undefined;
+            })()
+          : undefined;
+      const factory = factoryCall ? this.resolveCall(factoryCall) : undefined;
+      if (!factory?.callableResult || !factoryCall) return undefined;
+      const capturedCallbacks = factory.callableResult.capturedCallbackArguments?.flatMap((index) => {
+        const argument = factoryCall.arguments[index];
+        return argument ? [argument] : [];
+      });
+      return {
+        symbol: factory.symbol,
+        span: { start: call.getStart(), end: call.getEnd() },
+        operation: factory.callableResult.operation,
+        ...(capturedCallbacks?.length ? { capturedCallbacks } : {}),
+      };
+    }
     return {
       symbol: contract.symbol,
       span: { start: call.getStart(), end: call.getEnd() },
       result: contract.result,
       operation: contract.operation,
+      callableResult: contract.callableResult,
       queryRefinement: contract.operation?.kind === "dom" && contract.operation.queryArgument !== undefined
         && call.arguments[contract.operation.queryArgument] !== undefined
         && ts.isStringLiteralLike(call.arguments[contract.operation.queryArgument]!)

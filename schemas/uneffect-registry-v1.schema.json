@@ -117,18 +117,32 @@
         "pattern": { "$ref": "#/$defs/nonEmptyString" }
       }
     },
+    "callableResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operation": { "$ref": "#/$defs/operation" },
+        "capturedCallbackArguments": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 },
+          "uniqueItems": true
+        }
+      }
+    },
     "builtinContract": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["symbol", "evidence", "trustReason", "trustOwner", "operation"],
+      "required": ["symbol", "evidence", "trustReason", "trustOwner"],
       "properties": {
         "symbol": { "$ref": "#/$defs/symbol" },
+        "runtime": { "$ref": "#/$defs/runtime" },
         "evidence": { "const": "trusted" },
         "trustReason": { "$ref": "#/$defs/nonEmptyString" },
         "trustOwner": { "$ref": "#/$defs/nonEmptyString" },
         "trustExpiresOn": { "type": "string", "format": "date" },
         "result": { "$ref": "#/$defs/pathResult" },
-        "operation": { "$ref": "#/$defs/operation" }
+        "operation": { "$ref": "#/$defs/operation" },
+        "callableResult": { "$ref": "#/$defs/callableResult" }
       }
     },
     "declaration": {

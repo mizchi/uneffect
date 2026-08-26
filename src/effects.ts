@@ -1465,6 +1465,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           if (!callbackEffects) { markUnknown("unresolved-callback", "a callback argument is mutable, dynamic, or lacks an analyzed function body"); continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }
+        for (const callback of resolvedBuiltin?.capturedCallbacks ?? []) {
+          const callbackEffects = resolveStableFunctionEffects(callback);
+          if (!callbackEffects) { markUnknown("unresolved-callback", "a captured callback is mutable, dynamic, or lacks an analyzed function body"); continue; }
+          for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        }
       }
       ts.forEachChild(node, (child) => visit(child, catches));
     };

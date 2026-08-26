@@ -189,6 +189,14 @@ Uneffect's installed registry:
     "trustReason": "reviewed package initialization",
     "trustOwner": "observability-platform",
     "trustExpiresOn": "2027-01-01"
+  }],
+  "contracts": [{
+    "symbol": { "module": "@acme/telemetry", "export": "flush" },
+    "runtime": { "kind": "package", "version": "4.2.1" },
+    "evidence": "trusted",
+    "trustReason": "reviewed flush authority",
+    "trustOwner": "observability-platform",
+    "operation": { "kind": "effect", "effect": "Console" }
   }]
 }
 ```
@@ -203,7 +211,10 @@ rejects unknown keys, unknown schema or builtin-registry revisions, duplicate
 identities, invalid effects and dates, unsupported operation kinds, and a
 package/Node runtime-kind mismatch. Caller entries replace default entries with
 the same identity. Therefore a stale caller review cannot silently fall back to
-an older default contract. Other default entries remain available.
+a different package version. External package function contracts require an
+exact package runtime; the assumption ledger records that version. A contract
+without `operation` is a reviewed zero-authority call, not a wildcard purity
+rule. Other default entries remain available.
 
 All caller contracts are `trusted` assumptions and require a reason and owner;
 they never become `verified` merely because they came from configuration.

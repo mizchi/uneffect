@@ -33,19 +33,34 @@ describe("versioned caller-owned registry configuration", () => {
       }],
       contracts: [{
         symbol: { module: "@acme/telemetry", export: "flush" },
+        runtime: { kind: "package", version: "4.2.1" },
         evidence: "trusted",
         trustReason: "reviewed flush authority",
         trustOwner: "observability-platform",
         operation: { kind: "effect", effect: "Console" },
+      }, {
+        symbol: { module: "@acme/telemetry", export: "createReporter" },
+        runtime: { kind: "package", version: "4.2.1" },
+        evidence: "trusted",
+        trustReason: "reviewed reporter factory",
+        trustOwner: "observability-platform",
+        callableResult: {
+          operation: { kind: "effect", effect: "Console" },
+          capturedCallbackArguments: [0],
+        },
       }],
     }, builtinContractRegistry);
 
     expect(registry.moduleInitializations[0]).toMatchObject({ module: "@acme/telemetry" });
     expect(registry.contracts[0]).toMatchObject({
       symbol: { module: "@acme/telemetry", export: "flush" },
+      runtime: { kind: "package", version: "4.2.1" },
       operation: { kind: "effect", effect: "Console" },
     });
     expect(registry.moduleInitializations).toContain(builtinContractRegistry.moduleInitializations[0]);
+    expect(registry.contracts[1]).toMatchObject({
+      callableResult: { operation: { kind: "effect", effect: "Console" }, capturedCallbackArguments: [0] },
+    });
   });
 
   it.each([
@@ -57,23 +72,27 @@ describe("versioned caller-owned registry configuration", () => {
       evidence: "trusted", trustReason: "wrong runtime kind", trustOwner: "platform",
     }] }, "node: modules require a node runtime"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
-      symbol: { module: "x", export: "f" }, evidence: "verified",
+      symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "verified",
       operation: { kind: "effect", effect: "Console" },
     }] }, "evidence must be trusted"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
-      symbol: { module: "x", export: "f" }, evidence: "trusted",
+      symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
       operation: { kind: "effect", effect: "Fetch<" },
     }] }, "invalid effect"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
-      symbol: { module: "x", export: "f" }, evidence: "trusted",
+      symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
       trustReason: "reviewed", trustOwner: "platform", trustExpiresOn: "2027-02-30",
       operation: { kind: "effect", effect: "Console" },
     }] }, "valid calendar date"],
     [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
-      symbol: { module: "x", export: "f" }, evidence: "trusted",
+      symbol: { module: "x", export: "f" }, runtime: { kind: "package", version: "1.0.0" }, evidence: "trusted",
       trustReason: "reviewed", trustOwner: "platform",
       operation: { kind: "scoped-effect", effect: "Fetch<" },
     }] }, "effect capability name"],
+    [{ schema: "uneffect-registry/v1", builtinRegistryVersion: 2, contracts: [{
+      symbol: { module: "external-package", export: "pureFactory" }, evidence: "trusted",
+      trustReason: "reviewed", trustOwner: "platform",
+    }] }, "package contracts require a package runtime"],
   ])("rejects malformed or unsafe configuration %#", (input, message) => {
     expect(() => parseBuiltinRegistryConfig(input, builtinContractRegistry)).toThrow(message);
   });
@@ -98,6 +117,7 @@ describe("versioned caller-owned registry configuration", () => {
       }],
       contracts: [{
         symbol: { module: "console", export: "log" }, evidence: "trusted",
+        runtime: { kind: "package", version: "1.0.0" },
         trustReason: "application override", trustOwner: "runtime-platform",
         operation: { kind: "effect", effect: "Audit" },
       }],

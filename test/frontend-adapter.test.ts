@@ -1,15 +1,80 @@
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { auditBuiltinDeclarationDrift, collectBuiltinCallRefinements } from "../src/frontend-adapter.js";
-import { builtinContractRegistry } from "../src/builtin-contracts.js";
+import { builtinContractRegistry, extendBuiltinContractRegistry } from "../src/builtin-contracts.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { verifyTypedArraySafetyInTypeScriptProgram } from "../src/typed-array-safety.js";
 import { analyzeUneffectProject } from "../src/custom-validators.js";
 
 describe("TypeChecker symbol adapter", () => {
+  it("resolves a reviewed callable result and exposes its captured callbacks", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".uneffect-callable-result-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        import { OxlintUtils, definePlugin } from "corsa-oxlint";
+        const createRule = OxlintUtils.RuleCreator(() => "https://example.com/rule");
+        export const rule = createRule({ name: "example", meta: {}, create() { return {} } } as any);
+        export function buildWithLogging() {
+          const loggedRule = OxlintUtils.RuleCreator(() => { console.log("resolve URL"); return "https://example.com/logged"; });
+          return loggedRule({ name: "logged", meta: {}, create() { return {} } } as any);
+        }
+        export default definePlugin({ meta: { name: "example" }, rules: { example: rule } });
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      });
+      const source = program.getSourceFile(fileName)!;
+      const calls = collectBuiltinCallRefinements(program, source);
+      expect(calls).toEqual(expect.arrayContaining([
+        expect.objectContaining({ symbol: { module: "corsa-oxlint", export: "OxlintUtils#RuleCreator" } }),
+        expect.objectContaining({
+          symbol: { module: "corsa-oxlint", export: "OxlintUtils#RuleCreator" },
+          capturedCallbacks: [expect.objectContaining({ kind: ts.SyntaxKind.ArrowFunction })],
+        }),
+        expect.objectContaining({ symbol: { module: "corsa-oxlint", export: "definePlugin" } }),
+      ]));
+      const moduleSummary = analyzeProgramEffects(program).summaries.find((item) => item.fileName === fileName && item.functionName === "<module>");
+      expect(moduleSummary).toMatchObject({ evidence: "trusted" });
+      expect(moduleSummary?.unknownReasons).toBeUndefined();
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.fileName === fileName && item.functionName === "buildWithLogging")?.effects)
+        .toContainEqual(expect.objectContaining({ kind: "capability", name: "Console" }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not trust a reviewed callable result through a mutable binding", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".uneffect-mutable-callable-result-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `
+        import { OxlintUtils } from "corsa-oxlint";
+        let createRule = OxlintUtils.RuleCreator(() => "https://example.com/rule");
+        createRule({ name: "example", meta: {}, create() { return {} } } as any);
+      `);
+      const program = ts.createProgram([fileName], {
+        target: ts.ScriptTarget.ES2024,
+        module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      });
+      const source = program.getSourceFile(fileName)!;
+      expect(collectBuiltinCallRefinements(program, source)
+        .filter((call) => call.symbol.export === "OxlintUtils#RuleCreator")).toHaveLength(1);
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.fileName === fileName && item.functionName === "<module>")).toMatchObject({
+        evidence: "unknown",
+        unknownReasons: [expect.objectContaining({ code: "unresolved-call" })],
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("resolves named imports from export-equals Node modules", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-export-equals-"));
     const fileName = join(directory, "input.ts");
@@ -23,6 +88,26 @@ describe("TypeChecker symbol adapter", () => {
     const source = program.getSourceFile(fileName)!;
     expect(collectBuiltinCallRefinements(program, source).filter((call) => call.symbol.export === "join"))
       .toEqual([expect.objectContaining({ symbol: { module: "node:path", export: "join" } })]);
+  });
+
+  it("applies an external function contract only to its exact package version", () => {
+    const directory = mkdtempSync(join(process.cwd(), ".uneffect-versioned-call-"));
+    const fileName = join(directory, "input.ts");
+    try {
+      writeFileSync(fileName, `import * as v from "valibot"; export const schema = v.number()`);
+      const relativeFileName = relative(process.cwd(), fileName);
+      const program = ts.createProgram([relativeFileName], { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true });
+      const registry = (version: string) => extendBuiltinContractRegistry(builtinContractRegistry, { contracts: [{
+        symbol: { module: "valibot", export: "number" },
+        runtime: { kind: "package" as const, version }, evidence: "trusted" as const,
+        trustReason: "reviewed pure schema factory", trustOwner: "test",
+      }] });
+
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("1.4.2") }).summaries.find((summary) => summary.functionName === "<module>"))
+        .toMatchObject({ evidence: "trusted" });
+      expect(analyzeProgramEffects(program, { builtinRegistry: registry("0.0.0") }).summaries.find((summary) => summary.functionName === "<module>"))
+        .toMatchObject({ evidence: "unknown", unknownReasons: [expect.objectContaining({ code: "unresolved-call" })] });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
   it("applies tmpdir refinement through aliased and namespace symbol identity only", () => {

@@ -145,6 +145,10 @@ export function collectAssumptionLedger(
         reason: contract.trustReason ?? "reviewed builtin semantic overlay",
         owner: contract.trustOwner ?? "@mizchi/uneffect",
         ...(contract.trustExpiresOn ? { expiresOn: contract.trustExpiresOn } : {}),
+        ...(contract.runtime ? { dependency: {
+          module: contract.symbol.module,
+          ...(contract.runtime.kind === "package" ? { packageVersion: contract.runtime.version } : { nodeMajor: contract.runtime.major }),
+        } } : {}),
         scope: { fileName, span: call.span },
       }));
     }
