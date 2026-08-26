@@ -101,6 +101,10 @@
     },
     "assurance": {
       "type": "object", "additionalProperties": false,
+      "allOf": [{
+        "if": { "properties": { "passed": { "const": false } }, "required": ["passed"] },
+        "then": { "properties": { "claims": { "maxItems": 0 } } }
+      }],
       "required": ["profile", "status", "passed", "blockers", "coverage", "claims", "exclusions"],
       "properties": {
         "profile": { "enum": ["no-unknown", "declared"] },

@@ -163,3 +163,9 @@ This observation exposed a presentation-level vacuity: an empty
 `not-applicable`; `verified` requires at least one accepted cross-project link.
 Supporting Luna's bundled output requires an explicit, validated transform
 mapping and remains open work rather than a trusted bypass.
+
+The same run exposed a contradictory assurance payload: the failed
+`no-unknown` assessment retained positive claim strings such as “no emitted
+effect summary is unknown.” The decision was already fail-closed, but a consumer
+reading only `claims` could receive a false signal. Failed assessments now emit
+`claims: []`; their unmet conditions are represented only as blockers.

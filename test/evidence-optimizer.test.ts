@@ -70,7 +70,7 @@ describe("evidence and optimizer obligations", () => {
       expect(verified.buildArtifacts.status).toBe("stale");
 
       const staleArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
-      expect(staleArtifacts.assurance).toMatchObject({ status: "unknown", passed: false });
+      expect(staleArtifacts.assurance).toMatchObject({ status: "unknown", passed: false, claims: [] });
       expect(staleArtifacts.blockers).toContainEqual(expect.objectContaining({ kind: "build-artifact", classification: "unknown" }));
 
       const buildHost = ts.createSolutionBuilderHost(ts.sys);
@@ -763,7 +763,7 @@ describe("evidence and optimizer obligations", () => {
       moduleInitializationEntry: entry,
     });
     expect(unknown.moduleInitialization).toMatchObject({ evidence: "unknown" });
-    expect(unknown.assurance).toMatchObject({ status: "unknown", passed: false });
+    expect(unknown.assurance).toMatchObject({ status: "unknown", passed: false, claims: [] });
     expect(unknown.assurance.blockers).toContainEqual(expect.objectContaining({
       domain: "module-initialization", subject: "external-static-import",
     }));

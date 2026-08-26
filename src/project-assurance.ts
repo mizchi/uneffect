@@ -121,7 +121,7 @@ export function assessProjectVerification(
     temporalProperties: result.temporal?.properties.length ?? 0,
     moduleInitializationModels: result.moduleInitialization ? 1 : 0,
   };
-  const claims = [
+  const candidateClaims = [
     "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
     "no emitted effect summary or capability scope is unknown and no effect upper bound is violated",
     "every emitted contract obligation is verified",
@@ -149,5 +149,6 @@ export function assessProjectVerification(
   const assumptions = result.assumptions.entries.length;
   const status: ProjectAssuranceAssessment["status"] = blockers.some((blocker) => blocker.classification === "violation")
     ? "violated" : blockers.length > 0 ? "unknown" : assumptions > 0 ? "assumed" : "verified";
+  const claims = blockers.length === 0 ? candidateClaims : [];
   return { status, passed: blockers.length === 0, assumptions, blockers, coverage, claims, exclusions };
 }

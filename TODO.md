@@ -480,6 +480,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Make unknown evidence stop transformations without blocking gradual lint adoption.
 - [x] Separate gradual lint success from explicit `no-unknown` and declaration-checked assurance profiles, with scoped blocker output and documented non-claims.
 - [x] Expose assurance claims and exclusions as typed assessment data and print exclusions even on success, preventing CI consumers from treating a context-free green boolean as a whole-program proof.
+- [x] Emit established assurance claims only for passing decisions; failed or unknown assessments expose an empty `claims` array and retain the unmet conditions as blockers.
 - [x] Reject vacuous assurance when no proof-relevant evidence is emitted, report machine-readable coverage counts, and reject each explicitly selected file that contributes neither an effect summary nor a contract artifact.
 - [x] Reject TypeScript syntax, semantic, and compiler-option errors, and downgrade every function/module summary from an ill-typed source to `unknown` instead of trusting parser recovery.
 - [x] Apply the same fail-closed TypeScript boundary to `verifyUneffectProject`: report compiler diagnostics, downgrade contract/typed-array obligations, and suppress proof-grade temporal results for invalid sources.

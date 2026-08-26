@@ -167,6 +167,9 @@ describe("uneffect command line", () => {
       expect(syntax.stderr).toContain("error typescript/syntax");
       expect(syntax.stderr).toContain("assurance no-unknown: failed");
       expect(syntax.stderr).toContain("TypeScript source has syntax errors");
+      const syntaxJson = capture();
+      expect(await runCli(["check", "--assurance", "no-unknown", "--json", syntaxFile], syntaxJson)).toBe(exitCode.failed);
+      expect(JSON.parse(syntaxJson.stdout).assurance).toMatchObject({ passed: false, claims: [] });
 
       const semantic = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);
@@ -238,12 +241,14 @@ describe("uneffect command line", () => {
         ] })]),
         assurance: {
           profile: "no-unknown", status: "unknown", passed: false,
+          claims: [],
           blockers: expect.arrayContaining([expect.objectContaining({ classification: "unknown", functionName: "send" })]),
         },
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-check/v1" } },
         required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assurance", "project"]),
+        $defs: { assurance: { allOf: [expect.objectContaining({ then: { properties: { claims: { maxItems: 0 } } } })] } },
       });
 
       const gradual = capture();

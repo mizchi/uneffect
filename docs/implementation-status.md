@@ -477,8 +477,8 @@ same property is proved for arbitrary TypeScript.
   contract artifacts; `declared` additionally rejects inferred effect
   summaries. Both profiles are scoped to explicit files and opted-in analyses,
   and neither is described as a whole-program proof. Their public assessment
-  objects carry machine-readable claims and exclusions; the CLI prints both on
-  success and marks claims as not established on failure. Machine-readable
+  objects carry machine-readable claims and exclusions; claims are emitted only
+  on success and are an empty array on failure. Machine-readable
   coverage counts prevent empty results and per-file coverage gaps from passing
   vacuously; a selected file with neither an effect summary nor a contract
   artifact is an assurance blocker. Each TypeScript source now contributes a

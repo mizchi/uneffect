@@ -110,10 +110,10 @@ export function assessCheckAssurance(
     functionName: artifact.obligation?.functionName ?? "<contract>",
     message: `${artifact.obligation?.functionName ?? "contract"}: contract evidence is ${artifact.status}, not verified`,
   });
-  const claims = profile === "declared"
+  const candidateClaims = profile === "declared"
     ? [...commonClaims, "every emitted function effect summary is declaration-checked"]
     : [...commonClaims];
-  if (result.project?.compiler.parity === "exact") claims.push(
+  if (result.project?.compiler.parity === "exact") candidateClaims.push(
     "the consumer project and analyzer resolve the exact same TypeScript version",
   );
   const exclusions = profile === "no-unknown"
@@ -130,6 +130,7 @@ export function assessCheckAssurance(
   }
   const status: AssuranceStatus = blockers.some((blocker) => blocker.classification === "violation")
     ? "violated" : blockers.length > 0 ? "unknown" : hasTrustedSummary ? "assumed" : "verified";
+  const claims = blockers.length === 0 ? candidateClaims : [];
   return { profile, status, passed: blockers.length === 0, blockers, coverage, claims, exclusions };
 }
 
@@ -145,7 +146,7 @@ export function formatAssuranceAssessment(assessment: AssuranceAssessment): stri
     header,
     scope,
     coverage,
-    ...assessment.claims.map((claim) => `  claim${assessment.passed ? "" : " (not established)"}: ${claim}`),
+    ...assessment.claims.map((claim) => `  claim: ${claim}`),
     ...assessment.exclusions.map((exclusion) => `  excluded: ${exclusion}`),
     ...assessment.blockers.map((blocker) => `  blocker: ${blocker.message}`),
   ].join("\n")}\n`;

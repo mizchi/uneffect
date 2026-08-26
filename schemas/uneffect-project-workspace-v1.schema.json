@@ -132,6 +132,10 @@
     },
     "projectAssurance": {
       "type": "object", "additionalProperties": false,
+      "allOf": [{
+        "if": { "properties": { "passed": { "const": false } }, "required": ["passed"] },
+        "then": { "properties": { "claims": { "maxItems": 0 } } }
+      }],
       "required": ["status", "passed", "assumptions", "blockers", "coverage", "claims", "exclusions"],
       "properties": {
         "status": { "enum": ["verified", "assumed", "unknown", "violated"] },
@@ -165,6 +169,10 @@
     },
     "assurance": {
       "type": "object", "additionalProperties": false,
+      "allOf": [{
+        "if": { "properties": { "passed": { "const": false } }, "required": ["passed"] },
+        "then": { "properties": { "claims": { "maxItems": 0 } } }
+      }],
       "required": ["status", "passed", "assumptions", "blockers", "claims", "exclusions"],
       "properties": {
         "status": { "enum": ["verified", "assumed", "unknown", "violated"] },

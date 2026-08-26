@@ -167,7 +167,8 @@ whole result is empty or when any selected file is uncovered, so evidence from
 one file cannot hide a type-only, misspelled, or otherwise unexamined sibling.
 Claims are established only when `passed` is true; an `assumed` result
 establishes those claims relative to its explicit assumption ledger. On
-failure the CLI labels them `claim (not established)`. Exclusions are
+failure the machine-readable `claims` array is empty and the blockers explain
+what prevented the claim. Exclusions are
 reported even for a passing assessment and must not be removed or interpreted
 as warnings that can be waived. This keeps CI integrations from reducing an
 assurance result to a context-free green boolean.

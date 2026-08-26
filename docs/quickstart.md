@@ -78,7 +78,9 @@ npx uneffect check --project tsconfig.json --infer \
 
 Treat `outcome`, `assurance.status`, `blockers`, `claims`, and `exclusions` as a
 single decision. In particular, `assurance: null` means no assurance profile was
-requested; it is not equivalent to `verified`.
+requested; it is not equivalent to `verified`. A failed assurance report has an
+empty `claims` array. Read its `blockers`; Uneffect does not publish the target
+claim as an established fact alongside a failed decision.
 
 The JSON report records both compiler package locations and versions.
 Assurance fails with a TypeScript `unknown` blocker when the consumer package

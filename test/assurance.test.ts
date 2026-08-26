@@ -45,6 +45,7 @@ describe("assurance claim boundaries", () => {
 
     expect(assessment).toMatchObject({
       status: "unknown", passed: false,
+      claims: [],
       blockers: [{
         kind: "effect", classification: "unknown", functionName: "generate",
         message: expect.stringContaining("unknown capability scope"),
@@ -87,10 +88,11 @@ describe("assurance claim boundaries", () => {
     expect(assessment).toMatchObject({
       status: "unknown",
       passed: false,
+      claims: [],
       coverage: { effectSummaries: 0, contractArtifacts: 0 },
       blockers: [{ kind: "coverage", classification: "unknown", message: expect.stringContaining("no effect summary or contract artifact") }],
     });
-    expect(formatAssuranceAssessment(assessment)).toContain("claim (not established)");
+    expect(formatAssuranceAssessment(assessment)).not.toContain("claim:");
     expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts");
   });
 
