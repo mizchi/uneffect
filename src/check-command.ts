@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { checkFiles } from "./check.js";
+import { checkFiles, createCheckProgram } from "./check.js";
 import { exitCode, parseCommandArgs, formatCommandHelp, type CliCommand, type CliStreams } from "./cli-support.js";
 import { CliUsageError } from "./cli-support.js";
 import { formatCheckEvidence, formatDiagnostics } from "./diagnostics.js";
@@ -7,6 +7,7 @@ import { assessCheckAssurance, formatAssuranceAssessment, type AssuranceProfile 
 import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
+import { composeWorkspaceEffects, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
@@ -56,19 +57,29 @@ export const checkCommand: CliCommand = {
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
     if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"])) {
       const reports = [];
+      const completed: CompletedEffectProject[] = [];
+      const composed: WorkspaceEffectComposition = { contracts: new Map(), links: [], blockers: [] };
       for (const domain of workspace.projects) {
         if (domain.fileNames.length === 0) continue;
+        const program = createCheckProgram(domain.fileNames, {
+          compilerOptions: domain.compilerOptions, projectReferences: domain.projectReferences,
+        });
+        const composition = composeWorkspaceEffects(program, domain, completed);
+        composed.links.push(...composition.links);
+        composed.blockers.push(...composition.blockers);
         const domainResult = await checkFiles(domain.fileNames, {
           mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry,
           compilerOptions: domain.compilerOptions, project: domain.provenance,
           projectReferences: domain.projectReferences,
+          program, externalFunctionEffects: composition.contracts,
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
+        completed.push({ project: domain, summaries: domainResult.summaries });
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"]),
-      });
+      }, composed);
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {
         for (const item of reports) {

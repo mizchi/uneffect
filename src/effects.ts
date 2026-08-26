@@ -20,6 +20,11 @@ export interface EffectDiagnostic {
   notes?: DiagnosticNote[];
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
+export interface ExternalFunctionEffectContract {
+  effects: readonly Effect[];
+  evidence: EvidenceStatus;
+  reason?: string;
+}
 export interface EffectSummary {
   functionName: string;
   effects: Effect[];
@@ -415,6 +420,25 @@ export interface EffectAnalysisOptions {
   requireAnnotations?: boolean;
   /** Versioned builtin and external-module contracts owned by the caller. */
   builtinRegistry?: BuiltinContractRegistry;
+  /** Effects proved in another TypeScript Program, keyed by the target declaration id. */
+  externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+}
+
+function externalContractForCall(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  contracts: ReadonlyMap<string, ExternalFunctionEffectContract> | undefined,
+): ExternalFunctionEffectContract | undefined {
+  if (!contracts) return undefined;
+  const location = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+  let symbol = checker.getSymbolAtLocation(location);
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  for (const declaration of symbol?.declarations ?? []) {
+    const source = declaration.getSourceFile();
+    const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
+    if (contract) return contract;
+  }
+  return undefined;
 }
 
 function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.FunctionLikeDeclaration): boolean {
@@ -703,6 +727,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const iteratorEffectBounds = new Map<string, Map<number, { name: string; effects: Effect[] }>>();
   const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
   const invalidEffectParameterOwners = new Set<string>();
+  const unknownExternalEvidence = new Set<string>();
   const witnesses = new Map<string, Map<string, EffectWitness>>(), propagation = new Map<string, Map<string, EffectPropagation>>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
@@ -788,7 +813,17 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         && (ts.isPropertyAccessExpression(child.left) || ts.isElementAccessExpression(child.left))
         && processEnvEffects(checker, child.left) === undefined) { const effect = mutateEffect(child.left); if (observableMutation(effect, locals)) observe(effect, child); }
       if ((ts.isPrefixUnaryExpression(child) || ts.isPostfixUnaryExpression(child)) && (child.operator === ts.SyntaxKind.PlusPlusToken || child.operator === ts.SyntaxKind.MinusMinusToken) && (ts.isPropertyAccessExpression(child.operand) || ts.isElementAccessExpression(child.operand))) { const effect = mutateEffect(child.operand); if (observableMutation(effect, locals)) observe(effect, child); }
-      if (ts.isCallExpression(child)) for (const effect of primitiveEffects(child, adapter)) if (observableMutation(effect, locals)) observe(effect, child);
+      if (ts.isCallExpression(child)) {
+        for (const effect of primitiveEffects(child, adapter)) if (observableMutation(effect, locals)) observe(effect, child);
+        const external = externalContractForCall(checker, child, options.externalFunctionEffects);
+        if (external) {
+          if (external.evidence !== "verified") unknownExternalEvidence.add(graphNode.id);
+          for (const effect of external.effects) {
+            if (effect.kind === "throw" && (catches || asyncOwners.has(graphNode.id))) continue;
+            if (observableMutation(effect, locals)) observe(effect, child);
+          }
+        }
+      }
       ts.forEachChild(child, (next) => visit(next, catches));
     };
     visit(node.body, false);
@@ -956,6 +991,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
       || invalidEffectParameterOwners.has(graphNode.id)
       || invalidIteratorInstantiationCallers.has(graphNode.id)
+      || unknownExternalEvidence.has(graphNode.id)
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
         : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";

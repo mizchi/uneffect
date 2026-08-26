@@ -321,7 +321,7 @@ describe("uneffect command line", () => {
       ]);
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
-        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"]),
+        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"]),
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -335,6 +335,64 @@ describe("uneffect command line", () => {
       expect(JSON.parse(freshArtifacts.stdout)).toMatchObject({
         outcome: "passed", buildArtifacts: { status: "fresh" }, assurance: { status: "verified", passed: true },
       });
+
+      writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: effect Console */
+        export function report() { console.log("a") }
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      writeFileSync(join(b, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../a" }],
+      }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const composedEffects = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedEffects)).toBe(exitCode.failed);
+      expect(JSON.parse(composedEffects.stdout)).toMatchObject({
+        effectComposition: {
+          status: "verified",
+          links: [expect.objectContaining({ callee: "report", evidence: "verified", effects: ["Console"] })],
+          blockers: [],
+        },
+      });
+
+      writeFileSync(join(a, "src", "a.ts"), `export function report() { console.log("a") }`);
+      const inferredChildEffects = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], inferredChildEffects)).toBe(exitCode.failed);
+      const inferredChildReport = JSON.parse(inferredChildEffects.stdout) as CheckWorkspaceJsonReport;
+      expect(inferredChildReport.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: [expect.objectContaining({ kind: "effect-composition", subject: "report" })],
+      });
+      expect(inferredChildReport.projects.find((item) => item.project?.projectFile === join(b, "tsconfig.json"))?.effects
+        .find((item) => item.functionName === "relay")).toMatchObject({ effects: ["Console"], evidence: "unknown" });
+
+      writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: effect Console */
+        export function report() { console.log("a") }
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect FsRead<"$CWD/**"> */
+        export function relay() { report() }
+      `);
+      const missingParentEffect = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--json"], missingParentEffect)).toBe(exitCode.failed);
+      expect((JSON.parse(missingParentEffect.stdout) as CheckWorkspaceJsonReport).projects
+        .find((item) => item.project?.projectFile === join(b, "tsconfig.json"))?.diagnostics).toContainEqual(expect.objectContaining({
+          code: "effect/missing", functionName: "relay", message: expect.stringContaining("Console"),
+        }));
+
+      writeFileSync(join(a, "src", "a.ts"), "export const a = 1");
+      writeFileSync(join(b, "src", "b.ts"), "export function b() { console.log('b') }");
+      writeFileSync(join(b, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", types: [] }, include: ["src/**/*.ts"],
+      }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const validText = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown"], validText)).toBe(exitCode.success);
       expect(validText.stderr).toContain(`project ${join(a, "tsconfig.json")}`);

@@ -3,7 +3,7 @@ import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
-import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
+import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
@@ -23,6 +23,10 @@ export interface CheckOptions {
   project?: TypeScriptProjectProvenance;
   /** Native TypeScript project-reference edges for this compiler domain. */
   projectReferences?: readonly ts.ProjectReference[];
+  /** Reuse the exact Program used to resolve cross-project declaration identities. */
+  program?: ts.Program;
+  /** Verified child-program function contracts keyed by resolved declaration id. */
+  externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
 }
 
 export interface CheckResult {
@@ -54,16 +58,21 @@ export function createCheckHost(options: ts.CompilerOptions = compilerOptions): 
   return host;
 }
 
-/** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
-export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
+export function createCheckProgram(fileNames: readonly string[], options: CheckOptions = {}): ts.Program {
   const effectiveCompilerOptions = options.compilerOptions ?? compilerOptions;
-  const program = ts.createProgram({
+  return ts.createProgram({
     rootNames: [...fileNames], options: effectiveCompilerOptions, host: options.host,
     projectReferences: options.projectReferences,
   });
+}
+
+/** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
+export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
+  const program = options.program ?? createCheckProgram(fileNames, options);
   const effects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,
+    externalFunctionEffects: options.externalFunctionEffects,
   });
   const react = analyzeReactProgram(program);
   const diagnostics: CheckerDiagnostic[] = [];

@@ -6,6 +6,7 @@ import { reportDiagnostic, type ReportedDiagnostic } from "./diagnostics.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
+import type { WorkspaceEffectComposition } from "./workspace-effects.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -56,6 +57,11 @@ export interface CheckWorkspaceJsonReport {
   buildArtifacts: { status: "fresh" | "stale" | "unknown"; observations: Array<{ code: number; message: string }> };
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: CheckJsonReport[];
+  effectComposition: {
+    status: "verified" | "unknown";
+    links: Array<{ fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string; evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[] }>;
+    blockers: WorkspaceCheckBlocker[];
+  };
   blockers: WorkspaceCheckBlocker[];
   assurance: WorkspaceCheckAssurance | null;
 }
@@ -93,6 +99,7 @@ export function createCheckWorkspaceJsonReport(
   projects: CheckJsonReport[],
   profile?: AssuranceProfile,
   options: { requireFreshBuildArtifacts?: boolean } = {},
+  effectComposition?: WorkspaceEffectComposition,
 ): CheckWorkspaceJsonReport {
   const blockers: WorkspaceCheckBlocker[] = workspace.blockers.map((blocker) => ({
     kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
@@ -104,6 +111,8 @@ export function createCheckWorkspaceJsonReport(
       ? "TypeScript SolutionBuilder reports stale or missing composite build artifacts"
       : "TypeScript SolutionBuilder did not establish composite build-artifact freshness",
   });
+  const compositionBlockers: WorkspaceCheckBlocker[] = (effectComposition?.blockers ?? []).map((blocker) => ({ ...blocker }));
+  blockers.push(...compositionBlockers);
   const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
   if (profile) for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", projectFile: project.projectFile,
@@ -131,10 +140,12 @@ export function createCheckWorkspaceJsonReport(
         "every referenced compiler domain passed its selected assurance profile",
         "every selected source root belongs to exactly one checked TypeScript project",
         "every project config resolves the exact analyzer TypeScript version",
+        ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function effects are composed into resolved parent call sites"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
+        "cross-project module initialization, Mutate regions, and iterator effect parameters are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
@@ -146,5 +157,10 @@ export function createCheckWorkspaceJsonReport(
     rootProjectFile: workspace.rootProjectFile, references: workspace.references, buildOrder: workspace.buildOrder,
     buildArtifacts: workspace.buildArtifacts,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
+    effectComposition: {
+      status: compositionBlockers.length === 0 ? "verified" : "unknown",
+      links: (effectComposition?.links ?? []).map((link) => ({ ...link, effects: link.effects.map(formatEffect) })),
+      blockers: compositionBlockers,
+    },
   };
 }

@@ -865,6 +865,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Dogfood against representative external TypeScript programs.
   - [x] Integrate program-wide gradual effect checking into `verifyUneffectProject`; annotated capability upper bounds now fail through the unified project diagnostics.
   - [x] Return program-wide effect summaries from `verifyUneffectProject` so adoption tooling can inspect attributed authority as well as failures.
+  - [x] Compose uniquely resolved, verified child-project function Effect summaries into parent project calls and emit an `effectComposition` provenance ledger.
+  - [ ] Extend cross-project Effect composition to `Mutate` argument-region substitution and iterator Effect parameters; these boundaries currently fail closed as unknown.
+  - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.
   - [x] Dogfood a scoped Node settings read whose fs callback composes Console/Timer authority with poll and checkpoint ordering, including a missing-Console negative control.
   - [x] Add a controlled Node CLI, browser DOM app, and Worker transfer corpus with adoption KPI reporting.

@@ -4,7 +4,7 @@
   "title": "Uneffect programmatic project-workspace verification v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"],
+  "required": ["schema", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-project-workspace/v1" },
     "rootProjectFile": { "type": "string" },
@@ -13,10 +13,29 @@
     "buildArtifacts": { "$ref": "#/$defs/buildArtifacts" },
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } },
+    "effectComposition": { "$ref": "#/$defs/effectComposition" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "$ref": "#/$defs/assurance" }
   },
   "$defs": {
+    "effectComposition": {
+      "type": "object", "additionalProperties": false, "required": ["status", "links", "blockers"],
+      "properties": {
+        "status": { "enum": ["verified", "unknown"] },
+        "links": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects"],
+          "properties": {
+            "fromProject": { "type": "string" }, "toProject": { "type": "string" },
+            "callerFile": { "type": "string" }, "callee": { "type": "string" },
+            "declarationFile": { "type": "string" },
+            "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
+            "effects": { "type": "array", "items": { "type": "object" } }
+          }
+        } },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    },
     "buildArtifacts": {
       "type": "object", "additionalProperties": false, "required": ["status", "observations"],
       "properties": {

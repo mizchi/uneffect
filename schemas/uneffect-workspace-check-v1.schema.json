@@ -4,7 +4,7 @@
   "title": "Uneffect workspace check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "blockers", "assurance"],
+  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-workspace-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -14,10 +14,29 @@
     "buildArtifacts": { "$ref": "#/$defs/buildArtifacts" },
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "./uneffect-check-v1.schema.json" } },
+    "effectComposition": { "$ref": "#/$defs/effectComposition" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
   },
   "$defs": {
+    "effectComposition": {
+      "type": "object", "additionalProperties": false, "required": ["status", "links", "blockers"],
+      "properties": {
+        "status": { "enum": ["verified", "unknown"] },
+        "links": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects"],
+          "properties": {
+            "fromProject": { "type": "string" }, "toProject": { "type": "string" },
+            "callerFile": { "type": "string" }, "callee": { "type": "string" },
+            "declarationFile": { "type": "string" },
+            "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
+            "effects": { "type": "array", "items": { "type": "string" } }
+          }
+        } },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    },
     "buildArtifacts": {
       "type": "object", "additionalProperties": false, "required": ["status", "observations"],
       "properties": {
@@ -54,7 +73,7 @@
       "properties": {
         "kind": { "type": "string" }, "classification": { "enum": ["unknown", "violation"] },
         "projectFile": { "type": "string" }, "message": { "type": "string" },
-        "reference": { "type": "string" }
+        "reference": { "type": "string" }, "subject": { "type": "string" }
       }
     },
     "assurance": {

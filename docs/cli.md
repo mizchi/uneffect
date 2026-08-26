@@ -116,8 +116,11 @@ compiler domains and `projects` retains their individual
 child-first `buildOrder`, per-config root files and provenance, graph/assurance
 `blockers`, and one aggregate decision. Missing or invalid references, cycles,
 empty leaves, and duplicate root ownership fail closed. The workspace result
-does not claim cross-project effect/refinement composition or validate emitted
-build artifacts.
+also records `effectComposition`: uniquely resolved child function summaries
+are applied only when their evidence is `verified`. Inferred/trusted/unknown or
+ambiguous summaries, cross-project `Mutate`, and iterator Effect parameters
+produce blockers. Other proof domains and emitted build-artifact contents are
+not composed or validated.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite
 outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:

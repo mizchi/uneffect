@@ -26,9 +26,11 @@ describe("evidence and optimizer obligations", () => {
     const packageDirectory = join(directory, "node_modules", "typescript");
     const aDirectory = join(directory, "packages", "a");
     const bDirectory = join(directory, "packages", "b");
+    const cDirectory = join(directory, "packages", "c");
     try {
       mkdirSync(join(aDirectory, "src"), { recursive: true });
       mkdirSync(join(bDirectory, "src"), { recursive: true });
+      mkdirSync(join(cDirectory, "src"), { recursive: true });
       mkdirSync(packageDirectory, { recursive: true });
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
@@ -51,7 +53,7 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-project-workspace/v1" } },
-        required: expect.arrayContaining(["buildArtifacts", "configs", "projects", "blockers", "assurance"]),
+        required: expect.arrayContaining(["buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"]),
       });
       expect(verified.projects.map((item) => item.project.projectFile)).toEqual([
         join(aDirectory, "tsconfig.json"), join(bDirectory, "tsconfig.json"),
@@ -59,7 +61,7 @@ describe("evidence and optimizer obligations", () => {
       expect(verified.projects.map((item) => item.project.compiler.parity)).toEqual(["exact", "exact"]);
       expect(verified.projects.map((item) => item.verification.assurance.status)).toEqual(["verified", "verified"]);
       expect(verified.assurance.claims).toContain("every referenced compiler domain passed project verification");
-      expect(verified.assurance.exclusions).toContain("effect, contract, ownership, and temporal evidence is not composed across project boundaries");
+      expect(verified.assurance.exclusions).toContain("contract, ownership, refinement, and temporal evidence is not composed across project boundaries");
       expect(verified.buildArtifacts.status).toBe("stale");
 
       const staleArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
@@ -71,6 +73,90 @@ describe("evidence and optimizer obligations", () => {
       const freshArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
       expect(freshArtifacts.buildArtifacts).toMatchObject({ status: "fresh" });
       expect(freshArtifacts.assurance).toMatchObject({ status: "verified", passed: true });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: effect Console */
+        export function report() { console.log("a") }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: false, types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../a" }],
+      }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const composed = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const bVerification = composed.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(bVerification.effects.summaries.find((item) => item.functionName === "relay")).toMatchObject({
+        effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
+        evidence: "verified",
+      });
+      expect(composed.effectComposition).toMatchObject({
+        status: "verified",
+        links: [expect.objectContaining({ callee: "report", evidence: "verified" })],
+        blockers: [],
+      });
+
+      writeFileSync(join(cDirectory, "src", "c.ts"), `
+        import { relay } from "../../b/src/b.js"
+        /* uneffect: effect Console */
+        export function forward() { relay() }
+      `);
+      writeFileSync(join(cDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../b" }],
+      }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }, { path: "./packages/c" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const transitive = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(transitive.effectComposition.links).toEqual(expect.arrayContaining([
+        expect.objectContaining({ callee: "report", evidence: "verified" }),
+        expect.objectContaining({ callee: "relay", evidence: "verified" }),
+      ]));
+      expect(transitive.projects.find((item) => item.project.projectFile === join(cDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "forward")).toMatchObject({
+          effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
+          evidence: "verified",
+        });
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect FsRead<"$CWD/**"> */
+        export function relay() { report() }
+      `);
+      const missingParentDeclaration = await verifyUneffectProject({ projectFile: root });
+      expect(missingParentDeclaration.assurance).toMatchObject({ passed: false });
+      expect(missingParentDeclaration.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.diagnostics).toContainEqual(expect.objectContaining({
+          functionName: "relay", effect: "Console", kind: "missing", severity: "error",
+        }));
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `export function report() { console.log("a") }`);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      const inferredChild = await verifyUneffectProject({ projectFile: root });
+      expect(inferredChild.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: [expect.objectContaining({ kind: "effect-composition", subject: "report" })],
+      });
+      expect(inferredChild.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "relay")).toMatchObject({
+          effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
+          evidence: "unknown",
+        });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), "export function loose(value) { return value }\n");
+      writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: false, types: [] },
+        include: ["src/**/*.ts"],
+      }));
 
       writeFileSync(join(aDirectory, "src", "a.ts"), "export function broken(value) { return value }\n");
       const invalidChild = await verifyUneffectProject({ projectFile: root });

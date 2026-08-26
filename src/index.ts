@@ -122,7 +122,7 @@ export const u32Table = <const Values extends readonly number[]>(values: Values)
 export const toU32 = u32;
 
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "./effects.js";
-export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus } from "./effects.js";
+export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus, ExternalFunctionEffectContract } from "./effects.js";
 export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, registerEffectSchema, unknownCapabilityReasons } from "./capabilities.js";
 export type { AtomDomain, CapabilityAtom, CapabilityComparisonOptions, CapabilityEffect, CapabilitySet, Effect, EffectSchema } from "./capabilities.js";
 export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";
@@ -145,7 +145,7 @@ export { verifyTypedArraySafety, verifyTypedArraySafetyInProgram, verifyTypedArr
 export type { TypedArrayDiagnostic, TypedArrayObligation, TypedArrayProgramSafetyResult, TypedArraySafetyResult, TypedArraySafetyStatistics } from "./typed-array-safety.js";
 export { generateObligationSmt, InvariantLoweringError, logicToSmt, lowerInvariantProgram, obligationFromSpec, parseLogicExpression, proveBooleanImplication } from "./invariant-ir.js";
 export type { InvariantObligation, LogicExpression, LogicSort, NumericDomain, ObligationBinding, ObligationVariable } from "./invariant-ir.js";
-export { checkFiles, createCheckHost } from "./check.js";
+export { checkFiles, createCheckHost, createCheckProgram } from "./check.js";
 export { environmentSummary, formatEnvironmentReport, readPackageManifest, runEnvironmentChecks } from "./environment.js";
 export type { EnvironmentCheck, EnvironmentCheckOptions, EnvironmentStatus, PackageManifest } from "./environment.js";
 export type { CheckOptions, CheckResult } from "./check.js";
@@ -248,5 +248,7 @@ export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProjec
 export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
 export { verifyUneffectProject } from "./project-verification.js";
 export type { ProjectVerificationObligation, ProjectWorkspaceAssurance, ProjectWorkspaceVerificationBlocker, ProjectWorkspaceVerificationDomain, VerifyUneffectProjectBaseOptions, VerifyUneffectProjectOptions, VerifyUneffectProjectResult, VerifyUneffectWorkspaceOptions, VerifyUneffectWorkspaceResult } from "./project-verification.js";
+export { composeWorkspaceEffects } from "./workspace-effects.js";
+export type { CompletedEffectProject, WorkspaceEffectComposition, WorkspaceEffectCompositionBlocker, WorkspaceEffectLink } from "./workspace-effects.js";
 export { assessProjectVerification } from "./project-assurance.js";
 export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";

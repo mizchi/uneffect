@@ -421,10 +421,12 @@ same property is proved for arbitrary TypeScript.
   than flattened: `uneffect-workspace-check/v1` records the reference graph,
   child-first build order, config roots/provenance, child decisions, and
   aggregate assurance. Missing/malformed references, cycles, empty leaves, and
-  duplicate source ownership fail closed. Cross-project summary composition,
-  and independent declaration-output content validation remain incomplete;
-  SolutionBuilder freshness can be reported or required. The equivalent
-  programmatic workspace API returns the richer per-domain verifier results.
+  duplicate source ownership fail closed. The CLI and programmatic workspace
+  API compose uniquely resolved `verified` function Effect summaries
+  child-first and emit a provenance ledger; inferred/trusted/unknown summaries, ambiguous matches,
+  `Mutate` substitution, and iterator Effect parameters block assurance.
+  Independent declaration-output content validation remains incomplete;
+  SolutionBuilder freshness can be reported or required.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.
@@ -449,8 +451,10 @@ same property is proved for arbitrary TypeScript.
   that verifier independently for each source-bearing config with its native
   options, reference edges, root set, and compiler provenance. The versioned
   workspace result aggregates graph and child blockers without flattening the
-  Programs. Cross-project effect/refinement linking and declaration/build
-  artifact validation remain explicit non-claims.
+  Programs. Only the narrow verified function-Effect interface described above
+  is linked across projects. Cross-project refinements, contracts, ownership,
+  temporal models, advanced Effect substitution, and declaration/build artifact
+  content validation remain explicit non-claims.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect
