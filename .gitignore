@@ -3,3 +3,4 @@ dist/
 coverage/
 target/
 _apalache-out/
+.uneffect/

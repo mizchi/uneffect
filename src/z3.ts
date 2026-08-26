@@ -1,5 +1,8 @@
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { createHash } from "node:crypto";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { init } from "z3-solver";
 
 export type Z3BackendPreference = "auto" | "native" | "wasm";
@@ -35,6 +38,14 @@ export interface Z3ExecutionOptions {
   values?: readonly Z3ValueRequest[];
   /** Use Optimize so top-level minimize/maximize objectives are honored. */
   optimize?: boolean;
+  /** Opt-in durable input and attempt telemetry. The SMT-LIB may contain sensitive literals. */
+  evidence?: Z3ExecutionEvidenceOptions;
+}
+
+export interface Z3ExecutionEvidenceOptions {
+  directory: string;
+  source?: string;
+  obligation?: string;
 }
 
 export interface Z3ValueRequest {
@@ -47,6 +58,71 @@ export interface Z3BackendDriver {
   backend: Z3Backend;
   probe(): Promise<boolean>;
   execute(program: string, options: Z3ExecutionOptions): Promise<Z3ExecutionResult>;
+}
+
+let evidenceSequence = 0;
+
+function processTelemetry(): { pid: number; rssBytes: number; heapUsedBytes: number; externalBytes: number } {
+  const memory = process.memoryUsage();
+  return { pid: process.pid, rssBytes: memory.rss, heapUsedBytes: memory.heapUsed, externalBytes: memory.external };
+}
+
+function evidenceRecorder(program: string, evidence: Z3ExecutionEvidenceOptions | undefined) {
+  if (!evidence) return undefined;
+  mkdirSync(evidence.directory, { recursive: true });
+  const digest = createHash("sha256").update(program).digest("hex");
+  const programFile = `${digest}.smt2`;
+  const programPath = join(evidence.directory, programFile);
+  try {
+    writeFileSync(programPath, program, { encoding: "utf8", flag: "wx" });
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code !== "EEXIST" || readFileSync(programPath, "utf8") !== program) throw cause;
+  }
+  const recordFile = join(evidence.directory, `execution-${process.pid}-${++evidenceSequence}-${digest.slice(0, 12)}.jsonl`);
+  const startedAt = Date.now();
+  const append = (record: Readonly<Record<string, unknown>>) => appendFileSync(recordFile, `${JSON.stringify(record)}\n`, "utf8");
+  append({
+    schema: "uneffect.z3-execution-evidence/v1",
+    event: "start",
+    timestamp: new Date(startedAt).toISOString(),
+    source: evidence.source,
+    obligation: evidence.obligation,
+    programDigest: `sha256:${digest}`,
+    programFile,
+    programBytes: Buffer.byteLength(program),
+    process: processTelemetry(),
+  });
+  return {
+    attempt(result: Z3ExecutionResult, durationMs: number) {
+      append({
+        schema: "uneffect.z3-execution-evidence/v1",
+        event: "attempt",
+        timestamp: new Date().toISOString(),
+        durationMs,
+        backend: result.backend,
+        version: result.version,
+        executable: result.executable,
+        status: result.status,
+        failureKind: result.failureKind,
+        exitCode: result.exitCode,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        process: processTelemetry(),
+      });
+    },
+    complete(result: Z3ExecutionResult) {
+      append({
+        schema: "uneffect.z3-execution-evidence/v1",
+        event: "complete",
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startedAt,
+        backend: result.backend,
+        status: result.status,
+        failureKind: result.failureKind,
+        process: processTelemetry(),
+      });
+    },
+  };
 }
 
 export function parseZ3BackendPreference(value: string | undefined): Z3BackendPreference {
@@ -284,18 +360,26 @@ export async function executeZ3WithBackends(
 ): Promise<Z3Execution> {
   const preference = options.preference ?? "auto";
   const attempts: Z3ExecutionResult[] = [];
+  const recorder = evidenceRecorder(program, options.evidence);
   const attempt = async (driver: Z3BackendDriver): Promise<Z3ExecutionResult> => {
+    const startedAt = Date.now();
     const result = await driver.probe() ? await driver.execute(program, options) : unavailable(driver.backend, options.nativeExecutable);
     attempts.push(result);
+    recorder?.attempt(result, Date.now() - startedAt);
     return result;
   };
   if (preference === "native" || preference === "wasm") {
     const result = await attempt(drivers[preference]);
+    recorder?.complete(result);
     return { ...result, attempts };
   }
   const native = await attempt(drivers.native);
-  if (!mayFallback(native, options.fallbackOnTimeout ?? false)) return { ...native, attempts };
+  if (!mayFallback(native, options.fallbackOnTimeout ?? false)) {
+    recorder?.complete(native);
+    return { ...native, attempts };
+  }
   const wasm = await attempt(drivers.wasm);
+  recorder?.complete(wasm);
   return { ...wasm, attempts };
 }
 
@@ -303,7 +387,10 @@ export async function executeZ3WithBackends(
 export async function executeZ3(program: string, options: Z3ExecutionOptions = {}): Promise<Z3Execution> {
   const preference = options.preference ?? parseZ3BackendPreference(process.env.UNEFFECT_Z3_BACKEND);
   const nativeExecutable = options.nativeExecutable ?? process.env.UNEFFECT_Z3_PATH ?? "z3";
-  return executeZ3WithBackends(program, { ...options, preference, nativeExecutable }, { native: nativeDriver(nativeExecutable), wasm: wasmDriver });
+  const evidence = options.evidence ?? (process.env.UNEFFECT_SOLVER_EVIDENCE_DIR
+    ? { directory: process.env.UNEFFECT_SOLVER_EVIDENCE_DIR }
+    : undefined);
+  return executeZ3WithBackends(program, { ...options, preference, nativeExecutable, evidence }, { native: nativeDriver(nativeExecutable), wasm: wasmDriver });
 }
 
 /** Version of the backend selected for a trivial query, retained for compatibility. */

@@ -437,6 +437,13 @@ same property is proved for arbitrary TypeScript.
   Temporal semantic lint, bounded reachability, structured trace decoding,
   property model enumeration, and typed-array obligations all use the same
   boundary; structured values are reconstructed from named scalar observations.
+- Explicitly isolated solver retries preserve an opt-in, source-linked evidence
+  bundle. It contains digest-addressed SMT-LIB, backend attempts, output,
+  verdict/failure kind, exit status, duration, and process memory snapshots.
+  A clean first attempt is removed; failed/retried attempts are uploaded from CI
+  even if a later attempt passes. This makes transient failures reviewable but
+  does not yet automatically distinguish deterministic complexity from runtime
+  corruption.
 - Diagnostics from every checker share one reportable shape with explanation
   notes: a counterexample is replayed over the invariant IR as concrete values,
   an effect is traced back to the operation that produces it, and a construct

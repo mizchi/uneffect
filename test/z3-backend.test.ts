@@ -1,4 +1,7 @@
 import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   executeZ3,
@@ -60,6 +63,77 @@ describe("Z3 backend selection", () => {
         { backend: "wasm", status: "unsat" },
       ],
     });
+  });
+
+  it("persists source-linked SMT-LIB, failed attempts, and process telemetry across fallback", async () => {
+    const evidenceDirectory = mkdtempSync(join(tmpdir(), "uneffect-z3-evidence-"));
+    try {
+      const native = driver("native", true, result("native", "error", "oom"));
+      const wasm = driver("wasm", true, result("wasm", "unsat"));
+      const program = "(set-logic QF_UF)\n(assert false)\n(check-sat)\n";
+      const execution = await executeZ3WithBackends(program, {
+        preference: "auto",
+        evidence: {
+          directory: evidenceDirectory,
+          source: "test/z3-backend.test.ts",
+          obligation: "fallback telemetry",
+        },
+      }, { native, wasm });
+
+      expect(execution.status).toBe("unsat");
+      const files = readdirSync(evidenceDirectory);
+      const programFile = files.find((file) => file.endsWith(".smt2"));
+      const recordFile = files.find((file) => file.endsWith(".jsonl"));
+      expect(programFile).toBeDefined();
+      expect(readFileSync(join(evidenceDirectory, programFile!), "utf8")).toBe(program);
+      const records = readFileSync(join(evidenceDirectory, recordFile!), "utf8")
+        .trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(records.map(({ event }) => event)).toEqual(["start", "attempt", "attempt", "complete"]);
+      expect(records[0]).toMatchObject({
+        source: "test/z3-backend.test.ts",
+        obligation: "fallback telemetry",
+        programFile,
+        programBytes: Buffer.byteLength(program),
+        process: { pid: process.pid, rssBytes: expect.any(Number), heapUsedBytes: expect.any(Number) },
+      });
+      expect(records[1]).toMatchObject({ event: "attempt", backend: "native", status: "error", failureKind: "oom", durationMs: expect.any(Number) });
+      expect(records[2]).toMatchObject({ event: "attempt", backend: "wasm", status: "unsat", durationMs: expect.any(Number) });
+      expect(records[3]).toMatchObject({ event: "complete", status: "unsat", process: { rssBytes: expect.any(Number) }, durationMs: expect.any(Number) });
+    } finally {
+      rmSync(evidenceDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("deduplicates repeated SMT-LIB inputs while retaining each execution record", async () => {
+    const evidenceDirectory = mkdtempSync(join(tmpdir(), "uneffect-z3-repeat-"));
+    try {
+      const native = driver("native", true, result("native", "unsat"));
+      const wasm = driver("wasm", true, result("wasm", "unsat"));
+      const options = { preference: "native" as const, evidence: { directory: evidenceDirectory } };
+      await executeZ3WithBackends("(check-sat)\n", options, { native, wasm });
+      await executeZ3WithBackends("(check-sat)\n", options, { native, wasm });
+      expect(readdirSync(evidenceDirectory).filter((file) => file.endsWith(".smt2"))).toHaveLength(1);
+      expect(readdirSync(evidenceDirectory).filter((file) => file.endsWith(".jsonl"))).toHaveLength(2);
+    } finally {
+      rmSync(evidenceDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it("honors the isolated-runner evidence directory environment", async () => {
+    const evidenceDirectory = mkdtempSync(join(tmpdir(), "uneffect-z3-env-"));
+    const previous = process.env.UNEFFECT_SOLVER_EVIDENCE_DIR;
+    process.env.UNEFFECT_SOLVER_EVIDENCE_DIR = evidenceDirectory;
+    try {
+      await executeZ3("(set-logic QF_UF)\n(assert false)\n", { preference: "wasm" });
+      expect(readdirSync(evidenceDirectory)).toEqual(expect.arrayContaining([
+        expect.stringMatching(/\.smt2$/u),
+        expect.stringMatching(/\.jsonl$/u),
+      ]));
+    } finally {
+      if (previous === undefined) delete process.env.UNEFFECT_SOLVER_EVIDENCE_DIR;
+      else process.env.UNEFFECT_SOLVER_EVIDENCE_DIR = previous;
+      rmSync(evidenceDirectory, { recursive: true, force: true });
+    }
   });
 
   it("fails closed when an explicitly selected backend is unavailable", async () => {

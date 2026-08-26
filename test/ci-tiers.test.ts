@@ -1,7 +1,9 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 
 describe("CI test tier manifest", () => {
   it("supports an explicit remote verification run when a push event is absent", () => {
@@ -76,6 +78,14 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain('echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check');
   });
 
+  it("uploads retained solver retry evidence even when a later attempt passes", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow).toContain("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02");
+    expect(workflow).toContain("if: always()");
+    expect(workflow).toContain(".uneffect/solver-retry-evidence");
+    expect(workflow).toContain("if-no-files-found: ignore");
+  });
+
   it("keeps per-test process isolation selectors synchronized with their files", () => {
     for (const [file, selected] of Object.entries(ciIsolatedTestNames)) {
       const source = readFileSync(join(process.cwd(), file), "utf8");
@@ -130,5 +140,31 @@ describe("CI test tier manifest", () => {
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain("timeout: ciIsolatedProcessTimeoutMs");
     expect(runner).toContain("isIsolatedSolverHardTimeout(result.error)");
+  });
+
+  it("retains retry attempts and removes evidence for a clean first attempt", () => {
+    const root = mkdtempSync(join(tmpdir(), "uneffect-ci-evidence-"));
+    try {
+      const retried = createSolverRetryEvidenceSession(root, "z3", "test/z3-backend.test.ts", "fallback telemetry");
+      expect(retried.environmentForAttempt(1).UNEFFECT_SOLVER_EVIDENCE_DIR).toContain("attempt-1");
+      retried.recordAttempt({ attempt: 1, status: 1, signal: null, hardTimeout: false, retryReason: "recognized-wasm-failure" });
+      expect(retried.environmentForAttempt(2).UNEFFECT_SOLVER_EVIDENCE_DIR).toContain("attempt-2");
+      retried.recordAttempt({ attempt: 2, status: 0, signal: null, hardTimeout: false });
+      const manifestPath = retried.finish();
+      if (!manifestPath) throw new Error("retried solver session did not retain evidence");
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { attempts: unknown[]; source: string; testName: string };
+      expect(manifest).toMatchObject({ source: "test/z3-backend.test.ts", testName: "fallback telemetry" });
+      expect(manifest.attempts).toEqual([
+        expect.objectContaining({ attempt: 1, status: 1, retryReason: "recognized-wasm-failure", process: expect.objectContaining({ rssBytes: expect.any(Number) }) }),
+        expect.objectContaining({ attempt: 2, status: 0, process: expect.objectContaining({ rssBytes: expect.any(Number) }) }),
+      ]);
+
+      const clean = createSolverRetryEvidenceSession(root, "z3", "test/z3-backend.test.ts", "clean");
+      clean.environmentForAttempt(1);
+      clean.recordAttempt({ attempt: 1, status: 0, signal: null, hardTimeout: false });
+      expect(clean.finish()).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

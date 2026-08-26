@@ -105,6 +105,14 @@ jobs:
       - name: Warm Quint evaluator cache without worker races
         run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-integration
+      - name: Upload retained solver retry evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: solver-retry-evidence-${{ github.run_id }}-${{ github.job }}
+          path: .uneffect/solver-retry-evidence
+          if-no-files-found: ignore
+          retention-days: 14
 
   exhaustive:
     runs-on: ubuntu-latest

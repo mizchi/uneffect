@@ -593,7 +593,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Provision the Z3 CLI and Java 21, and serialize Quint evaluator warm-up before parallel Vitest workers.
   - [x] Bound CI solver integration concurrency and timeout separately from the faster local profile.
   - [x] Allow the Corsa parity subprocess 120 seconds for a cold Rust build while keeping an explicit configurable timeout diagnostic.
-  - [x] Retry an isolated solver test once for both Z3 WASM out-of-bounds and fixed-heap growth OOM signatures.
+  - [x] Permit at most three isolated process attempts for recognized Z3 WASM out-of-bounds, fixed-heap growth OOM, internal assertion, and narrowly identified timeout signatures.
+  - [x] Preserve digest-addressed SMT-LIB, backend attempts, process duration/memory, and the source test selector across isolated retry attempts; upload the bundle even when a later attempt passes.
   - [x] Split explicit and synthesized Node Lease strengthening proofs into separate processes so Z3 WASM contexts cannot accumulate past the fixed heap.
   - [x] Partition every TypeScript test into exactly one fast, Z3, Quint, or mixed integration tier with an executable no-gap/no-overlap manifest check.
   - [x] Keep generated child Vitest files runnable when they inherit a parent tier selection.

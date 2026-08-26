@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import { resolve } from "node:path";
+import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
 import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, shouldRetryIsolatedSolverFailure, type CiTestTier } from "./test-tiers.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -34,8 +36,8 @@ for (const tier of tiers) {
         "vitest", "run", ...(file ? [file] : []), ...(testPattern ? ["-t", testPattern] : []),
         ...(file && ciIsolatedTestFiles.includes(file) ? ["--testTimeout", String(ciIsolatedTestTimeoutMs)] : []),
       ];
-      const runIsolated = () => spawnSync(pnpm, args, {
-        cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier },
+      const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => spawnSync(pnpm, args, {
+        cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
         encoding: "utf8", maxBuffer: 20 * 1024 * 1024,
         timeout: ciIsolatedProcessTimeoutMs, killSignal: "SIGKILL",
       });
@@ -45,16 +47,36 @@ for (const tier of tiers) {
       };
       let result;
       if (testName) {
+        const evidence = createSolverRetryEvidenceSession(
+          resolve(process.env.UNEFFECT_SOLVER_RETRY_EVIDENCE_ROOT ?? ".uneffect/solver-retry-evidence"),
+          tier,
+          file!,
+          testName,
+        );
         let attempt = 1;
         for (;;) {
-          result = runIsolated();
+          const startedAt = Date.now();
+          result = runIsolated(evidence.environmentForAttempt(attempt));
           emit(result);
           const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
           const hardTimeout = isIsolatedSolverHardTimeout(result.error);
-          if (result.status === 0 || attempt >= maxSolverAttempts || !(hardTimeout || shouldRetryIsolatedSolverFailure(output))) break;
+          const recognizedFailure = shouldRetryIsolatedSolverFailure(output);
+          const retryReason = hardTimeout ? "hard-timeout" as const
+            : recognizedFailure ? "recognized-wasm-failure" as const : undefined;
+          evidence.recordAttempt({
+            attempt,
+            status: result.status,
+            signal: result.signal,
+            hardTimeout,
+            retryReason,
+            durationMs: Date.now() - startedAt,
+          });
+          if (result.status === 0 || attempt >= maxSolverAttempts || !retryReason) break;
           attempt++;
           process.stderr.write(`retrying isolated test after a recognized transient solver-process ${hardTimeout ? "hard timeout" : "failure"} (attempt ${attempt}/${maxSolverAttempts}): ${file} -t ${testName}\n`);
         }
+        const evidenceManifest = evidence.finish();
+        if (evidenceManifest) process.stderr.write(`retained solver retry evidence: ${evidenceManifest}\n`);
       } else {
         result = spawnSync(pnpm, args, {
           cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, stdio: "inherit",

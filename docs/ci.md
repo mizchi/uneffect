@@ -64,8 +64,8 @@ obligations.
 
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
 fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier
-runner captures each explicitly isolated test and retries it once only when
-both parts of that crash signature are present. One Node Lease strengthening
+runner captures each explicitly isolated test and permits at most three process
+attempts only when a recognized crash signature is present. One Node Lease strengthening
 query has also twice taken Z3 from its usual roughly one-second runtime to the
 60-second Vitest limit in a fresh process. That exact file, test name, and
 timeout signature receives the same one-process retry. Because synchronous Z3
@@ -76,6 +76,30 @@ same bounded policy. Other reported timeouts and all assertion failures are
 never retried, and a repeated crash or timeout still fails the job. This is
 process recovery for recognized verifier-runtime failures, not a flaky-test
 allowance or weakened proof obligation.
+
+Each isolated process attempt receives a private
+`.uneffect/solver-retry-evidence/.../attempt-N` directory. Before a backend is
+entered, the common Z3 layer writes the complete SMT-LIB input under its SHA-256
+digest and appends a `start` event containing the process RSS and heap snapshot.
+Every returned backend attempt appends its version, verdict/failure kind,
+stdout/stderr, exit code, duration, and another resource snapshot; a final event
+records the selected result. A killed or corrupted process therefore still
+leaves its input and start event. Repeated inputs share one digest file while
+retaining distinct execution records.
+
+A clean first attempt removes this opt-in telemetry. A failed or retried test
+keeps every attempt plus a manifest linking the directories to the CI tier,
+source test file, selector, retry reason, signal, exit status, duration, and
+parent-process memory. The integration job uploads that directory with
+`if: always()` even when a later retry succeeds. SMT-LIB and solver output can
+contain application literals, so evidence recording is disabled outside the
+isolated runner unless `Z3ExecutionOptions.evidence` or
+`UNEFFECT_SOLVER_EVIDENCE_DIR` explicitly enables it.
+
+This preserves the incident needed to distinguish a later deterministic limit
+from process corruption; it does not yet make that classification automatically.
+Repeated timeouts still fail after the bounded attempts, and the retained
+bundle is diagnostic evidence rather than proof evidence.
 
 The first measured split reduced the local fast gate from roughly 35–42 seconds
 for all TypeScript tests (and about six minutes on GitHub) to about nine seconds
