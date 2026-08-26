@@ -7,6 +7,7 @@ describe("CI test tier manifest", () => {
   it("supports an explicit remote verification run when a push event is absent", () => {
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     expect(workflow).toMatch(/^\s*workflow_dispatch:\s*$/m);
+    expect(workflow).toContain('group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}');
   });
 
   it("assigns every TypeScript test file to exactly one tier", () => {

@@ -6,12 +6,16 @@ a `test/*.test.ts` file is missing from the manifest or appears in more than one
 tier. It also rejects a directly spawned Z3 or Quint process assigned to a tier
 that does not provision that verifier.
 
+Workflow concurrency is keyed by workflow, ref, and commit SHA. Duplicate
+deliveries of one commit cancel each other, while a delayed push event for an
+older SHA cannot cancel proof evidence already running for a newer commit.
+
 | Tier | Runtime dependencies | Purpose |
 | --- | --- | --- |
 | `fast` | Node.js and Rust | Type checking, parser/analyzer unit tests, Rust parity, build, and package checks |
 | `z3` | none beyond Node; native Z3 is optional and WASM is bundled | Hoare, ownership, property generation, and typed-array obligations |
 | `quint` | Quint evaluator | Promise, resource, event-loop, temporal-composition, and ownership models |
-| `integration` | Quint and Java/TLC | End-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
+| `integration` | native Z3, Quint, and Java/TLC | End-to-end acceptance, dogfood, evidence import, the `fixtures/` corpus, and mixed backend tests |
 | `exhaustive` | Java/TLC through Quint | The bounded exhaustive invalidation model |
 
 Files that exercise both verifier APIs belong to `integration`, even when one
