@@ -1340,3 +1340,11 @@ summary construction. The high margin of error and changed workload make this
 run an observation rather than a comparative claim or regression budget; it
 does not isolate quotient-construction cost and does not represent general loop
 fixed points or exception-heavy CFGs.
+
+On 2026-08-27, summarizing the separate pairwise worker-pool scale-up measured
+0.1377 ms mean (7,264.48 operations/second over 3,633 samples, 10.05% relative
+margin of error). The warm benchmark excludes parsing and Z3 and measures the
+increasing-direction guard, exact ceiling quotient, overshoot, and lexical
+suffix construction. Its high margin of error makes it an observation rather
+than a comparative claim or regression budget; it does not establish general
+loop fixed-point performance.

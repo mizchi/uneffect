@@ -1496,12 +1496,14 @@ function validateRefinementActionBodiesInSource(
           }
           return undefined;
         };
-        if (!normalizedGuard || normalizedGuard.kind !== "binary" || !["gt", "gte"].includes(normalizedGuard.operator)
+        if (!normalizedGuard || normalizedGuard.kind !== "binary" || !["gt", "gte", "lt", "lte"].includes(normalizedGuard.operator)
           || normalizedGuard.left.kind !== "name" || !stateNames.has(normalizedGuard.left.name)
         ) return undefined;
-        const lowerBound = signedSafeInteger(normalizedGuard.right);
-        if (lowerBound === undefined) return undefined;
-        const stopValue = normalizedGuard.operator === "gte" ? lowerBound - 1 : lowerBound;
+        const bound = signedSafeInteger(normalizedGuard.right);
+        if (bound === undefined) return undefined;
+        const descending = normalizedGuard.operator === "gt" || normalizedGuard.operator === "gte";
+        const inclusive = normalizedGuard.operator === "gte" || normalizedGuard.operator === "lte";
+        const stopValue = inclusive ? bound + (descending ? -1 : 1) : bound;
         if (!Number.isSafeInteger(stopValue)) return undefined;
         const integerExpression = (value: number): TemporalExpression => value >= 0
           ? { kind: "integer", value: String(value) }
@@ -1545,16 +1547,16 @@ function validateRefinementActionBodiesInSource(
           deltas.set(name, delta);
         }
         const counterDelta = deltas.get(counterName);
-        if (counterDelta === undefined || counterDelta >= 0) return undefined;
-        const stepValue = -counterDelta;
+        if (counterDelta === undefined || (descending ? counterDelta >= 0 : counterDelta <= 0)) return undefined;
+        const stepValue = Math.abs(counterDelta);
         if (!Number.isSafeInteger(stepValue) || stepValue <= 0) return undefined;
         const zero: TemporalExpression = { kind: "integer", value: "0" };
         const one: TemporalExpression = { kind: "integer", value: "1" };
         const stop = integerExpression(stopValue);
         const entryCounter = entryValues.get(counterName)!;
-        const distance: TemporalExpression = stopValue === 0 ? entryCounter : {
-          kind: "binary", operator: "subtract", left: entryCounter, right: stop,
-        };
+        const distance: TemporalExpression = descending
+          ? stopValue === 0 ? entryCounter : { kind: "binary", operator: "subtract", left: entryCounter, right: stop }
+          : { kind: "binary", operator: "subtract", left: stop, right: entryCounter };
         const step = integerExpression(stepValue);
         const loopIterations: TemporalExpression = stepValue === 1 ? distance : (() => {
           const remainder: TemporalExpression = {
@@ -1586,7 +1588,7 @@ function validateRefinementActionBodiesInSource(
             updates.set(name, {
               kind: "conditional", condition: entryGuard,
               whenTrue: stepValue === 1 ? stop : {
-                kind: "binary", operator: "subtract", left: entryCounter, right: totalDecrease,
+                kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
               },
               whenFalse: entryValue,
             });

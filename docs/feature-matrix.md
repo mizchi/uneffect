@@ -38,15 +38,16 @@ successful verification.
 | Proof-guided optimization | Planned | Narrow authorization and ownership-assertion-elision prototypes establish the fail-closed shape of a transformation. | General compression, mangling, reordering, and dead-code elimination are not implemented. See [#13](https://github.com/mizchi/uneffect/issues/13). |
 
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
-one explicit exception: `while (counter > L)` and `while (counter >= L)` are
-summarized for signed safe-integer constant `L` when the counter decreases by
-a positive safe-integer constant step, every other state write is a safe-integer
-constant delta, and the body completes normally. A remainder-subtracted exact
+one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are
+summarized for signed safe-integer constant bounds when the counter changes
+toward the bound by a positive safe-integer constant magnitude, every other
+state write is a safe-integer constant delta, and the body completes normally.
+A remainder-subtracted exact
 quotient derives the ceiling trip count without relying on backend-specific
 negative or fractional division, and the final counter preserves overshoot.
 Supported symbolic updates at loop entry are substituted through the guard,
-trip count, and final values. Dynamic or unsafe bounds or steps, other guards,
-coupled recurrences, opaque entry updates, and abrupt exits remain unsupported.
+trip count, and final values. Dynamic or unsafe bounds or steps, direction
+mismatches, other guards, coupled recurrences, opaque entry updates, and abrupt exits remain unsupported.
 This is a closed-form affine rule, not a general loop fixed point.
 
 For the React row, event handlers and callback refs also include immutable

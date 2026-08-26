@@ -118,6 +118,9 @@ const labeledTelemetrySpec = parseSpec(labeledTelemetryFile, labeledTelemetrySou
 const telemetryBacklogFile = "examples/dogfood/telemetry-backlog-drain.ts";
 const telemetryBacklogSource = readFileSync(telemetryBacklogFile, "utf8");
 const telemetryBacklogSpec = parseSpec(telemetryBacklogFile, telemetryBacklogSource).temporal;
+const workerPoolFile = "examples/dogfood/worker-pool-scale-up.ts";
+const workerPoolSource = readFileSync(workerPoolFile, "utf8");
+const workerPoolSpec = parseSpec(workerPoolFile, workerPoolSource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
 const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
 const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
@@ -1011,6 +1014,15 @@ describe("typed-array static verification", () => {
       telemetryBacklogSource,
       "telemetryBacklog",
       telemetryBacklogSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("summarize a symbolic worker-pool scale-up", () => {
+    validateRefinementActionBodies(
+      workerPoolFile,
+      workerPoolSource,
+      "workerPool",
+      workerPoolSpec,
     );
   }, { time: 500, iterations: 20 });
 

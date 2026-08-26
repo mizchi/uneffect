@@ -2534,6 +2534,41 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("summarizes only terminating constant-delta state scale-up loops", async () => {
+    const source = `/* uneffect:
+      state active: int
+      state starts: int
+      init active = 0
+      init starts = 0
+      action scale: active' = active <= -2 ? -1 : active, starts' = starts + (active <= -2 ? -1 - active : 0)
+    */
+      interface Pool { active: number; starts: number }
+      /* uneffect: refinement scaleUp@1 create */ export function create(initial: Pool) { return initial }
+      /* uneffect: refinement scaleUp@1 observe */ export function observe(pool: Pool) { return pool }
+      /* uneffect: refinement scaleUp@1 action scale */
+      export function scale(pool: Pool) {
+        while (pool.active <= -2) {
+          pool.active++
+          pool.starts++
+        }
+      }
+    `;
+    const temporal = parseSpec("scale-up.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3("scale-up.ts", source, "scaleUp", temporal)).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["scale-up-wrong-direction.ts", source.replace("pool.active++", "pool.active--")],
+      ["scale-up-zero-step.ts", source.replace("pool.active++", "pool.active += 0")],
+      ["scale-up-dynamic-bound.ts", source.replaceAll("pool.active <= -2", "pool.active < pool.starts")],
+      ["scale-up-unsafe-bound.ts", source.replaceAll("pool.active <= -2", "pool.active <= 9007199254740991")],
+      ["scale-up-coupled.ts", source.replace("pool.starts++", "pool.starts += pool.active")],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "scaleUp", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "scale" }),
+      );
+    }
+  });
+
   it("unrolls only canonical bounded local-counter while loops", () => {
     const model = `/* uneffect:
       state value: int

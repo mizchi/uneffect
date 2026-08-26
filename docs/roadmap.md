@@ -9,11 +9,11 @@ reflects dependency and soundness risk, not a release date commitment.
 
 1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
-   control-flow fixed point. A first unbounded affine countdown rule now
+   control-flow fixed point. A first unbounded directional affine-loop rule now
    derives a closed form from a symbolic loop-entry state and signed constant
-   lower bound without finite expansion, including positive constant steps and
-   exact overshoot; arbitrary loop joins and
-   exception-heavy recurrences remain.
+   bound without finite expansion, including positive constant step magnitudes
+   and exact overshoot in both countdown and scale-up directions; arbitrary
+   loop joins and exception-heavy recurrences remain.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

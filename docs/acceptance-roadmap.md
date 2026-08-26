@@ -229,12 +229,13 @@ iterations. Dynamic bounds, non-unit increments, uses of the final mutable
 counter, `continue`, and labeled transfers are rejected. This remains finite
 specialization, not a general loop fixed point.
 
-A distinct symbolic affine fragment summarizes `while (runtime.counter > L)`
-and `while (runtime.counter >= L)` for a signed safe-integer constant `L`
-without finite expansion. It proves termination only when the loop body
-decrements that counter by a positive safe-integer constant step, every other
-state write is a safe-integer constant delta per iteration, and the body
-completes normally. Non-unit steps use a ceiling quotient over the guarded
+A distinct symbolic affine fragment summarizes `while (counter > L)`,
+`while (counter >= L)`, `while (counter < U)`, and `while (counter <= U)` for
+signed safe-integer constant bounds without finite expansion. It proves
+termination only when the loop body changes that counter toward the bound by a
+positive safe-integer constant magnitude, every other state write is a
+safe-integer constant delta per iteration, and the body completes normally.
+Non-unit steps use a ceiling quotient over the guarded
 nonnegative distance; division is applied only after subtracting the remainder,
 so the quotient is exact under JavaScript, Quint, and Z3 integer semantics. The
 final counter preserves any step overshoot instead of assuming it reaches the
@@ -250,6 +251,13 @@ unsafe bounds or steps, other guard shapes, coupled recurrences, opaque entry
 updates, break/continue, throw/return, and general loop invariants remain
 fail-closed. This is one affine fixed-point rule, not a general TypeScript CFG
 proof.
+
+The worker-pool dogfood exercises the increasing direction by provisioning in
+pairs until at least five workers are active. The model preserves the exact
+five-or-six-worker result, checks the matching start count and reconciliation
+suffix, and rejects an undercounted start metric or a decreasing update. This
+is a scale-up arithmetic model only; external process creation remains a
+separate capability boundary.
 
 An unlabeled `break` inside a supported finite loop is represented as its own
 conditional completion, rather than rewritten as a function return. It passes

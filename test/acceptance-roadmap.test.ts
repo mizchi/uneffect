@@ -326,6 +326,32 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions("pair-drain.ts", source, "pairDrain", temporal)).resolves.toEqual([]);
   });
 
+  it("summarizes a positive constant-step scale-up loop with exact overshoot", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state active: int
+       * state starts: int
+       * init active = 0
+       * init starts = 0
+       * action scaleUp: active' = active < 5 ? active + 2 * ((5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0)) : active, starts' = starts + (active < 5 ? (5 - active - (5 - active) % 2) / 2 + ((5 - active) % 2 > 0 ? 1 : 0) : 0)
+       */
+      interface Pool { active: number; starts: number }
+      /* uneffect: refinement workerScale@1 create */ export function create(initial: Pool) { return initial }
+      /* uneffect: refinement workerScale@1 observe */ export function observe(pool: Pool) { return pool }
+      /* uneffect: refinement workerScale@1 action scaleUp */
+      export function scaleUp(pool: Pool) {
+        while (pool.active < 5) {
+          pool.active += 2
+          pool.starts++
+        }
+      }
+    `;
+    const temporal = (parseSpecification("worker-scale.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("worker-scale.ts", source, "workerScale", temporal)).resolves.toEqual([]);
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

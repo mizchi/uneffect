@@ -54,7 +54,7 @@ describe("Uneffect dogfood", () => {
 
     const dynamicLoop = source.replace("while (false) runtime.migrated += 1_000", "while (runtime.migrated < 2) runtime.migrated++");
     expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicLoop, "generatedMigration", temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "migrate" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "migrate", target: "migrated" }),
     );
     const dynamicBatch = source.replace("migrationId < 4", "migrationId < runtime.migrated");
     expect(await validateRefinementActionBodiesWithZ3(fileName, dynamicBatch, "generatedMigration", temporal)).toContainEqual(
@@ -85,6 +85,24 @@ describe("Uneffect dogfood", () => {
     const nonTerminating = source.replace("runtime.queued -= 2;", "runtime.queued += 2;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, nonTerminating, "telemetryBacklog", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+    );
+  });
+
+  it("proves pairwise worker-pool scale-up including target overshoot", async () => {
+    const fileName = "examples/dogfood/worker-pool-scale-up.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "workerPool", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "workerPool", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "workerPool", temporal)).toEqual([]);
+
+    const undercountedStarts = source.replace("pool.starts += 2;", "pool.starts++;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, undercountedStarts, "workerPool", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "reconcile", target: "starts" }),
+    );
+    const wrongDirection = source.replace("pool.active += 2;", "pool.active -= 2;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, wrongDirection, "workerPool", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "reconcile" }),
     );
   });
 
