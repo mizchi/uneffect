@@ -21,6 +21,7 @@ import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
+import type { Z3ExecutionOptions } from "./z3.js";
 
 export interface VerifyUneffectProjectBaseOptions {
   runtimeAssertions?: "off" | "fallback";
@@ -32,6 +33,8 @@ export interface VerifyUneffectProjectBaseOptions {
   builtinRegistry?: BuiltinContractRegistry;
   /** Opt in to source-mapped ESM initialization-order evidence for one entry module. */
   moduleInitializationEntry?: string;
+  /** Apply one solver policy to every Z3-backed project verification domain. */
+  z3?: Z3ExecutionOptions;
 }
 
 export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseOptions {
@@ -205,7 +208,7 @@ async function verifyUneffectProjectFiles(
   const emittedFiles: Record<string, string> = {};
   const temporalModels: ProjectTemporalModel[] = [];
   const temporalProperties: ProjectTemporalProperty[] = [];
-  const typedArrays = await verifyTypedArraySafetyInProgram(options.files);
+  const typedArrays = await verifyTypedArraySafetyInProgram(options.files, options.z3);
   const program = compilerContext?.program ?? inMemoryProgram(options.files, compilerContext?.project.compilerOptions, compilerContext?.project.projectReferences);
   const typescriptDiagnostics = Object.keys(options.files).flatMap((fileName) => {
     const source = program.getSourceFile(fileName);
@@ -261,7 +264,7 @@ async function verifyUneffectProjectFiles(
   const assumptions = collectAssumptionLedger(program, options.files, typedArrays, options.assumptionPolicy, options.builtinRegistry);
   diagnostics.push(...assumptions.diagnostics);
   for (const [fileName, source] of Object.entries(options.files)) {
-    const verification = await verifyContractObligations(fileName, source);
+    const verification = await verifyContractObligations(fileName, source, options.z3);
     obligations.push(...verification.artifacts.map((artifact) => invalidSources.has(fileName)
       ? { ...artifact, status: "unknown" as const, evidence: "unknown" as const, backend: "z3" as const, result: "unknown" as const, message: "TypeScript errors prevent proof-grade contract evidence for this source" }
       : { ...artifact, backend: "z3" as const, result: artifact.status }));

@@ -1,16 +1,16 @@
 import type { ParsedSpec, TemporalSpec } from "./spec-ir.js";
 import { parseTemporalExpression, typeCheckTemporalExpression, type TemporalExpression, type TemporalValueType } from "./temporal-expressions.js";
 import { parseSpec } from "./spec-ir.js";
-import { init as initZ3 } from "z3-solver";
 import { createHash } from "node:crypto";
 import { createModelCounterexample, type ModelCounterexample, type ModelState } from "./model-replay.js";
+import { executeZ3, type Z3Execution, type Z3ExecutionOptions, type Z3ValueRequest } from "./z3.js";
 
 export interface SpecLintDiagnostic {
   code: "tautological-invariant" | "contradictory-invariant" | "state-independent-invariant" | "no-op-action"
     | "solver-tautology" | "solver-contradiction" | "inconsistent-init" | "unreachable-action" | "duplicate-property" | "subsumed-property"
     | "bounded-unreachable-action" | "deadlocked-initial-state" | "bounded-reachable-deadlock"
     | "inductively-unreachable-action" | "strengthened-unreachable-action" | "finite-state-unreachable-action" | "non-inductive-strengthening-property" | "unknown-strengthening-property" | "inductively-vacuous-property" | "strengthened-vacuous-property"
-    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-recurrence-cycle" | "reachable-stabilization-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-recurrence-target" | "statewise-vacuous-recurrence" | "unsatisfiable-stabilization-target" | "statewise-vacuous-stabilization" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-unreachable-response-trigger" | "inductively-unreachable-response-trigger" | "strengthened-unreachable-response-trigger" | "finite-state-unreachable-response-trigger" | "bounded-unreachable-recurrence-target" | "inductively-unreachable-recurrence-target" | "strengthened-unreachable-recurrence-target" | "finite-state-unreachable-recurrence-target" | "bounded-unreachable-stabilization-target" | "inductively-unreachable-stabilization-target" | "strengthened-unreachable-stabilization-target" | "finite-state-unreachable-stabilization-target" | "bounded-vacuous-property" | "unsupported-backend-domain";
+    | "no-state-progress-from-init" | "bounded-no-state-progress" | "reachable-stutter-cycle" | "reachable-liveness-cycle" | "reachable-recurrence-cycle" | "reachable-stabilization-cycle" | "reachable-response-cycle" | "initially-vacuous-liveness" | "unsatisfiable-recurrence-target" | "statewise-vacuous-recurrence" | "unsatisfiable-stabilization-target" | "statewise-vacuous-stabilization" | "unsatisfiable-response-trigger" | "statewise-vacuous-response" | "bounded-unreachable-response-trigger" | "inductively-unreachable-response-trigger" | "strengthened-unreachable-response-trigger" | "finite-state-unreachable-response-trigger" | "bounded-unreachable-recurrence-target" | "inductively-unreachable-recurrence-target" | "strengthened-unreachable-recurrence-target" | "finite-state-unreachable-recurrence-target" | "bounded-unreachable-stabilization-target" | "inductively-unreachable-stabilization-target" | "strengthened-unreachable-stabilization-target" | "finite-state-unreachable-stabilization-target" | "bounded-vacuous-property" | "unsupported-backend-domain" | "solver-backend-error";
   name: string;
   message: string;
   relatedName?: string;
@@ -127,6 +127,8 @@ export interface TemporalReachabilityLintOptions {
   relationalStrengtheningMaxCoefficient?: number;
   relationalStrengtheningCandidateLimit?: number;
   synthesizeCollectionStrengtheningProperties?: boolean;
+  /** Select the common native/WASM SMT-LIB execution policy. */
+  z3?: Z3ExecutionOptions;
 }
 
 export interface SpecLintWithZ3Options extends Omit<TemporalReachabilityLintOptions, "maxSteps"> {
@@ -681,14 +683,14 @@ function temporalToSmt(
   return `(${smtBinaryOperator(expression.operator)} ${temporalToSmt(expression.left, resolveName, symbols, undefined, boundName)} ${temporalToSmt(expression.right, resolveName, symbols, undefined, boundName)})`;
 }
 
-let solverSequence = 0;
-async function check(spec: TemporalSpec, assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> {
-  const { Context } = await initZ3();
-  const context: any = new Context(`uneffect_spec_lint_${solverSequence++}`);
-  const solver = new context.Solver();
+async function executeCheck(spec: TemporalSpec, assertions: readonly string[], options: Z3ExecutionOptions = {}): Promise<Z3Execution> {
   const declarations = [...z3TypeDeclarations(spec.states.map((state) => state.type)), ...spec.states.map((state) => `(declare-const ${state.name} ${smtSort(state.type)})`)];
-  solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
-  return String(await solver.check()) as "sat" | "unsat" | "unknown";
+  return executeZ3(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"), options);
+}
+
+async function check(spec: TemporalSpec, assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> {
+  const status = (await executeCheck(spec, assertions)).status;
+  return status === "error" ? "unknown" : status;
 }
 
 export type TemporalEquivalenceResult =
@@ -701,6 +703,7 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
   spec: TemporalSpec,
   left: TemporalExpression,
   right: TemporalExpression,
+  options: Z3ExecutionOptions = {},
 ): Promise<TemporalEquivalenceResult> {
   if (spec.states.some((state) => !supportsZ3SemanticType(state.type)) || !supportsZ3Expression(left) || !supportsZ3Expression(right)) {
     return { status: "unknown", backend: "z3", reason: "unsupported-backend-domain" };
@@ -713,12 +716,15 @@ export async function checkTemporalExpressionEquivalenceWithZ3(
       return { status: "unknown", backend: "z3", reason: "equivalence-requires-matching-scalar-expressions" };
     }
     const unequal = `(not (= ${temporalToSmt(left, (name) => name, symbols)} ${temporalToSmt(right, (name) => name, symbols)}))`;
-    const status = await check(spec, [unequal]);
+    const execution = await executeCheck(spec, [unequal], options);
+    const status = execution.status;
     return status === "unsat"
       ? { status: "equivalent", backend: "z3" }
       : status === "sat"
         ? { status: "different", backend: "z3" }
-        : { status: "unknown", backend: "z3", reason: "solver-returned-unknown" };
+        : { status: "unknown", backend: "z3", reason: status === "error"
+          ? `solver-${execution.failureKind ?? "error"}: ${execution.stderr}`
+          : "solver-returned-unknown" };
   } catch (error) {
     return { status: "unknown", backend: "z3", reason: error instanceof Error ? error.message : String(error) };
   }
@@ -782,28 +788,49 @@ function z3ObservationDeclarations(prefix: string, expression: string, type: Tem
   ));
 }
 
-function decodeZ3Observation(model: any, context: any, prefix: string, type: TemporalValueType, universe: FiniteUniverse): any {
+function z3ObservationRequests(prefix: string, type: TemporalValueType, universe: FiniteUniverse): Z3ValueRequest[] {
+  if (typeof type === "string") return [{ name: prefix, expression: prefix, sort: type === "int" ? "Int" : "Bool" }];
+  if (type.kind === "set") {
+    if (type.element !== "int" && type.element !== "bool" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
+    return observationValues(type.element, universe).map((_value, index) => ({ name: `${prefix}__member__${index}`, expression: `${prefix}__member__${index}`, sort: "Bool" }));
+  }
+  if (type.kind === "map") {
+    const mapType = z3MapType(type);
+    if (!mapType) throw new Error("Z3 counterexample observation requires a supported Map");
+    return observationValues(mapType.key, universe).flatMap((_key, index) => [
+      { name: `${prefix}__member__${index}`, expression: `${prefix}__member__${index}`, sort: "Bool" as const },
+      ...z3ObservationRequests(`${prefix}__value__${index}`, mapType.value, universe),
+    ]);
+  }
+  const recordType = z3RecordType(type);
+  if (!recordType) throw new Error("Z3 counterexample observation requires a supported record");
+  const names = recordNames(recordType);
+  return names.fields.flatMap((field, index) => z3ObservationRequests(`${prefix}__field__${index}`, recordType.fields[field]!, universe));
+}
+
+function decodeZ3Observation(values: Readonly<Record<string, string>>, prefix: string, type: TemporalValueType, universe: FiniteUniverse): any {
   if (typeof type === "string") {
-    const expression = type === "int" ? context.Int.const(prefix) : context.Bool.const(prefix);
-    return parseZ3TemporalValue(model.eval(expression, true).toString(), type);
+    const value = values[prefix];
+    if (value === undefined) throw new Error(`Z3 omitted temporal observation ${prefix}`);
+    return parseZ3TemporalValue(value, type);
   }
   if (type.kind === "set") {
     if (type.element !== "int" && type.element !== "bool" && type.element !== "never") throw new Error("Z3 counterexample observation supports scalar Set elements only");
-    return observationValues(type.element, universe).filter((_value, index) => model.eval(context.Bool.const(`${prefix}__member__${index}`), true).toString() === "true");
+    return observationValues(type.element, universe).filter((_value, index) => values[`${prefix}__member__${index}`] === "true");
   }
   if (type.kind === "map") {
     const mapType = z3MapType(type);
     if (!mapType) throw new Error("Z3 counterexample observation requires a supported Map");
     return observationValues(mapType.key, universe).flatMap((key, index) => {
-      if (model.eval(context.Bool.const(`${prefix}__member__${index}`), true).toString() !== "true") return [];
-      return [[key, decodeZ3Observation(model, context, `${prefix}__value__${index}`, mapType.value, universe)]];
+      if (values[`${prefix}__member__${index}`] !== "true") return [];
+      return [[key, decodeZ3Observation(values, `${prefix}__value__${index}`, mapType.value, universe)]];
     });
   }
   const recordType = z3RecordType(type);
   if (!recordType) throw new Error("Z3 counterexample observation requires a supported record");
   const names = recordNames(recordType);
   return Object.fromEntries(names.fields.map((field, index) => [
-    field, decodeZ3Observation(model, context, `${prefix}__field__${index}`, recordType.fields[field]!, universe),
+    field, decodeZ3Observation(values, `${prefix}__field__${index}`, recordType.fields[field]!, universe),
   ]));
 }
 
@@ -811,7 +838,7 @@ function decodeZ3Observation(model: any, context: any, prefix: string, type: Tem
 export async function findTemporalCounterexampleWithZ3(
   spec: TemporalSpec,
   propertyName: string,
-  options: { maxSteps?: number } = {},
+  options: { maxSteps?: number; z3?: Z3ExecutionOptions } = {},
 ): Promise<TemporalCounterexampleResult> {
   const property = spec.properties.find((candidate) => candidate.name === propertyName);
   if (!property) throw new Error(`unknown temporal property: ${propertyName}`);
@@ -841,8 +868,6 @@ export async function findTemporalCounterexampleWithZ3(
     });
     return `(and (= ${actionAt(step)} ${actionIndex}) ${guard} ${updates.join(" ")})`;
   }).join(" ")})`;
-  const { Context } = await initZ3();
-  const context: any = new Context(`uneffect_temporal_counterexample_${solverSequence++}`);
   for (let depth = 0; depth <= maxSteps; depth++) {
     if (depth > 0 && spec.actions.length === 0) break;
     const assertions = [
@@ -850,18 +875,23 @@ export async function findTemporalCounterexampleWithZ3(
       ...Array.from({ length: depth }, (_, step) => transition(step)),
       `(not ${temporalToSmt(property.expressionAst, (name) => at(name, depth), symbols)})`,
     ];
-    const solver = new context.Solver();
     const program = ["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n");
-    solver.fromString(program);
-    const status = String(await solver.check());
-    if (status === "unknown") return { status: "unknown", depth };
-    if (status !== "sat") continue;
-    const model = solver.model();
+    const requests = [
+      ...Array.from({ length: depth + 1 }, (_, step) => spec.states.flatMap((state) => z3ObservationRequests(observationAt(state.name, step), state.type, universe))).flat(),
+      ...Array.from({ length: depth }, (_, step): Z3ValueRequest => ({ name: actionAt(step), expression: actionAt(step), sort: "Int" })),
+    ];
+    const execution = await executeZ3(program, { ...options.z3, values: requests });
+    if (execution.status === "unknown" || execution.status === "error") return { status: "unknown", depth };
+    if (execution.status !== "sat") continue;
+    const values = execution.values;
+    if (!values) return { status: "unknown", depth };
     const states: ModelState[] = Array.from({ length: depth + 1 }, (_, step) => Object.fromEntries(spec.states.map((state) => [
-      state.name, decodeZ3Observation(model, context, observationAt(state.name, step), state.type, universe),
+      state.name, decodeZ3Observation(values, observationAt(state.name, step), state.type, universe),
     ])));
     const actions = Array.from({ length: depth }, (_, step) => {
-      const selected = Number(model.eval(context.Int.const(actionAt(step)), true).toString());
+      const selectedValue = values[actionAt(step)];
+      if (selectedValue === undefined) throw new Error(`Z3 omitted temporal action ${actionAt(step)}`);
+      const selected = parseZ3TemporalValue(selectedValue, "int") as number;
       const action = spec.actions[selected];
       if (!action) throw new Error(`Z3 selected invalid temporal action ${selected} at step ${step}`);
       return action.name;
@@ -916,14 +946,18 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
   });
   const diagnostics: SpecLintDiagnostic[] = [];
   const completenessDepth = finiteStateCompletenessDepth(spec);
-  const { Context } = await initZ3();
-  const context: any = new Context(`uneffect_reachability_lint_${solverSequence++}`);
+  let backendFailure: Z3Execution | undefined;
   const checkAssertions = async (assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> => {
-    const solver = new context.Solver();
-    solver.fromString(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"));
-    return String(await solver.check()) as "sat" | "unsat" | "unknown";
+    if (backendFailure) return "unknown";
+    const execution = await executeZ3(["(set-logic ALL)", ...declarations, ...assertions.map((value) => `(assert ${value})`)].join("\n"), options.z3);
+    if (execution.status === "error") { backendFailure = execution; return "unknown"; }
+    return execution.status;
   };
   const initStatus = await checkAssertions(init);
+  if (backendFailure) return [{
+    code: "solver-backend-error", name: "<backend>", backend: "z3",
+    message: `Z3 ${backendFailure.backend} backend failed (${backendFailure.failureKind ?? "error"}): ${backendFailure.stderr}`,
+  }];
   const strengthening: TemporalSpec["properties"] = [];
   const explicitStrengthening = new Set(options.strengtheningProperties ?? []);
   const synthesized = [
@@ -1244,50 +1278,57 @@ export async function lintTemporalReachabilityWithZ3(spec: TemporalSpec, options
 }
 
 /** Semantic lint over all typed states. It does not claim reachable-state or progress analysis. */
-export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLintDiagnostic[]> {
+export async function lintTemporalSpecWithZ3(spec: TemporalSpec, options: Z3ExecutionOptions = {}): Promise<SpecLintDiagnostic[]> {
   if (!supportsZ3SpecExpressions(spec) || spec.states.some((state) => !supportsZ3SemanticType(state.type))) return [{
     code: "unsupported-backend-domain", name: "<model>", backend: "z3",
     message: "Z3 semantic lint does not support this temporal domain; use Quint or a supported scalar/collection shape",
   }];
   const diagnostics: SpecLintDiagnostic[] = [];
+  let backendFailure: Z3Execution | undefined;
+  const run = async (assertions: readonly string[]): Promise<"sat" | "unsat" | "unknown"> => {
+    if (backendFailure) return "unknown";
+    const execution = await executeCheck(spec, assertions, options);
+    if (execution.status === "error") { backendFailure = execution; return "unknown"; }
+    return execution.status;
+  };
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
   const initConstraints = spec.init.map((item) => `(= ${item.target} ${temporalToSmt(item.expressionAst, (name) => name, symbols, symbols.get(item.target))})`);
-  if (await check(spec, initConstraints) === "unsat") diagnostics.push({
+  if (await run(initConstraints) === "unsat") diagnostics.push({
     code: "inconsistent-init", name: "<init>", backend: "z3", message: "temporal init constraints are jointly unsatisfiable",
   });
 
   const classified = new Set<string>();
   for (const property of spec.properties) {
     const expression = temporalToSmt(property.expressionAst, (name) => name, symbols);
-    if (await check(spec, [`(not ${expression})`]) === "unsat") {
+    if (await run([`(not ${expression})`]) === "unsat") {
       classified.add(property.name);
       diagnostics.push({ code: "solver-tautology", name: property.name, backend: "z3", message: `${property.name} is valid for every typed state` });
-    } else if (await check(spec, [expression]) === "unsat") {
+    } else if (await run([expression]) === "unsat") {
       classified.add(property.name);
       diagnostics.push({ code: "solver-contradiction", name: property.name, backend: "z3", message: `${property.name} is false for every typed state` });
     }
   }
-  for (const action of spec.actions) if (action.guard && await check(spec, [temporalToSmt(action.guard.expressionAst, (name) => name, symbols)]) === "unsat") diagnostics.push({
+  for (const action of spec.actions) if (action.guard && await run([temporalToSmt(action.guard.expressionAst, (name) => name, symbols)]) === "unsat") diagnostics.push({
     code: "unreachable-action", name: action.name, backend: "z3", message: `${action.name} has an unsatisfiable guard for every typed state`,
   });
   for (const property of spec.recurrences) {
     const expression = temporalToSmt(property.expressionAst, (name) => name, symbols);
-    if (await check(spec, [expression]) === "unsat") diagnostics.push({
+    if (await run([expression]) === "unsat") diagnostics.push({
       code: "unsatisfiable-recurrence-target", name: property.name, backend: "z3",
       message: `${property.name} is false for every typed state, so its recurrence obligation cannot be satisfied`,
     });
-    else if (await check(spec, [`(not ${expression})`]) === "unsat") diagnostics.push({
+    else if (await run([`(not ${expression})`]) === "unsat") diagnostics.push({
       code: "statewise-vacuous-recurrence", name: property.name, backend: "z3",
       message: `${property.name} is true for every typed state, so its recurrence obligation imposes no temporal constraint`,
     });
   }
   for (const property of spec.stabilizations) {
     const expression = temporalToSmt(property.expressionAst, (name) => name, symbols);
-    if (await check(spec, [expression]) === "unsat") diagnostics.push({
+    if (await run([expression]) === "unsat") diagnostics.push({
       code: "unsatisfiable-stabilization-target", name: property.name, backend: "z3",
       message: `${property.name} is false for every typed state, so its stabilization obligation cannot be satisfied`,
     });
-    else if (await check(spec, [`(not ${expression})`]) === "unsat") diagnostics.push({
+    else if (await run([`(not ${expression})`]) === "unsat") diagnostics.push({
       code: "statewise-vacuous-stabilization", name: property.name, backend: "z3",
       message: `${property.name} is true for every typed state, so its stabilization obligation imposes no temporal constraint`,
     });
@@ -1295,11 +1336,11 @@ export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLi
   for (const property of spec.responses) {
     const trigger = temporalToSmt(property.triggerAst, (name) => name, symbols);
     const response = temporalToSmt(property.responseAst, (name) => name, symbols);
-    if (await check(spec, [trigger]) === "unsat") diagnostics.push({
+    if (await run([trigger]) === "unsat") diagnostics.push({
       code: "unsatisfiable-response-trigger", name: property.name, backend: "z3",
       message: `${property.name} has an unsatisfiable trigger for every typed state, so its response obligation can never start`,
     });
-    else if (await check(spec, [trigger, `(not ${response})`]) === "unsat") diagnostics.push({
+    else if (await run([trigger, `(not ${response})`]) === "unsat") diagnostics.push({
       code: "statewise-vacuous-response", name: property.name, backend: "z3",
       message: `${property.name} is already satisfied whenever its trigger holds in any typed state, so it imposes no future response obligation`,
     });
@@ -1316,12 +1357,16 @@ export async function lintTemporalSpecWithZ3(spec: TemporalSpec): Promise<SpecLi
         break;
       }
       const implicationCounterexample = [temporalToSmt(earlier.expressionAst, (name) => name, symbols), `(not ${temporalToSmt(current.expressionAst, (name) => name, symbols)})`];
-      if (await check(spec, implicationCounterexample) === "unsat") {
+      if (await run(implicationCounterexample) === "unsat") {
         diagnostics.push({ code: "subsumed-property", name: current.name, relatedName: earlier.name, backend: "z3", message: `${current.name} is implied by earlier property ${earlier.name}` });
         break;
       }
     }
   }
+  if (backendFailure) diagnostics.unshift({
+    code: "solver-backend-error", name: "<backend>", backend: "z3",
+    message: `Z3 ${backendFailure.backend} backend failed (${backendFailure.failureKind ?? "error"}): ${backendFailure.stderr}`,
+  });
   return diagnostics;
 }
 
@@ -1440,9 +1485,15 @@ export async function lintSpecWithZ3(fileName: string, text: string, options: Sp
     relationalStrengtheningMaxCoefficient: options.relationalStrengtheningMaxCoefficient,
     relationalStrengtheningCandidateLimit: options.relationalStrengtheningCandidateLimit,
     synthesizeCollectionStrengtheningProperties: options.synthesizeCollectionStrengtheningProperties,
+    z3: options.z3,
   });
+  const semantic = await lintTemporalSpecWithZ3(result.spec.temporal, options.z3);
+  const solverFailure = semantic.find((diagnostic) => diagnostic.code === "solver-backend-error")
+    ?? reachability.find((diagnostic) => diagnostic.code === "solver-backend-error");
   return {
     spec: result.spec,
-    diagnostics: [...result.diagnostics, ...await lintTemporalSpecWithZ3(result.spec.temporal), ...reachability],
+    diagnostics: solverFailure
+      ? [...result.diagnostics, solverFailure]
+      : [...result.diagnostics, ...semantic, ...reachability],
   };
 }

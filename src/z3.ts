@@ -11,6 +11,7 @@ export interface Z3ExecutionResult {
   version: string;
   status: "sat" | "unsat" | "unknown" | "error";
   model?: string;
+  values?: Readonly<Record<string, string>>;
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -30,6 +31,16 @@ export interface Z3ExecutionOptions {
   timeoutMs?: number;
   maxOutputBytes?: number;
   nativeExecutable?: string;
+  /** Scalar model observations; expressions currently use declared Int/Bool symbols. */
+  values?: readonly Z3ValueRequest[];
+  /** Use Optimize so top-level minimize/maximize objectives are honored. */
+  optimize?: boolean;
+}
+
+export interface Z3ValueRequest {
+  name: string;
+  expression: string;
+  sort: "Int" | "Bool" | "String";
 }
 
 export interface Z3BackendDriver {
@@ -97,6 +108,45 @@ function withCheckSat(program: string): string {
   return /\(check-sat\)/u.test(program) ? program : `${program.replace(/\s*$/u, "")}\n(check-sat)\n`;
 }
 
+type SExpression = string | SExpression[];
+
+function parseSExpression(input: string): SExpression {
+  const tokens = input.match(/\(|\)|\|(?:\\.|[^|])*\||"(?:""|[^"])*"|[^\s()]+/gu) ?? [];
+  let index = 0;
+  const parse = (): SExpression => {
+    const token = tokens[index++];
+    if (token === undefined) throw new Error("missing S-expression value");
+    if (token !== "(") {
+      if (token === ")") throw new Error("unexpected closing S-expression parenthesis");
+      return token;
+    }
+    const values: SExpression[] = [];
+    while (tokens[index] !== ")") {
+      if (tokens[index] === undefined) throw new Error("unterminated S-expression list");
+      values.push(parse());
+    }
+    index++;
+    return values;
+  };
+  const value = parse();
+  if (index !== tokens.length) throw new Error("multiple S-expression values in solver output");
+  return value;
+}
+
+function renderSExpression(value: SExpression): string {
+  return typeof value === "string" ? value : `(${value.map(renderSExpression).join(" ")})`;
+}
+
+function parseNativeValues(stdout: string, requests: readonly Z3ValueRequest[]): Readonly<Record<string, string>> {
+  const body = stdout.replace(/^.*?(?:unsat|sat|unknown)\s*\r?\n/su, "").trim();
+  const root = parseSExpression(body);
+  if (!Array.isArray(root) || root.length !== requests.length) throw new Error(`native Z3 returned ${Array.isArray(root) ? root.length : 0} values for ${requests.length} observations`);
+  return Object.fromEntries(root.map((pair, index) => {
+    if (!Array.isArray(pair) || pair.length !== 2) throw new Error(`native Z3 returned an invalid value pair at index ${index}`);
+    return [requests[index]!.name, renderSExpression(pair[1]!)];
+  }));
+}
+
 const smtCommands = new Set([
   "assert", "check-sat", "check-sat-assuming", "declare-const", "declare-datatype", "declare-datatypes",
   "declare-fun", "declare-sort", "define-fun", "define-fun-rec", "define-funs-rec", "echo", "exit",
@@ -159,6 +209,14 @@ function createNativeDriver(executable: string): Z3BackendDriver {
       if (failureKind) return { ...base, status: "error", failureKind };
       const status = semanticStatus(execution.stdout);
       if (!status) return { ...base, status: "error", failureKind: "crash", stderr: `${base.stderr}${base.stderr ? "\n" : ""}native Z3 produced no semantic verdict` };
+      if (status === "sat" && options.values?.length) {
+        const valuesInput = `${input.replace(/\s*$/u, "")}\n(get-value (${options.values.map((request) => request.expression).join(" ")}))\n`;
+        const valuesExecution = spawnSync(executable, ["-in", "-smt2"], { input: valuesInput, encoding: "utf8", timeout: options.timeoutMs ?? 30_000, maxBuffer: options.maxOutputBytes ?? 16 * 1024 * 1024 });
+        const valuesFailure = nativeFailure(valuesExecution);
+        if (valuesFailure) return { backend: "native", version: base.version, executable, status: "error", failureKind: valuesFailure, stdout: valuesExecution.stdout ?? "", stderr: valuesExecution.stderr ?? "", exitCode: valuesExecution.status };
+        try { return { ...base, status, values: parseNativeValues(valuesExecution.stdout ?? "", options.values) }; }
+        catch (cause) { return { ...base, status: "error", failureKind: "crash", stderr: cause instanceof Error ? cause.message : String(cause) }; }
+      }
       if (status !== "sat" || !options.produceModel) return { ...base, status };
       const modelExecution = spawnSync(executable, ["-in", "-smt2"], { input: `${input.replace(/\s*$/u, "")}\n(get-model)\n`, encoding: "utf8", timeout: options.timeoutMs ?? 30_000, maxBuffer: options.maxOutputBytes ?? 16 * 1024 * 1024 });
       const modelFailure = nativeFailure(modelExecution);
@@ -180,11 +238,16 @@ const wasmDriver: Z3BackendDriver = {
     if (invalid) return { backend: "wasm", version, status: "error", failureKind: "invalid-input", stdout: "", stderr: invalid, exitCode: 1 };
     try {
       const context = await createZ3Context("smt");
-      const solver = new context.Solver();
+      const solver = options.optimize ? new context.Optimize() : new context.Solver();
       solver.fromString(program.replace(/\(check-sat\)\s*/gu, ""));
       const status = String(await solver.check()) as Z3ExecutionResult["status"];
       const model = status === "sat" && options.produceModel ? solver.model().toString() : undefined;
-      return { backend: "wasm", version, status, model, stdout: `${status}\n`, stderr: "", exitCode: 0 };
+      const values = status === "sat" && options.values?.length ? Object.fromEntries(options.values.map((request) => {
+        const expression = request.sort === "Int" ? context.Int.const(request.expression)
+          : request.sort === "Bool" ? context.Bool.const(request.expression) : context.String.const(request.expression);
+        return [request.name, solver.model().eval(expression, true).toString()];
+      })) : undefined;
+      return { backend: "wasm", version, status, model, values, stdout: `${status}\n`, stderr: "", exitCode: 0 };
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       const failureKind: Z3FailureKind = /^\(error\s/mu.test(message) ? "invalid-input"

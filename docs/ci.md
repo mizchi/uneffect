@@ -52,9 +52,10 @@ collapsing CI-level parallelism.
 CI deliberately does not install native Z3: this continuously proves that the
 published WASM fallback remains sufficient. `test/z3-backend.test.ts` also
 executes native Z3 when the host already supplies it and always exercises an
-absent-native fallback. The native/WASM common layer currently covers Hoare
-contracts and ownership evidence; solver clients that decode WASM model objects
-remain explicitly outside that claim.
+absent-native fallback. The native/WASM common layer covers Hoare contracts,
+ownership evidence, temporal semantic/reachability lint, named-observation
+counterexample decoding, property model enumeration, and typed-array
+obligations.
 
 The upstream Z3 WASM worker can still fail nondeterministically in an otherwise
 fresh process with `memory access out of bounds` from `z3-built.wasm`. The tier

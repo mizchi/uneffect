@@ -2,7 +2,7 @@ import ts from "typescript";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { describeObligation, explainCounterexample, obligationRule } from "./contract-explanations.js";
 import { generateObligationSmt, InvariantLoweringError, lowerInvariantProgram, type InvariantObligation } from "./invariant-ir.js";
-import { executeZ3, type Z3Execution } from "./z3.js";
+import { executeZ3, type Z3Execution, type Z3ExecutionOptions } from "./z3.js";
 
 export interface VerificationArtifact {
   obligationId: string;
@@ -58,7 +58,7 @@ function unsupportedOwner(source: ts.SourceFile, cause: unknown): { functionName
 }
 
 /** Verify every lowered obligation. Unsupported syntax and solver unknown are explicit non-proofs. */
-export async function verifyContractObligations(fileName: string, text: string): Promise<ContractVerificationResult> {
+export async function verifyContractObligations(fileName: string, text: string, z3?: Z3ExecutionOptions): Promise<ContractVerificationResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   let obligations: InvariantObligation[];
   try {
@@ -80,7 +80,7 @@ export async function verifyContractObligations(fileName: string, text: string):
   const diagnostics: ContractDiagnostic[] = [];
   const artifacts: VerificationArtifact[] = [];
   for (const obligation of obligations) {
-    const execution = await executeZ3(generateObligationSmt(obligation, false), { produceModel: true });
+    const execution = await executeZ3(generateObligationSmt(obligation, false), { ...z3, produceModel: true });
     const status = execution.status;
     const solver = { backend: execution.backend, version: execution.version, attempts: execution.attempts };
     const base = { obligationId: obligation.id, source: { fileName, span: obligation.span }, obligation: { functionName: obligation.functionName, clause: clauseOf(obligation), source: obligation.source }, solver };

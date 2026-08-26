@@ -1,8 +1,8 @@
 import ts from "typescript";
 import { posix } from "node:path";
-import { init } from "z3-solver";
 import { extractAnnotations } from "./annotations.js";
 import { logicToSmt, parseLogicExpression } from "./invariant-ir.js";
+import { executeZ3, type Z3ExecutionOptions } from "./z3.js";
 
 export interface TypedArrayObligation {
   functionName: string;
@@ -25,18 +25,14 @@ export interface TypedArraySafetyStatistics { solverQueries: number }
 export interface TypedArraySafetyResult { obligations: TypedArrayObligation[]; diagnostics: TypedArrayDiagnostic[]; statistics: TypedArraySafetyStatistics }
 export interface TypedArrayProgramSafetyResult extends TypedArraySafetyResult { files: Record<string, TypedArraySafetyResult> }
 
-let z3Initialization: ReturnType<typeof init> | undefined;
-
-async function prove(parameters: readonly ts.ParameterDeclaration[], assumptions: string[], goal: string): Promise<"verified" | "counterexample" | "unknown"> {
+async function prove(parameters: readonly ts.ParameterDeclaration[], assumptions: string[], goal: string, z3?: Z3ExecutionOptions): Promise<"verified" | "counterexample" | "unknown"> {
   try {
-    const initialized = await (z3Initialization ??= init()), ctx: any = new initialized.Context(`uneffect_u8_${Date.now()}_${Math.random()}`), solver = new ctx.Solver();
     const names = new Set(parameters.flatMap((parameter) => ts.isIdentifier(parameter.name) ? [parameter.name.text] : []));
     for (const expression of [...assumptions, goal]) for (const match of expression.matchAll(/[A-Za-z_$][\w$]*/g)) {
       if (!["true", "false"].includes(match[0])) names.add(match[0]);
     }
     const lines = ["(set-logic ALL)", ...[...names].map((name) => `(declare-const ${name} Int)`), ...assumptions.map((item) => `(assert ${logicToSmt(parseLogicExpression(item))})`), `(assert (not ${logicToSmt(parseLogicExpression(goal))}))`];
-    solver.fromString(lines.join("\n"));
-    const status = String(await solver.check());
+    const status = (await executeZ3(lines.join("\n"), z3)).status;
     return status === "unsat" ? "verified" : status === "sat" ? "counterexample" : "unknown";
   } catch {
     return "unknown";
@@ -381,7 +377,7 @@ function enclosingLoopAssumptions(current: ts.Node, owner: ts.FunctionDeclaratio
   return facts;
 }
 
-async function verifyTypedArraySafetyWithTables(fileName: string, text: string, importedTables: ReadonlyMap<string, ConstantTable>, semantics?: TypedArraySemantics): Promise<TypedArraySafetyResult> {
+async function verifyTypedArraySafetyWithTables(fileName: string, text: string, importedTables: ReadonlyMap<string, ConstantTable>, semantics?: TypedArraySemantics, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
   const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), obligations: TypedArrayObligation[] = [], diagnostics: TypedArrayDiagnostic[] = [];
   let solverQueries = 0;
   const constants = collectConstants(source);
@@ -564,7 +560,7 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
       const invalidInteger = candidate.requiresInteger && range?.integer === false;
       const staticallyInside = range && candidate.upper !== undefined && range.minimum >= (candidate.lower ?? 0) && range.maximum <= candidate.upper && (!candidate.requiresInteger || range.integer);
       if (!candidate.knownResult && !invalidInteger && !staticallyInside) solverQueries++;
-      const proofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal));
+      const proofResult = candidate.knownResult ?? (invalidInteger ? "counterexample" : staticallyInside ? "verified" : await prove(node.parameters, [...assumptions, ...(candidate.assumptions ?? [])], candidate.goal, z3));
       const statement = enclosingStatement(candidate.node, node);
       const statementLeading = statement ? source.text.slice(statement.getFullStart(), statement.getStart(source)) : "";
       const trust = typedArrayTrust(statementLeading, candidate.kind) ?? functionTrust;
@@ -585,12 +581,12 @@ async function verifyTypedArraySafetyWithTables(fileName: string, text: string, 
   return { obligations, diagnostics, statistics: { solverQueries } };
 }
 
-export async function verifyTypedArraySafety(fileName: string, text: string): Promise<TypedArraySafetyResult> {
-  return verifyTypedArraySafetyWithTables(fileName, text, new Map());
+export async function verifyTypedArraySafety(fileName: string, text: string, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
+  return verifyTypedArraySafetyWithTables(fileName, text, new Map(), undefined, z3);
 }
 
 /** Strict builtin recognition for callers that already own a TypeScript Program. */
-export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Program, source: ts.SourceFile): Promise<TypedArraySafetyResult> {
+export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Program, source: ts.SourceFile, z3?: Z3ExecutionOptions): Promise<TypedArraySafetyResult> {
   const checker = program.getTypeChecker();
   const methods = new Set(["floor", "ceil", "round", "trunc"] as const);
   type IntegerCast = "floor" | "ceil" | "round" | "trunc";
@@ -669,7 +665,7 @@ export async function verifyTypedArraySafetyInTypeScriptProgram(program: ts.Prog
     ts.forEachChild(node, visit);
   };
   visit(source);
-  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts });
+  return verifyTypedArraySafetyWithTables(source.fileName, source.text, new Map(), { integerCasts }, z3);
 }
 
 function resolveProgramModule(from: string, specifier: string, files: Readonly<Record<string, string>>): string | undefined {
@@ -710,7 +706,7 @@ function resolveProgramModule(from: string, specifier: string, files: Readonly<R
   return candidates.find((candidate) => Object.hasOwn(files, candidate));
 }
 
-export async function verifyTypedArraySafetyInProgram(files: Record<string, string>): Promise<TypedArrayProgramSafetyResult> {
+export async function verifyTypedArraySafetyInProgram(files: Record<string, string>, z3?: Z3ExecutionOptions): Promise<TypedArrayProgramSafetyResult> {
   const sources = new Map(Object.entries(files).map(([fileName, text]) => [fileName, ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)]));
   const localTables = new Map<string, Map<string, ConstantTable>>();
   const exportedTables = new Map<string, Map<string, ConstantTable>>();
@@ -760,7 +756,7 @@ export async function verifyTypedArraySafetyInProgram(files: Record<string, stri
         }
       }
     }
-    results[fileName] = await verifyTypedArraySafetyWithTables(fileName, files[fileName]!, imports);
+    results[fileName] = await verifyTypedArraySafetyWithTables(fileName, files[fileName]!, imports, undefined, z3);
   }
   return {
     files: results,

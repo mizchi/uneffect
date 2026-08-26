@@ -78,7 +78,8 @@ warn     java (command)          not found on PATH
 ```
 
 The default `UNEFFECT_Z3_BACKEND=auto` policy uses a working native `z3` first
-for Hoare contracts and ownership evidence, then uses the bundled `z3-solver`
+for Hoare contracts, ownership evidence, temporal semantic lint, bounded
+reachability, and counterexample extraction, then uses the bundled `z3-solver`
 WASM build if native startup fails. A native timeout does not fall back by
 default, because retrying an expensive query on a second engine can conceal a
 resource limit. `UNEFFECT_Z3_BACKEND=native` or `wasm` requires exactly that
@@ -89,11 +90,11 @@ fallback trigger; this also guards against the WASM parser treating an ignored
 top-level command as an empty satisfiable query. Evidence retains every failed
 infrastructure attempt.
 
-Native Z3 is optional: systems without it still run through WASM. The temporal
-counterexample decoder, generated property tests, and typed-array checker have
-not yet migrated from the WASM model API, so backend selection currently does
-not cover them. This limitation is deliberate and reported rather than
-claiming whole-toolchain native support.
+Native Z3 is optional: systems without it still run through WASM. Temporal
+counterexamples decode named Bool/Int observations back into scalar, Set, Map,
+and record traces on either runtime. Generated property tests enumerate named
+model observations on the same boundary, and typed-array obligations submit
+the same reviewable SMT-LIB to either backend.
 
 Packages are resolved from the project being checked first, then from this
 installation, because a peer dependency belongs to the project and only the

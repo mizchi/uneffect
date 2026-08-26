@@ -823,6 +823,26 @@ describe("evidence and optimizer obligations", () => {
     }));
   });
 
+  it("applies one explicit Z3 policy to integrated contract and typed-array verification", async () => {
+    const result = await verifyUneffectProject({
+      files: { "src/contract.ts": `
+        type Nat = number
+        /* uneffect: requires value >= 0 */
+        /* uneffect: ensures result >= 0 */
+        export function identity(value: Nat): Nat { return value }
+      `, "src/typed-array.ts": `
+        type Nat = number
+        /* uneffect: requires value * 2 <= 255 */
+        export function write(bytes: Uint8Array, value: Nat) { bytes[0] = value }
+      ` },
+      z3: { preference: "native", nativeExecutable: "/uneffect/missing/integrated-z3" },
+    });
+    expect(result.obligations).toContainEqual(expect.objectContaining({ result: "unknown" }));
+    expect(result.typedArrays.obligations).toContainEqual(expect.objectContaining({
+      functionName: "write", kind: "u8-write", result: "unknown",
+    }));
+  });
+
   it("distinguishes verified evidence from accepted assumptions", async () => {
     const verified = await verifyUneffectProject({ files: {
       "src/pure.ts": `export function identity(value: number) { return value }`,

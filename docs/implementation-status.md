@@ -402,14 +402,15 @@ same property is proved for arbitrary TypeScript.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test
   files are process-isolated.
-- Hoare-contract and ownership-evidence SMT-LIB share an
+- Hoare-contract, ownership-evidence, and temporal SMT-LIB share an
   `auto | native | wasm` execution boundary. Auto mode prefers an available
   native process, falls back only after classified infrastructure failure, and
   preserves every attempt in evidence; semantic `sat`, `unsat`, and `unknown`
   verdicts and malformed SMT-LIB are not retried. A canonical-command guard
   prevents an ignored WASM parser command from becoming an empty query.
-  Temporal trace decoding, property generation, and
-  typed-array solvers still use the WASM object API and are outside this claim.
+  Temporal semantic lint, bounded reachability, structured trace decoding,
+  property model enumeration, and typed-array obligations all use the same
+  boundary; structured values are reconstructed from named scalar observations.
 - Diagnostics from every checker share one reportable shape with explanation
   notes: a counterexample is replayed over the invariant IR as concrete values,
   an effect is traced back to the operation that produces it, and a construct

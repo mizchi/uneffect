@@ -49,13 +49,12 @@ with Apalache.
 
 Everything the published toolchain runs itself is JVM-free: models are generated
 in TypeScript, simulation uses Quint's own evaluator, and temporal bounded verification
-runs on the `z3-solver` WASM build — `findTemporalCounterexampleWithZ3` unrolls
+runs on the common native/WASM Z3 layer — `findTemporalCounterexampleWithZ3` unrolls
 the neutral transition IR and reports `counterexample`, `safe-within-bound`, or
 `unknown`, and the strengthening synthesis in `lintSpecWithZ3` turns an
 invariant inductive without leaving that path. No `uneffect` command requires
-Java, and `uneffect doctor` reports it as optional. Hoare and ownership SMT-LIB
-checks independently prefer an optional native Z3 process; this does not yet
-change the temporal model-decoding path described here.
+Java, and `uneffect doctor` reports it as optional. Named Bool/Int observations
+reconstruct scalar, Set, Map, and record traces identically on native and WASM.
 
 Two places deliberately keep the JVM:
 

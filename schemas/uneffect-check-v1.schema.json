@@ -130,6 +130,7 @@
         "version": { "type": "string" },
         "status": { "enum": ["sat", "unsat", "unknown", "error"] },
         "model": { "type": "string" },
+        "values": { "type": "object", "additionalProperties": { "type": "string" } },
         "stdout": { "type": "string" },
         "stderr": { "type": "string" },
         "exitCode": { "type": ["integer", "null"] },

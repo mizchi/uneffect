@@ -283,9 +283,10 @@ Hoare-contract and ownership-evidence checks prefer a native `z3` executable
 when one is available and fall back to the bundled `z3-solver` WASM build when
 it is not. Set `UNEFFECT_Z3_BACKEND=auto|native|wasm` to choose the policy and
 `UNEFFECT_Z3_PATH` to pin the native executable. Native Z3 remains optional.
-Temporal counterexample decoding, property generation, and typed-array checks
-still use the WASM API directly; `doctor` and evidence report the concrete
-runtime only for the checks that use the common SMT-LIB execution layer.
+Temporal semantic lint, bounded reachability, and structured counterexample
+decoding use the same backend through named scalar observations. Property-test
+model enumeration and typed-array obligations use that boundary as well, so
+the backend policy applies to every current solver client.
 
 ## Diagnostics and evidence
 

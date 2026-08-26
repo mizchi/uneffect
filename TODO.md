@@ -40,7 +40,10 @@ documentation are all updated.
 - [x] Publish one `uneffect` binary with subcommands, strict option parsing, `--help`/`--version`, and documented streams and exit codes, replacing the four ad-hoc CLI entry points.
 - [x] Check the toolchain before a run with `uneffect doctor`: Node, the peer TypeScript, `@types/node`, the selected native/WASM Z3 backend, and the optional Quint and Java runners, each naming what it blocks and how to satisfy it.
 - [x] Add an `auto | native | wasm` SMT-LIB execution layer for Hoare contracts and ownership evidence: prefer optional native Z3, fall back only on classified infrastructure failure, never reinterpret semantic verdicts, and preserve attempts in evidence.
-- [ ] Migrate temporal counterexample decoding, property generation, and typed-array checks from direct WASM model objects to the common native/WASM execution layer without losing structured model replay. ([#17](https://github.com/mizchi/uneffect/issues/17))
+- [x] Complete migration of solver clients from direct WASM model objects to the common native/WASM execution layer. ([#17](https://github.com/mizchi/uneffect/issues/17))
+  - [x] Migrate temporal semantic lint, bounded reachability, and structured scalar/Set/Map/record counterexample replay through named `get-value` observations; report backend failures instead of silently omitting lint findings.
+  - [x] Migrate solver-backed property generation without losing model enumeration and shrinking.
+  - [x] Migrate typed-array verification without losing structured obligation witnesses.
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
 - [x] Resolve immutable component-local function/arrow callbacks and transitive `const` aliases used by JSX event attributes, while diagnosing reassigned or otherwise opaque handlers.

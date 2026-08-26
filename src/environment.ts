@@ -129,16 +129,16 @@ async function solverCheck(): Promise<EnvironmentCheck> {
     const execution = await executeZ3("(set-logic ALL)\n(declare-const probe Int)\n(assert (> probe 0))\n");
     const milliseconds = Number((process.hrtime.bigint() - started) / 1_000_000n);
     if (execution.status !== "sat") {
-      return { name: "z3 backend", status: "error", detail: `${execution.backend} ${execution.version}, probe query answered ${execution.status}${execution.failureKind ? ` (${execution.failureKind})` : ""}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`", remedy: "set UNEFFECT_Z3_BACKEND=wasm to use the bundled solver, or install/configure a working native executable with UNEFFECT_Z3_PATH" };
+      return { name: "z3 backend", status: "error", detail: `${execution.backend} ${execution.version}, probe query answered ${execution.status}${execution.failureKind ? ` (${execution.failureKind})` : ""}`, requiredBy: "contract/temporal verification in `check` and ownership evidence in `instrument --verify-ownership`", remedy: "set UNEFFECT_Z3_BACKEND=wasm to use the bundled solver, or install/configure a working native executable with UNEFFECT_Z3_PATH" };
     }
     const fallback = execution.attempts.length > 1 ? ` after ${execution.attempts.length - 1} failed attempt(s)` : "";
-    return { name: "z3 backend", status: "ok", detail: `${execution.backend} ${execution.version}, probe query answered in ${milliseconds} ms${fallback}`, requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`" };
+    return { name: "z3 backend", status: "ok", detail: `${execution.backend} ${execution.version}, probe query answered in ${milliseconds} ms${fallback}`, requiredBy: "contract/temporal verification in `check` and ownership evidence in `instrument --verify-ownership`" };
   } catch (cause) {
     return {
       name: "z3 backend",
       status: "error",
       detail: cause instanceof Error ? cause.message : String(cause),
-      requiredBy: "contract verification in `check` and ownership evidence in `instrument --verify-ownership`",
+      requiredBy: "contract/temporal verification in `check` and ownership evidence in `instrument --verify-ownership`",
       remedy: "use UNEFFECT_Z3_BACKEND=auto or wasm, reinstall z3-solver, or point UNEFFECT_Z3_PATH at a working native Z3 executable",
     };
   }

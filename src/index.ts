@@ -255,4 +255,4 @@ export type { BuildOutputFileIntegrity, BuildOutputIntegrity } from "./build-out
 export { assessProjectVerification } from "./project-assurance.js";
 export type { ProjectAssuranceAssessment, ProjectAssuranceBlocker, ProjectAssuranceCoverage, ProjectAssuranceDomain } from "./project-assurance.js";
 export { executeZ3, parseZ3BackendPreference } from "./z3.js";
-export type { Z3Backend, Z3BackendPreference, Z3Execution, Z3ExecutionOptions, Z3ExecutionResult, Z3FailureKind } from "./z3.js";
+export type { Z3Backend, Z3BackendPreference, Z3Execution, Z3ExecutionOptions, Z3ExecutionResult, Z3FailureKind, Z3ValueRequest } from "./z3.js";

@@ -48,6 +48,19 @@ describe("bounded Uint8Array safety", () => {
     expect(result.obligations.filter((item) => item.functionName === "compound")).toHaveLength(2);
   });
 
+  it("does not bypass an explicitly unavailable native Z3 backend", async () => {
+    const result = await verifyTypedArraySafety("native-unavailable.ts", `
+      import type { Nat, U8 } from "@mizchi/uneffect"
+      /* uneffect: requires value * 2 <= 255 */
+      function write(bytes: Uint8Array, value: Nat) { bytes[0] = value }
+    `, { preference: "native", nativeExecutable: "/uneffect/missing/z3" });
+    expect(result.obligations).toContainEqual(expect.objectContaining({
+      functionName: "write",
+      kind: "u8-write",
+      result: "unknown",
+    }));
+  });
+
   it("checks DataView byte offsets and rejects implicit value coercion", async () => {
     const result = await verifyTypedArraySafety("data-view.ts", `
       import type { BoundedDataView, Nat, U8, U32 } from "@mizchi/uneffect"
