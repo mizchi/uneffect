@@ -4,7 +4,7 @@
   "title": "Uneffect workspace check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"],
+  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-workspace-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -12,6 +12,7 @@
     "references": { "type": "array", "items": { "$ref": "#/$defs/reference" } },
     "buildOrder": { "type": "array", "items": { "type": "string" } },
     "buildArtifacts": { "$ref": "#/$defs/buildArtifacts" },
+    "outputIntegrity": { "$ref": "#/$defs/outputIntegrity" },
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "./uneffect-check-v1.schema.json" } },
     "effectComposition": { "$ref": "#/$defs/effectComposition" },
@@ -78,6 +79,20 @@
         "observations": { "type": "array", "items": {
           "type": "object", "additionalProperties": false, "required": ["code", "message"],
           "properties": { "code": { "type": "integer" }, "message": { "type": "string" } }
+        } }
+      }
+    },
+    "outputIntegrity": {
+      "type": "object", "additionalProperties": false, "required": ["status", "outputs"],
+      "properties": {
+        "status": { "enum": ["not-checked", "verified", "missing", "mismatch", "error"] },
+        "message": { "type": "string" },
+        "outputs": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "status", "fileName", "expectedDigest"],
+          "properties": {
+            "kind": { "enum": ["declaration", "runtime"] }, "status": { "enum": ["verified", "missing", "mismatch"] },
+            "fileName": { "type": "string" }, "projectFile": { "type": "string" }, "expectedDigest": { "type": "string" }, "actualDigest": { "type": "string" }, "message": { "type": "string" }
+          }
         } }
       }
     },

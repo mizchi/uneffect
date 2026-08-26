@@ -124,6 +124,12 @@ opt-in it remains an exclusion. Even `fresh` establishes TypeScript's
 timestamp/buildinfo/config/version judgment. The separate Effect-link integrity
 ledger records expected and actual SHA-256 digests. It trusts the exact selected
 TypeScript compiler and is not an independently checkable compiler proof.
+When deployed code is the JavaScript emitted by the checked TypeScript projects,
+`--require-exact-build-artifacts` or `buildArtifacts: "require-exact"` adds a
+second ledger for all emitted runtime and declaration bytes. It also requires
+SolutionBuilder freshness. A project using `noEmit`, `emitDeclarationOnly`, a
+bundler, or a post-emit transform fails this stronger gate because Uneffect has
+not established the mapping to deployed code.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
 It rejects unknown effect summaries, nested unknown capability scopes,

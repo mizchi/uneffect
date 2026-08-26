@@ -7,6 +7,7 @@ import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
 import type { WorkspaceEffectComposition } from "./workspace-effects.js";
+import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -38,6 +39,7 @@ export interface WorkspaceCheckBlocker {
   projectFile: string;
   message: string;
   reference?: string;
+  subject?: string;
 }
 
 export interface WorkspaceCheckAssurance {
@@ -56,6 +58,7 @@ export interface CheckWorkspaceJsonReport {
   references: Array<{ from: string; to: string }>;
   buildOrder: string[];
   buildArtifacts: { status: "fresh" | "stale" | "unknown"; observations: Array<{ code: number; message: string }> };
+  outputIntegrity: BuildOutputIntegrity;
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: CheckJsonReport[];
   effectComposition: {
@@ -110,7 +113,7 @@ export function createCheckWorkspaceJsonReport(
   workspace: TypeScriptWorkspace,
   projects: CheckJsonReport[],
   profile?: AssuranceProfile,
-  options: { requireFreshBuildArtifacts?: boolean } = {},
+  options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity } = {},
   effectComposition?: WorkspaceEffectComposition,
 ): CheckWorkspaceJsonReport {
   const blockers: WorkspaceCheckBlocker[] = workspace.blockers.map((blocker) => ({
@@ -123,6 +126,12 @@ export function createCheckWorkspaceJsonReport(
       ? "TypeScript SolutionBuilder reports stale or missing composite build artifacts"
       : "TypeScript SolutionBuilder did not establish composite build-artifact freshness",
   });
+  const outputIntegrity = options.outputIntegrity ?? { status: "not-checked" as const, outputs: [] };
+  if (outputIntegrity.status !== "not-checked" && outputIntegrity.status !== "verified") {
+    const failed = outputIntegrity.outputs.filter((output) => output.status !== "verified");
+    if (failed.length === 0) blockers.push({ kind: "build-output", classification: "unknown", projectFile: workspace.rootProjectFile, message: outputIntegrity.message ?? "build output integrity is unknown" });
+    for (const output of failed) blockers.push({ kind: "build-output", classification: "unknown", projectFile: output.projectFile ?? workspace.rootProjectFile, subject: output.fileName, message: output.message ?? `${output.kind} output integrity is unknown` });
+  }
   const compositionBlockers: WorkspaceCheckBlocker[] = (effectComposition?.blockers ?? []).map((blocker) => ({ ...blocker }));
   blockers.push(...compositionBlockers);
   const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
@@ -155,11 +164,13 @@ export function createCheckWorkspaceJsonReport(
         ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
         ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
+        ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
         "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
+        ...(outputIntegrity.status === "verified" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
         "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
       ],
@@ -168,7 +179,7 @@ export function createCheckWorkspaceJsonReport(
   return {
     schema: "uneffect-workspace-check/v1", outcome: failed ? "failed" : "passed",
     rootProjectFile: workspace.rootProjectFile, references: workspace.references, buildOrder: workspace.buildOrder,
-    buildArtifacts: workspace.buildArtifacts,
+    buildArtifacts: workspace.buildArtifacts, outputIntegrity,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
     effectComposition: {
       status: compositionBlockers.length === 0 ? "verified" : "unknown",

@@ -60,6 +60,8 @@ describe("uneffect command line", () => {
     expect(io.stderr).toContain("usage: uneffect check");
     const misplacedBuildGate = capture();
     expect(await runCli(["check", "--require-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedBuildGate)).toBe(exitCode.usage);
+    const misplacedExactBuildGate = capture();
+    expect(await runCli(["check", "--require-exact-build-artifacts", "fixtures/effects/missing-console.ts"], misplacedExactBuildGate)).toBe(exitCode.usage);
     expect(misplacedBuildGate.stderr).toContain("requires --project without positional files");
   });
 
@@ -321,7 +323,7 @@ describe("uneffect command line", () => {
       ]);
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
-        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"]),
+        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"]),
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -379,6 +381,13 @@ describe("uneffect command line", () => {
         },
       });
       writeFileSync(declarationFile, declarationText);
+
+      const exactArtifacts = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-exact-build-artifacts", "--json"], exactArtifacts)).toBe(exitCode.failed);
+      expect(JSON.parse(exactArtifacts.stdout)).toMatchObject({
+        outputIntegrity: { status: "error", outputs: [] },
+        blockers: expect.arrayContaining([expect.objectContaining({ kind: "build-output", message: expect.stringContaining("does not emit runtime JavaScript") })]),
+      });
 
       writeFileSync(join(a, "src", "a.ts"), `
         /* uneffect: effect_parameter iterator extends Console */

@@ -102,9 +102,11 @@ single compiler domain; they do not request solution expansion.
 
 If downstream projects rely on checked-in or cached composite outputs, add
 `--require-build-artifacts`. This rejects missing/stale `.d.ts` and buildinfo
-according to TypeScript SolutionBuilder. It does not prove that independently
-modified output bytes match their source; retain trusted build isolation and
-artifact integrity controls for that stronger claim.
+according to TypeScript SolutionBuilder. If the deployment executes the exact
+TypeScript emit, use `--require-exact-build-artifacts` instead. It additionally
+byte-compares emitted declarations and runtime JavaScript against an in-memory
+emit and rejects post-build changes. It intentionally cannot certify bundler or
+post-transform output.
 
 To see a load-bearing failure, change the return to `return value - 1`. The
 postcondition must then fail with a source-mapped counterexample. Also replace

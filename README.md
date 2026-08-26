@@ -148,6 +148,12 @@ output freshness is part of the boundary. Independently of that opt-in freshness
 gate, every declaration consumed by Effect composition is SHA-256-bound to an
 exact same-compiler in-memory re-emission. This trusts the selected TypeScript
 compiler; it is not a proof certificate for TypeScript itself.
+For a deployment boundary that executes TypeScript-emitted JavaScript, use
+`--require-exact-build-artifacts` or `buildArtifacts: "require-exact"`. This
+also requires SolutionBuilder freshness and byte-compares every emitted `.js`,
+`.mjs`, `.cjs`, and declaration output with the same Program's in-memory emit.
+`emitDeclarationOnly`, `noEmit`, bundler output, and post-TypeScript transforms
+cannot satisfy this stronger gate without a separately validated mapping.
 
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for

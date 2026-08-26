@@ -20,6 +20,7 @@ import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
+import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 
 export interface VerifyUneffectProjectBaseOptions {
   runtimeAssertions?: "off" | "fallback";
@@ -41,8 +42,8 @@ export interface VerifyUneffectProjectOptions extends VerifyUneffectProjectBaseO
 export interface VerifyUneffectWorkspaceOptions extends VerifyUneffectProjectBaseOptions {
   projectFile: string;
   files?: never;
-  /** Require TypeScript SolutionBuilder to report every composite output as current. */
-  buildArtifacts?: "ignore" | "require-fresh";
+  /** Require SolutionBuilder freshness, or exact same-compiler runtime/declaration output bytes. */
+  buildArtifacts?: "ignore" | "require-fresh" | "require-exact";
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -93,6 +94,7 @@ export interface VerifyUneffectWorkspaceResult {
   references: Array<{ from: string; to: string }>;
   buildOrder: string[];
   buildArtifacts: { status: "fresh" | "stale" | "unknown"; observations: Array<{ code: number; message: string }> };
+  outputIntegrity: BuildOutputIntegrity;
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: ProjectWorkspaceVerificationDomain[];
   effectComposition: { status: "verified" | "unknown"; links: WorkspaceEffectLink[]; blockers: WorkspaceEffectCompositionBlocker[] };
@@ -332,7 +334,7 @@ function workspaceFiles(project: TypeScriptProject): { files: Record<string, str
 async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions): Promise<VerifyUneffectWorkspaceResult> {
   const workspace = loadTypeScriptWorkspace(options.projectFile);
   const blockers = workspace.blockers.map(workspaceBlocker);
-  if (options.buildArtifacts === "require-fresh" && workspace.buildArtifacts.status !== "fresh") blockers.push({
+  if (options.buildArtifacts !== undefined && options.buildArtifacts !== "ignore" && workspace.buildArtifacts.status !== "fresh") blockers.push({
     kind: "build-artifact", classification: "unknown", projectFile: workspace.rootProjectFile,
     message: workspace.buildArtifacts.status === "stale"
       ? "TypeScript SolutionBuilder reports stale or missing composite build artifacts"
@@ -341,6 +343,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
   const projects: ProjectWorkspaceVerificationDomain[] = [];
   const effectLinks: WorkspaceEffectLink[] = [], effectBlockers: WorkspaceEffectCompositionBlocker[] = [];
   const completed: CompletedEffectProject[] = [];
+  const outputIntegrity: BuildOutputIntegrity = { status: options.buildArtifacts === "require-exact" ? "verified" : "not-checked", outputs: [] };
   const base: VerifyUneffectProjectBaseOptions = {
     ...(options.runtimeAssertions === undefined ? {} : { runtimeAssertions: options.runtimeAssertions }),
     ...(options.temporalRuntime === undefined ? {} : { temporalRuntime: options.temporalRuntime }),
@@ -356,6 +359,15 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     const moduleInitializationEntry = options.moduleInitializationEntry === undefined
       ? undefined : resolve(options.moduleInitializationEntry);
     const program = inMemoryProgram(selected.files, project.compilerOptions, project.projectReferences);
+    if (options.buildArtifacts === "require-exact") {
+      const integrity = inspectBuildOutputs(program, project.projectFile);
+      mergeBuildOutputIntegrity(outputIntegrity, integrity);
+      if (integrity.status !== "verified") {
+        const failed = integrity.outputs.filter((output) => output.status !== "verified");
+        if (failed.length === 0) blockers.push({ kind: "build-output", classification: "unknown", projectFile: project.projectFile, message: integrity.message ?? "build output integrity is unknown" });
+        for (const output of failed) blockers.push({ kind: "build-output", classification: "unknown", projectFile: project.projectFile, subject: output.fileName, message: output.message ?? `${output.kind} output integrity is unknown` });
+      }
+    }
     const composition = composeWorkspaceEffects(program, project, completed);
     effectLinks.push(...composition.links);
     effectBlockers.push(...composition.blockers);
@@ -388,11 +400,13 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       "every participating config resolves the exact analyzer TypeScript version",
       ...(effectLinks.length > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
       ...(effectLinks.length > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
+      ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
     ] : [],
     exclusions: [
       "contract, ownership, refinement, and temporal evidence is not composed across project boundaries",
       "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
-      ...(options.buildArtifacts === "require-fresh" ? [] : ["composite build-artifact freshness was observed but not required"]),
+      ...(options.buildArtifacts === "require-fresh" || options.buildArtifacts === "require-exact" ? [] : ["composite build-artifact freshness was observed but not required"]),
+      ...(options.buildArtifacts === "require-exact" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
       "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
       ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions)),
     ],
@@ -400,7 +414,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
   return {
     schema: "uneffect-project-workspace/v1", rootProjectFile: workspace.rootProjectFile,
     references: workspace.references, buildOrder: workspace.buildOrder,
-    buildArtifacts: workspace.buildArtifacts,
+    buildArtifacts: workspace.buildArtifacts, outputIntegrity,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })),
     projects, effectComposition: { status: effectBlockers.length === 0 ? "verified" : "unknown", links: effectLinks, blockers: effectBlockers }, blockers, assurance,
   };

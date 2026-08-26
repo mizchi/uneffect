@@ -145,6 +145,16 @@ exclusion. With the flag, `stale` or `unknown` adds an assurance blocker. A
 `fresh` result means TypeScript considers the configured build current. Effect
 composition additionally compares SHA-256-bound expected/actual declaration
 bytes and rejects post-build tampering; this still trusts the selected compiler.
+`outputIntegrity.status` is `not-checked` unless exact artifact assurance was
+requested, so JSON consumers cannot mistake an omitted check for a successful one.
+
+Use `--require-exact-build-artifacts` when the deployed boundary is exactly the
+JavaScript emitted by these TypeScript projects. It implies the freshness gate
+and records `outputIntegrity` for emitted declarations and `.js`/`.mjs`/`.cjs`
+files. Missing or changed bytes fail closed even if their timestamp makes the
+SolutionBuilder result `fresh`. Projects using `noEmit`, `emitDeclarationOnly`,
+bundlers, or later transforms are deliberately rejected: their deployed-code
+mapping has not been verified by this mode.
 
 | Code | Meaning |
 | --- | --- |

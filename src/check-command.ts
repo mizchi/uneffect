@@ -8,11 +8,12 @@ import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
+import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--require-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
@@ -21,6 +22,7 @@ export const checkCommand: CliCommand = {
     "--config     load a versioned caller-owned semantic registry",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
+    "--require-exact-build-artifacts  also byte-compare TypeScript-emitted declarations and runtime JavaScript",
     "--json       emit a versioned decision report to stdout, including failures",
     "",
     "This is the default command: `uneffect <file.ts>` runs it.",
@@ -33,12 +35,13 @@ export const checkCommand: CliCommand = {
       config: { type: "string" },
       project: { type: "string" },
       "require-build-artifacts": { type: "boolean" },
+      "require-exact-build-artifacts": { type: "boolean" },
       json: { type: "boolean" },
     });
     if (values.help) { io.out(formatCommandHelp(checkCommand)); return exitCode.success; }
     if (positionals.length === 0 && values.project === undefined) throw new CliUsageError("check needs at least one file or --project");
-    if (values["require-build-artifacts"] && (values.project === undefined || positionals.length > 0)) {
-      throw new CliUsageError("--require-build-artifacts requires --project without positional files");
+    if ((values["require-build-artifacts"] || values["require-exact-build-artifacts"]) && (values.project === undefined || positionals.length > 0)) {
+      throw new CliUsageError("build-artifact assurance requires --project without positional files");
     }
     const assurance = values.assurance;
     if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared") {
@@ -55,15 +58,17 @@ export const checkCommand: CliCommand = {
       }
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"])) {
+    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"])) {
       const reports = [];
       const completed: CompletedEffectProject[] = [];
       const composed: WorkspaceEffectComposition = { contracts: new Map(), moduleContracts: new Map(), links: [], blockers: [] };
+      const outputIntegrity: BuildOutputIntegrity = { status: values["require-exact-build-artifacts"] ? "verified" : "not-checked", outputs: [] };
       for (const domain of workspace.projects) {
         if (domain.fileNames.length === 0) continue;
         const program = createCheckProgram(domain.fileNames, {
           compilerOptions: domain.compilerOptions, projectReferences: domain.projectReferences,
         });
+        if (values["require-exact-build-artifacts"]) mergeBuildOutputIntegrity(outputIntegrity, inspectBuildOutputs(program, domain.projectFile));
         const composition = composeWorkspaceEffects(program, domain, completed);
         composed.links.push(...composition.links);
         composed.blockers.push(...composition.blockers);
@@ -78,7 +83,7 @@ export const checkCommand: CliCommand = {
         completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs: inspectDeclarationOutputs(program) });
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
-        requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"]),
+        requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
       }, composed);
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {
@@ -90,6 +95,7 @@ export const checkCommand: CliCommand = {
         }
         for (const blocker of report.blockers) io.err(`error workspace/${blocker.kind} ${blocker.projectFile}\n  message: ${blocker.message}\n`);
         io.err(`build artifacts: ${report.buildArtifacts.status} (TypeScript SolutionBuilder dry run)\n`);
+        io.err(`output integrity: ${report.outputIntegrity.status} (same-compiler declaration/runtime byte comparison)\n`);
         io.err(`workspace: ${report.outcome}; ${reports.length} checked compiler domain(s), ${report.blockers.length} blocker(s)\n`);
       }
       return report.outcome === "passed" ? exitCode.success : exitCode.failed;

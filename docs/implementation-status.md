@@ -439,6 +439,9 @@ same property is proved for arbitrary TypeScript.
   same-compiler re-emission, with expected/actual SHA-256 digests in the ledger;
   SolutionBuilder freshness remains a separate reportable/required gate. This
   is content integrity, not an independently checkable TypeScript compiler proof.
+  An optional exact-build gate also compares every TypeScript-emitted runtime
+  JavaScript file and declaration with the same Program's in-memory emit; it
+  rejects declaration-only/no-emit and transformed build pipelines.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.
@@ -465,8 +468,9 @@ same property is proved for arbitrary TypeScript.
   workspace result aggregates graph and child blockers without flattening the
   Programs. Only the narrow verified function/module-Effect interface described above
   is linked across projects. Cross-project refinements, contracts, ownership,
-  temporal models, advanced Effect substitution, and declaration/build artifact
-  content validation remain explicit non-claims.
+  temporal models and refinement evidence remain explicit non-claims. Declaration
+  bytes used by Effect links are validated; exact TypeScript runtime emit can be
+  opted into, while bundler/post-transform semantic mappings remain unvalidated.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect

@@ -45,13 +45,15 @@ is `schemas/uneffect-project-workspace-v1.schema.json`.
 This aggregation links only uniquely resolved `verified` function and module Effect
 summaries across project declaration/import boundaries and records every accepted or
 blocked link in `effectComposition`. It does not link solver obligations,
-refinements, ownership, temporal evidence, function/module `Mutate` substitutions, or iterator
-Effect parameters. It also does not establish that `.d.ts`,
-`.tsbuildinfo`, or emitted JavaScript bytes are semantically equivalent to the
-sources. Pass `buildArtifacts: "require-fresh"` to make TypeScript
-SolutionBuilder's dry-run freshness judgment load-bearing; missing/stale
-outputs, compiler/config drift, and incomplete buildinfo then block assurance.
-The stronger content-integrity claim remains a machine-readable exclusion.
+refinements, ownership, or temporal evidence. Supported parameter, exported
+closure/module, same-realm global, and bounded iterator Effect substitutions are
+part of the linked Effect contract. Every declaration consumed by such a link
+must exactly match a SHA-256-bound same-compiler in-memory declaration emit.
+Pass `buildArtifacts: "require-fresh"` to make TypeScript SolutionBuilder's
+dry-run freshness judgment load-bearing. Use `buildArtifacts: "require-exact"`
+when deployed code is the exact TypeScript emit: it additionally byte-compares
+all emitted declarations and runtime JavaScript. `noEmit`, `emitDeclarationOnly`,
+bundlers, and post-emit transforms do not satisfy that stronger claim.
 
 `uneffect evidence file.ts` emits `schemaVersion: 3`. Each summary retains its
 stable Program identity, source file, UTF-16 span, formatted concrete effects,

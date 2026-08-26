@@ -57,7 +57,7 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-project-workspace/v1" } },
-        required: expect.arrayContaining(["buildArtifacts", "configs", "projects", "effectComposition", "blockers", "assurance"]),
+        required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"]),
       });
       expect(verified.projects.map((item) => item.project.projectFile)).toEqual([
         join(aDirectory, "tsconfig.json"), join(bDirectory, "tsconfig.json"),
@@ -256,6 +256,43 @@ describe("evidence and optimizer obligations", () => {
       const drifted = await verifyUneffectProject({ projectFile: root });
       expect(drifted.assurance).toMatchObject({ status: "unknown", passed: false });
       expect(drifted.blockers).toContainEqual(expect.objectContaining({ kind: "typescript", classification: "unknown" }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  it("rejects a post-build runtime output mismatch under exact artifact assurance", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-project-runtime-integrity-"));
+    const root = join(directory, "tsconfig.json"), child = join(directory, "child"), parent = join(directory, "parent");
+    try {
+      const packageDirectory = join(directory, "node_modules", "typescript");
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
+      mkdirSync(join(child, "src"), { recursive: true });
+      mkdirSync(join(parent, "src"), { recursive: true });
+      writeFileSync(join(child, "src", "child.ts"), `/* uneffect: effect Console */\nexport function report() { console.log("verified") }\n`);
+      writeFileSync(join(parent, "src", "parent.ts"), `import { report } from "../../child/dist/child.js"\n/* uneffect: effect Console */\nexport function relay() { report() }\n`);
+      const compilerOptions = { composite: true, declaration: true, outDir: "dist", rootDir: "src", types: [] };
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify({ compilerOptions, include: ["src/**/*.ts"] }));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify({ compilerOptions, include: ["src/**/*.ts"], references: [{ path: "../child" }] }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./child" }, { path: "./parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const exact = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-exact" });
+      expect(exact.blockers).toEqual([]);
+      expect(exact.assurance).toMatchObject({ passed: true });
+      expect(exact.outputIntegrity).toMatchObject({ status: "verified" });
+
+      appendFileSync(join(child, "dist", "child.js"), `\nconsole.log("post-build behavior")\n`);
+      const tampered = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-exact" });
+      expect(tampered.buildArtifacts.status).toBe("fresh");
+      expect(tampered.outputIntegrity).toMatchObject({ status: "mismatch" });
+      expect(tampered.assurance).toMatchObject({ status: "unknown", passed: false });
+      expect(tampered.blockers).toContainEqual(expect.objectContaining({
+        kind: "build-output", classification: "unknown", subject: join(child, "dist", "child.js"),
+        message: expect.stringContaining("runtime output content mismatch"),
+      }));
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
