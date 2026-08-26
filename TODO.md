@@ -28,6 +28,7 @@ unchecked historical sections below; priority is defined in
 | [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
+| [#21](https://github.com/mizchi/uneffect/issues/21) | Callback timing | Restore self-dogfood with symbol-identified synchronous TypeScript traversal contracts |
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -50,6 +51,7 @@ documentation are all updated.
   - [x] Migrate temporal semantic lint, bounded reachability, and structured scalar/Set/Map/record counterexample replay through named `get-value` observations; report backend failures instead of silently omitting lint findings.
   - [x] Migrate solver-backed property generation without losing model enumeration and shrinking.
   - [x] Migrate typed-array verification without losing structured obligation witnesses.
+- [ ] Restore the zero-unknown self-dogfood gate with reviewed, TypeChecker-identified synchronous callback contracts for the TypeScript compiler traversal APIs used internally; same-spelled user APIs must remain unknown. ([#21](https://github.com/mizchi/uneffect/issues/21))
 - [x] Eliminate an unreachable `catch` edge when the supported refinement fragment proves the `try` body has no throw completion, while keeping unknown/effectful try edges fail-closed. ([#3](https://github.com/mizchi/uneffect/issues/3))
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
@@ -297,7 +299,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Preserve unlabeled `break` as a distinct conditional completion through bounded-loop branches and `try`/`finally`, consume it at the owning finite loop, and run the outer continuation exactly once.
         - [x] Preserve unlabeled `continue` through branches and `try`/`finally`, consume it at each advancement-guaranteed finite `for`/`for...of`/one-shot `do` iteration, and reject it in canonical `while` where it could bypass the modeled increment.
         - [x] Bind static finite-loop labels to target-aware `break`/`continue` completion maps, preserve outer-loop transfers through nested finite loops, branches, switch paths, and `try`/`finally`, and replace source-offset rewriting with capture-screened AST substitution so nested expansion remains source-safe.
-        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map add, set, delete, and clear operations, scalar `if`/`else` merging, bounded literal `for` unrolling, acyclic TypeChecker-resolved direct/namespace helpers and immutable aliases, and terminal returns to general loops, branch-local abrupt completion, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in.
+        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in.
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
           - [x] Normalize native `Set.has(value)` and `Set.size` predicates to temporal `contains` and `size`, while retaining mismatched members as refinement diagnostics.
@@ -690,14 +692,14 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
   - [x] Add restricted path-sensitive must-observe analysis for `if` branches, Promise reassignment, zero-iteration `while`/`for` paths, and at-least-once `do` loops.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
-  - [ ] Replace the restricted path walker with a CFG fixed point covering `switch`, `try`/`finally`, labeled control flow, and complex loop joins.
+  - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins, irreducible loops, and dynamically resolved control flow.
     - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.
     - [x] Preserve guaranteed throw completion through `&&`/`||` when the left throws or finite literal/immutable-const truthiness proves the throwing right side is evaluated; retain unknown short-circuit paths conservatively.
     - [x] Preserve guaranteed throw completion through `??` when the left throws or a statically nullish literal, `void`, global `undefined`, or immutable alias proves the throwing right side is evaluated; retain nullable unions and shadowed identifiers conservatively.
-    - [ ] Build a general exception-aware CFG fixed point for complex loop joins and nested labeled transfers.
+    - [ ] Build a general exception-aware CFG fixed point for complex/irreducible loop joins beyond the bounded, statically owned nested-label fragment.
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
   - [x] Add `consumes_callback_rejection` for Promise-returning callback ownership and diagnose unsafe async callbacks such as `forEach(async ...)`.
