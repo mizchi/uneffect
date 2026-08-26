@@ -185,8 +185,16 @@ builtin array `every`/`some`. The Program TypeChecker resolves direct references
 and immutable `const` aliases, then the supported single-return predicate body
 is normalized under a capture-safe element parameter. A changed predicate
 remains an expression mismatch; a mutable callback binding or alias remains
-unsupported. This is not general higher-order flow: function-valued properties,
-runtime selection, and polymorphic callbacks are still outside the proof claim.
+unsupported. This is not general higher-order flow: other function-valued
+properties, runtime selection, and polymorphic callbacks are still outside the
+proof claim.
+
+One function-valued property form is explicitly proof-grade: a direct property
+of an object literal passed as the sole argument to builtin `Object.freeze`.
+The property initializer may be a supported function value or immutable alias,
+and the TypeChecker must resolve `freeze` to the standard library declaration.
+An ordinary `const` object is still mutable through its properties, and a local
+lookalike named `Object.freeze` carries no authority; both remain unsupported.
 
 A separate labeled-delivery acceptance path models cancellation with
 `attempt: { ... break attempt }`. The local break is consumed only after the

@@ -687,6 +687,23 @@ function resolveProgramImmutableFunctionValue(
   if (!symbol || seen.has(symbol)) return undefined;
   const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
   if (direct) return direct;
+  const frozenProperty = symbol.declarations?.find((declaration): declaration is ts.PropertyAssignment =>
+    ts.isPropertyAssignment(declaration)
+    && ts.isObjectLiteralExpression(declaration.parent)
+    && ts.isCallExpression(declaration.parent.parent)
+    && declaration.parent.parent.arguments.length === 1
+    && declaration.parent.parent.arguments[0] === declaration.parent
+    && ts.isPropertyAccessExpression(declaration.parent.parent.expression)
+    && declaration.parent.parent.expression.name.text === "freeze"
+    && isDeclarationFileSymbol(checker, declaration.parent.parent.expression.name, "freeze"));
+  if (frozenProperty) {
+    const value = frozenProperty.initializer;
+    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) return value;
+    if (ts.isIdentifier(value) || ts.isPropertyAccessExpression(value)) {
+      return resolveProgramImmutableFunctionValue(checker, value, new Set([...seen, symbol]));
+    }
+    return undefined;
+  }
   const binding = symbol.declarations?.find((declaration): declaration is ts.VariableDeclaration =>
     ts.isVariableDeclaration(declaration)
     && ts.isVariableDeclarationList(declaration.parent)

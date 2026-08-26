@@ -300,6 +300,70 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("resolves function-valued properties only from a builtin-frozen predicate registry", () => {
+    const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgram");
+    const parseSpecification = futureApi("parseSpec");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-frozen-predicates-"));
+    const registryFile = join(directory, "registry.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import { predicates } from "./registry.js"
+      /* uneffect:
+       * state owners: Set<int>
+       * init owners = Set(1)
+       * temporal allPositive: owners.forall(owner => owner > 0)
+       * temporal primaryPresent: owners.contains(1)
+       * abstraction routing@1 owners = Set(activeOwnerIds)
+       */
+      interface Runtime { activeOwnerIds: number[] }
+      /* uneffect: refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { activeOwnerIds: Array.from(initial.owners) } }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.activeOwnerIds) } }
+      /* uneffect: refinement routing@1 invariant allPositive */
+      export function allPositive(runtime: Runtime) { return runtime.activeOwnerIds.every(predicates.positive) }
+      /* uneffect: refinement routing@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime) { return runtime.activeOwnerIds.some(predicates.primary) }
+    `;
+    const frozenRegistry = `
+      export const predicates = Object.freeze({
+        positive: (owner: number) => owner > 0,
+        primary: function (owner: number) { return owner === 1 },
+      })
+    `;
+    try {
+      writeFileSync(registryFile, frozenRegistry);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, registryFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const temporal = (parseSpecification(mainFile, source) as { temporal: unknown }).temporal;
+      expect(validateInvariants(program, mainFile, "routing", temporal)).toEqual([]);
+
+      writeFileSync(registryFile, frozenRegistry.replace("Object.freeze({", "({"));
+      const unfrozenProgram = ts.createProgram([mainFile, registryFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(unfrozenProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allPositive" }),
+      );
+
+      writeFileSync(registryFile, `
+        const Object = { freeze<T>(value: T): T { return value } }
+        ${frozenRegistry}
+      `);
+      const lookalikeProgram = ts.createProgram([mainFile, registryFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(lookalikeProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allPositive" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

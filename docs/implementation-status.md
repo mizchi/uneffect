@@ -90,8 +90,10 @@ same property is proved for arbitrary TypeScript.
   not treated as proof evidence. Builtin array `every` and `some` calls may use
   a TypeChecker-resolved local or imported function declaration, arrow
   function, or function-expression predicate with one supported return body;
-  immutable `const` aliases are followed, while
-  mutable aliases and dynamic function values remain unsupported. A reviewed local
+  immutable `const` aliases are followed. A direct property initialized inside
+  a builtin `Object.freeze({...})` registry is also accepted by TypeChecker
+  identity. Mutable aliases, unfrozen registries, same-named `freeze` functions,
+  and dynamic function values remain unsupported. A reviewed local
   runtime-class method may use the same alias chain as its receiver; its body is
   specialized with the existing argument substitution and recursion guard.
   In the Program-backed path, the runtime class may be imported: its parameter
