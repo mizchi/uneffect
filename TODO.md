@@ -6,26 +6,32 @@ in `docs/implementation-status.md` and classified by confidence in
 prioritized in `docs/roadmap.md`; unchecked entries below are retained for
 traceability and map to those issues rather than forming a second active queue.
 
-Open-work mapping:
+## Active issue index
 
-- reachability, vacuity, and deadlock: [#1](https://github.com/mizchi/uneffect/issues/1)
-- temporal synthesis and general formulas: [#2](https://github.com/mizchi/uneffect/issues/2)
-- TypeScript/model refinement and general CFGs: [#3](https://github.com/mizchi/uneffect/issues/3)
-- property generators and shrinkers: [#4](https://github.com/mizchi/uneffect/issues/4)
-- collection state and TLC values/traces: [#5](https://github.com/mizchi/uneffect/issues/5)
-- typed arrays and complete SHA-256 composition: [#6](https://github.com/mizchi/uneffect/issues/6)
-- independently checkable evidence: [#7](https://github.com/mizchi/uneffect/issues/7)
-- native Corsa frontend parity: [#8](https://github.com/mizchi/uneffect/issues/8)
-- unified Promise/exception/resource flow: [#9](https://github.com/mizchi/uneffect/issues/9)
-- Node and Web event-loop ownership: [#10](https://github.com/mizchi/uneffect/issues/10)
-- proof-gated optimizer transformations: [#13](https://github.com/mizchi/uneffect/issues/13)
-- Extend the reviewed DOM overlay beyond the current attribute/tree/text method set, attribute collections, tree topology, `textContent`, `nodeValue`, `CharacterData.data`, and `HTMLInputElement.value`: [#14](https://github.com/mizchi/uneffect/issues/14)
-  - [x] Represent DOM call contracts as non-empty operation sets and infer compound clone, normalize, adjacent-text, and adjacent-HTML effects without a legacy scalar form.
-  - [x] Project reviewed `NamedNodeMap` reads/writes through direct `Element.attributes` access and immutable const aliases; reassigned and escaping live views remain collection-scoped.
-  - [x] Infer compound `innerHTML` serialization/parsing effects and reviewed client/scroll/offset layout reads.
-  - [x] Separate `outerHTML` serialization on the receiver from parse/topology writes and mutation on `receiver.parentNode`; parent-presence refinement remains conservative.
-- complete React function component lifecycle semantics: [#16](https://github.com/mizchi/uneffect/issues/16)
-- native/WASM solver portability and model decoding: [#17](https://github.com/mizchi/uneffect/issues/17)
+GitHub Issues are the active queue. This table maps each open issue to the
+unchecked historical sections below; priority is defined in
+`docs/roadmap.md`.
+
+| Issue | Area | Remaining boundary |
+| --- | --- | --- |
+| [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | General polyhedral/quantified invariants and nested formulas |
+| [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
+| [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Higher-order, recursive, and user-defined predicates |
+| [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | Collection-valued state and remaining TLC values/traces |
+| [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Independently checkable certificates or a measured rejection |
+| [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Complete real Corsa checker fact parity |
+| [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | One general Promise/exception/disposal CFG fixed point |
+| [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
+| [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | Evidence-gated transformations; general optimization remains unimplemented |
+| [#16](https://github.com/mizchi/uneffect/issues/16) | React | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
+| [#17](https://github.com/mizchi/uneffect/issues/17) | Solver reliability | Preserve and classify native/WASM failure telemetry under stress |
+| [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
+| [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
+
+Closed issue history is retained in the relevant checked entries below. In
+particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
+and the reviewed DOM overlay expansion closed [#14](https://github.com/mizchi/uneffect/issues/14).
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

@@ -17,6 +17,9 @@ reflects dependency and soundness risk, not a release date commitment.
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
    build-artifact validation remain.
+4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
+   must extend the current conservative module summaries to exact ESM cycles,
+   top-level await, external packages, and dynamic initialization boundaries.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,
@@ -45,14 +48,19 @@ local result survives composition with real application control flow.
    moves inferred facts and ordered events off the TypeScript reference adapter.
 2. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
    fills host phases, dynamic cancellation, and polymorphic callback gaps.
-3. [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
-   completes TypeChecker-identified `Text*` and `Property*` inference without
-   conflating Web IDL properties with attributes or node topology.
-4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
+3. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
    evaluates certificates and narrows the trusted computing base.
-5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
-   extends the initial phase checker through symbol-resolved custom Hooks,
-   resource identity, replay, and concurrent/server boundaries.
+4. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
+   extends the tested symbol-resolved lifecycle fragment through dynamic
+   component/Hook flow, server boundaries, and broader concurrent scheduling.
+5. [Solver backend reliability](https://github.com/mizchi/uneffect/issues/17)
+   preserves failing inputs and resource telemetry, distinguishes deterministic
+   complexity from corrupted WASM state, and keeps fallback/retry visible.
+
+[DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
+is complete for the reviewed overlay. Unreviewed Web IDL members and dynamic
+DOM keys remain explicit conservative boundaries in `feature-matrix.md`, not
+an untracked continuation of the closed issue.
 
 ## Phase 4 — Consume proofs without widening their claims
 

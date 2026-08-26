@@ -32,18 +32,29 @@ describe("TODO hierarchy consistency", () => {
   it("tracks deferred optimizer implementation in the issue roadmap", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    expect(todo).toContain("proof-gated optimizer transformations: [#13]");
+    expect(todo).toContain("[#13](https://github.com/mizchi/uneffect/issues/13)");
     expect(roadmap).toContain("issues/13");
   });
 
-  it("keeps every open-work issue visible in the user-facing feature matrix", () => {
+  it("keeps every open issue visible in the active index and boundary docs", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
-    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13];
+    const roadmap = readFileSync("docs/roadmap.md", "utf8");
+    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 17, 18, 20];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
-      expect(matrix).toContain(`/issues/${issueNumber}`);
+      expect(`${matrix}\n${roadmap}`).toContain(`/issues/${issueNumber}`);
     }
+  });
+
+  it("keeps closed issue history outside the active issue table", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
+
+    expect(activeIndex).not.toContain("issues/1)");
+    expect(activeIndex).not.toContain("issues/14)");
+    expect(todo).toContain("closed [#1]");
+    expect(todo).toContain("closed [#14]");
   });
 });
