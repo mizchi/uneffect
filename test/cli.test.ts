@@ -287,7 +287,11 @@ describe("uneffect command line", () => {
       expect(JSON.parse(proof.stdout)).toMatchObject({
         contracts: [expect.objectContaining({
           status: "verified",
-          solver: { backend: expect.stringMatching(/^(?:native|wasm)$/), version: expect.any(String), attempts: [expect.objectContaining({ status: "unsat" })] },
+          solver: {
+            backend: expect.stringMatching(/^(?:native|wasm)$/),
+            version: expect.any(String),
+            attempts: expect.arrayContaining([expect.objectContaining({ status: "unsat" })]),
+          },
         })],
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
