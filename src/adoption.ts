@@ -62,6 +62,7 @@ export interface ExternalAdoptionReport {
   sourceFiles: number;
   analyzedFunctions: number;
   unknownSummaries: number;
+  unknownReasonCounts: Record<string, number>;
   diagnostics: Array<{ code: string; functionName: string; message: string }>;
   builtinDrift: DeclarationDriftDiagnostic[];
   frontendMilliseconds: number;
@@ -98,11 +99,16 @@ export async function measureUneffectAdoption(options: { fixtures: readonly Adop
   });
   const externalSources = program.getSourceFiles().filter((source) => source.fileName.includes("/effect/src/"));
   const externalAnalysis = analyzeProgramEffects(program, { requireAnnotations: false });
+  const externalUnknown = externalAnalysis.summaries.filter((summary) => summary.evidence === "unknown");
+  const unknownReasonCounts: Record<string, number> = {};
+  for (const summary of externalUnknown) for (const reason of summary.unknownReasons ?? []) {
+    unknownReasonCounts[reason.code] = (unknownReasonCounts[reason.code] ?? 0) + 1;
+  }
   const builtinDrift = auditBuiltinDeclarationDrift(program);
   const external: ExternalAdoptionReport = {
     packageName: "effect", entry, sourceFiles: externalSources.length,
     analyzedFunctions: externalAnalysis.summaries.length,
-    unknownSummaries: externalAnalysis.summaries.filter((summary) => summary.evidence === "unknown").length,
+    unknownSummaries: externalUnknown.length, unknownReasonCounts,
     diagnostics: externalAnalysis.diagnostics.map((diagnostic) => ({ code: diagnostic.kind, functionName: diagnostic.functionName, message: diagnostic.message })),
     builtinDrift, frontendMilliseconds: performance.now() - externalStarted,
   };

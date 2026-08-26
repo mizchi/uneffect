@@ -756,7 +756,11 @@ describe("evidence and optimizer obligations", () => {
     });
     expect(verified.moduleInitialization).toMatchObject({ evidence: "verified", entryFile: entry });
     expect(verified.assurance.blockers.filter((item) => item.domain === "module-initialization")).toEqual([]);
-    expect(verified.assurance.claims).toContain("the selected ESM module-initialization partial-order extraction is proof-grade");
+    expect(verified.moduleInitialization?.claims).toContain("represented module events follow source order on the normal-completion path");
+    expect(verified.assurance).toMatchObject({ passed: false, claims: [] });
+    expect(verified.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "effect", subject: "<module>", message: expect.stringContaining("unresolved-call"),
+    }));
 
     const unknown = await verifyUneffectProject({
       files: { [entry]: 'import "node:path"; export const ready = true' },

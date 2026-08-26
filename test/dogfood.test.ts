@@ -890,7 +890,7 @@ describe("Uneffect dogfood", () => {
       .toMatchObject({ evidence: "unknown" });
   });
 
-  it("analyzes its own implementation without diagnostics or unknown summaries in inference mode", () => {
+  it("classifies every unknown summary while analyzing its own implementation", () => {
     const program = ts.createProgram(globSync("src/*.ts"), {
       target: ts.ScriptTarget.ES2024,
       module: ts.ModuleKind.NodeNext,
@@ -902,7 +902,12 @@ describe("Uneffect dogfood", () => {
     const result = analyzeProgramEffects(program, { requireAnnotations: false });
     expect(result.summaries.length).toBeGreaterThan(200);
     expect(result.diagnostics).toEqual([]);
-    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+    const unknown = result.summaries.filter((summary) => summary.evidence === "unknown");
+    expect(unknown).toHaveLength(39);
+    expect(unknown.every((summary) => (summary.unknownReasons?.length ?? 0) > 0)).toBe(true);
+    expect(Object.fromEntries([...new Set(unknown.flatMap((summary) => summary.unknownReasons?.map((reason) => reason.code) ?? []))]
+      .map((code) => [code, unknown.filter((summary) => summary.unknownReasons?.some((reason) => reason.code === code)).length])))
+      .toEqual({ "unresolved-call": 8, "unknown-dependency": 31 });
   }, 20_000);
 
   it("analyzes the independently maintained Effect Function module without frontend drift", () => {
@@ -921,7 +926,12 @@ describe("Uneffect dogfood", () => {
     expect(externalSources.length).toBeGreaterThanOrEqual(3);
     expect(result.summaries.length).toBeGreaterThanOrEqual(40);
     expect(result.diagnostics).toEqual([]);
-    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([]);
+    expect(result.summaries.filter((summary) => summary.evidence === "unknown")).toEqual([
+      expect.objectContaining({
+        functionName: "<module>",
+        unknownReasons: [expect.objectContaining({ code: "unresolved-call" })],
+      }),
+    ]);
     expect(auditBuiltinDeclarationDrift(program)).toEqual([]);
   }, 20_000);
 

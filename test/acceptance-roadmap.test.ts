@@ -1948,7 +1948,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       verifierMilliseconds: number;
       frontendMilliseconds: number;
       builtinDrift: unknown[];
-      external: { packageName: string; sourceFiles: number; analyzedFunctions: number; unknownSummaries: number; diagnostics: unknown[]; builtinDrift: unknown[]; frontendMilliseconds: number };
+      external: { packageName: string; sourceFiles: number; analyzedFunctions: number; unknownSummaries: number; unknownReasonCounts: Record<string, number>; diagnostics: unknown[]; builtinDrift: unknown[]; frontendMilliseconds: number };
     };
     expect(report.falsePositiveRate).toBeLessThanOrEqual(0.02);
     expect(report.unknownSummaryRate).toBeLessThanOrEqual(0.05);
@@ -1956,7 +1956,13 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(report.verifierMilliseconds).toBeGreaterThan(0);
     expect(report.frontendMilliseconds).toBeGreaterThan(0);
     expect(report.builtinDrift).toEqual([]);
-    expect(report.external).toMatchObject({ packageName: "effect", unknownSummaries: 0, diagnostics: [], builtinDrift: [] });
+    expect(report.external).toMatchObject({
+      packageName: "effect",
+      unknownSummaries: 1,
+      unknownReasonCounts: { "unresolved-call": 1 },
+      diagnostics: [],
+      builtinDrift: [],
+    });
     expect(report.external.sourceFiles).toBeGreaterThanOrEqual(3);
     expect(report.external.analyzedFunctions).toBeGreaterThanOrEqual(40);
     expect(report.external.frontendMilliseconds).toBeGreaterThan(0);

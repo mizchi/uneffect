@@ -44,6 +44,11 @@ function increment(state: { count: number }) {
 
 Uneffect is not intended to reproduce Effect TS runtime semantics. The Effect TS example is a baseline used to discover what a static summary loses: typed failure channels, resource scopes, interruption, fibers, scheduling, and service provisioning.
 
+The checked-in adoption probe also analyzes Effect's `src/Function.ts`. It
+currently reports one unknown module summary, classified as `unresolved-call`;
+it does not claim complete Effect package coverage. The report exposes
+`unknownReasonCounts` so this boundary cannot be hidden behind an aggregate KPI.
+
 ## Comparison protocol
 
 For representative programs:
