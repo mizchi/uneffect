@@ -36,7 +36,9 @@ export interface OwnershipAssertionRewrite { code: string; decision: Optimizatio
 function overlaps(left: string, right: string): boolean {
   return left === right || left.startsWith(`${right}.`) || left.startsWith(`${right}[`) || right.startsWith(`${left}.`) || right.startsWith(`${left}[`);
 }
-function proofGrade(evidence: EvidenceStatus): boolean { return evidence === "verified" || evidence === "trusted"; }
+// Trust is reviewable input, not a derived proof. Optimizer authorization is
+// deliberately stricter than lint/check acceptance.
+function proofGrade(evidence: EvidenceStatus): boolean { return evidence === "verified"; }
 
 export function evaluateStableReadReuse(obligation: StableReadReuseObligation): OptimizationDecision {
   if (!proofGrade(obligation.evidence)) return { allowed: false, reason: `${obligation.evidence} evidence cannot authorize a transformation`, obligation };

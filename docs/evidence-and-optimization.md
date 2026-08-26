@@ -7,7 +7,9 @@ Uneffect separates gradual diagnostics from authority to rewrite code. Every eff
 - `inferred`: behavior was observed by analysis but has no checked upper bound.
 - `unknown`: analysis, syntax, or a proof obligation was unsupported or contradicted.
 
-`inferred` and `unknown` remain useful for adoption diagnostics, but neither authorizes an optimizer transformation.
+Only `verified` authorizes an optimizer transformation. `trusted`, `inferred`,
+and `unknown` remain useful for adoption and audit diagnostics, but a reviewed
+assumption is not silently upgraded into a semantics-preserving rewrite proof.
 
 `verifyUneffectProject` runs the program-wide effect analysis in gradual
 adoption mode alongside contracts, typed arrays, ownership, assumptions, and
@@ -166,11 +168,18 @@ These prototypes establish the proof boundary, not a production compressor. A fu
 
 `optimizeUneffectProject` is the first project-level authorization API. It
 discovers repeated stable reads and persists `uneffect-project-optimization/v1`.
-The initial analysis only writes evidence; a later build may report a
-transformation as `applied: true` when source hashes, TypeScript revision,
-builtin-contract digest, and closed-world mode still match. Malformed or stale
-artifacts never authorize a transformation. The current result is an
-authorization plan for a downstream compressor, not rewritten JavaScript.
+The initial analysis only writes a dependency snapshot; a later build may
+report a transformation as `applied: true` only after regenerating the local
+proof and matching source hashes, TypeScript revision, builtin-contract digest,
+and closed-world mode. The currently proved receiver subset is deliberately
+narrow: one uniquely named, function-local `const` initialized by a plain
+object literal, with a normal data property, no alias/escape/other receiver
+use, and no call, construction, tagged template, suspension, or overlapping
+update between reads. Parameters, getters, Proxy-capable/open receivers,
+aliases, intervening calls, duplicate binding names, malformed sources, and
+stale artifacts remain `unknown` and never authorize a transformation. The
+current result is an authorization plan for a downstream compressor, not
+rewritten JavaScript.
 
 ## Dogfood gate
 

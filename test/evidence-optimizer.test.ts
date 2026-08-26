@@ -137,6 +137,9 @@ describe("evidence and optimizer obligations", () => {
     expect(evaluateStableReadReuse({ ...base, events: [{ kind: "read", region: "state.value" }, { kind: "read", region: "other" }, { kind: "read", region: "state.value" }] }).allowed).toBe(true);
     expect(evaluateStableReadReuse({ ...base, events: [{ kind: "read" }, { kind: "mutate", region: "state" }, { kind: "read" }] }).allowed).toBe(false);
     expect(evaluateStableReadReuse({ ...base, evidence: "unknown", events: [{ kind: "read" }, { kind: "read" }, { kind: "read" }] }).allowed).toBe(false);
+    expect(evaluateStableReadReuse({ ...base, evidence: "trusted", events: [{ kind: "read" }, { kind: "read" }, { kind: "read" }] })).toMatchObject({
+      allowed: false, reason: expect.stringContaining("trusted evidence cannot authorize"),
+    });
     const source = "const cached = state.value; use(state.value)";
     const start = source.lastIndexOf("state.value");
     expect(applyStableReadReuse(source, { ...base, events: [{ kind: "read" }, { kind: "read", region: "other" }, { kind: "read" }] }, { start, end: start + "state.value".length }, "cached").code)
@@ -149,6 +152,9 @@ describe("evidence and optimizer obligations", () => {
     expect(evaluatePropertyMangle(safe).allowed).toBe(true);
     expect(evaluatePropertyMangle({ ...safe, reflection: true }).allowed).toBe(false);
     expect(evaluatePropertyMangle({ ...safe, closedWorld: false }).allowed).toBe(false);
+    expect(evaluatePropertyMangle({ ...safe, evidence: "trusted" })).toMatchObject({
+      allowed: false, reason: expect.stringContaining("trusted evidence cannot authorize"),
+    });
   });
 
   it("binds ownership proof evidence to the obligation, verifier program, and Z3 version", async () => {

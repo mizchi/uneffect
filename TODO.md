@@ -495,6 +495,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Add one-shot `--ownership` and `--verify-ownership` CLI modes with safe runtime fallback for unresolved or unavailable Z3 proofs.
 - [x] Persist ownership artifacts, reuse matching proofs across builds, and report stale evidence separately from first-time unknowns.
 - [x] Add a project-level stable-read authorization cache bound to source hashes, TypeScript revision, builtin contracts, and closed-world mode.
+- [x] Restrict project stable-read proof to unique function-local `const` plain-object data properties, reject open parameters/getters/aliases/intervening calls, and forbid `trusted` evidence from authorizing optimizer transformations.
 
 The schemas and narrow authorization prototypes above are implemented. A
 production compressor/mangler that consumes them is intentionally deferred to

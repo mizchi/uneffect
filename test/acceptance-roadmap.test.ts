@@ -922,7 +922,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));
     try {
       const options = {
-        files: files({ "src/value.ts": `export function read(value: { stable: number }) { return value.stable + value.stable }` }),
+        files: files({ "src/value.ts": `export function read() { const value = { stable: 1 }; return value.stable + value.stable }` }),
         evidencePath: join(directory, "evidence.json"),
         closedWorld: true,
       };
