@@ -133,7 +133,10 @@ iterator Effect parameters fail closed. An exported function-closure or
 module-initialization mutation root is composed only when the parent imports
 that exact declaration (named or namespace import), including through re-export
 chains; a project/source/export identity is recorded and a same-named different
-symbol does not match. Fully bounded iterator Effect parameters are
+symbol does not match. `globalThis` has the separate
+`ecmascript:realm.globalThis` identity and composes only within the assumed
+runtime realm; host aliases and Worker/iframe realm crossings are not inferred.
+Fully bounded iterator Effect parameters are
 instantiated from resolved generator, stored iterator, forwarded parameter, or
 standard pure-iterator arguments; Promise consumer contracts preserve their
 `Throw`-to-rejection conversion.

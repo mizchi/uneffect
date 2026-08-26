@@ -105,6 +105,10 @@ function stableMutationRoots(
   const exports = moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : [];
   const stable: ExternalMutationRoot[] = [];
   for (const root of roots) {
+    if (root === "globalThis") {
+      stable.push({ kind: "ambient", root, identity: "ecmascript:realm.globalThis" });
+      continue;
+    }
     const exported = exports.find((item) => {
       const target = (item.flags & ts.SymbolFlags.Alias) !== 0 ? checker.getAliasedSymbol(item) : item;
       return target.name === root;
@@ -113,7 +117,7 @@ function stableMutationRoots(
     const declaration = target?.declarations?.[0];
     if (!declaration) return { roots: stable, unsupported: root };
     stable.push({
-      root, exportName: exported!.name,
+      kind: "export", root, exportName: exported!.name,
       identity: `${owner.project.projectFile}::${relative(
         configuredPath(owner.project, owner.project.compilerOptions.rootDir as string | undefined)
           ?? dirname(owner.project.projectFile),

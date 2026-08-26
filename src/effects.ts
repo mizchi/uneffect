@@ -20,7 +20,8 @@ export interface EffectDiagnostic {
   notes?: DiagnosticNote[];
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
-export interface ExternalMutationRoot {
+export interface ExternalExportedMutationRoot {
+  kind: "export";
   /** Region root as written in the child-project summary. */
   root: string;
   /** Exported declaration name used to recover a parent-visible alias. */
@@ -30,6 +31,12 @@ export interface ExternalMutationRoot {
   /** TypeChecker declaration identity in the declaration file consumed by the parent. */
   declarationKey: string;
 }
+export interface ExternalAmbientMutationRoot {
+  kind: "ambient";
+  root: "globalThis";
+  identity: "ecmascript:realm.globalThis";
+}
+export type ExternalMutationRoot = ExternalExportedMutationRoot | ExternalAmbientMutationRoot;
 export interface ExternalFunctionEffectContract {
   effects: readonly Effect[];
   evidence: EvidenceStatus;
@@ -499,6 +506,7 @@ function instantiateExternalEffect(
   const root = regionRoot(effect.region);
   const stable = contract.mutationRoots?.find((item) => item.root === root);
   if (stable) {
+    if (stable.kind === "ambient") return effect;
     const visibleRoot = visibleImportedMutationRoot(call.getSourceFile(), checker, stable);
     return visibleRoot === undefined ? undefined : { kind: "mutate", region: `${visibleRoot}${effect.region.slice(root.length)}` };
   }
@@ -516,7 +524,7 @@ function symbolHasDeclarationKey(symbol: ts.Symbol | undefined, checker: ts.Type
 function visibleImportedMutationRoot(
   source: ts.SourceFile,
   checker: ts.TypeChecker,
-  stable: ExternalMutationRoot,
+  stable: ExternalExportedMutationRoot,
 ): string | undefined {
   let visibleRoot: string | undefined;
   for (const statement of source.statements) {
@@ -544,6 +552,7 @@ function instantiateExternalModuleEffect(
   const root = regionRoot(effect.region);
   const stable = contract.mutationRoots?.find((item) => item.root === root);
   if (!stable) return undefined;
+  if (stable.kind === "ambient") return effect;
   const visibleRoot = visibleImportedMutationRoot(source, checker, stable);
   return visibleRoot === undefined ? undefined : { kind: "mutate", region: `${visibleRoot}${effect.region.slice(root.length)}` };
 }

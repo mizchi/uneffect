@@ -101,13 +101,17 @@ the call site when the corresponding argument is an identifier, `this`, a
 property chain, or a string-literal element chain. Missing/spread arguments and
 fresh or computed expressions remain unknown rather than inventing an alias.
 Inferred, trusted, unknown, or ambiguous summaries, non-exported or parent-inaccessible
-mutation regions, ambient singleton roots without an explicit identity, unbounded
-iterator parameters, and opaque iterator arguments remain blockers. Exported
+mutation regions, host/realm-specific ambient roots other than explicitly modeled
+same-realm `globalThis`, unbounded iterator parameters, and opaque iterator
+arguments remain blockers. Exported
 function-closure and module-initialization roots use a project/source/export
 identity and are substituted only through a parent named or namespace import
 whose TypeChecker declaration identity matches, including across re-export chains;
-same-spelled symbols are a negative case. A verified child iterator consumer whose every parameter has
-an `effect_parameter` bound is instantiated through resolved generator
+same-spelled symbols are a negative case.
+`globalThis` uses `ecmascript:realm.globalThis`; it does not equate browser
+`window`, Node `global`/`process`, Workers, iframes, or other realms.
+A verified child iterator consumer whose every parameter has an
+`effect_parameter` bound is instantiated through resolved generator
 factories, supported stored iterators, forwarded iterator parameters, and
 standard pure iterators. Its bound is checked in the parent Program, including
 the declared Promise-consumer `Throw`-to-rejection behavior. Success still excludes cross-project refinements, contracts,

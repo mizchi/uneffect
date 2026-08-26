@@ -52,8 +52,16 @@
       "properties": { "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" }, "effects": { "type": "array", "items": { "type": "string" } } }
     },
     "mutationRoot": {
-      "type": "object", "additionalProperties": false, "required": ["root", "exportName", "identity"],
-      "properties": { "root": { "type": "string" }, "exportName": { "type": "string" }, "identity": { "type": "string" } }
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "root", "exportName", "identity"],
+          "properties": { "kind": { "const": "export" }, "root": { "type": "string" }, "exportName": { "type": "string" }, "identity": { "type": "string" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["kind", "root", "identity"],
+          "properties": { "kind": { "const": "ambient" }, "root": { "const": "globalThis" }, "identity": { "const": "ecmascript:realm.globalThis" } }
+        }
+      ]
     },
     "buildArtifacts": {
       "type": "object", "additionalProperties": false, "required": ["status", "observations"],

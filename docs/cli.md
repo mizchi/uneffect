@@ -118,12 +118,15 @@ child-first `buildOrder`, per-config root files and provenance, graph/assurance
 empty leaves, and duplicate root ownership fail closed. The workspace result
 also records `effectComposition`: uniquely resolved child function and module summaries
 are applied only when their evidence is `verified`. Inferred/trusted/unknown or
-ambiguous summaries, inaccessible/non-exported or unclassified ambient `Mutate`,
+ambiguous summaries, inaccessible/non-exported `Mutate`, host-global aliases,
 unbounded iterator Effect parameters, and opaque iterator arguments produce blockers.
 Parameter-rooted mutation is instantiated from addressable call arguments. An exported
 function-closure or module-initialization root is instantiated only through a
 named or namespace import resolving to the same ultimate TypeChecker declaration,
 including re-export chains; JSON records its stable project/source/export identity.
+Same-realm `globalThis` is recorded separately as
+`{ "kind": "ambient", "identity": "ecmascript:realm.globalThis" }`; this is
+not a claim about Workers, iframes, `window`, Node `global`, or `process`.
 Fully bounded iterator parameters are instantiated at resolved call sites. Other proof domains and emitted build-artifact contents are
 not composed or validated.
 

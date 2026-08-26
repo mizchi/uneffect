@@ -65,7 +65,10 @@ export interface CheckWorkspaceJsonReport {
       evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[]; parameters?: readonly string[];
       iteratorEffectParameters?: ReadonlyArray<{ index: number; name: string; convertsThrowToRejection: boolean }>;
       iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly string[] }>;
-      mutationRoots?: ReadonlyArray<{ root: string; exportName: string; identity: string }>;
+      mutationRoots?: ReadonlyArray<
+        { kind: "export"; root: string; exportName: string; identity: string }
+        | { kind: "ambient"; root: "globalThis"; identity: "ecmascript:realm.globalThis" }
+      >;
     }>;
     blockers: WorkspaceCheckBlocker[];
   };
@@ -153,7 +156,7 @@ export function createCheckWorkspaceJsonReport(
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
-        "cross-project inaccessible/non-exported or unclassified ambient Mutate identities, plus unbounded iterator effect parameters, are not composed",
+        "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
@@ -172,7 +175,11 @@ export function createCheckWorkspaceJsonReport(
         ...(iteratorEffectBounds ? { iteratorEffectBounds: iteratorEffectBounds.map((bound) => ({
           index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect),
         })) } : {}),
-        ...(mutationRoots ? { mutationRoots: mutationRoots.map(({ declarationKey: _declarationKey, ...root }) => root) } : {}),
+        ...(mutationRoots ? { mutationRoots: mutationRoots.map((root) => {
+          if (root.kind === "ambient") return root;
+          const { declarationKey: _declarationKey, ...publicRoot } = root;
+          return publicRoot;
+        }) } : {}),
       })),
       blockers: compositionBlockers,
     },

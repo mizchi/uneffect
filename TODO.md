@@ -872,7 +872,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Define source-stable identity for exported non-parameter function and module mutation regions across declaration outputs.
       - [x] Bind an exported function-closure mutation root to a project/source/export identity, verify its current declaration with TypeChecker identity, and substitute only a matching named or namespace import in the parent; inaccessible, same-named-different, and non-exported roots remain unknown.
       - [x] Extend the same identity contract to module-initialization mutation regions and multi-hop re-export chains; the importing module must expose an exact TypeChecker-resolved binding or its module evidence becomes unknown.
-      - [ ] Define explicit identities for ambient singleton roots such as `globalThis` and runtime-specific globals; non-exported lexical roots remain intentionally uncomposable.
+      - [x] Define `globalThis` as the explicit `ecmascript:realm.globalThis` identity for function and module mutation composition within one runtime realm.
+      - [ ] Define opt-in runtime/realm-specific identities for aliases such as browser `window`, Node `global`/`process`, Workers, and iframes; non-exported lexical roots remain intentionally uncomposable.
     - [x] Instantiate fully bounded iterator Effect parameters across project-reference call boundaries, including direct/stored/pure/forwarded arguments, bound mismatch diagnostics, and Promise `Throw` conversion; unbounded or opaque inputs remain unknown.
   - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.

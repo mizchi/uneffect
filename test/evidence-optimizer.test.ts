@@ -531,7 +531,7 @@ describe("evidence and optimizer obligations", () => {
         status: "verified",
         links: expect.arrayContaining([expect.objectContaining({
           callee: "setShared", evidence: "verified",
-          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+          mutationRoots: [expect.objectContaining({ kind: "export", root: "shared", exportName: "shared" })],
         })]),
         blockers: [],
       });
@@ -600,7 +600,7 @@ describe("evidence and optimizer obligations", () => {
         status: "verified",
         links: expect.arrayContaining([expect.objectContaining({
           kind: "module", callee: "<module>", evidence: "verified",
-          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+          mutationRoots: [expect.objectContaining({ kind: "export", root: "shared", exportName: "shared" })],
         })]),
         blockers: [],
       });
@@ -620,6 +620,73 @@ describe("evidence and optimizer obligations", () => {
       expect(collidingModuleExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "<module>" && item.fileName === join(bDirectory, "src", "b.ts")))
         .toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        export {}
+        declare global { var appState: { value: number } }
+        globalThis.appState.value = 1
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        import "../../a/src/a.js"
+        export const value = globalThis.appState.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const ambientGlobal = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(ambientGlobal.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({
+          kind: "module", evidence: "verified",
+          mutationRoots: [{ kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis" }],
+        })]),
+        blockers: [],
+      });
+      expect(ambientGlobal.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "<module>" && item.fileName === join(bDirectory, "src", "b.ts")))
+        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" })] });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        export {}
+        declare global { var appState: { value: number } }
+        /* uneffect: effect Mutate<typeof globalThis.appState.value> */
+        export function setGlobal() { globalThis.appState.value = 1 }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setGlobal } from "../../a/src/a.js"
+        /* uneffect: effect Mutate<typeof globalThis.appState.value> */
+        export function update() { setGlobal() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const ambientFunction = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(ambientFunction.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({
+          kind: "function", callee: "setGlobal", evidence: "verified",
+          mutationRoots: [{ kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis" }],
+        })]),
+      });
+      expect(ambientFunction.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update"))
+        .toMatchObject({ evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "globalThis.appState.value" })] });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: module_effect Mutate<typeof window.appState.value> */
+        export {}
+        declare global { interface Window { appState: { value: number } } }
+        window.appState.value = 1
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof window.appState.value> */
+        import "../../a/src/a.js"
+        export const value = window.appState.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const hostGlobal = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(hostGlobal.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: [expect.objectContaining({ message: expect.stringContaining("root window is not a stable export") })],
+      });
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

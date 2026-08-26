@@ -428,10 +428,12 @@ same property is proved for arbitrary TypeScript.
   exported function-closure and module-initialization mutation roots carry a
   project/source/export identity and are instantiated only through an exact
   TypeChecker-resolved named or namespace import, including re-export chains;
+  same-realm `globalThis` mutation uses the explicit
+  `ecmascript:realm.globalThis` identity without equating host aliases or other realms;
   fully bounded iterator Effect parameters reuse the Program call graph's
   generator/stored/pure/forwarded specialization and bound checks across the
   boundary. Inferred/trusted/unknown summaries, ambiguous matches, unstable
-  mutation arguments, inaccessible/non-exported or unclassified ambient roots, unbounded iterator
+  mutation arguments, inaccessible/non-exported roots, host aliases and cross-realm globals, unbounded iterator
   parameters, and opaque iterator arguments block assurance.
   Independent declaration-output content validation remains incomplete;
   SolutionBuilder freshness can be reported or required.

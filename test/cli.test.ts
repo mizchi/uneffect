@@ -406,7 +406,7 @@ describe("uneffect command line", () => {
       expect(JSON.parse(composedStableMutation.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           callee: "setShared",
-          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared", identity: expect.stringContaining("src/a.ts#shared") })],
+          mutationRoots: [expect.objectContaining({ kind: "export", root: "shared", exportName: "shared", identity: expect.stringContaining("src/a.ts#shared") })],
         })]) },
       });
       expect(composedStableMutation.stdout).not.toContain("declarationKey");
@@ -430,6 +430,26 @@ describe("uneffect command line", () => {
       expect(JSON.parse(composedModuleMutation.stdout)).toMatchObject({
         effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
           kind: "module", callee: "<module>", mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+        })]) },
+      });
+
+      writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        export {}
+        declare global { var appState: { value: number } }
+        globalThis.appState.value = 1
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        /* uneffect: module_effect Mutate<typeof globalThis.appState.value> */
+        import "../../a/src/a.js"
+        export const value = globalThis.appState.value
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const composedAmbientMutation = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedAmbientMutation)).toBe(exitCode.success);
+      expect(JSON.parse(composedAmbientMutation.stdout)).toMatchObject({
+        effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
+          kind: "module", mutationRoots: [{ kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis" }],
         })]) },
       });
 
