@@ -86,6 +86,12 @@ explicitly selected file; a green result cannot be borrowed from a covered
 sibling file. See [Assurance boundaries](./docs/assurance-boundaries.md) before relying
 on a successful check as evidence.
 
+The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
+or `violated`. `passed` remains a compatibility convenience and is true for
+both `verified` and policy-accepted `assumed` results. Consumers that must reject
+trusted builtins or escape hatches should gate on `status === "verified"`, not
+only on `passed`.
+
 For a copyable project setup, a passing example, intentional failure cases,
 runtime instrumentation, and Quint generation, read the
 [Quickstart guide](./docs/quickstart.md).

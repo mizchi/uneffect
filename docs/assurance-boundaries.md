@@ -48,14 +48,32 @@ properties, and empty/uncovered input. A verified leaf never overrides an
 unknown sibling. Trusted typed-array obligations may pass, but are counted and
 remain listed as an exclusion rather than being described as proved.
 
-The public `AssuranceAssessment` also exposes `claims`, `exclusions`, and
+The project gate exposes a four-state result instead of collapsing every
+outcome into a green or red boolean:
+
+| `status` | Meaning | `passed` |
+| --- | --- | --- |
+| `verified` | All emitted obligations passed and the assumption ledger is empty. This remains scoped to `claims` and `exclusions`. | `true` |
+| `assumed` | All emitted obligations and the configured assumption policy passed, but one or more trusted builtin contracts, temporal summaries, dispatch seals, or escape hatches are recorded. | `true` |
+| `unknown` | Coverage, resolution, instrumentation, lowering, or a solver result was insufficient to establish the claim. | `false` |
+| `violated` | At least one concrete type/effect/policy/ownership violation or solver counterexample was found. This takes precedence if other evidence is also unknown. | `false` |
+
+Every blocker carries `classification: "unknown" | "violation"`, and
+`assurance.assumptions` gives the number of ledger entries. The legacy
+`passed` field deliberately accepts policy-compliant assumptions; CI requiring
+assumption-free evidence must check `status === "verified"`. A project should
+normally begin by allowing owned `assumed` results, then ratchet the ledger
+rather than relabeling assumptions as proofs.
+
+The public assurance assessments also expose `claims`, `exclusions`, and
 `coverage` as machine-readable fields. Coverage records the selected-file,
 effect-summary, and contract-artifact counts plus every selected file that
 emitted neither proof-relevant artifact. An assurance profile fails when the
 whole result is empty or when any selected file is uncovered, so evidence from
 one file cannot hide a type-only, misspelled, or otherwise unexamined sibling.
-Claims are established only when `passed` is true;
-on failure the CLI labels them `claim (not established)`. Exclusions are
+Claims are established only when `passed` is true; an `assumed` result
+establishes those claims relative to its explicit assumption ledger. On
+failure the CLI labels them `claim (not established)`. Exclusions are
 reported even for a passing assessment and must not be removed or interpreted
 as warnings that can be waived. This keeps CI integrations from reducing an
 assurance result to a context-free green boolean.

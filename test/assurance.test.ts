@@ -9,6 +9,7 @@ describe("assurance claim boundaries", () => {
     }, "declared");
 
     expect(assessment).toMatchObject({
+      status: "verified",
       passed: true,
       claims: [
         "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
@@ -48,9 +49,10 @@ describe("assurance claim boundaries", () => {
     const assessment = assessCheckAssurance({ summaries: [], artifacts: [] }, "no-unknown");
 
     expect(assessment).toMatchObject({
+      status: "unknown",
       passed: false,
       coverage: { effectSummaries: 0, contractArtifacts: 0 },
-      blockers: [{ kind: "coverage", message: expect.stringContaining("no effect summary or contract artifact") }],
+      blockers: [{ kind: "coverage", classification: "unknown", message: expect.stringContaining("no effect summary or contract artifact") }],
     });
     expect(formatAssuranceAssessment(assessment)).toContain("claim (not established)");
     expect(formatAssuranceAssessment(assessment)).toContain("coverage: 0 effect summaries, 0 contract artifacts");
@@ -62,7 +64,7 @@ describe("assurance claim boundaries", () => {
       artifacts: [],
       diagnostics: [{ fileName: "src/caller.ts", functionName: "caller", effect: "Console", kind: "missing", severity: "error", line: 1, message: "iterator effect bound exceeded" }],
     }, "no-unknown");
-    expect(assessment).toMatchObject({ passed: false, blockers: [expect.objectContaining({ kind: "effect", functionName: "caller" })] });
+    expect(assessment).toMatchObject({ status: "violated", passed: false, blockers: [expect.objectContaining({ kind: "effect", classification: "violation", functionName: "caller" })] });
   });
 
   it("does not let evidence from one file hide an uncovered selected file", () => {

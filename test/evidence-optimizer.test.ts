@@ -18,10 +18,24 @@ function programOf(text: string) {
 describe("evidence and optimizer obligations", () => {
   it("rejects a vacuous project verification result", async () => {
     const result = await verifyUneffectProject({ files: {} });
-    expect(result.assurance).toMatchObject({ passed: false, coverage: { checkedFiles: 0 } });
+    expect(result.assurance).toMatchObject({ status: "unknown", passed: false, coverage: { checkedFiles: 0 } });
     expect(result.assurance.blockers).toContainEqual(expect.objectContaining({
-      domain: "coverage", fileName: "<project>", subject: "<coverage>",
+      domain: "coverage", classification: "unknown", fileName: "<project>", subject: "<coverage>",
     }));
+  });
+
+  it("distinguishes verified evidence from accepted assumptions", async () => {
+    const verified = await verifyUneffectProject({ files: {
+      "src/pure.ts": `export function identity(value: number) { return value }`,
+    } });
+    expect(verified.assurance).toMatchObject({ status: "verified", passed: true });
+
+    const assumed = await verifyUneffectProject({ files: {
+      "src/report.ts": `export function report() { console.log("ok") }`,
+    } });
+    expect(assumed.assumptions.entries).not.toHaveLength(0);
+    expect(assumed.assurance).toMatchObject({ status: "assumed", passed: true });
+    expect(assumed.assurance.assumptions).toBe(assumed.assumptions.entries.length);
   });
 
   it("makes runtime instrumentation failures project assurance blockers", async () => {
@@ -31,9 +45,9 @@ describe("evidence and optimizer obligations", () => {
       export function parse(value: number) { return value }
     ` } });
     expect(result.diagnostics).toContainEqual(expect.objectContaining({ kind: "unknown-parameter", parameter: "missing" }));
-    expect(result.assurance).toMatchObject({ passed: false });
+    expect(result.assurance).toMatchObject({ status: "unknown", passed: false });
     expect(result.assurance.blockers).toContainEqual(expect.objectContaining({
-      domain: "instrument", fileName, subject: "missing",
+      domain: "instrument", classification: "unknown", fileName, subject: "missing",
     }));
   });
 
@@ -58,7 +72,7 @@ describe("evidence and optimizer obligations", () => {
     expect(result.temporal?.properties).toEqual(expect.arrayContaining([
       expect.objectContaining({ fileName, name: "eventLoopSafe", result: "error", output: expect.stringContaining("TypeScript errors") }),
     ]));
-    expect(result.assurance).toMatchObject({ passed: false, coverage: { checkedFiles: 1 } });
+    expect(result.assurance).toMatchObject({ status: "violated", passed: false, coverage: { checkedFiles: 1 } });
     expect(result.assurance.blockers).toEqual(expect.arrayContaining([
       expect.objectContaining({ domain: "typescript", fileName }),
       expect.objectContaining({ domain: "contract", fileName }),

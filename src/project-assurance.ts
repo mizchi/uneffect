@@ -4,6 +4,7 @@ export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typ
 
 export interface ProjectAssuranceBlocker {
   domain: ProjectAssuranceDomain;
+  classification: "unknown" | "violation";
   fileName: string;
   subject: string;
   message: string;
@@ -19,7 +20,10 @@ export interface ProjectAssuranceCoverage {
 }
 
 export interface ProjectAssuranceAssessment {
+  status: "verified" | "assumed" | "unknown" | "violated";
   passed: boolean;
+  /** Number of explicit trusted boundaries in the accompanying assumption ledger. */
+  assumptions: number;
   blockers: ProjectAssuranceBlocker[];
   coverage: ProjectAssuranceCoverage;
   /** Claims established only when `passed` is true. */
@@ -39,55 +43,55 @@ export function assessProjectVerification(
   checkedFiles: readonly string[],
 ): ProjectAssuranceAssessment {
   const blockers: ProjectAssuranceBlocker[] = [];
-  const add = (domain: ProjectAssuranceDomain, fileName: string, subject: string, message: string): void => {
-    blockers.push({ domain, fileName, subject, message });
+  const add = (domain: ProjectAssuranceDomain, classification: "unknown" | "violation", fileName: string, subject: string, message: string): void => {
+    blockers.push({ domain, classification, fileName, subject, message });
   };
 
   for (const diagnostic of result.diagnostics) {
     if ("domain" in diagnostic && diagnostic.domain === "typescript") {
-      if (diagnostic.severity === "error") add("typescript", diagnostic.fileName, `TS${diagnostic.typescriptCode}`, diagnostic.message);
+      if (diagnostic.severity === "error") add("typescript", "violation", diagnostic.fileName, `TS${diagnostic.typescriptCode}`, diagnostic.message);
       continue;
     }
     if ("effect" in diagnostic && "severity" in diagnostic) {
-      if (diagnostic.severity === "error") add("effect", diagnostic.fileName, diagnostic.functionName, diagnostic.message);
+      if (diagnostic.severity === "error") add("effect", "violation", diagnostic.fileName, diagnostic.functionName, diagnostic.message);
       continue;
     }
     if ("kind" in diagnostic && diagnostic.kind === "ownership") {
-      add("ownership", diagnostic.fileName, diagnostic.resource, diagnostic.message);
+      add("ownership", "violation", diagnostic.fileName, diagnostic.resource, diagnostic.message);
       continue;
     }
     if ("kind" in diagnostic && diagnostic.kind === "assumption-policy") {
-      add("assumption", diagnostic.fileName, diagnostic.functionName, diagnostic.message);
+      add("assumption", "violation", diagnostic.fileName, diagnostic.functionName, diagnostic.message);
       continue;
     }
     if ("parameter" in diagnostic && "line" in diagnostic) {
-      add("instrument", diagnostic.fileName, diagnostic.parameter, diagnostic.message);
+      add("instrument", "unknown", diagnostic.fileName, diagnostic.parameter, diagnostic.message);
     }
   }
 
   for (const summary of result.effects.summaries) if (summary.evidence === "unknown") {
-    add("effect", summary.fileName ?? "<unknown>", summary.functionName, `${summary.functionName}: effect evidence is unknown`);
+    add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName, `${summary.functionName}: effect evidence is unknown`);
   }
   for (const obligation of result.obligations) if (obligation.result !== "verified") {
-    add("contract", obligation.source.fileName, obligation.obligation?.functionName ?? obligation.obligationId,
+    add("contract", obligation.result === "counterexample" ? "violation" : "unknown", obligation.source.fileName, obligation.obligation?.functionName ?? obligation.obligationId,
       obligation.message ?? `contract evidence is ${obligation.result}`);
   }
   for (const [fileName, file] of Object.entries(result.typedArrays.files)) for (const obligation of file.obligations) {
     if (obligation.result === "counterexample" || obligation.result === "unknown") {
-      add("typed-array", fileName, obligation.functionName, `${obligation.kind} evidence is ${obligation.result}`);
+      add("typed-array", obligation.result === "counterexample" ? "violation" : "unknown", fileName, obligation.functionName, `${obligation.kind} evidence is ${obligation.result}`);
     }
   }
   for (const property of result.temporal?.properties ?? []) if (property.result !== "verified") {
-    add("temporal", property.fileName, property.name, property.output || `temporal property is ${property.result}`);
+    add("temporal", property.result === "counterexample" ? "violation" : "unknown", property.fileName, property.name, property.output || `temporal property is ${property.result}`);
   }
 
   const coveredFiles = new Set(result.effects.summaries.flatMap((summary) => summary.fileName ? [summary.fileName] : []));
   for (const obligation of result.obligations) coveredFiles.add(obligation.source.fileName);
   for (const fileName of Object.keys(result.typedArrays.files)) coveredFiles.add(fileName);
   for (const fileName of checkedFiles) if (!coveredFiles.has(fileName)) {
-    add("coverage", fileName, "<coverage>", "no effect summary, contract obligation, or typed-array obligation was emitted for this file");
+    add("coverage", "unknown", fileName, "<coverage>", "no effect summary, contract obligation, or typed-array obligation was emitted for this file");
   }
-  if (checkedFiles.length === 0) add("coverage", "<project>", "<coverage>", "the project contains no selected files");
+  if (checkedFiles.length === 0) add("coverage", "unknown", "<project>", "<coverage>", "the project contains no selected files");
 
   const typedArrayObligations = Object.values(result.typedArrays.files).flatMap((file) => file.obligations);
   const coverage: ProjectAssuranceCoverage = {
@@ -118,5 +122,8 @@ export function assessProjectVerification(
     "emitted JavaScript is an adoption artifact and is not itself verified",
     ...(result.temporal ? [] : ["temporal behavior was not checked because no temporal runtime was selected"]),
   ];
-  return { passed: blockers.length === 0, blockers, coverage, claims, exclusions };
+  const assumptions = result.assumptions.entries.length;
+  const status: ProjectAssuranceAssessment["status"] = blockers.some((blocker) => blocker.classification === "violation")
+    ? "violated" : blockers.length > 0 ? "unknown" : assumptions > 0 ? "assumed" : "verified";
+  return { status, passed: blockers.length === 0, assumptions, blockers, coverage, claims, exclusions };
 }

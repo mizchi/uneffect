@@ -56,6 +56,15 @@ helper anywhere in the supplied project makes the project assessment fail even
 when a selected entry function and its temporal property are individually
 verified.
 
+`result.assurance.status` preserves four distinct outcomes: `verified` has an
+empty assumption ledger, `assumed` passes relative to one or more recorded
+trusted boundaries, `unknown` lacks sufficient evidence, and `violated`
+contains a concrete violation or counterexample. `passed` remains true for
+both `verified` and policy-compliant `assumed` results. Assumption-free CI must
+therefore gate on `status === "verified"`; gradual CI may gate on `passed` and
+ratchet `assurance.assumptions`. Each blocker separately records
+`classification: "unknown" | "violation"`.
+
 ## Reproducible artifacts
 
 `just evidence file.ts` emits JSON containing the Uneffect version, TypeScript compiler revision, normalized compiler-options hash, source hash, builtin-contract digest, summaries, and diagnostics. Changing any of these proof dependencies invalidates the artifact.
