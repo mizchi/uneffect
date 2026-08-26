@@ -1,6 +1,7 @@
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
 import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "./effects.js";
+import type { IteratorEffectParameter } from "./call-graph.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypeScriptProject } from "./typescript-project.js";
 
@@ -14,6 +15,8 @@ export interface WorkspaceEffectLink {
   evidence: ExternalFunctionEffectContract["evidence"];
   effects: ExternalFunctionEffectContract["effects"];
   parameters?: readonly string[];
+  iteratorEffectParameters?: readonly IteratorEffectParameter[];
+  iteratorEffectBounds?: ExternalFunctionEffectContract["iteratorEffectBounds"];
 }
 
 export interface WorkspaceEffectCompositionBlocker {
@@ -117,23 +120,30 @@ export function composeWorkspaceEffects(
         const candidates = exact.length > 0 ? exact : owner.summaries.filter((summary) => summary.functionName === name && summary.functionName !== "<module>");
         const summary = candidates.length === 1 ? candidates[0] : undefined;
         const unsupportedMutation = hasUnsupportedMutation(summary);
-        const unsupportedIterator = (summary?.iteratorEffectParameters?.length ?? 0) > 0;
+        const iteratorBounds = new Set(summary?.iteratorEffectBounds?.map((bound) => bound.index) ?? []);
+        const unsupportedIterator = summary?.iteratorEffectParameters?.some((parameter) => !iteratorBounds.has(parameter.index)) ?? false;
         const verified = summary?.evidence === "verified" && !unsupportedMutation && !unsupportedIterator;
         const reason = summary === undefined
           ? `cannot uniquely match ${name} to a child-project effect summary`
           : unsupportedMutation ? `cross-project non-parameter Mutate region identity is not proved for ${name}`
-          : unsupportedIterator ? `cross-project iterator effect instantiation is not implemented for ${name}`
+          : unsupportedIterator ? `cross-project iterator effect parameter ${name} has no verified bound`
           : summary.evidence !== "verified" ? `${name} has ${summary.evidence} child-project evidence`
           : undefined;
         const contract: ExternalFunctionEffectContract = {
           effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown",
-          ...(summary?.parameters ? { parameters: summary.parameters } : {}), ...(reason ? { reason } : {}),
+          functionName: name,
+          ...(summary?.parameters ? { parameters: summary.parameters } : {}),
+          ...(summary?.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
+          ...(summary?.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds } : {}),
+          ...(reason ? { reason } : {}),
         };
         contracts.set(key, contract);
         links.push({ kind: "function",
           fromProject: current.projectFile, toProject: owner.project.projectFile, callerFile: source.fileName,
           callee: name, declarationFile: declarationSource.fileName, evidence: contract.evidence, effects: contract.effects,
           ...(contract.parameters ? { parameters: contract.parameters } : {}),
+          ...(contract.iteratorEffectParameters ? { iteratorEffectParameters: contract.iteratorEffectParameters } : {}),
+          ...(contract.iteratorEffectBounds ? { iteratorEffectBounds: contract.iteratorEffectBounds } : {}),
         });
         if (!verified) blockers.push({
           kind: "effect-composition", classification: "unknown", projectFile: current.projectFile,

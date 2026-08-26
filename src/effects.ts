@@ -4,7 +4,7 @@ import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry, type FsBuiltinOperation } from "./builtin-contracts.js";
-import { buildProgramCallGraph, type CallGraphEdge, type IteratorEffectParameter } from "./call-graph.js";
+import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
@@ -25,6 +25,9 @@ export interface ExternalFunctionEffectContract {
   evidence: EvidenceStatus;
   /** Declaration-order parameter names used to instantiate parameter-rooted Mutate regions. */
   parameters?: readonly string[];
+  functionName?: string;
+  iteratorEffectParameters?: readonly IteratorEffectParameter[];
+  iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly Effect[] }>;
   reason?: string;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
@@ -484,6 +487,11 @@ function instantiateExternalEffect(
   return undefined;
 }
 
+function unboundedExternalIteratorParameter(contract: ExternalFunctionEffectContract): IteratorEffectParameter | undefined {
+  const bounded = new Set(contract.iteratorEffectBounds?.map((bound) => bound.index) ?? []);
+  return contract.iteratorEffectParameters?.find((parameter) => !bounded.has(parameter.index));
+}
+
 function mayAssimilateUserCode(model: PromiseChainModel | undefined, node: ts.FunctionLikeDeclaration): boolean {
   if (!model || !node.body) return false;
   const start = node.body.getStart(node.getSourceFile()), end = node.body.getEnd();
@@ -758,7 +766,14 @@ function callableNodes(program: ts.Program): Map<string, ts.FunctionLikeDeclarat
 /** Program-wide path used by the CLI/native frontend: all edges come from TypeChecker identities. */
 export function analyzeProgramEffects(program: ts.Program, options: EffectAnalysisOptions = {}): EffectAnalysisResult {
   const registry = options.builtinRegistry ?? builtinContractRegistry;
-  const graph = buildProgramCallGraph(program), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
+  const externalIteratorEffects = new Map<string, ExternalIteratorEffectContract>();
+  for (const [key, contract] of options.externalFunctionEffects ?? []) {
+    if (contract.evidence === "verified" && (contract.iteratorEffectParameters?.length ?? 0) > 0
+      && unboundedExternalIteratorParameter(contract) === undefined) {
+      externalIteratorEffects.set(key, { key, parameters: contract.iteratorEffectParameters! });
+    }
+  }
+  const graph = buildProgramCallGraph(program, { externalIteratorEffects }), nodes = callableNodes(program), adapter = new TypeScriptFrontendAdapter(program, registry), checker = program.getTypeChecker();
   const invalidSources = new Set(
     [...program.getSyntacticDiagnostics(), ...program.getSemanticDiagnostics()]
       .filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error && diagnostic.file !== undefined)
@@ -772,6 +787,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const invalidEffectParameterOwners = new Set<string>();
   const unknownExternalEvidence = new Set<string>();
   const externalInstantiationProblems: Array<{ id: string; effect: Effect; call: ts.CallExpression }> = [];
+  const externalIteratorContractProblems: Array<{ id: string; parameter: IteratorEffectParameter; call: ts.CallExpression }> = [];
   const witnesses = new Map<string, Map<string, EffectWitness>>(), propagation = new Map<string, Map<string, EffectPropagation>>();
   for (const graphNode of graph.nodes) {
     const node = nodes.get(graphNode.id)! as ts.FunctionLikeDeclaration & { body: ts.ConciseBody };
@@ -862,6 +878,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         const external = externalContractForCall(checker, child, options.externalFunctionEffects);
         if (external) {
           if (external.evidence !== "verified") unknownExternalEvidence.add(graphNode.id);
+          const unboundedIterator = unboundedExternalIteratorParameter(external);
+          if (unboundedIterator) {
+            unknownExternalEvidence.add(graphNode.id);
+            externalIteratorContractProblems.push({ id: graphNode.id, parameter: unboundedIterator, call: child });
+          }
           for (const rawEffect of external.effects) {
             const effect = instantiateExternalEffect(rawEffect, external, child);
             if (effect === undefined) {
@@ -877,6 +898,14 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       ts.forEachChild(child, (next) => visit(next, catches));
     };
     visit(node.body, false);
+  }
+  const externalIteratorNames = new Map<string, string>();
+  for (const [key, contract] of options.externalFunctionEffects ?? []) {
+    externalIteratorNames.set(key, contract.functionName ?? key);
+    if (contract.evidence !== "verified" || !contract.iteratorEffectBounds) continue;
+    iteratorEffectBounds.set(key, new Map(contract.iteratorEffectBounds.map((bound) => [bound.index, {
+      name: bound.name, effects: [...bound.effects],
+    }])));
   }
   const inferred = new Map([...direct].map(([id, effects]) => [id, [...effects]]));
   const unknownTiming = new Set<string>(), unknownGeneratorEvidence = new Set<string>(), unknownGeneratorParameterEvidence = new Set<string>();
@@ -960,6 +989,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       notes: [{ label: "because", detail: "cross-project Mutate substitution currently accepts only parameter-rooted effects with identifier, this, property-access, or string-literal element-access arguments" }],
     });
   }
+  for (const problem of externalIteratorContractProblems) {
+    const graphNode = graphNodesById.get(problem.id)!, source = problem.call.getSourceFile();
+    diagnostics.push({
+      fileName: source.fileName, functionName: graphNode.name, effect: problem.parameter.name, kind: "unknown", severity: "error",
+      line: source.getLineAndCharacterOfPosition(problem.call.getStart(source)).line + 1,
+      message: `${graphNode.name} cannot instantiate iterator effect parameter ${problem.parameter.name}; the external contract is missing a verified bound`,
+      notes: [{ label: "because", detail: "a verified external iterator contract must provide one checked iteratorEffectBounds entry for every iteratorEffectParameters index" }],
+    });
+  }
   const invalidIteratorInstantiationCallers = new Set<string>();
   type IteratorParameterRef = { consumer: string; parameterIndex: number };
   const parameterKey = (reference: IteratorParameterRef): string => `${reference.consumer}#${reference.parameterIndex}`;
@@ -991,14 +1029,15 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     if (!sourceBound) continue;
     for (const target of targets) for (const targetBound of reachableBounds(target)) for (const effect of sourceBound.effects) {
       if (permits(targetBound.effects, effect)) continue;
-      const graphNode = graphNodesById.get(owner)!, targetNode = graphNodesById.get(targetBound.owner)!;
+      const graphNode = graphNodesById.get(owner)!;
+      const targetName = graphNodesById.get(targetBound.owner)?.name ?? externalIteratorNames.get(targetBound.owner) ?? targetBound.owner;
       const source = nodes.get(owner)!.getSourceFile();
       invalidEffectParameterOwners.add(owner);
       invalidIteratorInstantiationCallers.add(owner);
       diagnostics.push({
         fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "missing", severity: "error",
         line: source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1,
-        message: `${graphNode.name} effect_parameter ${sourceBound.name} allows ${formatEffect(effect)}, which is not compatible with forwarded constraint ${targetBound.name} of ${targetNode.name}`,
+        message: `${graphNode.name} effect_parameter ${sourceBound.name} allows ${formatEffect(effect)}, which is not compatible with forwarded constraint ${targetBound.name} of ${targetName}`,
       });
     }
   }
@@ -1009,12 +1048,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (effect.kind === "throw" && edge.dischargesThrow) continue;
       if (permits(bound.effects, effect)) continue;
       const caller = graphNodesById.get(edge.caller)!;
-      const consumer = graphNodesById.get(bound.owner)!;
+      const consumerName = graphNodesById.get(bound.owner)?.name ?? externalIteratorNames.get(bound.owner) ?? bound.owner;
       const source = nodes.get(edge.caller)!.getSourceFile();
       diagnostics.push({
         fileName: source.fileName, functionName: caller.name, effect: formatEffect(effect), kind: "missing", severity: "error",
         line: source.getLineAndCharacterOfPosition(edge.span.start).line + 1,
-        message: `${caller.name} instantiates iterator effect parameter ${bound.name} of ${consumer.name} with ${formatEffect(effect)} outside its declared bound`,
+        message: `${caller.name} instantiates iterator effect parameter ${bound.name} of ${consumerName} with ${formatEffect(effect)} outside its declared bound`,
       });
       invalidIteratorInstantiationCallers.add(edge.caller);
     }

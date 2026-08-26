@@ -8,6 +8,7 @@ export type InvocationTiming = "inline" | "deferred" | "unknown";
 export interface EffectParameter { index: number; name: string; timing: InvocationTiming }
 export interface IteratorEffectParameter { index: number; name: string; convertsThrowToRejection: boolean }
 export interface IteratorEffectInstantiation { consumer: string; parameterIndex: number }
+export interface ExternalIteratorEffectContract { key: string; parameters: readonly IteratorEffectParameter[] }
 export interface CallGraphNode {
   id: string;
   name: string;
@@ -68,7 +69,26 @@ function builtinTiming(call: ts.CallExpression, checker: ts.TypeChecker, adapter
   return "unknown";
 }
 
-export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
+function externalIteratorContractForCall(
+  checker: ts.TypeChecker,
+  call: ts.CallExpression,
+  contracts: ReadonlyMap<string, ExternalIteratorEffectContract> | undefined,
+): ExternalIteratorEffectContract | undefined {
+  if (!contracts) return undefined;
+  const lookup = ts.isPropertyAccessExpression(call.expression) ? call.expression.name : call.expression;
+  const symbol = resolvedSymbol(checker, lookup);
+  for (const declaration of symbol?.declarations ?? []) {
+    const source = declaration.getSourceFile();
+    const contract = contracts.get(`${source.fileName}:${declaration.getStart(source)}`);
+    if (contract) return contract;
+  }
+  return undefined;
+}
+
+export function buildProgramCallGraph(
+  program: ts.Program,
+  options: { externalIteratorEffects?: ReadonlyMap<string, ExternalIteratorEffectContract> } = {},
+): ProgramCallGraph {
   const checker = program.getTypeChecker(), adapter = new TypeScriptFrontendAdapter(program), declarations: ts.FunctionLikeDeclaration[] = [];
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
@@ -205,8 +225,10 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
       if (ts.isCallExpression(node)) {
         const lookup = ts.isPropertyAccessExpression(node.expression) ? node.expression.name : node.expression;
         const target = symbolNodes.get(resolvedSymbol(checker, lookup)!);
-        if (target && target !== declaration) {
-          for (const contract of iteratorParametersOf(target)) {
+        if (target !== declaration) {
+          const contracts = target ? iteratorParametersOf(target)
+            : externalIteratorContractForCall(checker, node, options.externalIteratorEffects)?.parameters ?? [];
+          for (const contract of contracts) {
             const argument = node.arguments[contract.index];
             if (argument) record(argument, contract.convertsThrowToRejection);
           }
@@ -450,12 +472,15 @@ export function buildProgramCallGraph(program: ts.Program): ProgramCallGraph {
         const convertsThrowToRejection = promiseIterableConsumerArgument(node.parent, node);
         const unknownGeneratorConsumption = consumptionSyntax && !returnedGenerators
           && isOpaqueIteratorCall(node);
-        const iteratorContracts = targetDeclaration ? iteratorParametersOf(targetDeclaration) : [];
+        const externalIterator = targetDeclaration ? undefined
+          : externalIteratorContractForCall(checker, node, options.externalIteratorEffects);
+        const iteratorContracts = targetDeclaration ? iteratorParametersOf(targetDeclaration) : externalIterator?.parameters ?? [];
+        const iteratorConsumer = targetDeclaration ? stableId(targetDeclaration) : externalIterator?.key;
         const dischargesUnknownGeneratorParameters = iteratorContracts.length > 0
           && iteratorContracts.every((contract) => {
             const argument = node.arguments[contract.index];
-            return Boolean(argument && specializeIteratorArgument(argument, contract.convertsThrowToRejection, {
-              consumer: stableId(targetDeclaration!), parameterIndex: contract.index,
+            return Boolean(argument && iteratorConsumer && specializeIteratorArgument(argument, contract.convertsThrowToRejection, {
+              consumer: iteratorConsumer, parameterIndex: contract.index,
             }));
           });
         edges.push({ caller, callee: targetDeclaration ? stableId(targetDeclaration) : undefined, unresolvedName: targetDeclaration || parameterIndex !== undefined ? undefined : node.expression.getText(), kind: parameterIndex !== undefined ? "callback-parameter" : "direct", timing: "inline", overloadIndex: overloadIndex !== undefined && overloadIndex >= 0 ? overloadIndex : undefined, span: { start: node.getStart(), end: node.getEnd() }, arguments: node.arguments.map((argument) => argument.getText()), dischargesThrow: catchesThrow || (convertsThrowToRejection && Boolean(targetDeclaration?.asteriskToken)), executesBody: targetDeclaration?.asteriskToken ? generatorConsumption : true, unknownGeneratorConsumption, dischargesUnknownGeneratorParameters });

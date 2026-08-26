@@ -125,6 +125,14 @@ Direct, symbol-resolved wrapper calls forward these iterator-effect parameters
 transitively, including whether a Promise iterable consumer converts a yielded
 `Throw` into rejection. Recursive or dynamically dispatched forwarding that
 cannot establish the contract remains outside this inference.
+The same relation crosses a TypeScript project-reference boundary only when the
+child summary is `verified` and every consumed iterator parameter has a checked
+`effect_parameter` bound. The parent Program then specializes resolved generator
+factories, supported stored iterators, forwarded parameters, and standard pure
+iterators against that bound. Bound violations are parent diagnostics; opaque
+arguments are `unknown`. A Promise-consuming child parameter retains
+`convertsThrowToRejection`, so the generator's synchronous non-throw effects
+propagate while its iteration throw is owned by rejection analysis. **Implemented.**
 The effect summary exposes the same contract as `iteratorEffectParameters` and
 uses `evidence: "inferred"` for an unannotated polymorphic consumer. This is not
 a closed proof that the function is effect-free: its lazy effects are supplied

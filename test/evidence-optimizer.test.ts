@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
-import { analyzeEffectSummariesInProgram } from "../src/effects.js";
+import { analyzeEffectSummariesInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { applyOwnershipAssertionElision, applyStableReadReuse, evaluateOwnershipGuardElision, evaluatePropertyMangle, evaluateStableReadReuse } from "../src/optimizer.js";
 import { verifyUneffectProject } from "../src/project-verification.js";
 import { builtinContractRegistry, extendBuiltinContractRegistry, type BuiltinContractRegistry } from "../src/builtin-contracts.js";
@@ -247,6 +247,181 @@ describe("evidence and optimizer obligations", () => {
     }
   }, 30_000);
 
+  it("instantiates verified child-project iterator Effect parameters", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-project-iterator-"));
+    const root = join(directory, "tsconfig.json");
+    const packageDirectory = join(directory, "node_modules", "typescript");
+    const aDirectory = join(directory, "packages", "a");
+    const bDirectory = join(directory, "packages", "b");
+    const cDirectory = join(directory, "packages", "c");
+    try {
+      mkdirSync(join(aDirectory, "src"), { recursive: true });
+      mkdirSync(join(bDirectory, "src"), { recursive: true });
+      mkdirSync(join(cDirectory, "src"), { recursive: true });
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        export function consume(iterator: Iterator<unknown>) {
+          for (;;) { const step = iterator.next(); if (step.done) return }
+        }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        /* uneffect: effect Console | Throw<RangeError> */
+        function* generate() { console.log("item"); throw new RangeError("stop") }
+        /* uneffect: effect Console | Throw<RangeError> */
+        export function run() { consume(generate()) }
+      `);
+      writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"],
+      }));
+      writeFileSync(join(bDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../a" }],
+      }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const result = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const verification = result.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(verification.effects.summaries.find((item) => item.functionName === "run")).toMatchObject({
+        evidence: "verified",
+        effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "Console" }),
+          expect.objectContaining({ kind: "throw", errorType: "RangeError" }),
+        ]),
+      });
+      expect(result.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({
+          kind: "function", callee: "consume", evidence: "verified",
+          iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+        })]),
+        blockers: [],
+      });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: effect_parameter iterator extends Console */
+        export function consume(iterator: Iterator<unknown>) {
+          for (;;) { const step = iterator.next(); if (step.done) return }
+        }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const narrow = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const narrowVerification = narrow.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(narrowVerification.effects.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "run", effect: "Throw<RangeError>", kind: "missing",
+        message: expect.stringContaining("outside its declared bound"),
+      }));
+      expect(narrowVerification.effects.summaries.find((item) => item.functionName === "run"))
+        .toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        declare const opaque: Iterator<unknown>
+        export function run() { consume(opaque) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const opaque = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(opaque.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "run")).toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        /* uneffect: effect_parameter items extends Console */
+        export function forward(items: Iterator<unknown>) { consume(items) }
+        export function pure() { consume([1, 2].values()) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const forwarded = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const forwardedEffects = forwarded.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification.effects;
+      expect(forwardedEffects.diagnostics).toEqual([]);
+      expect(forwardedEffects.summaries.find((item) => item.functionName === "forward")).toMatchObject({
+        evidence: "verified",
+        iteratorEffectParameters: [{ index: 0, name: "items", convertsThrowToRejection: false }],
+        iteratorEffectBounds: [{ index: 0, name: "items", effects: [expect.objectContaining({ name: "Console" })] }],
+      });
+      expect(forwardedEffects.summaries.find((item) => item.functionName === "pure"))
+        .not.toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(cDirectory, "src", "c.ts"), `
+        import { forward } from "../../b/src/b.js"
+        /* uneffect: effect Console */
+        function* generate() { console.log("item") }
+        /* uneffect: effect Console */
+        export function run() { forward(generate()) }
+      `);
+      writeFileSync(join(cDirectory, "tsconfig.json"), JSON.stringify({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, outDir: "dist", strict: true, types: [] },
+        include: ["src/**/*.ts"], references: [{ path: "../b" }],
+      }));
+      writeFileSync(root, JSON.stringify({ files: [], references: [
+        { path: "./packages/a" }, { path: "./packages/b" }, { path: "./packages/c" },
+      ] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const transitive = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(transitive.projects.find((item) => item.project.projectFile === join(cDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "run")).toMatchObject({
+          evidence: "verified", effects: [expect.objectContaining({ kind: "capability", name: "Console" })],
+        });
+      expect(transitive.effectComposition.links).toEqual(expect.arrayContaining([
+        expect.objectContaining({ callee: "consume", iteratorEffectParameters: [expect.objectContaining({ name: "iterator" })] }),
+        expect.objectContaining({ callee: "forward", iteratorEffectParameters: [expect.objectContaining({ name: "items" })] }),
+      ]));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/a" }, { path: "./packages/b" }] }));
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        /* uneffect: effect_parameter items extends Console | Throw<Error> */
+        export function forward(items: Iterator<unknown>) { consume(items) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const incompatible = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const incompatibleEffects = incompatible.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification.effects;
+      expect(incompatibleEffects.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "forward", effect: "Throw<Error>", kind: "missing",
+        message: expect.stringContaining("not compatible with forwarded constraint"),
+      }));
+      expect(incompatibleEffects.summaries.find((item) => item.functionName === "forward"))
+        .toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: effect InvokeUserCode */
+        /* uneffect: effect_parameter iterator extends Console | Throw<Error> */
+        export async function consumeAll(iterator: IterableIterator<PromiseLike<unknown>>) {
+          await Promise.all(iterator)
+        }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { consumeAll } from "../../a/src/a.js"
+        /* uneffect: effect Console | Throw<RangeError> */
+        function* generate() { console.log("item"); throw new RangeError("stop") }
+        /* uneffect: effect Console | InvokeUserCode */
+        export function runAll() { return consumeAll(generate()) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const promise = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const promiseEffects = promise.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification.effects;
+      expect(promiseEffects.summaries.find((item) => item.functionName === "runAll")).toMatchObject({
+        evidence: "verified", effects: expect.arrayContaining([
+          expect.objectContaining({ kind: "capability", name: "Console" }),
+          expect.objectContaining({ kind: "capability", name: "InvokeUserCode" }),
+        ]),
+      });
+      expect(promiseEffects.summaries.find((item) => item.functionName === "runAll")!.effects)
+        .not.toContainEqual(expect.objectContaining({ kind: "throw", errorType: "RangeError" }));
+      expect(promise.effectComposition.links).toContainEqual(expect.objectContaining({
+        callee: "consumeAll",
+        iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: true }],
+      }));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+
   it("substitutes verified child-project Mutate parameter regions at parent call sites", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-project-mutate-"));
     const root = join(directory, "tsconfig.json");
@@ -385,6 +560,29 @@ describe("evidence and optimizer obligations", () => {
     expect(unknown.assurance).toMatchObject({ status: "unknown", passed: false });
     expect(unknown.assurance.blockers).toContainEqual(expect.objectContaining({
       domain: "module-initialization", subject: "external-static-import",
+    }));
+  });
+
+  it("rejects a manually claimed verified external iterator contract with missing bounds", () => {
+    const { program, source } = programOf(`
+      declare function consume(iterator: Iterator<unknown>): void
+      /* uneffect: effect Console */
+      function* generate() { console.log("item") }
+      /* uneffect: effect Console */
+      export function run() { consume(generate()) }
+    `);
+    const declaration = source.statements.find((statement): statement is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(statement) && statement.name?.text === "consume")!;
+    const key = `${source.fileName}:${declaration.getStart(source)}`;
+    const result = analyzeProgramEffects(program, { externalFunctionEffects: new Map([[key, {
+      effects: [], evidence: "verified" as const, functionName: "consume",
+      iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+    }]]) });
+
+    expect(result.summaries.find((summary) => summary.functionName === "run")).toMatchObject({ evidence: "unknown" });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run", kind: "unknown", severity: "error",
+      message: expect.stringContaining("missing a verified bound"),
     }));
   });
 

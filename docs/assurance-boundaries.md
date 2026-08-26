@@ -101,7 +101,12 @@ the call site when the corresponding argument is an identifier, `this`, a
 property chain, or a string-literal element chain. Missing/spread arguments and
 fresh or computed expressions remain unknown rather than inventing an alias.
 Inferred, trusted, unknown, or ambiguous summaries, non-parameter/module
-mutation regions, and iterator Effect parameters remain blockers. Success still excludes cross-project refinements, contracts,
+mutation regions, unbounded iterator parameters, and opaque iterator arguments
+remain blockers. A verified child iterator consumer whose every parameter has
+an `effect_parameter` bound is instantiated through resolved generator
+factories, supported stored iterators, forwarded iterator parameters, and
+standard pure iterators. Its bound is checked in the parent Program, including
+the declared Promise-consumer `Throw`-to-rejection behavior. Success still excludes cross-project refinements, contracts,
 ownership, temporal composition, and independent declaration-output content
 validation. SolutionBuilder
 freshness is always reported and can be made load-bearing with

@@ -128,8 +128,11 @@ reported in `effectComposition`. A verified function summary may substitute a
 parameter-rooted `Mutate` region into an addressable identifier/member argument at
 each call site. Missing, spread, call-result, and other unstable arguments
 produce an explicit unknown diagnostic. Ambiguous matches, inferred/trusted/unknown
-child evidence, non-parameter or module mutation regions, and iterator Effect
-parameters fail closed.
+child evidence, non-parameter or module mutation regions, and unbounded iterator
+Effect parameters fail closed. Fully bounded iterator Effect parameters are
+instantiated from resolved generator, stored iterator, forwarded parameter, or
+standard pure-iterator arguments; Promise consumer contracts preserve their
+`Throw`-to-rejection conversion.
 Use `--require-build-artifacts` in the CLI or
 `buildArtifacts: "require-fresh"` in the project API when TypeScript composite
 output freshness is part of the boundary. This is SolutionBuilder evidence,

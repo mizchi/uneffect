@@ -868,9 +868,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Compose uniquely resolved, verified child-project function Effect summaries into parent project calls and emit an `effectComposition` provenance ledger.
   - [x] Compose uniquely resolved, verified child-project `<module>` Effect summaries into runtime imports, including transitive initialization effects; trusted/unknown/ambiguous summaries fail closed.
   - [ ] Extend cross-project Effect composition beyond the verified parameter-rooted `Mutate` fragment to stable non-parameter/module region identities and iterator Effect parameters.
-    - [x] Preserve function parameter metadata, substitute `Mutate<typeof parameter.member>` through resolved import aliases and stable nested member arguments, and diagnose uninstantiable arguments as unknown.
+    - [x] Preserve function parameter metadata, substitute `Mutate<typeof parameter.member>` through resolved import aliases and addressable nested member arguments, and diagnose uninstantiable arguments as unknown.
     - [ ] Define source-stable identity for non-parameter function and module mutation regions across declaration outputs.
-    - [ ] Instantiate iterator Effect parameters across project-reference call boundaries.
+    - [x] Instantiate fully bounded iterator Effect parameters across project-reference call boundaries, including direct/stored/pure/forwarded arguments, bound mismatch diagnostics, and Promise `Throw` conversion; unbounded or opaque inputs remain unknown.
   - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.
   - [x] Dogfood a scoped Node settings read whose fs callback composes Console/Timer authority with poll and checkpoint ordering, including a missing-Console negative control.

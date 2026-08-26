@@ -366,7 +366,38 @@ describe("uneffect command line", () => {
         },
       });
 
+      writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: effect_parameter iterator extends Console */
+        export function consume(iterator: Iterator<unknown>) {
+          for (;;) { const step = iterator.next(); if (step.done) return }
+        }
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        import { consume } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        function* generate() { console.log("item") }
+        /* uneffect: effect Console */
+        export function run() { consume(generate()) }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const composedIterator = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedIterator)).toBe(exitCode.success);
+      expect(JSON.parse(composedIterator.stdout)).toMatchObject({
+        effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
+          callee: "consume",
+          iteratorEffectParameters: [{ index: 0, name: "iterator", convertsThrowToRejection: false }],
+          iteratorEffectBounds: [{ index: 0, name: "iterator", effects: ["Console"] }],
+        })]) },
+      });
+
       writeFileSync(join(a, "src", "a.ts"), `export function report() { console.log("a") }`);
+      writeFileSync(join(b, "src", "b.ts"), `
+        /* uneffect: module_effect Console */
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const inferredChildEffects = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], inferredChildEffects)).toBe(exitCode.failed);
       const inferredChildReport = JSON.parse(inferredChildEffects.stdout) as CheckWorkspaceJsonReport;
