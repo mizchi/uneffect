@@ -51,6 +51,13 @@ export function isKnownEffect(effect: Effect): boolean {
   return effect.kind !== "capability" || schemas.has(effect.name);
 }
 
+/** Reasons why an otherwise recognized capability still has an unresolved authority set. */
+export function unknownCapabilityReasons(effect: Effect): string[] {
+  return effect.kind === "capability"
+    ? effect.arguments.flatMap((argument) => argument.kind === "unknown" ? [argument.reason] : [])
+    : [];
+}
+
 export function registerEffectSchema(schema: EffectSchema): void {
   schemas.set(schema.name, { name: schema.name, version: schema.version, arguments: [...schema.arguments] });
 }

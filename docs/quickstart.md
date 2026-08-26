@@ -57,6 +57,21 @@ do not mean arbitrary TypeScript or every host behavior was proved. Add
 npx uneffect check --evidence src/uneffect-example.ts
 ```
 
+For an existing project, pass its TypeScript configuration. Explicit files use
+that project's compiler options; omitting files uses its `include`/`files`
+selection:
+
+```sh
+npx uneffect check --project tsconfig.json --infer src/entry.ts
+npx uneffect check --project tsconfig.json --infer
+```
+
+Uneffect still runs through its supported TypeScript peer version. A consumer
+configuration that relies on defaults from an older TypeScript release should
+make those options explicit before treating the result as equivalent to its
+normal typecheck. Solution-style project references without selected root files
+are not expanded yet and fail as an empty project rather than being guessed.
+
 To see a load-bearing failure, change the return to `return value - 1`. The
 postcondition must then fail with a source-mapped counterexample. Also replace
 `Console` on `report` with `Fetch`: the `console.log` call must produce a

@@ -492,6 +492,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Expose a caller-owned registry extension API shared by effect analysis, project verification, assumption collection, and evidence digest validation; exact contracts shadow wildcards and version drift fails closed.
 - [x] Load caller-owned static/scoped effect and module-initialization registry extensions from a strict versioned CLI JSON configuration, publish its JSON Schema, reject unknown/ambiguous/drifted inputs, and bind the effective registry into evidence. Specialized platform operation records remain curated. ([#19](https://github.com/mizchi/uneffect/issues/19))
 - [x] Add an opt-in source-mapped `module-order/v1` partial-order IR and CLI/project assurance path for acyclic static dependencies, straight-line top-level-await resume/reject, unconditional synchronous throw, and blocked importers; cycles, conditional TLA, external/dynamic bodies, and TypeScript errors stay non-proof-grade.
+- [x] Load consumer compiler options and root-file selection through `check --project <tsconfig.json>` instead of silently applying Uneffect defaults; reject malformed and empty projects.
+- [x] Make `no-unknown` reject unresolved capability argument sets such as `Fetch<POST, Unknown<dynamic-url>>`, not only summaries whose outer evidence status is `unknown`.
 - [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA/decorator ordering, side-effectful external packages, computed/external dynamic imports, dynamically selected or mutable callback identifiers, and dynamically produced decorator application. Immutable local/imported function identifiers for known callback owners are resolved by TypeChecker identity; reassigned live bindings fail closed.
 - [x] Define one proof-obligation schema per optimizer transformation.
 - [x] Prototype stable-read reuse only when no overlapping mutate/invalidate/transfer event exists.
@@ -547,7 +549,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Preserve iterator-effect parameters and formatted bounds in evidence schema v2 and the public `uneffect evidence` JSON command.
   - [x] Bind evidence schema v2 to the root identity and hashes of every non-declaration Program source, not only the command-line file.
   - [x] Upgrade effect evidence to schema v3 with mandatory per-summary source identity and a fail-closed validator for schema/tool/config/source-set/builtin/summary drift; this is TCB-relative freshness, not an independent proof certificate.
-  - [x] Separate artifact freshness from proof eligibility; reject trusted/inferred/unknown summaries, open iterator effects, duplicate identities, and vacuous inventories with machine-readable blockers.
+  - [x] Separate artifact freshness from proof eligibility; reject trusted/inferred/unknown summaries, nested unknown capability scopes, open iterator effects, duplicate identities, and vacuous inventories with machine-readable blockers.
   - [x] Keep parameter-derived and intrinsic generator unknown evidence separate so specialization cannot erase unrelated uncertainty.
   - [x] Track simple mutable iterator aliases flow-sensitively: kill/replace on straight-line assignment and may-join known, pure, and opaque states across conditional control flow.
   - [x] Track iterator identities in one-level local object slots with constant property keys, including local object aliases and flow-sensitive slot reassignment; keep dynamic keys unknown.

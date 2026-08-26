@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -165,6 +165,51 @@ describe("uneffect command line", () => {
       expect(await runCli(["check", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);
       expect(semantic.stderr).toContain("error typescript/semantic");
       expect(semantic.stderr).toContain("TypeScript source has semantic errors");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("uses the consumer tsconfig and can discover its selected source files", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-project-"));
+    const sourceDir = join(directory, "src");
+    const fileName = join(sourceDir, "loose.ts"), project = join(directory, "tsconfig.json");
+    try {
+      mkdirSync(sourceDir, { recursive: true });
+      writeFileSync(fileName, `
+        export function identity(value) { return value }
+        export function readEnv() { return process.env.PROJECT_KEY }
+      `);
+      writeFileSync(project, JSON.stringify({
+        compilerOptions: {
+          target: "ES2024", module: "ESNext", moduleResolution: "Bundler",
+          noImplicitAny: false, noEmit: true, types: ["node"],
+          typeRoots: [join(process.cwd(), "node_modules/@types")],
+        },
+        include: ["src/**/*.ts"],
+      }));
+
+      const explicit = capture();
+      expect(await runCli(["check", "--project", project, "--infer", fileName], explicit)).toBe(exitCode.success);
+      expect(explicit.stderr).not.toContain("typescript/semantic");
+
+      const discovered = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--evidence"], discovered)).toBe(exitCode.success);
+      expect(discovered.stderr).toContain("effects identity:");
+      expect(discovered.stderr).toContain('effects readEnv: Env<"PROJECT_KEY"> (inferred)');
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("rejects an invalid or empty TypeScript project as CLI usage", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-project-"));
+    const malformed = join(directory, "malformed.json"), empty = join(directory, "empty.json");
+    try {
+      writeFileSync(malformed, "{");
+      writeFileSync(empty, JSON.stringify({ include: ["missing/**/*.ts"] }));
+      const bad = capture();
+      expect(await runCli(["check", "--project", malformed], bad)).toBe(exitCode.usage);
+      expect(bad.stderr).toContain("cannot read TypeScript project");
+      const none = capture();
+      expect(await runCli(["check", "--project", empty], none)).toBe(exitCode.usage);
+      expect(none.stderr).toContain("does not select any source files");
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 

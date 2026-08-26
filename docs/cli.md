@@ -29,7 +29,7 @@ npx quint run protocol.qnt
 
 | Command | Purpose |
 | --- | --- |
-| `check <file.ts> [...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. |
+| `check [<file.ts> ...]` | Effect, contract, and async-safety diagnostics. The default command, so `uneffect <file.ts>` runs it. `--project` preserves consumer compiler options and can select the project's root files. |
 | `doctor` | Check the toolchain a run depends on: Node, the peer TypeScript, `@types/node`, the Z3 WASM build, the optional Quint peer, and the optional `java` command. |
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
@@ -40,6 +40,8 @@ npx quint run protocol.qnt
 
 `check` takes `--infer` (only check functions that already declare effects),
 `--strict` (an unknown effect name is an error, not a warning),
+`--project <tsconfig.json>` (use consumer compiler options and, when no files
+are listed, its `include`/`files` roots),
 `--assurance no-unknown|declared` (fail when emitted evidence does not meet the
 selected CI profile), and
 `--evidence` (also print the proved obligations and the inferred effect of every

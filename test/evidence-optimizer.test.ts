@@ -85,6 +85,18 @@ describe("evidence and optimizer obligations", () => {
     expect(assumed.assurance.assumptions).toBe(assumed.assumptions.entries.length);
   });
 
+  it("does not turn an unknown capability scope into project assurance", async () => {
+    const result = await verifyUneffectProject({ files: {
+      "src/client.ts": `export async function send(url: string) { await fetch(url, { method: "POST" }) }`,
+    } });
+    expect(result.effects.summaries.find((item) => item.functionName === "send")?.effects)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ name: "Fetch" })]));
+    expect(result.assurance).toMatchObject({ status: "unknown", passed: false });
+    expect(result.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "effect", classification: "unknown", subject: "send",
+    }));
+  });
+
   it("records reviewed external module initialization as an assumption", async () => {
     const fileName = "src/node-module.ts";
     const result = await verifyUneffectProject({ files: {
@@ -286,6 +298,11 @@ describe("evidence and optimizer obligations", () => {
       { ...located, evidence: "verified" }, { ...located, functionName: "duplicate", evidence: "verified" },
     ] })).toMatchObject({
       eligible: false, blockers: [expect.objectContaining({ reason: "duplicate-summary-id" })],
+    });
+    expect(assessEvidenceArtifactEligibility({ summaries: [{
+      ...located, effects: ["Fetch<POST, Unknown<dynamic-url>>"], evidence: "verified",
+    }] })).toMatchObject({
+      eligible: false, blockers: [expect.objectContaining({ reason: "unknown-capability-scope" })],
     });
   });
 

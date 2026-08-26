@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { generateOwnershipObligationQuint, generateOwnershipObligationSmt, type OwnershipGuardObligation } from "./async-safety.js";
 import { builtinContractRegistry, type BuiltinContractRegistry } from "./builtin-contracts.js";
-import { formatEffect } from "./capabilities.js";
+import { formatEffect, parseEffectExpression, unknownCapabilityReasons } from "./capabilities.js";
 import type { EffectSummary, EvidenceStatus } from "./effects.js";
 import { createZ3Context, z3Version } from "./z3.js";
 
@@ -53,6 +53,7 @@ export interface EvidenceArtifactValidation {
 
 export type EvidenceArtifactEligibilityReason =
   | Exclude<EvidenceStatus, "verified">
+  | "unknown-capability-scope"
   | "open-iterator-effect"
   | "duplicate-summary-id"
   | "vacuous";
@@ -176,6 +177,9 @@ export function assessEvidenceArtifactEligibility(
 
     if (summary.evidence !== "verified") {
       blockers.push({ summaryId: summary.id, reason: summary.evidence });
+    }
+    if (summary.effects.some((effect) => unknownCapabilityReasons(parseEffectExpression(effect)).length > 0)) {
+      blockers.push({ summaryId: summary.id, reason: "unknown-capability-scope" });
     }
 
     const boundedIndexes = new Set(summary.iteratorEffectBounds?.map((bound) => bound.index) ?? []);

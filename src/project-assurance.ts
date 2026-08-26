@@ -1,4 +1,5 @@
 import type { VerifyUneffectProjectResult } from "./project-verification.js";
+import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
 
 export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
 
@@ -70,8 +71,14 @@ export function assessProjectVerification(
     }
   }
 
-  for (const summary of result.effects.summaries) if (summary.evidence === "unknown") {
-    add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName, `${summary.functionName}: effect evidence is unknown`);
+  for (const summary of result.effects.summaries) {
+    if (summary.evidence === "unknown") {
+      add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName, `${summary.functionName}: effect evidence is unknown`);
+    }
+    for (const effect of summary.effects) for (const reason of unknownCapabilityReasons(effect)) {
+      add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName,
+        `${summary.functionName}: ${formatEffect(effect)} has unknown capability scope (${reason})`);
+    }
   }
   for (const obligation of result.obligations) if (obligation.result !== "verified") {
     add("contract", obligation.result === "counterexample" ? "violation" : "unknown", obligation.source.fileName, obligation.obligation?.functionName ?? obligation.obligationId,
@@ -109,7 +116,7 @@ export function assessProjectVerification(
   };
   const claims = [
     "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
-    "no emitted effect summary is unknown and no effect upper bound is violated",
+    "no emitted effect summary or capability scope is unknown and no effect upper bound is violated",
     "every emitted contract obligation is verified",
     "every emitted typed-array obligation is verified or explicitly trusted",
     "no modeled ownership violation was found",

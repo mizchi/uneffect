@@ -35,7 +35,7 @@ uneffect check --assurance declared src/file.ts
 | Mode | Exit 0 establishes | It does not establish |
 | --- | --- | --- |
 | default gradual check | No enabled checker emitted an error. Warnings and unknown effect summaries may remain. | Completeness, purity, or whole-program safety. |
-| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories, explicitly represented iterator-effect parameters, and reviewed `trusted` boundaries are accepted. A passing result is `assumed`, not `verified`, when any summary is trusted. | That inferred effects are declaration-checked, that trusted contracts prove their implementations, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
+| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary, no capability argument contains an unresolved `Unknown<reason>` set, and every emitted contract artifact is verified. Inferred inventories, explicitly represented iterator-effect parameters, and reviewed `trusted` boundaries are accepted. A passing result is `assumed`, not `verified`, when any summary is trusted. | That inferred effects are declaration-checked, that trusted contracts prove their implementations, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
 | `--assurance declared` | In addition, every emitted function effect summary is checked against explicit body-effect declarations and/or complete iterator-effect parameter bounds. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
 
 Both assurance profiles print their scope and every blocker. They are intended
@@ -50,6 +50,13 @@ still walk its recovered AST. The default gradual check reports the same
 TypeScript errors and exits non-zero; Uneffect never upgrades an ill-typed
 source to proof-grade evidence.
 
+Use `--project <tsconfig.json>` when checking consumer code. Otherwise the CLI
+uses Uneffect's analysis defaults, which need not match the consumer's module,
+library, strictness, JSX, or path-resolution semantics. The project file binds
+compiler options and its selected root files, but Uneffect still uses its
+declared TypeScript peer version; compiler-version drift remains outside a
+proof claim and should be removed before relying on TypeChecker identity.
+
 The programmatic `verifyUneffectProject` boundary applies the same rule across
 domains: contract and typed-array obligations become `unknown`, and temporal
 properties become `error` without running their backend. The API can still
@@ -57,7 +64,8 @@ return diagnostics, models, and emitted JavaScript for gradual adoption; those
 outputs are not proof evidence.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
-It rejects unknown effect summaries, non-verified contract obligations,
+It rejects unknown effect summaries, nested unknown capability scopes,
+non-verified contract obligations,
 unknown/counterexample typed-array obligations, ownership and instrumentation
 diagnostics, assumption-policy violations, non-verified attributed temporal
 properties, and empty/uncovered input. A verified leaf never overrides an
@@ -178,7 +186,7 @@ contracts remain assumptions and their merged-registry digest is bound into
 persisted effect evidence.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
-ordering. Uneffect's dogfood includes all 63 `src/*.ts` files, including the
+ordering. Uneffect's dogfood includes all 64 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.
 
 ESM order is a separate opt-in domain. `uneffect module-order --require

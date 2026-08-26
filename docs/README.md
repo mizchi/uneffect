@@ -6,6 +6,7 @@ Uneffect is a gradual effect specification and verification layer for existing T
 
 - [Quickstart](./quickstart.md): install, run the first check, add a scoped capability, instrument assertions, and generate a temporal model.
 - [Adoption patterns](./adoption-patterns.md): incremental rollout, boundary selection, CI ratcheting, escape hatches, and monorepo guidance.
+- [Application dogfood](./application-dogfood.md): compatibility findings and regression guards from unmodified external TypeScript applications.
 - [Implementation status](./implementation-status.md): the tested feature surface and explicit non-claims.
 - [Assurance boundaries](./assurance-boundaries.md): what exit 0 establishes, CI profiles, and explicit non-claims.
 - [Feature matrix](./feature-matrix.md): a compact tested/partial/planned view with issue ownership for every incomplete area.

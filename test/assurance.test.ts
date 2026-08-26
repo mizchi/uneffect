@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { assessCheckAssurance, formatAssuranceAssessment } from "../src/assurance.js";
+import { parseEffectExpression } from "../src/capabilities.js";
 
 describe("assurance claim boundaries", () => {
   it("returns machine-readable claims and exclusions for a passing profile", () => {
@@ -13,7 +14,7 @@ describe("assurance claim boundaries", () => {
       passed: true,
       claims: [
         "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
-        "no emitted effect summary is unknown",
+        "no emitted effect summary or capability scope is unknown",
         "every emitted contract artifact is verified",
         "every emitted function effect summary is declaration-checked",
       ],
@@ -31,6 +32,24 @@ describe("assurance claim boundaries", () => {
     }, "no-unknown");
     expect(assessment.claims).not.toContain("every emitted function effect summary is declaration-checked");
     expect(assessment.exclusions).toContain("inferred effects need not have an explicit upper-bound declaration");
+  });
+
+  it("rejects an unknown capability scope even when summary extraction succeeded", () => {
+    const assessment = assessCheckAssurance({
+      summaries: [{
+        functionName: "generate", fileName: "src/client.ts", evidence: "inferred",
+        effects: [parseEffectExpression("Fetch<POST, Unknown<dynamic-url>>")],
+      }],
+      artifacts: [],
+    }, "no-unknown");
+
+    expect(assessment).toMatchObject({
+      status: "unknown", passed: false,
+      blockers: [{
+        kind: "effect", classification: "unknown", functionName: "generate",
+        message: expect.stringContaining("unknown capability scope"),
+      }],
+    });
   });
 
   it("reports trusted summaries as assumed rather than verified", () => {

@@ -16,6 +16,8 @@ export interface CheckOptions {
   host?: ts.CompilerHost;
   /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
   builtinRegistry?: BuiltinContractRegistry;
+  /** Consumer compiler semantics, normally loaded from its tsconfig.json. */
+  compilerOptions?: ts.CompilerOptions;
 }
 
 export interface CheckResult {
@@ -35,8 +37,8 @@ const compilerOptions: ts.CompilerOptions = {
 };
 
 /** A compiler host that keeps library declarations parsed once across repeated single-file programs. */
-export function createCheckHost(): ts.CompilerHost {
-  const host = ts.createCompilerHost(compilerOptions), cache = new Map<string, ts.SourceFile | undefined>();
+export function createCheckHost(options: ts.CompilerOptions = compilerOptions): ts.CompilerHost {
+  const host = ts.createCompilerHost(options), cache = new Map<string, ts.SourceFile | undefined>();
   const read = host.getSourceFile.bind(host);
   host.getSourceFile = (fileName, languageVersion, onError, shouldCreate) => {
     if (!fileName.endsWith(".d.ts")) return read(fileName, languageVersion, onError, shouldCreate);
@@ -48,7 +50,8 @@ export function createCheckHost(): ts.CompilerHost {
 
 /** Run every checker the CLI runs — effects, contracts, async safety — over one set of files. */
 export async function checkFiles(fileNames: readonly string[], options: CheckOptions = {}): Promise<CheckResult> {
-  const program = ts.createProgram([...fileNames], compilerOptions, options.host);
+  const effectiveCompilerOptions = options.compilerOptions ?? compilerOptions;
+  const program = ts.createProgram([...fileNames], effectiveCompilerOptions, options.host);
   const effects = analyzeProgramEffects(program, {
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,

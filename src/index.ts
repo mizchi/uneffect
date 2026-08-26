@@ -123,7 +123,7 @@ export const toU32 = u32;
 
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "./effects.js";
 export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus } from "./effects.js";
-export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, registerEffectSchema } from "./capabilities.js";
+export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, registerEffectSchema, unknownCapabilityReasons } from "./capabilities.js";
 export type { AtomDomain, CapabilityAtom, CapabilityComparisonOptions, CapabilityEffect, CapabilitySet, Effect, EffectSchema } from "./capabilities.js";
 export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";
 export type { CachedVerifiedOwnershipBuildResult, OwnershipAssertionInsertion, OwnershipInstrumentResult, VerifiedOwnershipBuildResult } from "./instrument.js";
@@ -191,6 +191,8 @@ export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry
 export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
+export { loadTypeScriptProject } from "./typescript-project.js";
+export type { TypeScriptProject } from "./typescript-project.js";
 export type {
   BuiltinContract,
   BuiltinOperation,

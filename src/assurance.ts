@@ -1,4 +1,5 @@
 import type { CheckResult } from "./check.js";
+import { formatEffect, unknownCapabilityReasons } from "./capabilities.js";
 
 export type AssuranceProfile = "no-unknown" | "declared";
 export type AssuranceStatus = "verified" | "assumed" | "unknown" | "violated";
@@ -34,7 +35,7 @@ export interface AssuranceAssessment {
 
 const commonClaims = [
   "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
-  "no emitted effect summary is unknown",
+  "no emitted effect summary or capability scope is unknown",
   "every emitted contract artifact is verified",
 ] as const;
 
@@ -91,6 +92,14 @@ export function assessCheckAssurance(
       kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
       message: `${summary.functionName}: effect summary is ${summary.evidence}, not declaration-checked`,
     });
+    for (const effect of summary.effects) {
+      const reasons = unknownCapabilityReasons(effect);
+      if (reasons.length === 0) continue;
+      blockers.push({
+        kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
+        message: `${summary.functionName}: ${formatEffect(effect)} contains an unknown capability scope (${reasons.join(", ")})`,
+      });
+    }
   }
   for (const artifact of result.artifacts) if (artifact.status !== "verified") blockers.push({
     kind: "contract", classification: artifact.status === "counterexample" ? "violation" : "unknown", fileName: artifact.source.fileName,
