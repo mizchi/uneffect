@@ -6,6 +6,7 @@ import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptChecke
 import { analyzeProgramEffects, type EffectSummary } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
+import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 
 export interface CheckOptions {
   /** `gradual` (default) reports unknown effects as warnings; `strict` fails on them. */
@@ -18,6 +19,8 @@ export interface CheckOptions {
   builtinRegistry?: BuiltinContractRegistry;
   /** Consumer compiler semantics, normally loaded from its tsconfig.json. */
   compilerOptions?: ts.CompilerOptions;
+  /** Exact project/compiler identity used to qualify TypeChecker-derived assurance. */
+  project?: TypeScriptProjectProvenance;
 }
 
 export interface CheckResult {
@@ -29,6 +32,7 @@ export interface CheckResult {
   summaries: EffectSummary[];
   errors: number;
   warnings: number;
+  project?: TypeScriptProjectProvenance;
 }
 
 const compilerOptions: ts.CompilerOptions = {
@@ -86,5 +90,8 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     }
   }
   const errors = diagnostics.filter((diagnostic) => !("severity" in diagnostic) || diagnostic.severity === "error").length;
-  return { diagnostics, sources, artifacts, summaries: effects.summaries, errors, warnings: diagnostics.length - errors };
+  return {
+    diagnostics, sources, artifacts, summaries: effects.summaries, errors, warnings: diagnostics.length - errors,
+    ...(options.project === undefined ? {} : { project: options.project }),
+  };
 }

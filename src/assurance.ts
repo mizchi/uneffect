@@ -52,7 +52,7 @@ const commonExclusions = [
  * a proof claim.
  */
 export function assessCheckAssurance(
-  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics">>,
+  result: Pick<CheckResult, "artifacts" | "summaries"> & Partial<Pick<CheckResult, "sources" | "diagnostics" | "project">>,
   profile: AssuranceProfile,
 ): AssuranceAssessment {
   const blockers: AssuranceBlocker[] = [];
@@ -70,6 +70,10 @@ export function assessCheckAssurance(
   if (coverage.effectSummaries === 0 && coverage.contractArtifacts === 0) blockers.push({
     kind: "coverage", classification: "unknown", fileName: "<assessment>", functionName: "<coverage>",
     message: "no effect summary or contract artifact was emitted; the assurance claim would be vacuous",
+  });
+  if (result.project && result.project.compiler.parity !== "exact") blockers.push({
+    kind: "typescript", classification: "unknown", fileName: result.project.projectFile, functionName: "<typescript-project>",
+    message: result.project.compiler.reason ?? "consumer TypeScript compiler parity is unknown",
   });
   for (const diagnostic of result.diagnostics ?? []) if ("domain" in diagnostic && diagnostic.domain === "typescript" && diagnostic.severity === "error") blockers.push({
     kind: "typescript", classification: "violation", fileName: diagnostic.fileName, functionName: diagnostic.functionName,
@@ -109,9 +113,13 @@ export function assessCheckAssurance(
   const claims = profile === "declared"
     ? [...commonClaims, "every emitted function effect summary is declaration-checked"]
     : [...commonClaims];
+  if (result.project?.compiler.parity === "exact") claims.push(
+    "the consumer project and analyzer resolve the exact same TypeScript version",
+  );
   const exclusions = profile === "no-unknown"
     ? [...commonExclusions, "inferred effects need not have an explicit upper-bound declaration"]
     : [...commonExclusions];
+  if (!result.project) exclusions.push("consumer TypeScript compiler parity was not assessed because no --project boundary was supplied");
   const hasTrustedSummary = result.summaries.some((summary) => summary.evidence === "trusted");
   if (hasTrustedSummary) exclusions.push(
     "trusted effect summaries depend on reviewed contracts and are assumptions, not verified implementations",

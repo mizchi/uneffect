@@ -192,7 +192,7 @@ export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinReg
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
 export { loadTypeScriptProject } from "./typescript-project.js";
-export type { TypeScriptProject } from "./typescript-project.js";
+export type { TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance } from "./typescript-project.js";
 export { createCheckJsonReport } from "./check-report.js";
 export type { CheckJsonReport, CheckReportEffect } from "./check-report.js";
 export type {

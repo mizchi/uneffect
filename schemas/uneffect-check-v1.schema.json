@@ -4,7 +4,7 @@
   "title": "Uneffect check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assurance"],
+  "required": ["schema", "outcome", "counts", "diagnostics", "effects", "contracts", "assurance", "project"],
   "properties": {
     "schema": { "const": "uneffect-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -20,7 +20,8 @@
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
     "effects": { "type": "array", "items": { "$ref": "#/$defs/effect" } },
     "contracts": { "type": "array", "items": { "$ref": "#/$defs/contract" } },
-    "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
+    "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] },
+    "project": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/project" }] }
   },
   "$defs": {
     "note": {
@@ -127,6 +128,25 @@
         "classification": { "enum": ["unknown", "violation"] },
         "fileName": { "type": "string" }, "functionName": { "type": "string" },
         "message": { "type": "string" }
+      }
+    },
+    "project": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler"],
+      "properties": {
+        "projectFile": { "type": "string" },
+        "compiler": { "$ref": "#/$defs/compiler" }
+      }
+    },
+    "compiler": {
+      "type": "object", "additionalProperties": false,
+      "required": ["analyzerVersion", "analyzerPackageFile", "consumerVersion", "consumerPackageFile", "consumerModuleFile", "parity"],
+      "properties": {
+        "analyzerVersion": { "type": "string" }, "analyzerPackageFile": { "type": "string" },
+        "consumerVersion": { "type": ["string", "null"] },
+        "consumerPackageFile": { "type": ["string", "null"] },
+        "consumerModuleFile": { "type": ["string", "null"] },
+        "parity": { "enum": ["exact", "mismatch", "unknown"] },
+        "reason": { "type": "string" }
       }
     }
   }

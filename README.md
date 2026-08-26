@@ -108,6 +108,8 @@ Use `check --json` when CI needs a stable `uneffect-check/v1` report rather
 than human-readable diagnostics. The report is emitted on both success and
 failure and keeps `outcome`, evidence, assurance blockers, claims, exclusions,
 and coverage together; omitting `--assurance` produces `assurance: null`.
+With `--project`, it also records analyzer/consumer TypeScript package
+provenance, and assurance rejects unresolved or non-exact compiler versions.
 
 The project API reports `assurance.status` as `verified`, `assumed`, `unknown`,
 or `violated`. `passed` remains a compatibility convenience and is true for

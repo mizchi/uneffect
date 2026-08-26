@@ -41,7 +41,8 @@ npx quint run protocol.qnt
 `check` takes `--infer` (only check functions that already declare effects),
 `--strict` (an unknown effect name is an error, not a warning),
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
-are listed, its `include`/`files` roots),
+are listed, its `include`/`files` roots; report exact TypeScript package/version
+parity),
 `--assurance no-unknown|declared` (fail when emitted evidence does not meet the
 selected CI profile), and
 `--evidence` (also print the proved obligations and the inferred effect of every
@@ -104,6 +105,10 @@ places the complete decision, including failed diagnostics and assurance
 blockers, on stdout and leaves stderr empty. CI should inspect both the process
 exit code and `outcome`; an omitted `--assurance` is represented as
 `"assurance": null`, not as proof-grade assurance.
+When `--project` is present, `project.compiler` records the analyzer and
+consumer package paths, versions, and `exact | mismatch | unknown` parity.
+Assurance requires `exact`; resolution failure and even patch-version drift are
+unknown evidence because TypeChecker behavior can change between releases.
 
 | Code | Meaning |
 | --- | --- |

@@ -5,8 +5,10 @@ its runtime architecture.
 
 ## 1. Install
 
-Uneffect requires Node.js 24 or newer. TypeScript is a peer dependency so the
-analyzer can use the compiler selected by the project.
+Uneffect requires Node.js 24 or newer. TypeScript is a peer dependency. For an
+explicit `--project` boundary, Uneffect resolves the consumer's TypeScript
+package and compares its exact version with the analyzer module executing the
+check.
 
 ```sh
 npm install --save-dev @mizchi/uneffect typescript
@@ -78,11 +80,13 @@ Treat `outcome`, `assurance.status`, `blockers`, `claims`, and `exclusions` as a
 single decision. In particular, `assurance: null` means no assurance profile was
 requested; it is not equivalent to `verified`.
 
-Uneffect still runs through its supported TypeScript peer version. A consumer
-configuration that relies on defaults from an older TypeScript release should
-make those options explicit before treating the result as equivalent to its
-normal typecheck. Solution-style project references without selected root files
-are not expanded yet and fail as an empty project rather than being guessed.
+The JSON report records both compiler package locations and versions.
+Assurance fails with a TypeScript `unknown` blocker when the consumer package
+cannot be resolved or its exact version differs. A gradual check can still
+produce diagnostics and inventories, but is not presented as project-compatible
+TypeChecker evidence. Solution-style project references without selected root
+files are not expanded yet and fail as an empty project rather than being
+flattened into one guessed compiler-option domain.
 
 To see a load-bearing failure, change the return to `return value - 1`. The
 postcondition must then fail with a source-mapped counterexample. Also replace

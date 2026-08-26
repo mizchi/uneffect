@@ -129,6 +129,7 @@ export function assessProjectVerification(
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)));
   const exclusions = [
     "this assessment covers only explicitly supplied files and analyses represented in this result",
+    "the in-memory project API does not establish consumer tsconfig or TypeScript package-version parity",
     "inferred effects need not have an explicit declaration",
     ...(hasOpenIteratorEffect ? ["unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set"] : []),
     "trusted typed-array, builtin, and module-initialization contracts remain assumptions, not derived proofs",

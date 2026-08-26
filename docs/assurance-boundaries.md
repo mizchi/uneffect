@@ -53,15 +53,23 @@ source to proof-grade evidence.
 Use `--project <tsconfig.json>` when checking consumer code. Otherwise the CLI
 uses Uneffect's analysis defaults, which need not match the consumer's module,
 library, strictness, JSX, or path-resolution semantics. The project file binds
-compiler options and its selected root files, but Uneffect still uses its
-declared TypeScript peer version; compiler-version drift remains outside a
-proof claim and should be removed before relying on TypeChecker identity.
+compiler options and its selected root files. Uneffect resolves the consumer
+TypeScript package and module from that project boundary, then compares its
+exact version with the analyzer module. The machine report classifies parity as
+`exact`, `mismatch`, or `unknown`; both assurance profiles reject the latter
+two. Package metadata remains part of the trusted installation base, not a
+cryptographic attestation of compiler bytes. Solution-style project references
+remain unsupported and are not flattened.
 
 The programmatic `verifyUneffectProject` boundary applies the same rule across
 domains: contract and typed-array obligations become `unknown`, and temporal
 properties become `error` without running their backend. The API can still
 return diagnostics, models, and emitted JavaScript for gradual adoption; those
 outputs are not proof evidence.
+It currently constructs an in-memory Program with Uneffect defaults rather
+than loading a consumer tsconfig, so its result does not establish consumer
+compiler parity. Carrying referenced configs and compiler provenance through
+that API remains tracked in issue #20.
 
 `verifyUneffectProject(...).assurance` is the corresponding cross-domain gate.
 It rejects unknown effect summaries, nested unknown capability scopes,

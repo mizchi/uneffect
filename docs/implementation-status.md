@@ -414,7 +414,9 @@ same property is proved for arbitrary TypeScript.
   depends on before it is depended on. `check --json` emits a versioned
   `uneffect-check/v1` decision on success or failure, keeping normalized
   diagnostics, evidence, assurance blockers, claims, exclusions, and coverage
-  together instead of asking CI to infer a safety result from text.
+  together instead of asking CI to infer a safety result from text. An
+  explicitly supplied project also records analyzer/consumer TypeScript
+  package provenance; unresolved or non-exact versions make assurance unknown.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
   regression signals, not proof that arbitrary applications will meet a fixed
   latency target.

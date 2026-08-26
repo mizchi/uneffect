@@ -3,6 +3,7 @@ import { formatEffect } from "./capabilities.js";
 import type { CheckResult } from "./check.js";
 import type { VerificationArtifact } from "./contracts.js";
 import { reportDiagnostic, type ReportedDiagnostic } from "./diagnostics.js";
+import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -24,6 +25,7 @@ export interface CheckJsonReport {
   effects: CheckReportEffect[];
   contracts: VerificationArtifact[];
   assurance: AssuranceAssessment | null;
+  project: TypeScriptProjectProvenance | null;
 }
 
 export function createCheckJsonReport(result: CheckResult, assurance?: AssuranceAssessment): CheckJsonReport {
@@ -49,5 +51,6 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
     })),
     contracts: result.artifacts,
     assurance: assurance ?? null,
+    project: result.project ?? null,
   };
 }

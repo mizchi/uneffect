@@ -43,6 +43,11 @@ diagnostic errors, `assurance.status: "unknown"`, and the two source-attributed
 capability blockers. This distinction is intentional: the analyzed program is
 well typed, while the requested assurance claim is not established.
 
+The provenance field additionally reports analyzer TypeScript `6.0.3` versus
+vlmkit's resolved `6.0.2`, producing a separate `typescript` unknown blocker.
+This local cross-repository check is therefore not presented as compiler-parity
+evidence; the network-authority blockers remain independently visible.
+
 This result does not prove the OpenAI request succeeds, that the response parser
 is complete, that every rejection is handled by callers, or that the dynamic
 base URL is safe. A consumer can make the network authority finite by proving
@@ -59,6 +64,12 @@ defaults differ. `--project` loaded the configuration, but the run correctly
 remained non-proof-grade due to TS7006 diagnostics and a missing local
 Cloudflare type installation. Uneffect did not reinterpret those errors or
 claim Proxy/Reflect semantics.
+
+The machine report also records `consumerVersion: null` and
+`parity: "unknown"` because TypeScript is not resolvable from the uninstalled
+mnemo project boundary. That resolution blocker is distinct from the source
+diagnostics and remains even if the file parses under Uneffect's development
+compiler.
 
 This is a compatibility finding, not an application defect. Reliable assurance
 requires the consumer and Uneffect to agree on the TypeScript version and to

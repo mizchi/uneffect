@@ -2,6 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import ts from "typescript";
 import { cliCommands, cliVersion, formatCliHelp, runCli } from "../src/cli-runner.js";
 import { exitCode, type CliStreams } from "../src/cli-support.js";
 import { builtinContractRegistry } from "../src/builtin-contracts.js";
@@ -236,7 +237,7 @@ describe("uneffect command line", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-check/v1" } },
-        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assurance"]),
+        required: expect.arrayContaining(["outcome", "diagnostics", "effects", "contracts", "assurance", "project"]),
       });
 
       const gradual = capture();
@@ -244,6 +245,42 @@ describe("uneffect command line", () => {
       expect(JSON.parse(gradual.stdout)).toMatchObject({ outcome: "passed", assurance: null });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
+
+  it("fails assurance when the consumer TypeScript compiler is unresolved or version-drifted", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-ts-parity-"));
+    const sourceDirectory = join(directory, "src"), fileName = join(sourceDirectory, "main.ts"), project = join(directory, "tsconfig.json");
+    const packageDirectory = join(directory, "node_modules", "typescript");
+    try {
+      mkdirSync(sourceDirectory, { recursive: true });
+      writeFileSync(fileName, "export const value = 1");
+      writeFileSync(project, JSON.stringify({ compilerOptions: { noEmit: true, types: [] }, include: ["src/**/*.ts"] }));
+
+      const unresolvedIo = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], unresolvedIo)).toBe(exitCode.failed);
+      expect(JSON.parse(unresolvedIo.stdout)).toMatchObject({
+        project: { compiler: { analyzerVersion: ts.version, consumerVersion: null, parity: "unknown" } },
+        assurance: { status: "unknown", passed: false, blockers: [expect.objectContaining({ kind: "typescript", classification: "unknown" })] },
+      });
+
+      mkdirSync(packageDirectory, { recursive: true });
+      writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}");
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: "0.0.0-drift", main: "index.js" }));
+      const driftedIo = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], driftedIo)).toBe(exitCode.failed);
+      expect(JSON.parse(driftedIo.stdout)).toMatchObject({
+        project: { compiler: { analyzerVersion: ts.version, consumerVersion: "0.0.0-drift", parity: "mismatch" } },
+        assurance: { status: "unknown", passed: false },
+      });
+
+      writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      const exactIo = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], exactIo)).toBe(exitCode.success);
+      expect(JSON.parse(exactIo.stdout)).toMatchObject({
+        outcome: "passed", project: { compiler: { analyzerVersion: ts.version, consumerVersion: ts.version, parity: "exact" } },
+        assurance: { status: "verified", passed: true },
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 30_000);
 
   it("reports missing or excess positional arguments per command", async () => {
     const missing = capture();

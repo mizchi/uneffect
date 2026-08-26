@@ -50,6 +50,7 @@ export const checkCommand: CliCommand = {
       requireAnnotations: !values.infer,
       builtinRegistry,
       compilerOptions: project?.compilerOptions,
+      project: project?.provenance,
     });
     const assessment = assurance === undefined ? undefined : assessCheckAssurance(result, assurance as AssuranceProfile);
     if (values.json) io.out(`${JSON.stringify(createCheckJsonReport(result, assessment), null, 2)}\n`);
