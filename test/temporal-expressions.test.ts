@@ -20,6 +20,18 @@ describe("restricted TypeScript temporal expressions", () => {
     expect(generateQuintExpression(expression)).toBe("epoch + 1 <= limit or ready");
   });
 
+  it("keeps exact nonnegative ceiling quotients aligned across Quint and runtime emission", () => {
+    const expression = parseTemporalExpression("(distance - distance % step) / step + (distance % step > 0 ? 1 : 0)");
+    const runtime = generateRuntimeAssertionExpression(expression);
+    const evaluate = new Function("distance", "step", `return ${runtime}`) as (distance: number, step: number) => number;
+    for (const step of [1, 2, 3, 7]) {
+      for (let distance = 0; distance <= 20; distance++) {
+        expect(evaluate(distance, step)).toBe(Math.ceil(distance / step));
+      }
+    }
+    expect(generateQuintExpression(expression)).toBe("(distance - distance % step) / step + (if (distance % step > 0) 1 else 0)");
+  });
+
   it("parses, types, and emits conditional temporal expressions", () => {
     const expression = parseTemporalExpression("armed ? value + 1 : value");
     const symbols = new Map([["armed", "bool"], ["value", "int"]] as const);

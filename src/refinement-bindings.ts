@@ -1544,23 +1544,51 @@ function validateRefinementActionBodiesInSource(
           if (delta === undefined) return undefined;
           deltas.set(name, delta);
         }
-        if (deltas.get(counterName) !== -1) return undefined;
+        const counterDelta = deltas.get(counterName);
+        if (counterDelta === undefined || counterDelta >= 0) return undefined;
+        const stepValue = -counterDelta;
+        if (!Number.isSafeInteger(stepValue) || stepValue <= 0) return undefined;
         const zero: TemporalExpression = { kind: "integer", value: "0" };
+        const one: TemporalExpression = { kind: "integer", value: "1" };
         const stop = integerExpression(stopValue);
         const entryCounter = entryValues.get(counterName)!;
         const distance: TemporalExpression = stopValue === 0 ? entryCounter : {
           kind: "binary", operator: "subtract", left: entryCounter, right: stop,
         };
+        const step = integerExpression(stepValue);
+        const loopIterations: TemporalExpression = stepValue === 1 ? distance : (() => {
+          const remainder: TemporalExpression = {
+            kind: "binary", operator: "modulo", left: distance, right: step,
+          };
+          const divisible: TemporalExpression = {
+            kind: "binary", operator: "subtract", left: distance, right: remainder,
+          };
+          const quotient: TemporalExpression = {
+            kind: "binary", operator: "divide", left: divisible, right: step,
+          };
+          const roundUp: TemporalExpression = {
+            kind: "conditional",
+            condition: { kind: "binary", operator: "gt", left: remainder, right: zero },
+            whenTrue: one, whenFalse: zero,
+          };
+          return { kind: "binary", operator: "add", left: quotient, right: roundUp };
+        })();
         const iterations: TemporalExpression = {
           kind: "conditional", condition: entryGuard,
-          whenTrue: distance, whenFalse: zero,
+          whenTrue: loopIterations, whenFalse: zero,
         };
         for (const [name, delta] of deltas) {
           const entryValue = entryValues.get(name)!;
           if (name === counterName) {
+            const totalDecrease: TemporalExpression = stepValue === 1 ? loopIterations : {
+              kind: "binary", operator: "multiply", left: step, right: loopIterations,
+            };
             updates.set(name, {
               kind: "conditional", condition: entryGuard,
-              whenTrue: stop, whenFalse: entryValue,
+              whenTrue: stepValue === 1 ? stop : {
+                kind: "binary", operator: "subtract", left: entryCounter, right: totalDecrease,
+              },
+              whenFalse: entryValue,
             });
             continue;
           }

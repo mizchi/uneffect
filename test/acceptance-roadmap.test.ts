@@ -299,6 +299,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions("bounded-floor.ts", source, "boundedFloor", temporal)).resolves.toEqual([]);
   });
 
+  it("summarizes a positive constant-step countdown with an exact integral quotient", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * init pending = 0
+       * init processed = 0
+       * action drainPairs: pending' = pending + 2 >= 3 ? pending + 2 - 2 * ((pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0)) : pending + 2, processed' = processed + (pending + 2 >= 3 ? (pending - pending % 2) / 2 + (pending % 2 > 0 ? 1 : 0) : 0)
+       */
+      interface Runtime { pending: number; processed: number }
+      /* uneffect: refinement pairDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement pairDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement pairDrain@1 action drainPairs */
+      export function drainPairs(runtime: Runtime) {
+        runtime.pending += 2
+        while (runtime.pending >= 3) {
+          runtime.pending -= 2
+          runtime.processed++
+        }
+      }
+    `;
+    const temporal = (parseSpecification("pair-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("pair-drain.ts", source, "pairDrain", temporal)).resolves.toEqual([]);
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

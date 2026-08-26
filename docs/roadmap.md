@@ -11,7 +11,8 @@ reflects dependency and soundness risk, not a release date commitment.
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point. A first unbounded affine countdown rule now
    derives a closed form from a symbolic loop-entry state and signed constant
-   lower bound without finite expansion; arbitrary loop joins and
+   lower bound without finite expansion, including positive constant steps and
+   exact overshoot; arbitrary loop joins and
    exception-heavy recurrences remain.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.

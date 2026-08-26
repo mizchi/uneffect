@@ -78,11 +78,11 @@ describe("Uneffect dogfood", () => {
     expect(validateRefinementStateProjection(fileName, source, "telemetryBacklog", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "telemetryBacklog", temporal)).toEqual([]);
 
-    const doubleAccounting = source.replace("runtime.accounted++;", "runtime.accounted += 2;");
+    const doubleAccounting = source.replace("runtime.accounted += 2;", "runtime.accounted += 4;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, doubleAccounting, "telemetryBacklog", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "drain", target: "accounted" }),
     );
-    const nonTerminating = source.replace("runtime.queued--;", "runtime.queued++;");
+    const nonTerminating = source.replace("runtime.queued -= 2;", "runtime.queued += 2;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, nonTerminating, "telemetryBacklog", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
     );

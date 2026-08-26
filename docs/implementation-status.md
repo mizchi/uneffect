@@ -102,12 +102,16 @@ same property is proved for arbitrary TypeScript.
   other steps, and general loop invariants remain unsupported. Within the
   separate symbolic affine fragment, `while (counter > L)` and
   `while (counter >= L)` are summarized for signed safe-integer constant `L`
-  without expansion when the counter decreases by exactly one, all other state
-  writes have safe-integer constant per-iteration deltas, and the body has no
-  abrupt completion. Supported symbolic state updates before the loop are
+  without expansion when the counter decreases by a positive safe-integer
+  constant step, all other state writes have safe-integer constant
+  per-iteration deltas, and the body has no abrupt completion. Non-unit steps
+  derive a ceiling quotient from a guarded nonnegative distance and divide only
+  the remainder-subtracted, exactly divisible numerator, keeping JavaScript,
+  Quint, and Z3 results aligned while preserving final counter overshoot.
+  Supported symbolic state updates before the loop are
   snapshotted and substituted into its guard, trip count, and closed-form
-  results before the lexical suffix is composed. Dynamic or unsafe bounds,
-  other guards or steps, coupled recurrences, opaque entry updates, and abrupt
+  results before the lexical suffix is composed. Dynamic or unsafe bounds or
+  steps, other guards, coupled recurrences, opaque entry updates, and abrupt
   exits remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the

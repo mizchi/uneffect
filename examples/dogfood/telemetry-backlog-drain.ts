@@ -5,7 +5,7 @@
  * init queued = 0
  * init accounted = 0
  * init flushes = 0
- * action drain: queued' = queued + 1 >= 3 ? 2 : queued + 1, accounted' = accounted + (queued + 1 >= 3 ? queued - 1 : 0), flushes' = flushes + 1
+ * action drain: queued' = queued + 1 >= 3 ? queued + 1 - 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : queued + 1, accounted' = accounted + (queued + 1 >= 3 ? 2 * ((queued - 1 - (queued - 1) % 2) / 2 + ((queued - 1) % 2 > 0 ? 1 : 0)) : 0), flushes' = flushes + 1
  */
 
 export interface TelemetryBacklog {
@@ -26,13 +26,13 @@ export function observeTelemetryBacklog(runtime: TelemetryBacklog): TelemetryBac
 
 /* uneffect: refinement telemetryBacklog@1 action drain */
 export function drainTelemetryBacklog(runtime: TelemetryBacklog): void {
-  // Account for the sample that triggered this pass, but retain two samples
-  // for the next batch instead of emitting undersized external requests.
+  // Account for the sample that triggered this pass, process pairs, and retain
+  // the final one or two samples instead of emitting an undersized request.
   // The actual delivery remains a separate capability boundary.
   runtime.queued++;
   while (runtime.queued >= 3) {
-    runtime.queued--;
-    runtime.accounted++;
+    runtime.queued -= 2;
+    runtime.accounted += 2;
   }
   runtime.flushes++;
 }

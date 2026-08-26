@@ -1329,13 +1329,14 @@ or TypeScript transforms. It is an observation rather than a regression budget;
 the relatively high margin of error makes it unsuitable for small comparative
 claims.
 
-On 2026-08-27, after changing the symbolic telemetry batching loop to retain a
-two-sample floor with an inclusive constant bound, its summary measured 0.0993
-ms mean (10,071.69 operations/second over 5,036 samples, 9.16% relative margin
-of error). The warm benchmark parses neither the source nor the temporal spec
-on each sample and does not invoke Z3; it measures action-body collection,
-entry-state substitution, bound normalization, termination-shape validation,
-and closed-form affine summary construction. The high margin of error makes
-this run an observation rather than a comparative claim or regression budget;
-it does not isolate bound-normalization cost and does not represent general
-loop fixed points or exception-heavy CFGs.
+On 2026-08-27, after changing the symbolic telemetry batching loop to process
+two entries per iteration and preserve its one-or-two-entry overshoot, its
+summary measured 0.1534 ms mean (6,517.78 operations/second over 3,259 samples,
+8.38% relative margin of error). The warm benchmark parses neither the source
+nor the temporal spec on each sample and does not invoke Z3; it measures
+action-body collection, entry-state substitution, bound and positive-step
+normalization, exact ceiling-quotient construction, and closed-form affine
+summary construction. The high margin of error and changed workload make this
+run an observation rather than a comparative claim or regression budget; it
+does not isolate quotient-construction cost and does not represent general loop
+fixed points or exception-heavy CFGs.

@@ -2483,9 +2483,12 @@ describe("annotated refinement bindings", () => {
     await expect(validateRefinementActionBodiesWithZ3("countdown.ts", source, "countdown", temporal)).resolves.toEqual([]);
 
     for (const [fileName, changed] of [
-      ["countdown-step.ts", source.replace("pending--", "pending -= 2")],
       ["countdown-growing.ts", source.replace("pending--", "pending++")],
       ["countdown-coupled.ts", source.replace("processed++", "processed += runtime.pending")],
+      ["countdown-zero-step.ts", source.replace("pending--", "pending -= 0")],
+      ["countdown-negative-step.ts", source.replace("pending--", "pending -= -2")],
+      ["countdown-dynamic-step.ts", source.replace("pending--", "pending -= runtime.audited")],
+      ["countdown-unsafe-step.ts", source.replace("pending--", "pending -= 9007199254740992")],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "countdown", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
