@@ -118,10 +118,12 @@ child-first `buildOrder`, per-config root files and provenance, graph/assurance
 empty leaves, and duplicate root ownership fail closed. The workspace result
 also records `effectComposition`: uniquely resolved child function and module summaries
 are applied only when their evidence is `verified`. Inferred/trusted/unknown or
-ambiguous summaries, non-parameter/module `Mutate`, unbounded iterator Effect
-parameters, and opaque iterator arguments produce blockers. Parameter-rooted
-function mutation and fully bounded iterator parameters are instantiated at
-resolved call sites. Other proof domains and emitted build-artifact contents are
+ambiguous summaries, inaccessible/non-exported function-closure or module `Mutate`,
+unbounded iterator Effect parameters, and opaque iterator arguments produce blockers.
+Parameter-rooted mutation is instantiated from addressable call arguments. An exported
+closure root is instantiated only through a named or namespace import resolving to the
+same TypeChecker declaration; JSON records its stable project/source/export identity.
+Fully bounded iterator parameters are instantiated at resolved call sites. Other proof domains and emitted build-artifact contents are
 not composed or validated.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite

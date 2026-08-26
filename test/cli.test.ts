@@ -390,6 +390,27 @@ describe("uneffect command line", () => {
         })]) },
       });
 
+      writeFileSync(join(a, "src", "a.ts"), `
+        export const shared = { value: 0 }
+        /* uneffect: effect Mutate<typeof shared.value> */
+        export function setShared() { shared.value = 1 }
+      `);
+      writeFileSync(join(b, "src", "b.ts"), `
+        import { setShared, shared } from "../../a/src/a.js"
+        /* uneffect: effect Mutate<typeof shared.value> */
+        export function update() { setShared() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const composedStableMutation = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedStableMutation)).toBe(exitCode.success);
+      expect(JSON.parse(composedStableMutation.stdout)).toMatchObject({
+        effectComposition: { status: "verified", links: expect.arrayContaining([expect.objectContaining({
+          callee: "setShared",
+          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared", identity: expect.stringContaining("src/a.ts#shared") })],
+        })]) },
+      });
+      expect(composedStableMutation.stdout).not.toContain("declarationKey");
+
       writeFileSync(join(a, "src", "a.ts"), `export function report() { console.log("a") }`);
       writeFileSync(join(b, "src", "b.ts"), `
         /* uneffect: module_effect Console */

@@ -1,6 +1,6 @@
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
-import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "./effects.js";
+import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract, ExternalMutationRoot } from "./effects.js";
 import type { IteratorEffectParameter } from "./call-graph.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypeScriptProject } from "./typescript-project.js";
@@ -17,6 +17,7 @@ export interface WorkspaceEffectLink {
   parameters?: readonly string[];
   iteratorEffectParameters?: readonly IteratorEffectParameter[];
   iteratorEffectBounds?: ExternalFunctionEffectContract["iteratorEffectBounds"];
+  mutationRoots?: readonly ExternalMutationRoot[];
 }
 
 export interface WorkspaceEffectCompositionBlocker {
@@ -87,10 +88,37 @@ function childModuleSummary(owner: CompletedEffectProject, declarationFile: stri
   return modules.length === 1 ? modules[0] : undefined;
 }
 
-function hasUnsupportedMutation(summary: EffectSummary | undefined): boolean {
-  if (!summary) return false;
+function stableMutationRoots(
+  checker: ts.TypeChecker,
+  declarationSource: ts.SourceFile,
+  summary: EffectSummary | undefined,
+  owner: CompletedEffectProject,
+): { roots: ExternalMutationRoot[]; unsupported?: string } {
+  if (!summary) return { roots: [] };
   const parameters = new Set(summary.parameters ?? []);
-  return summary.effects.some((effect) => effect.kind === "mutate" && !parameters.has(/^[A-Za-z_$][\w$]*/u.exec(effect.region)?.[0] ?? ""));
+  const roots = new Set(summary.effects.flatMap((effect) => {
+    if (effect.kind !== "mutate") return [];
+    const root = /^[A-Za-z_$][\w$]*/u.exec(effect.region)?.[0] ?? "";
+    return parameters.has(root) ? [] : [root];
+  }));
+  const moduleSymbol = checker.getSymbolAtLocation(declarationSource);
+  const exports = moduleSymbol ? checker.getExportsOfModule(moduleSymbol) : [];
+  const stable: ExternalMutationRoot[] = [];
+  for (const root of roots) {
+    const exported = exports.find((item) => item.name === root);
+    const declaration = exported?.declarations?.find((item) => item.getSourceFile() === declarationSource);
+    if (!declaration) return { roots: stable, unsupported: root };
+    stable.push({
+      root, exportName: exported!.name,
+      identity: `${owner.project.projectFile}::${relative(
+        configuredPath(owner.project, owner.project.compilerOptions.rootDir as string | undefined)
+          ?? dirname(owner.project.projectFile),
+        summary.fileName ?? declarationSource.fileName,
+      ).replaceAll("\\", "/")}#${exported!.name}`,
+      declarationKey: `${declarationSource.fileName}:${declaration.getStart(declarationSource)}`,
+    });
+  }
+  return { roots: stable };
 }
 
 /** Bind child-first verified summaries to the declarations resolved by a parent Program. */
@@ -119,13 +147,14 @@ export function composeWorkspaceEffects(
         const exact = owner.summaries.filter((summary) => summary.id === key);
         const candidates = exact.length > 0 ? exact : owner.summaries.filter((summary) => summary.functionName === name && summary.functionName !== "<module>");
         const summary = candidates.length === 1 ? candidates[0] : undefined;
-        const unsupportedMutation = hasUnsupportedMutation(summary);
+        const mutation = stableMutationRoots(checker, declarationSource, summary, owner);
+        const unsupportedMutation = mutation.unsupported;
         const iteratorBounds = new Set(summary?.iteratorEffectBounds?.map((bound) => bound.index) ?? []);
         const unsupportedIterator = summary?.iteratorEffectParameters?.some((parameter) => !iteratorBounds.has(parameter.index)) ?? false;
         const verified = summary?.evidence === "verified" && !unsupportedMutation && !unsupportedIterator;
         const reason = summary === undefined
           ? `cannot uniquely match ${name} to a child-project effect summary`
-          : unsupportedMutation ? `cross-project non-parameter Mutate region identity is not proved for ${name}`
+          : unsupportedMutation ? `cross-project Mutate region root ${unsupportedMutation} is not a stable export of ${name}`
           : unsupportedIterator ? `cross-project iterator effect parameter ${name} has no verified bound`
           : summary.evidence !== "verified" ? `${name} has ${summary.evidence} child-project evidence`
           : undefined;
@@ -135,6 +164,7 @@ export function composeWorkspaceEffects(
           ...(summary?.parameters ? { parameters: summary.parameters } : {}),
           ...(summary?.iteratorEffectParameters ? { iteratorEffectParameters: summary.iteratorEffectParameters } : {}),
           ...(summary?.iteratorEffectBounds ? { iteratorEffectBounds: summary.iteratorEffectBounds } : {}),
+          ...(mutation.roots.length > 0 ? { mutationRoots: mutation.roots } : {}),
           ...(reason ? { reason } : {}),
         };
         contracts.set(key, contract);
@@ -144,6 +174,7 @@ export function composeWorkspaceEffects(
           ...(contract.parameters ? { parameters: contract.parameters } : {}),
           ...(contract.iteratorEffectParameters ? { iteratorEffectParameters: contract.iteratorEffectParameters } : {}),
           ...(contract.iteratorEffectBounds ? { iteratorEffectBounds: contract.iteratorEffectBounds } : {}),
+          ...(contract.mutationRoots ? { mutationRoots: contract.mutationRoots } : {}),
         });
         if (!verified) blockers.push({
           kind: "effect-composition", classification: "unknown", projectFile: current.projectFile,

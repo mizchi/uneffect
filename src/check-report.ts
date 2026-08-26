@@ -65,6 +65,7 @@ export interface CheckWorkspaceJsonReport {
       evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[]; parameters?: readonly string[];
       iteratorEffectParameters?: ReadonlyArray<{ index: number; name: string; convertsThrowToRejection: boolean }>;
       iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly string[] }>;
+      mutationRoots?: ReadonlyArray<{ root: string; exportName: string; identity: string }>;
     }>;
     blockers: WorkspaceCheckBlocker[];
   };
@@ -152,7 +153,7 @@ export function createCheckWorkspaceJsonReport(
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
-        "cross-project non-parameter/module Mutate identities and unbounded iterator effect parameters are not composed",
+        "cross-project inaccessible/non-exported function and module Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
@@ -166,11 +167,12 @@ export function createCheckWorkspaceJsonReport(
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
     effectComposition: {
       status: compositionBlockers.length === 0 ? "verified" : "unknown",
-      links: (effectComposition?.links ?? []).map(({ iteratorEffectBounds, ...link }) => ({
+      links: (effectComposition?.links ?? []).map(({ iteratorEffectBounds, mutationRoots, ...link }) => ({
         ...link, effects: link.effects.map(formatEffect),
         ...(iteratorEffectBounds ? { iteratorEffectBounds: iteratorEffectBounds.map((bound) => ({
           index: bound.index, name: bound.name, effects: bound.effects.map(formatEffect),
         })) } : {}),
+        ...(mutationRoots ? { mutationRoots: mutationRoots.map(({ declarationKey: _declarationKey, ...root }) => root) } : {}),
       })),
       blockers: compositionBlockers,
     },

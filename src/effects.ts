@@ -20,6 +20,16 @@ export interface EffectDiagnostic {
   notes?: DiagnosticNote[];
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
+export interface ExternalMutationRoot {
+  /** Region root as written in the child-project summary. */
+  root: string;
+  /** Exported declaration name used to recover a parent-visible alias. */
+  exportName: string;
+  /** Output-layout-independent project/source/export identity used in evidence reports. */
+  identity: string;
+  /** TypeChecker declaration identity in the declaration file consumed by the parent. */
+  declarationKey: string;
+}
 export interface ExternalFunctionEffectContract {
   effects: readonly Effect[];
   evidence: EvidenceStatus;
@@ -28,6 +38,7 @@ export interface ExternalFunctionEffectContract {
   functionName?: string;
   iteratorEffectParameters?: readonly IteratorEffectParameter[];
   iteratorEffectBounds?: ReadonlyArray<{ index: number; name: string; effects: readonly Effect[] }>;
+  mutationRoots?: readonly ExternalMutationRoot[];
   reason?: string;
 }
 export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
@@ -475,6 +486,7 @@ function instantiateExternalEffect(
   effect: Effect,
   contract: ExternalFunctionEffectContract,
   call: ts.CallExpression,
+  checker: ts.TypeChecker,
 ): Effect | undefined {
   if (effect.kind !== "mutate") return effect;
   for (const [index, parameter] of (contract.parameters ?? []).entries()) {
@@ -483,6 +495,32 @@ function instantiateExternalEffect(
     if (!argument || ts.isSpreadElement(argument)) return undefined;
     const region = addressableMutationArgumentRegion(argument);
     return region === undefined ? undefined : { kind: "mutate", region: `${region}${effect.region.slice(parameter.length)}` };
+  }
+  const root = regionRoot(effect.region);
+  const stable = contract.mutationRoots?.find((item) => item.root === root);
+  if (stable) {
+    let visibleRoot: string | undefined;
+    for (const statement of call.getSourceFile().statements) {
+      if (!ts.isImportDeclaration(statement) || !statement.importClause || !statement.moduleSpecifier) continue;
+      const bindings = statement.importClause.namedBindings;
+      if (bindings && ts.isNamedImports(bindings)) for (const binding of bindings.elements) {
+        let symbol = checker.getSymbolAtLocation(binding.name);
+        if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+        if (symbol?.declarations?.some((declaration) => {
+          const source = declaration.getSourceFile();
+          return `${source.fileName}:${declaration.getStart(source)}` === stable.declarationKey;
+        })) visibleRoot = binding.name.text;
+      }
+      if (bindings && ts.isNamespaceImport(bindings)) {
+        const moduleSymbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+        const exported = moduleSymbol && checker.getExportsOfModule(moduleSymbol).find((item) => item.name === stable.exportName);
+        if (exported?.declarations?.some((declaration) => {
+          const source = declaration.getSourceFile();
+          return `${source.fileName}:${declaration.getStart(source)}` === stable.declarationKey;
+        })) visibleRoot = `${bindings.name.text}.${stable.exportName}`;
+      }
+    }
+    return visibleRoot === undefined ? undefined : { kind: "mutate", region: `${visibleRoot}${effect.region.slice(root.length)}` };
   }
   return undefined;
 }
@@ -884,7 +922,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
             externalIteratorContractProblems.push({ id: graphNode.id, parameter: unboundedIterator, call: child });
           }
           for (const rawEffect of external.effects) {
-            const effect = instantiateExternalEffect(rawEffect, external, child);
+            const effect = instantiateExternalEffect(rawEffect, external, child, checker);
             if (effect === undefined) {
               unknownExternalEvidence.add(graphNode.id);
               externalInstantiationProblems.push({ id: graphNode.id, effect: rawEffect, call: child });
@@ -985,8 +1023,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     diagnostics.push({
       fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(problem.effect), kind: "unknown", severity: "error",
       line: source.getLineAndCharacterOfPosition(problem.call.getStart(source)).line + 1,
-      message: `${graphNode.name} cannot instantiate ${formatEffect(problem.effect)} at ${snippet(problem.call, source)}; its region is not parameter-rooted or the corresponding argument is missing, spread, or not an addressable member region`,
-      notes: [{ label: "because", detail: "cross-project Mutate substitution currently accepts only parameter-rooted effects with identifier, this, property-access, or string-literal element-access arguments" }],
+      message: `${graphNode.name} cannot instantiate ${formatEffect(problem.effect)} at ${snippet(problem.call, source)}; its region is not usable: the corresponding argument is missing, spread, or non-addressable, or the exact exported mutation root is not parent-visible`,
+      notes: [{ label: "because", detail: "cross-project Mutate substitution accepts parameter-rooted addressable arguments and exported closure roots reached through a TypeChecker-identical named or namespace import; missing, spread, computed, inaccessible, and same-named-different regions fail closed" }],
     });
   }
   for (const problem of externalIteratorContractProblems) {

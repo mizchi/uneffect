@@ -425,10 +425,12 @@ same property is proved for arbitrary TypeScript.
   API compose uniquely resolved `verified` function and module Effect summaries
   child-first and emit a provenance ledger. Verified parameter-rooted function
   `Mutate` effects are instantiated for addressable identifier/member arguments;
+  exported function-closure mutation roots carry a project/source/export identity
+  and are instantiated only through an exact TypeChecker-resolved named or namespace import;
   fully bounded iterator Effect parameters reuse the Program call graph's
   generator/stored/pure/forwarded specialization and bound checks across the
   boundary. Inferred/trusted/unknown summaries, ambiguous matches, unstable
-  mutation arguments, non-parameter/module mutation regions, unbounded iterator
+  mutation arguments, inaccessible/non-exported function roots, module mutation regions, unbounded iterator
   parameters, and opaque iterator arguments block assurance.
   Independent declaration-output content validation remains incomplete;
   SolutionBuilder freshness can be reported or required.

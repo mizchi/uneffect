@@ -521,17 +521,64 @@ describe("evidence and optimizer obligations", () => {
         export function setShared() { shared.value = 1 }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
-        import { setShared } from "../../a/src/a.js"
+        import { setShared, shared } from "../../a/src/a.js"
         /* uneffect: effect Mutate<typeof shared.value> */
         export function update() { setShared() }
       `);
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
-      const nonParameter = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
-      expect(nonParameter.effectComposition).toMatchObject({
-        status: "unknown",
-        blockers: [expect.objectContaining({ subject: "setShared", message: expect.stringContaining("non-parameter Mutate") })],
+      const stableExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(stableExport.effectComposition).toMatchObject({
+        status: "verified",
+        links: expect.arrayContaining([expect.objectContaining({
+          callee: "setShared", evidence: "verified",
+          mutationRoots: [expect.objectContaining({ root: "shared", exportName: "shared" })],
+        })]),
+        blockers: [],
       });
-      expect(nonParameter.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+      expect(stableExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({
+          evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "shared.value" })],
+        });
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import * as child from "../../a/src/a.js"
+        /* uneffect: effect Mutate<typeof child.shared.value> */
+        export function update() { child.setShared() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const namespaceExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(namespaceExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({
+          evidence: "verified", effects: [expect.objectContaining({ kind: "mutate", region: "child.shared.value" })],
+        });
+
+      writeFileSync(join(bDirectory, "src", "other.ts"), "export const shared = { value: 0 }\n");
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setShared } from "../../a/src/a.js"
+        import { shared } from "./other.js"
+        /* uneffect: effect Mutate<typeof shared.value> */
+        export function update() { setShared() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const collidingExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      const collidingVerification = collidingExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!.verification;
+      expect(collidingVerification.effects.summaries.find((item) => item.functionName === "update"))
+        .toMatchObject({ evidence: "unknown" });
+      expect(collidingVerification.effects.diagnostics).toContainEqual(expect.objectContaining({
+        functionName: "update", kind: "unknown", message: expect.stringContaining("cannot instantiate Mutate<typeof shared.value>"),
+      }));
+
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        import { setShared } from "../../a/src/a.js"
+        export function update() { setShared() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const inaccessibleExport = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });
+      expect(inaccessibleExport.effectComposition).toMatchObject({
+        status: "verified",
+        blockers: [],
+      });
+      expect(inaccessibleExport.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "update")).toMatchObject({ evidence: "unknown" });
     } finally {
       rmSync(directory, { recursive: true, force: true });

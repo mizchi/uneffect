@@ -33,6 +33,7 @@
             "parameters": { "type": "array", "items": { "type": "string" } },
             "iteratorEffectParameters": { "type": "array", "items": { "$ref": "#/$defs/iteratorEffectParameter" } },
             "iteratorEffectBounds": { "type": "array", "items": { "$ref": "#/$defs/iteratorEffectBound" } },
+            "mutationRoots": { "type": "array", "items": { "$ref": "#/$defs/mutationRoot" } },
             "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
             "effects": { "type": "array", "items": { "type": "object" } }
           }
@@ -48,6 +49,12 @@
     "iteratorEffectBound": {
       "type": "object", "additionalProperties": false, "required": ["index", "name", "effects"],
       "properties": { "index": { "type": "integer", "minimum": 0 }, "name": { "type": "string" }, "effects": { "type": "array", "items": { "type": "object" } } }
+    },
+    "mutationRoot": {
+      "type": "object", "additionalProperties": false, "required": ["root", "exportName", "identity", "declarationKey"],
+      "properties": {
+        "root": { "type": "string" }, "exportName": { "type": "string" }, "identity": { "type": "string" }, "declarationKey": { "type": "string" }
+      }
     },
     "buildArtifacts": {
       "type": "object", "additionalProperties": false, "required": ["status", "observations"],

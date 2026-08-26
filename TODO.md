@@ -870,6 +870,8 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [ ] Extend cross-project Effect composition beyond the verified parameter-rooted `Mutate` fragment to stable non-parameter/module region identities and iterator Effect parameters.
     - [x] Preserve function parameter metadata, substitute `Mutate<typeof parameter.member>` through resolved import aliases and addressable nested member arguments, and diagnose uninstantiable arguments as unknown.
     - [ ] Define source-stable identity for non-parameter function and module mutation regions across declaration outputs.
+      - [x] Bind an exported function-closure mutation root to a project/source/export identity, verify its current declaration with TypeChecker identity, and substitute only a matching named or namespace import in the parent; inaccessible, same-named-different, and non-exported roots remain unknown.
+      - [ ] Extend the same identity contract to module-initialization mutation regions and re-export chains.
     - [x] Instantiate fully bounded iterator Effect parameters across project-reference call boundaries, including direct/stored/pure/forwarded arguments, bound mismatch diagnostics, and Promise `Throw` conversion; unbounded or opaque inputs remain unknown.
   - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.
