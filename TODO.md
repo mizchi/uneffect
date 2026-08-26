@@ -314,6 +314,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Preserve normalized invariant ASTs into Z3 mismatch discharge instead of reparsing runtime-oriented diagnostic strings.
           - [x] Normalize imported acyclic helpers that construct builtin `Set`/`Map` views matching a declared computed abstraction; require TypeChecker constructor identity and reject same-named lookalikes.
           - [x] Resolve immutable local/imported function-declaration predicate values passed to builtin array `every`/`some`, normalize their single-return bodies to collection quantifiers, and reject mutable aliases.
+          - [x] Extend quantified predicate-value resolution to immutable exported/local arrow functions and function expressions through `const` alias chains, without widening action/helper dispatch resolution.
           - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target.
         - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.

@@ -88,8 +88,9 @@ same property is proved for arbitrary TypeScript.
   declared computed abstraction. This requires TypeChecker identity; local
   same-named constructors and conversions without an abstraction relation are
   not treated as proof evidence. Builtin array `every` and `some` calls may use
-  a TypeChecker-resolved local or imported function-declaration predicate with
-  one supported return body; immutable `const` aliases are followed, while
+  a TypeChecker-resolved local or imported function declaration, arrow
+  function, or function-expression predicate with one supported return body;
+  immutable `const` aliases are followed, while
   mutable aliases and dynamic function values remain unsupported. A reviewed local
   runtime-class method may use the same alias chain as its receiver; its body is
   specialized with the existing argument substitution and recursion guard.

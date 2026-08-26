@@ -246,6 +246,60 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("resolves exported immutable arrow and function-expression predicates", () => {
+    const validateInvariants = futureApi("validateRefinementInvariantBodiesInProgram");
+    const parseSpecification = futureApi("parseSpec");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-expression-predicate-"));
+    const predicateFile = join(directory, "predicates.ts");
+    const mainFile = join(directory, "main.ts");
+    const source = `
+      import { isPositive, isPrimary } from "./predicates.js"
+      const positive = isPositive
+      const primary = isPrimary
+      /* uneffect:
+       * state owners: Set<int>
+       * init owners = Set(1)
+       * temporal allPositive: owners.forall(owner => owner > 0)
+       * temporal primaryPresent: owners.contains(1)
+       * abstraction routing@1 owners = Set(activeOwnerIds)
+       */
+      interface Runtime { activeOwnerIds: number[] }
+      /* uneffect: refinement routing@1 create */ export function create(initial: { owners: Set<number> }): Runtime { return { activeOwnerIds: Array.from(initial.owners) } }
+      /* uneffect: refinement routing@1 observe */ export function observe(runtime: Runtime) { return { owners: new Set(runtime.activeOwnerIds) } }
+      /* uneffect: refinement routing@1 invariant allPositive */
+      export function allPositive(runtime: Runtime) { return runtime.activeOwnerIds.every(positive) }
+      /* uneffect: refinement routing@1 invariant primaryPresent */
+      export function primaryPresent(runtime: Runtime) { return runtime.activeOwnerIds.some(primary) }
+    `;
+    try {
+      writeFileSync(predicateFile, `
+        export const isPositive = (owner: number) => owner > 0
+        export const isPrimary = function (owner: number) { return owner === 1 }
+      `);
+      writeFileSync(mainFile, source);
+      const program = ts.createProgram([mainFile, predicateFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      const temporal = (parseSpecification(mainFile, source) as { temporal: unknown }).temporal;
+      expect(validateInvariants(program, mainFile, "routing", temporal)).toEqual([]);
+
+      writeFileSync(predicateFile, `
+        export let isPositive = (owner: number) => owner > 0
+        export const isPrimary = function (owner: number) { return owner === 1 }
+      `);
+      const mutableExportProgram = ts.createProgram([mainFile, predicateFile], {
+        target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+      expect(validateInvariants(mutableExportProgram, mainFile, "routing", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-invariant-body", modelName: "allPositive" }),
+      );
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a labeled block exit with mandatory cleanup and outer continuation", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

@@ -180,13 +180,13 @@ load-bearing: a same-named user class or unrelated conversion remains
 `unsupported-invariant-body`.
 
 The same quantified invariant path accepts a local or imported function
-declaration as the callback value of builtin array `every`/`some`. The Program
-TypeChecker resolves direct references and immutable `const` aliases, then the
-supported single-return predicate body is normalized under a capture-safe
-element parameter. A changed predicate remains an expression mismatch; a
-mutable callback alias remains unsupported. This is not general higher-order
-flow: function-valued properties, runtime selection, and polymorphic callbacks
-are still outside the proof claim.
+declaration, arrow function, or function expression as the callback value of
+builtin array `every`/`some`. The Program TypeChecker resolves direct references
+and immutable `const` aliases, then the supported single-return predicate body
+is normalized under a capture-safe element parameter. A changed predicate
+remains an expression mismatch; a mutable callback binding or alias remains
+unsupported. This is not general higher-order flow: function-valued properties,
+runtime selection, and polymorphic callbacks are still outside the proof claim.
 
 A separate labeled-delivery acceptance path models cancellation with
 `attempt: { ... break attempt }`. The local break is consumed only after the

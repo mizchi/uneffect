@@ -548,7 +548,7 @@ function normalizeRefinementExpression(
       const declaration = ts.isArrowFunction(candidate)
         ? candidate
         : checker && (ts.isIdentifier(candidate) || ts.isPropertyAccessExpression(candidate))
-          ? resolveProgramFunction(checker, candidate)
+          ? resolveProgramImmutableFunctionValue(checker, candidate)
           : undefined;
       if (!declaration?.body || declaration.parameters.length !== 1 || !ts.isIdentifier(declaration.parameters[0]!.name)) return undefined;
       const parameter = declaration.parameters[0]!.name.text;
@@ -671,6 +671,32 @@ function resolveProgramFunction(
     && (ts.isIdentifier(declaration.initializer) || ts.isPropertyAccessExpression(declaration.initializer)));
   return alias?.initializer && (ts.isIdentifier(alias.initializer) || ts.isPropertyAccessExpression(alias.initializer))
     ? resolveProgramFunction(checker, alias.initializer, new Set([...seen, symbol]))
+    : undefined;
+}
+
+type ImmutableFunctionValue = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+
+function resolveProgramImmutableFunctionValue(
+  checker: ts.TypeChecker,
+  expression: ts.Identifier | ts.PropertyAccessExpression,
+  seen: ReadonlySet<ts.Symbol> = new Set(),
+): ImmutableFunctionValue | undefined {
+  let symbol = checker.getSymbolAtLocation(expression)
+    ?? (ts.isPropertyAccessExpression(expression) ? checker.getSymbolAtLocation(expression.name) : undefined);
+  if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  if (!symbol || seen.has(symbol)) return undefined;
+  const direct = symbol.declarations?.find(ts.isFunctionDeclaration);
+  if (direct) return direct;
+  const binding = symbol.declarations?.find((declaration): declaration is ts.VariableDeclaration =>
+    ts.isVariableDeclaration(declaration)
+    && ts.isVariableDeclarationList(declaration.parent)
+    && (declaration.parent.flags & ts.NodeFlags.Const) !== 0
+    && !!declaration.initializer);
+  const initializer = binding?.initializer;
+  if (!initializer) return undefined;
+  if (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer)) return initializer;
+  return ts.isIdentifier(initializer) || ts.isPropertyAccessExpression(initializer)
+    ? resolveProgramImmutableFunctionValue(checker, initializer, new Set([...seen, symbol]))
     : undefined;
 }
 
