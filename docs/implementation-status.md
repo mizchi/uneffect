@@ -415,6 +415,9 @@ same property is proved for arbitrary TypeScript.
   `uneffect-check/v1` decision on success or failure, keeping normalized
   diagnostics, evidence, assurance blockers, claims, exclusions, and coverage
   together instead of asking CI to infer a safety result from text. An
+  unknown Effect summary includes non-empty stable-coded `unknownReasons`, and
+  unresolved top-level calls no longer become verified merely because no
+  dynamic import is present. An
   explicitly supplied project also records analyzer/consumer TypeScript
   package provenance; unresolved or non-exact versions make assurance unknown.
   A no-positional-file solution root is expanded into separate Programs rather

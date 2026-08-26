@@ -8,6 +8,7 @@ import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
 import type { WorkspaceEffectComposition } from "./workspace-effects.js";
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
+import type { EffectUnknownReason } from "./effects.js";
 
 export interface CheckReportEffect {
   id?: string;
@@ -16,6 +17,7 @@ export interface CheckReportEffect {
   functionName: string;
   effects: string[];
   evidence: "verified" | "trusted" | "inferred" | "unknown";
+  unknownReasons?: EffectUnknownReason[];
   parameters?: string[];
   iteratorEffectParameters?: Array<{ index: number; name: string; convertsThrowToRejection: boolean }>;
   iteratorEffectBounds?: Array<{ index: number; name: string; effects: string[] }>;
@@ -94,6 +96,7 @@ export function createCheckJsonReport(result: CheckResult, assurance?: Assurance
       functionName: summary.functionName,
       effects: summary.effects.map(formatEffect),
       evidence: summary.evidence,
+      ...(summary.unknownReasons === undefined ? {} : { unknownReasons: summary.unknownReasons }),
       ...(summary.parameters === undefined ? {} : { parameters: summary.parameters }),
       ...(summary.iteratorEffectParameters === undefined ? {} : { iteratorEffectParameters: summary.iteratorEffectParameters }),
       ...(summary.iteratorEffectBounds === undefined ? {} : {

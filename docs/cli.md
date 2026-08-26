@@ -105,6 +105,9 @@ places the complete decision, including failed diagnostics and assurance
 blockers, on stdout and leaves stderr empty. CI should inspect both the process
 exit code and `outcome`; an omitted `--assurance` is represented as
 `"assurance": null`, not as proof-grade assurance.
+Every Effect entry whose `evidence` is `unknown` includes a non-empty
+`unknownReasons` array. The schema requires it and forbids the field for
+non-unknown evidence, preventing an unexplained unknown or stale reason list.
 When `--project` is present, `project.compiler` records the analyzer and
 consumer package paths, versions, and `exact | mismatch | unknown` parity.
 Assurance requires `exact`; resolution failure and even patch-version drift are

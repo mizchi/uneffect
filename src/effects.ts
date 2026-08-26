@@ -20,6 +20,29 @@ export interface EffectDiagnostic {
   notes?: DiagnosticNote[];
 }
 export type EvidenceStatus = "verified" | "trusted" | "inferred" | "unknown";
+export type EffectUnknownReasonCode =
+  | "typescript-errors"
+  | "unknown-callback-timing"
+  | "unknown-generator-consumption"
+  | "unknown-generator-parameter"
+  | "invalid-effect-parameter"
+  | "invalid-iterator-instantiation"
+  | "unknown-external-evidence"
+  | "unbounded-iterator-effect-parameter"
+  | "effect-diagnostic"
+  | "unknown-external-module"
+  | "unresolved-effect-instantiation"
+  | "unreviewed-external-module"
+  | "unresolved-decorator"
+  | "possible-user-code"
+  | "unresolved-dynamic-import"
+  | "unresolved-call"
+  | "unresolved-callback"
+  | "unknown-dependency";
+export interface EffectUnknownReason {
+  code: EffectUnknownReasonCode;
+  message: string;
+}
 export interface ExternalExportedMutationRoot {
   kind: "export";
   /** Region root as written in the child-project summary. */
@@ -53,6 +76,8 @@ export interface EffectSummary {
   functionName: string;
   effects: Effect[];
   evidence: EvidenceStatus;
+  /** Non-empty whenever `evidence` is `unknown`; stable codes explain the unsupported boundary. */
+  unknownReasons?: EffectUnknownReason[];
   /** Present on summaries produced from a Program; omitted by low-level manual summary helpers. */
   id?: string;
   fileName?: string;
@@ -791,7 +816,10 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
     const effects = inferred.get(info.name)!;
     const own = diagnostics.filter((diagnostic) => diagnostic.functionName === info.name);
     const evidence: EvidenceStatus = info.declared.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
-    return { functionName: info.name, effects, evidence };
+    return {
+      functionName: info.name, effects, evidence,
+      ...(evidence === "unknown" ? { unknownReasons: [{ code: "effect-diagnostic", message: "an effect declaration or inferred authority diagnostic prevents proof-grade evidence" }] } : {}),
+    };
   });
   return { diagnostics, summaries };
 }
@@ -1154,6 +1182,18 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const polymorphicIterator = graphNode.iteratorEffectParameters.length > 0;
     const bounds = iteratorEffectBounds.get(graphNode.id) ?? new Map();
     const fullyBoundIterator = polymorphicIterator && graphNode.iteratorEffectParameters.every((parameter) => bounds.has(parameter.index));
+    const unknownReasons: EffectUnknownReason[] = [];
+    const addUnknownReason = (code: EffectUnknownReasonCode, message: string): void => {
+      if (!unknownReasons.some((reason) => reason.code === code)) unknownReasons.push({ code, message });
+    };
+    if (invalidSources.has(source.fileName)) addUnknownReason("typescript-errors", "TypeScript errors prevent proof-grade effect evidence");
+    if (unknownTiming.has(graphNode.id)) addUnknownReason("unknown-callback-timing", "a callback may run at an unresolved time");
+    if (unknownGeneratorEvidence.has(graphNode.id)) addUnknownReason("unknown-generator-consumption", "generator body execution or consumption count is unresolved");
+    if (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator) addUnknownReason("unknown-generator-parameter", "a caller-supplied iterator effect cannot be represented by this summary");
+    if (invalidEffectParameterOwners.has(graphNode.id)) addUnknownReason("invalid-effect-parameter", "an effect_parameter annotation is invalid");
+    if (invalidIteratorInstantiationCallers.has(graphNode.id)) addUnknownReason("invalid-iterator-instantiation", "an iterator effect argument exceeds or cannot satisfy its declared bound");
+    if (unknownExternalEvidence.has(graphNode.id)) addUnknownReason("unknown-external-evidence", "a resolved external effect contract is unknown or cannot be instantiated at this call site");
+    if (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator) addUnknownReason("unbounded-iterator-effect-parameter", "a declared function consumes caller-supplied iterator effects without an effect_parameter upper bound");
     const evidence: EvidenceStatus = invalidSources.has(source.fileName)
       || unknownTiming.has(graphNode.id) || unknownGeneratorEvidence.has(graphNode.id)
       || (unknownGeneratorParameterEvidence.has(graphNode.id) && !polymorphicIterator)
@@ -1163,8 +1203,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
         : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    if (evidence === "unknown" && unknownReasons.length === 0) addUnknownReason("effect-diagnostic", "an effect declaration or inferred authority diagnostic prevents proof-grade evidence");
     summaries.push({
       functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span,
+      ...(unknownReasons.length > 0 ? { unknownReasons } : {}),
       parameters: parameters.get(graphNode.id) ?? [],
       ...(polymorphicIterator ? { iteratorEffectParameters: graphNode.iteratorEffectParameters } : {}),
       ...(bounds.size > 0 ? { iteratorEffectBounds: [...bounds].map(([index, bound]) => ({ index, ...bound })) } : {}),
@@ -1175,7 +1217,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   // source-attributed pseudo-summary prevents function evidence in a sibling
   // file from making executable top-level code disappear from assurance.
   const moduleRecords = new Map<string, {
-    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; trusted: boolean; dependencies: string[];
+    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; unknownReasons: EffectUnknownReason[]; trusted: boolean; dependencies: string[];
   }>();
   const moduleResolutionHost: ts.ModuleResolutionHost = {
     fileExists: (fileName) => program.getSourceFile(fileName) !== undefined || ts.sys.fileExists(fileName),
@@ -1271,6 +1313,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     const dependencies: string[] = [];
     let unknown = false, trusted = false;
+    const unknownReasons: EffectUnknownReason[] = [];
+    const markUnknown = (code: EffectUnknownReasonCode, message: string): void => {
+      unknown = true;
+      if (!unknownReasons.some((reason) => reason.code === code)) unknownReasons.push({ code, message });
+    };
     const addResolvedDependency = (specifier: ts.Expression, requireRelative = false): string | undefined => {
       if (!ts.isStringLiteralLike(specifier) || (requireRelative && !specifier.text.startsWith("."))) return undefined;
       const symbol = checker.getSymbolAtLocation(specifier);
@@ -1283,10 +1330,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         const external = resolvedFileName ? options.externalModuleEffects?.get(resolvedFileName) : undefined;
         if (!external) return undefined;
         if (external.evidence === "trusted") trusted = true;
-        else if (external.evidence !== "verified") unknown = true;
+        else if (external.evidence !== "verified") markUnknown("unknown-external-module", `external module effect evidence for ${resolvedFileName} is ${external.evidence}`);
         for (const rawEffect of external.effects) {
           const effect = instantiateExternalModuleEffect(rawEffect, external, source, checker);
-          if (effect === undefined) unknown = true;
+          if (effect === undefined) markUnknown("unresolved-effect-instantiation", `an external module effect from ${resolvedFileName} cannot be instantiated in this module`);
           else addEffect(effects, effect);
         }
         return resolvedFileName;
@@ -1301,7 +1348,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (addResolvedDependency(statement.moduleSpecifier)) continue;
       const moduleName = ts.isStringLiteralLike(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
       const contract = resolveModuleInitializationContract(program, source.fileName, moduleName, registry);
-      if (!contract) { unknown = true; continue; }
+      if (!contract) { markUnknown("unreviewed-external-module", `runtime initialization of ${moduleName || "an unresolved module"} has no reviewed contract`); continue; }
       trusted = true;
       for (const expression of contract.effects) addEffect(effects, parseEffectExpression(expression));
     }
@@ -1319,7 +1366,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           for (const decorator of ts.getDecorators(decorated) ?? []) {
             visit(decorator.expression, catches);
             const decoratorEffects = resolveStableFunctionEffects(decorator.expression);
-            if (!decoratorEffects) unknown = true;
+            if (!decoratorEffects) markUnknown("unresolved-decorator", "a decorator expression does not resolve to a stable analyzed function");
             else for (const effect of decoratorEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
           }
         };
@@ -1355,7 +1402,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         && node.expression.arguments.length === 1
         ? addResolvedDependency(node.expression.arguments[0]!, true) : undefined;
       if (ts.isThrowStatement(node) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
-      if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) unknown = true;
+      if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) markUnknown("possible-user-code", "a top-level operation may invoke user code outside the resolved call graph");
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
@@ -1374,9 +1421,18 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if (ts.isCallExpression(node)) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) unknown = true;
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) markUnknown("unresolved-dynamic-import", "a dynamic import specifier does not resolve to a selected relative source module");
         const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter);
         for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+        const external = externalContractForCall(checker, node, options.externalFunctionEffects);
+        if (external) {
+          if (external.evidence !== "verified") markUnknown("unknown-external-evidence", `external function effect evidence is ${external.evidence}`);
+          for (const rawEffect of external.effects) {
+            const effect = instantiateExternalEffect(rawEffect, external, node, checker);
+            if (effect === undefined) markUnknown("unresolved-effect-instantiation", "an external function effect cannot be instantiated at this top-level call site");
+            else if (!(effect.kind === "throw" && catches) && observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+          }
+        }
         const target = checker.getResolvedSignature(node)?.declaration;
         let targetId: string | undefined;
         if (target && ts.isFunctionLike(target)) {
@@ -1389,8 +1445,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
               .find((candidate) => inferred.has(candidate)) ?? targetId;
           }
           for (const effect of inferred.get(targetId) ?? []) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
-          if (!inferred.has(targetId) && adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
-        } else if (!resolvedDynamicDependency && adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
+          if (!inferred.has(targetId) && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target has no analyzed effect summary or reviewed contract");
+        } else if (!resolvedDynamicDependency && primitive.length === 0 && !resolvedBuiltin && !external) markUnknown("unresolved-call", "a top-level call target cannot be resolved by TypeChecker identity or a reviewed contract");
         const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
         const operation = resolvedBuiltin?.operation;
         const builtinCallback = operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
@@ -1402,9 +1458,9 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (builtinCallback !== undefined) callbackIndices.add(builtinCallback);
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
-          if (!callback) { unknown = true; continue; }
+          if (!callback) { markUnknown("unresolved-callback", "a callback-owning call omits its expected callback argument"); continue; }
           const callbackEffects = resolveStableFunctionEffects(callback);
-          if (!callbackEffects) { unknown = true; continue; }
+          if (!callbackEffects) { markUnknown("unresolved-callback", "a callback argument is mutable, dynamic, or lacks an analyzed function body"); continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }
       }
@@ -1415,7 +1471,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
     const allowed = extractAnnotations(moduleHeader, "module_effect")
       .flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
-    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, trusted, dependencies });
+    if (invalidSources.has(source.fileName)) markUnknown("typescript-errors", "TypeScript errors prevent proof-grade module effect evidence");
+    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, unknownReasons, trusted, dependencies });
   }
 
   // Static module evaluation precedes the importing module. A monotone union
@@ -1427,7 +1484,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const record of moduleRecords.values()) for (const dependencyName of record.dependencies) {
       const dependency = moduleRecords.get(dependencyName);
       if (!dependency) continue;
-      if (dependency.unknown && !record.unknown) { record.unknown = true; changedModules = true; }
+      if (dependency.unknown && !record.unknown) {
+        record.unknown = true;
+        record.unknownReasons.push({ code: "unknown-dependency", message: `runtime dependency ${dependency.source.fileName} has unknown module effects` });
+        changedModules = true;
+      }
       if (dependency.trusted && !record.trusted) { record.trusted = true; changedModules = true; }
       for (const effect of dependency.effects) if (!record.effects.some((item) => formatEffect(item) === formatEffect(effect))) {
         record.effects.push(effect);
@@ -1436,7 +1497,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
 
-  for (const { source, id, effects, allowed, unknown, trusted } of moduleRecords.values()) {
+  for (const { source, id, effects, allowed, unknown, unknownReasons, trusted } of moduleRecords.values()) {
     const line = 1;
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unknown",
@@ -1457,7 +1518,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === "<module>");
     const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : trusted ? "trusted" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
       : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
-    summaries.push({ functionName: "<module>", effects, evidence, id, fileName: source.fileName, span: { start: 0, end: source.end } });
+    if (evidence === "unknown" && unknownReasons.length === 0) unknownReasons.push({ code: "effect-diagnostic", message: "a module effect declaration or inferred authority diagnostic prevents proof-grade evidence" });
+    summaries.push({
+      functionName: "<module>", effects, evidence, id, fileName: source.fileName, span: { start: 0, end: source.end },
+      ...(unknownReasons.length > 0 ? { unknownReasons } : {}),
+    });
   }
   return { diagnostics, summaries };
 }

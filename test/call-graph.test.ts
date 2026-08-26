@@ -121,7 +121,10 @@ describe("multi-file call graph and effect polymorphism", () => {
         moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
       });
 
-      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({
+        evidence: "unknown",
+        unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "unresolved-callback" })]),
+      });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -162,7 +165,30 @@ describe("multi-file call graph and effect polymorphism", () => {
       });
       const result = analyzeProgramEffects(program, { requireAnnotations: false });
 
-      expect(result.summaries.find((item) => item.functionName === "<module>" && item.fileName === entry)).toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((item) => item.functionName === "<module>" && item.fileName === entry)).toMatchObject({
+        evidence: "unknown",
+        unknownReasons: expect.arrayContaining([
+          expect.objectContaining({ code: "unresolved-call" }),
+          expect.objectContaining({ code: "unresolved-dynamic-import" }),
+        ]),
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("does not verify an unresolved top-level call merely because no dynamic import is present", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-unresolved-call-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `declare const callback: () => void\ncallback()`);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>")).toMatchObject({
+        evidence: "unknown",
+        unknownReasons: [expect.objectContaining({ code: "unresolved-call" })],
+      });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -822,7 +848,11 @@ describe("multi-file call graph and effect polymorphism", () => {
       expect(result.summaries.find((summary) => summary.functionName === "consumeIteratorParameter"))
         .toMatchObject({ evidence: "inferred", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.summaries.find((summary) => summary.functionName === "boundedIteratorParameter"))
-        .toMatchObject({ evidence: "unknown", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
+        .toMatchObject({
+          evidence: "unknown",
+          iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })],
+          unknownReasons: [expect.objectContaining({ code: "unbounded-iterator-effect-parameter" })],
+        });
       expect(result.summaries.find((summary) => summary.functionName === "constrainedIteratorParameter"))
         .toMatchObject({ evidence: "verified", iteratorEffectParameters: [expect.objectContaining({ index: 0, name: "iterator" })] });
       expect(result.diagnostics).not.toContainEqual(expect.objectContaining({

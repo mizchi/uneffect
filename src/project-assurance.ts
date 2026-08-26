@@ -80,7 +80,9 @@ export function assessProjectVerification(
 
   for (const summary of result.effects.summaries) {
     if (summary.evidence === "unknown") {
-      add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName, `${summary.functionName}: effect evidence is unknown`);
+      add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName,
+        `${summary.functionName}: effect evidence is unknown${summary.unknownReasons?.length
+          ? ` (${summary.unknownReasons.map((reason) => `${reason.code}: ${reason.message}`).join("; ")})` : ""}`);
     }
     for (const effect of summary.effects) for (const reason of unknownCapabilityReasons(effect)) {
       add("effect", "unknown", summary.fileName ?? "<unknown>", summary.functionName,

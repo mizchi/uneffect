@@ -169,7 +169,12 @@ describe("uneffect command line", () => {
       expect(syntax.stderr).toContain("TypeScript source has syntax errors");
       const syntaxJson = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", "--json", syntaxFile], syntaxJson)).toBe(exitCode.failed);
-      expect(JSON.parse(syntaxJson.stdout).assurance).toMatchObject({ passed: false, claims: [] });
+      const syntaxReport = JSON.parse(syntaxJson.stdout);
+      expect(syntaxReport.assurance).toMatchObject({ passed: false, claims: [] });
+      expect(syntaxReport.effects.filter((effect: { evidence: string }) => effect.evidence === "unknown"))
+        .toEqual(expect.arrayContaining([expect.objectContaining({
+          unknownReasons: expect.arrayContaining([expect.objectContaining({ code: "typescript-errors" })]),
+        })]));
 
       const semantic = capture();
       expect(await runCli(["check", "--assurance", "no-unknown", semanticFile], semantic)).toBe(exitCode.failed);

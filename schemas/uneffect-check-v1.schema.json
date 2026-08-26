@@ -44,14 +44,27 @@
     },
     "effect": {
       "type": "object", "additionalProperties": false,
+      "allOf": [{
+        "if": { "properties": { "evidence": { "const": "unknown" } }, "required": ["evidence"] },
+        "then": { "required": ["unknownReasons"] },
+        "else": { "not": { "required": ["unknownReasons"] } }
+      }],
       "required": ["functionName", "effects", "evidence"],
       "properties": {
         "id": { "type": "string" }, "fileName": { "type": "string" }, "span": { "$ref": "#/$defs/span" },
         "functionName": { "type": "string" }, "effects": { "type": "array", "items": { "type": "string" } },
         "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
+        "unknownReasons": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/effectUnknownReason" } },
         "parameters": { "type": "array", "items": { "type": "string" } },
         "iteratorEffectParameters": { "type": "array", "items": { "$ref": "#/$defs/iteratorParameter" } },
         "iteratorEffectBounds": { "type": "array", "items": { "$ref": "#/$defs/iteratorBound" } }
+      }
+    },
+    "effectUnknownReason": {
+      "type": "object", "additionalProperties": false, "required": ["code", "message"],
+      "properties": {
+        "code": { "enum": ["typescript-errors", "unknown-callback-timing", "unknown-generator-consumption", "unknown-generator-parameter", "invalid-effect-parameter", "invalid-iterator-instantiation", "unknown-external-evidence", "unbounded-iterator-effect-parameter", "effect-diagnostic", "unknown-external-module", "unresolved-effect-instantiation", "unreviewed-external-module", "unresolved-decorator", "possible-user-code", "unresolved-dynamic-import", "unresolved-call", "unresolved-callback", "unknown-dependency"] },
+        "message": { "type": "string", "minLength": 1 }
       }
     },
     "iteratorParameter": {

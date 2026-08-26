@@ -111,6 +111,10 @@ and coverage together; omitting `--assurance` produces `assurance: null`.
 `claims` contains only established claims: it is empty whenever the requested
 assurance fails. Failure reasons remain in `blockers`; candidate claims are not
 serialized as if they were results.
+Every Effect summary with `evidence: "unknown"` also carries non-empty,
+stable-coded `unknownReasons`, so CI and adoption tooling can distinguish an
+unresolved callback, generator, external contract, TypeScript error, or module
+boundary instead of treating all uncertainty alike.
 With `--project`, it also records analyzer/consumer TypeScript package
 provenance, and assurance rejects unresolved or non-exact compiler versions.
 For a solution-style root with no positional files, referenced configs are

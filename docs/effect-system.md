@@ -50,6 +50,15 @@ effect(if a b)     = effect(a) join effect(b)
 effect(callback f) = summary(f), unless invocation timing is proven otherwise
 ```
 
+An `unknown` effect summary carries a non-empty machine-readable
+`unknownReasons` array. Stable reason codes distinguish unresolved callback
+timing, generator consumption, external evidence, TypeScript errors, declaration
+diagnostics, and module-initialization boundaries. Uneffect does not use one
+undifferentiated unknown bit as a substitute for explaining which proof step is
+missing. In particular, an unresolved top-level call is unknown unless it is a
+TypeChecker-resolved analyzed function, a reviewed builtin, or a verified
+external contract.
+
 `Mutate<typeof value>` refers to the identity region selected by a symbol, not the structural TypeScript type of `value`.
 
 ```text

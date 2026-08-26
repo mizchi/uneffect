@@ -90,7 +90,8 @@ export function assessCheckAssurance(
   for (const summary of result.summaries) {
     if (summary.evidence === "unknown") blockers.push({
       kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,
-      message: `${summary.functionName}: effect summary is unknown`,
+      message: `${summary.functionName}: effect summary is unknown${summary.unknownReasons?.length
+        ? ` (${summary.unknownReasons.map((reason) => `${reason.code}: ${reason.message}`).join("; ")})` : ""}`,
     });
     else if (profile === "declared" && summary.evidence !== "verified") blockers.push({
       kind: "effect", classification: "unknown", fileName: summary.fileName ?? "<unknown>", functionName: summary.functionName,

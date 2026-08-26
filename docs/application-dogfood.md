@@ -169,3 +169,20 @@ The same run exposed a contradictory assurance payload: the failed
 effect summary is unknown.” The decision was already fail-closed, but a consumer
 reading only `claims` could receive a false signal. Failed assessments now emit
 `claims: []`; their unmet conditions are represented only as blockers.
+
+After adding structured unknown provenance, the same 34-file run reports 39
+unknown summaries with no unexplained entries: 26 are
+`unknown-callback-timing`, nine are `unreviewed-external-module`, and four are
+`unknown-dependency` propagated from those modules. This is a classification,
+not a proof improvement. It shows that the next useful semantic step is an
+explicit callback-timing/effect-parameter contract, while the nine external
+module initializers require reviewed version-bound contracts rather than a
+broad Effect declaration.
+
+The repository's own strict `just dogfood` gate also now fails closed. Its 39
+unknown module summaries consist of eight direct `unresolved-call` roots and 31
+`unknown-dependency` propagations. The integration dogfood tests still pass,
+but that does not make the repository-wide `no-unknown` claim true. The strict
+target is intentionally left failing until those top-level calls have analyzed
+summaries or reviewed contracts; removing the profile would hide the newly
+exposed boundary.

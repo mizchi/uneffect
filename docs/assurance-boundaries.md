@@ -214,6 +214,10 @@ not infer support from a nearby example.
 
 1. Start with default `check` on an explicit file list and review diagnostics.
 2. Add `--evidence`; inspect `inferred`, `trusted`, and `unknown` separately.
+   Each unknown Effect summary has a non-empty `unknownReasons` array; use its
+   stable codes to decide whether the missing boundary is callback timing,
+   generator flow, external/module evidence, TypeScript validity, or an effect
+   diagnostic.
 3. Gate the selected boundary with `--assurance no-unknown`.
 4. Add explicit effect upper bounds and move that boundary to
    `--assurance declared`.
