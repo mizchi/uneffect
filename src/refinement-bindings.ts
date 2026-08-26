@@ -788,6 +788,8 @@ function validateRefinementActionBodiesInSource(
     throwWhen?: TemporalExpression;
     breakWhen?: TemporalExpression;
     continueWhen?: TemporalExpression;
+    breakLabels?: ReadonlyMap<string, TemporalExpression>;
+    continueLabels?: ReadonlyMap<string, TemporalExpression>;
     throwValue?: TemporalExpression;
   };
   const completionPredicate = (completion: ActionCompletion, abrupt: AbruptCompletion): TemporalExpression => completion === abrupt
@@ -799,6 +801,12 @@ function validateRefinementActionBodiesInSource(
         ?? { kind: "boolean", value: false };
   const completionThrowValue = (completion: ActionCompletion): TemporalExpression | undefined =>
     typeof completion === "object" ? completion.throwValue : undefined;
+  const completionLabels = (
+    completion: ActionCompletion,
+    kind: "break" | "continue",
+  ): ReadonlyMap<string, TemporalExpression> => typeof completion === "object"
+    ? completion[kind === "break" ? "breakLabels" : "continueLabels"] ?? new Map()
+    : new Map();
   const isBooleanCompletionPredicate = (expression: TemporalExpression, value: boolean): boolean => expression.kind === "boolean" && expression.value === value;
   const orCompletionPredicates = (left: TemporalExpression, right: TemporalExpression): TemporalExpression => {
     if (isBooleanCompletionPredicate(left, false)) return right;
@@ -819,28 +827,72 @@ function validateRefinementActionBodiesInSource(
   const notCompletionPredicate = (expression: TemporalExpression): TemporalExpression => expression.kind === "boolean"
     ? { kind: "boolean", value: !expression.value }
     : { kind: "unary", operator: "not", operand: expression };
+  const mergeCompletionLabels = (
+    left: ReadonlyMap<string, TemporalExpression>,
+    right: ReadonlyMap<string, TemporalExpression>,
+    rightGuard: TemporalExpression = { kind: "boolean", value: true },
+  ): ReadonlyMap<string, TemporalExpression> => {
+    const merged = new Map(left);
+    for (const [label, predicate] of right) {
+      const guarded = andCompletionPredicates(rightGuard, predicate);
+      if (isBooleanCompletionPredicate(guarded, false)) continue;
+      const prior = merged.get(label);
+      merged.set(label, prior ? orCompletionPredicates(prior, guarded) : guarded);
+    }
+    return merged;
+  };
+  const joinCompletionLabels = (
+    condition: TemporalExpression,
+    whenTrue: ReadonlyMap<string, TemporalExpression>,
+    whenFalse: ReadonlyMap<string, TemporalExpression>,
+  ): ReadonlyMap<string, TemporalExpression> => {
+    const labels = new Set([...whenTrue.keys(), ...whenFalse.keys()]);
+    const joined = new Map<string, TemporalExpression>();
+    for (const label of labels) {
+      const predicate = joinCompletionPredicate(
+        condition,
+        whenTrue.get(label) ?? { kind: "boolean", value: false },
+        whenFalse.get(label) ?? { kind: "boolean", value: false },
+      );
+      if (!isBooleanCompletionPredicate(predicate, false)) joined.set(label, predicate);
+    }
+    return joined;
+  };
+  const labeledCompletionPredicate = (completion: ActionCompletion): TemporalExpression => {
+    let predicate: TemporalExpression = { kind: "boolean", value: false };
+    for (const value of [...completionLabels(completion, "break").values(), ...completionLabels(completion, "continue").values()]) {
+      predicate = orCompletionPredicates(predicate, value);
+    }
+    return predicate;
+  };
   const makeCompletion = (
     returnWhen: TemporalExpression,
     throwWhen: TemporalExpression,
     throwValue?: TemporalExpression,
     breakWhen: TemporalExpression = { kind: "boolean", value: false },
     continueWhen: TemporalExpression = { kind: "boolean", value: false },
+    breakLabels: ReadonlyMap<string, TemporalExpression> = new Map(),
+    continueLabels: ReadonlyMap<string, TemporalExpression> = new Map(),
   ): ActionCompletion => {
     const noReturn = isBooleanCompletionPredicate(returnWhen, false);
     const noThrow = isBooleanCompletionPredicate(throwWhen, false);
     const noBreak = isBooleanCompletionPredicate(breakWhen, false);
     const noContinue = isBooleanCompletionPredicate(continueWhen, false);
-    if (noReturn && noThrow && noBreak && noContinue) return "normal";
-    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak && noContinue) return "return";
-    if (isBooleanCompletionPredicate(throwWhen, true) && noReturn && noBreak && noContinue && !throwValue) return "throw";
-    if (isBooleanCompletionPredicate(breakWhen, true) && noReturn && noThrow && noContinue) return "break";
-    if (isBooleanCompletionPredicate(continueWhen, true) && noReturn && noThrow && noBreak) return "continue";
+    const noBreakLabels = breakLabels.size === 0;
+    const noContinueLabels = continueLabels.size === 0;
+    if (noReturn && noThrow && noBreak && noContinue && noBreakLabels && noContinueLabels) return "normal";
+    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak && noContinue && noBreakLabels && noContinueLabels) return "return";
+    if (isBooleanCompletionPredicate(throwWhen, true) && noReturn && noBreak && noContinue && noBreakLabels && noContinueLabels && !throwValue) return "throw";
+    if (isBooleanCompletionPredicate(breakWhen, true) && noReturn && noThrow && noContinue && noBreakLabels && noContinueLabels) return "break";
+    if (isBooleanCompletionPredicate(continueWhen, true) && noReturn && noThrow && noBreak && noBreakLabels && noContinueLabels) return "continue";
     return {
       kind: "mixed",
       ...(noReturn ? {} : { returnWhen }),
       ...(noThrow ? {} : { throwWhen }),
       ...(noBreak ? {} : { breakWhen }),
       ...(noContinue ? {} : { continueWhen }),
+      ...(noBreakLabels ? {} : { breakLabels }),
+      ...(noContinueLabels ? {} : { continueLabels }),
       ...(throwValue ? { throwValue } : {}),
     };
   };
@@ -882,6 +934,8 @@ function validateRefinementActionBodiesInSource(
       ? priorValue
       : { kind: "conditional", condition: priorThrows, whenTrue: priorValue, whenFalse: continuedValue };
   };
+  const maxFiniteExpansionIterations = 256;
+  let finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -896,6 +950,8 @@ function validateRefinementActionBodiesInSource(
     allowContinue = false,
     ownedBreakLabel?: string,
     ownedContinueLabel?: string,
+    activeBreakLabels: ReadonlySet<string> = new Set(),
+    activeContinueLabels: ReadonlySet<string> = new Set(),
   ): ActionCompletion | undefined => {
     // Each lexical block gets its own immutable-alias environment. Recursive
     // branch collection receives a snapshot, so aliases declared in a nested
@@ -989,14 +1045,7 @@ function validateRefinementActionBodiesInSource(
       binding: string,
       replacement: ts.Expression,
     ): ts.Statement | undefined => {
-      // A statement produced by an earlier finite expansion has positions in
-      // its synthetic SourceFile. Reinterpreting those offsets against the
-      // original source can crash TypeScript's trivia walker, so nested finite
-      // expansion remains an explicit unsupported boundary.
-      if (statement.getSourceFile() !== source) return undefined;
       let unsupported = false;
-      const statementStart = statement.getStart(source);
-      const replacements: Array<{ start: number; end: number }> = [];
       const pending: ts.Node[] = [statement];
       while (pending.length > 0) {
         const node = pending.pop()!;
@@ -1004,33 +1053,36 @@ function validateRefinementActionBodiesInSource(
           const parent = node.parent;
           const shadowsBinding = ((ts.isVariableDeclaration(parent) || ts.isParameter(parent) || ts.isBindingElement(parent))
             && parent.name === node);
-          const isPropertyName = (ts.isPropertyAccessExpression(parent) && parent.name === node)
-            || ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) && parent.name === node)
-            || (ts.isLabeledStatement(parent) && parent.label === node)
-            || ((ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) && parent.label === node);
           if (shadowsBinding || (ts.isShorthandPropertyAssignment(parent) && parent.name === node)) unsupported = true;
-          else if (!isPropertyName) replacements.push({
-            start: node.getStart(source) - statementStart,
-            end: node.getEnd() - statementStart,
-          });
         }
-        for (const child of node.getChildren(source)) pending.push(child);
+        node.forEachChild((child) => { pending.push(child); });
       }
       if (unsupported) return undefined;
-      const printedReplacement = ts.createPrinter().printNode(ts.EmitHint.Expression, replacement, source);
-      let expandedText = statement.getText(source);
-      replacements.sort((left, right) => right.start - left.start);
-      for (const location of replacements) {
-        expandedText = `${expandedText.slice(0, location.start)}${printedReplacement}${expandedText.slice(location.end)}`;
-      }
-      const parsed = ts.createSourceFile("__uneffect_finite_loop.ts", expandedText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      return parsed.statements.length === 1 ? parsed.statements[0] : undefined;
+      const transformed = ts.transform(statement, [(context) => {
+        const visit: ts.Visitor = (node) => {
+          if (ts.isIdentifier(node) && node.text === binding) {
+            const parent = node.parent;
+            const isPropertyName = (ts.isPropertyAccessExpression(parent) && parent.name === node)
+              || ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) && parent.name === node)
+              || (ts.isLabeledStatement(parent) && parent.label === node)
+              || ((ts.isBreakStatement(parent) || ts.isContinueStatement(parent)) && parent.label === node);
+            if (!isPropertyName) return replacement;
+          }
+          return ts.visitEachChild(node, visit, context);
+        };
+        return (root) => ts.visitNode(root, visit) as ts.Statement;
+      }]);
+      const result = transformed.transformed[0];
+      transformed.dispose();
+      return result;
     };
     const expandFiniteLoopIterations = (
       statement: ts.Statement,
       binding: string,
       values: readonly ts.Expression[],
     ): readonly ts.Block[] | undefined => {
+      if (values.length > finiteExpansionIterationsRemaining) return undefined;
+      finiteExpansionIterationsRemaining -= values.length;
       const iterations: ts.Block[] = [];
       for (const value of values) {
         const statements: ts.Statement[] = [];
@@ -1123,7 +1175,11 @@ function validateRefinementActionBodiesInSource(
         const original = before.get(name) ?? initial;
         const trueValue = whenTrue.get(name) ?? original;
         const falseValue = whenFalse.get(name) ?? original;
-        const merged: TemporalExpression = sameRefinementExpression(trueValue, falseValue)
+        const merged: TemporalExpression = isBooleanCompletionPredicate(condition, true)
+          ? trueValue
+          : isBooleanCompletionPredicate(condition, false)
+            ? falseValue
+            : sameRefinementExpression(trueValue, falseValue)
           ? trueValue
           : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
         if (!sameRefinementExpression(merged, initial)) target.set(name, merged);
@@ -1139,6 +1195,7 @@ function validateRefinementActionBodiesInSource(
         continuation, receiver, runtimeClass, substitutions,
         branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
         allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+        activeBreakLabels, activeContinueLabels,
       );
       const beforeContinuation = new Map(branchUpdates);
       const continuingUpdates = new Map(branchUpdates);
@@ -1146,14 +1203,19 @@ function validateRefinementActionBodiesInSource(
         continuation, receiver, runtimeClass, substitutions,
         continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
         allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+        activeBreakLabels, activeContinueLabels,
       );
       if (!continued) return undefined;
       const priorReturn = completionPredicate(completion, "return");
       const priorThrow = completionPredicate(completion, "throw");
       const priorBreak = completionPredicate(completion, "break");
       const priorContinue = completionPredicate(completion, "continue");
+      const priorLabeled = labeledCompletionPredicate(completion);
       const priorAbrupt = orCompletionPredicates(
-        orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+        orCompletionPredicates(
+          orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+        ),
+        priorLabeled,
       );
       const normalWhen = notCompletionPredicate(priorAbrupt);
       mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation, branchUpdates);
@@ -1163,6 +1225,8 @@ function validateRefinementActionBodiesInSource(
         sequenceThrowValue(completion, continued),
         orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(continued, "break"))),
         orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
+        mergeCompletionLabels(completionLabels(completion, "break"), completionLabels(continued, "break"), normalWhen),
+        mergeCompletionLabels(completionLabels(completion, "continue"), completionLabels(continued, "continue"), normalWhen),
       );
     };
     const collectFiniteLoopIterations = (
@@ -1177,13 +1241,28 @@ function validateRefinementActionBodiesInSource(
         iteration, receiver, runtimeClass, substitutions,
         branchUpdates, new Map(localValues), activeCalls,
         allowTerminalReturn, allowTerminalThrow, true, true, transferLabel, transferLabel,
+        transferLabel ? new Set([...activeBreakLabels, transferLabel]) : activeBreakLabels,
+        transferLabel ? new Set([...activeContinueLabels, transferLabel]) : activeContinueLabels,
       );
       if (!completion) return undefined;
+      const falsePredicate: TemporalExpression = { kind: "boolean", value: false };
+      const targetedBreak = transferLabel
+        ? completionLabels(completion, "break").get(transferLabel) ?? falsePredicate
+        : falsePredicate;
+      const remainingBreakLabels = new Map(completionLabels(completion, "break"));
+      const remainingContinueLabels = new Map(completionLabels(completion, "continue"));
+      if (transferLabel) {
+        remainingBreakLabels.delete(transferLabel);
+        remainingContinueLabels.delete(transferLabel);
+      }
       const afterContinue = makeCompletion(
         completionPredicate(completion, "return"),
         completionPredicate(completion, "throw"),
         completionThrowValue(completion),
-        completionPredicate(completion, "break"),
+        orCompletionPredicates(completionPredicate(completion, "break"), targetedBreak),
+        { kind: "boolean", value: false },
+        remainingBreakLabels,
+        remainingContinueLabels,
       );
       if (index + 1 >= iterations.length) return afterContinue;
       if (afterContinue === "return" || afterContinue === "throw" || afterContinue === "break") return afterContinue;
@@ -1196,7 +1275,11 @@ function validateRefinementActionBodiesInSource(
       const priorReturn = completionPredicate(afterContinue, "return");
       const priorThrow = completionPredicate(afterContinue, "throw");
       const priorBreak = completionPredicate(afterContinue, "break");
-      const priorAbrupt = orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak);
+      const priorLabeled = labeledCompletionPredicate(afterContinue);
+      const priorAbrupt = orCompletionPredicates(
+        orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak),
+        priorLabeled,
+      );
       const normalWhen = notCompletionPredicate(priorAbrupt);
       mergeConditionalUpdates(priorAbrupt, beforeNext, nextUpdates, beforeNext, branchUpdates);
       return makeCompletion(
@@ -1205,6 +1288,8 @@ function validateRefinementActionBodiesInSource(
         sequenceThrowValue(afterContinue, next),
         orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(next, "break"))),
         completionPredicate(next, "continue"),
+        mergeCompletionLabels(completionLabels(afterContinue, "break"), completionLabels(next, "break"), normalWhen),
+        mergeCompletionLabels(completionLabels(afterContinue, "continue"), completionLabels(next, "continue"), normalWhen),
       );
     };
     const consumeLoopTransfers = (
@@ -1216,12 +1301,17 @@ function validateRefinementActionBodiesInSource(
         completionPredicate(completion, "return"),
         completionPredicate(completion, "throw"),
         completionThrowValue(completion),
+        { kind: "boolean", value: false },
+        { kind: "boolean", value: false },
+        completionLabels(completion, "break"),
+        completionLabels(completion, "continue"),
       );
       if (escaping === "normal") return collect(
         continuation, receiver, runtimeClass, substitutions,
         branchUpdates, new Map(localValues), activeCalls,
         allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
         ownedBreakLabel, ownedContinueLabel,
+        activeBreakLabels, activeContinueLabels,
       );
       return applyContinuation(escaping, branchUpdates, continuation);
     };
@@ -1289,11 +1379,34 @@ function validateRefinementActionBodiesInSource(
         return "throw";
       }
       if (ts.isBreakStatement(statement)) {
-        if (!allowBreak || statement.label && statement.label.text !== ownedBreakLabel) return undefined;
+        if (statement.label && statement.label.text !== ownedBreakLabel) {
+          if (!activeBreakLabels.has(statement.label.text)) return undefined;
+          return makeCompletion(
+            { kind: "boolean", value: false },
+            { kind: "boolean", value: false },
+            undefined,
+            { kind: "boolean", value: false },
+            { kind: "boolean", value: false },
+            new Map([[statement.label.text, { kind: "boolean", value: true }]]),
+          );
+        }
+        if (!allowBreak) return undefined;
         return "break";
       }
       if (ts.isContinueStatement(statement)) {
-        if (!allowContinue || statement.label && statement.label.text !== ownedContinueLabel) return undefined;
+        if (statement.label && statement.label.text !== ownedContinueLabel) {
+          if (!activeContinueLabels.has(statement.label.text)) return undefined;
+          return makeCompletion(
+            { kind: "boolean", value: false },
+            { kind: "boolean", value: false },
+            undefined,
+            { kind: "boolean", value: false },
+            { kind: "boolean", value: false },
+            new Map(),
+            new Map([[statement.label.text, { kind: "boolean", value: true }]]),
+          );
+        }
+        if (!allowContinue) return undefined;
         return "continue";
       }
       if (ts.isBlock(statement)) {
@@ -1302,6 +1415,7 @@ function validateRefinementActionBodiesInSource(
           updates, new Map(localValues), activeCalls,
           allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
           ownedBreakLabel, ownedContinueLabel,
+          activeBreakLabels, activeContinueLabels,
         );
         if (!completion) return undefined;
         if (completion === "normal") continue;
@@ -1324,6 +1438,7 @@ function validateRefinementActionBodiesInSource(
           labeledBlock, receiver, runtimeClass, substitutions,
           updates, new Map(localValues), activeCalls, true, allowTerminalThrow,
           allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+          activeBreakLabels, activeContinueLabels,
         );
         if (!completion) return undefined;
         // A return here is the rewritten break and is consumed by this label.
@@ -1335,6 +1450,8 @@ function validateRefinementActionBodiesInSource(
           completionThrowValue(completion),
           completionPredicate(completion, "break"),
           completionPredicate(completion, "continue"),
+          completionLabels(completion, "break"),
+          completionLabels(completion, "continue"),
         );
         if (escapingCompletion === "normal") continue;
         return applyContinuation(
@@ -1415,6 +1532,7 @@ function validateRefinementActionBodiesInSource(
             statement.tryBlock, receiver, runtimeClass, substitutions,
             updates, new Map(localValues), activeCalls, true, true,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+            activeBreakLabels, activeContinueLabels,
           );
           if (!tryCompletion) return undefined;
           const throwWhen = completionPredicate(tryCompletion, "throw");
@@ -1437,6 +1555,7 @@ function validateRefinementActionBodiesInSource(
               statement.catchClause.block, receiver, runtimeClass, substitutions,
               caughtUpdates, catchLocals, activeCalls, true, true,
               allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+              activeBreakLabels, activeContinueLabels,
             );
             if (!catchCompletion) return undefined;
             if (isBooleanCompletionPredicate(throwWhen, true)) {
@@ -1458,6 +1577,16 @@ function validateRefinementActionBodiesInSource(
                 completionPredicate(tryCompletion, "continue"),
                 andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "continue")),
               ),
+              mergeCompletionLabels(
+                completionLabels(tryCompletion, "break"),
+                completionLabels(catchCompletion, "break"),
+                throwWhen,
+              ),
+              mergeCompletionLabels(
+                completionLabels(tryCompletion, "continue"),
+                completionLabels(catchCompletion, "continue"),
+                throwWhen,
+              ),
             );
           }
         } else {
@@ -1465,6 +1594,7 @@ function validateRefinementActionBodiesInSource(
             statement.tryBlock, receiver, runtimeClass, substitutions,
             updates, new Map(localValues), activeCalls, true, true,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+            activeBreakLabels, activeContinueLabels,
           );
           if (!tryCompletion) return undefined;
           residualCompletion = tryCompletion;
@@ -1480,6 +1610,7 @@ function validateRefinementActionBodiesInSource(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
             updates, new Map(localValues), activeCalls, true, true,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+            activeBreakLabels, activeContinueLabels,
           );
           if (!finallyCompletion) return undefined;
           const finallyReturn = completionPredicate(finallyCompletion, "return");
@@ -1490,7 +1621,7 @@ function validateRefinementActionBodiesInSource(
             orCompletionPredicates(
               orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
             ),
-            finallyContinue,
+            orCompletionPredicates(finallyContinue, labeledCompletionPredicate(finallyCompletion)),
           ));
           residualCompletion = makeCompletion(
             orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
@@ -1498,6 +1629,16 @@ function validateRefinementActionBodiesInSource(
             sequenceThrowValue(finallyCompletion, residualCompletion),
             orCompletionPredicates(finallyBreak, andCompletionPredicates(finallyNormal, priorBreak)),
             orCompletionPredicates(finallyContinue, andCompletionPredicates(finallyNormal, priorContinue)),
+            mergeCompletionLabels(
+              completionLabels(finallyCompletion, "break"),
+              completionLabels(residualCompletion, "break"),
+              finallyNormal,
+            ),
+            mergeCompletionLabels(
+              completionLabels(finallyCompletion, "continue"),
+              completionLabels(residualCompletion, "continue"),
+              finallyNormal,
+            ),
           );
           if (residualCompletion === "normal") continue;
         }
@@ -1505,8 +1646,12 @@ function validateRefinementActionBodiesInSource(
         const priorThrow = completionPredicate(residualCompletion, "throw");
         const priorBreak = completionPredicate(residualCompletion, "break");
         const priorContinue = completionPredicate(residualCompletion, "continue");
+        const priorLabeled = labeledCompletionPredicate(residualCompletion);
         const priorAbrupt = orCompletionPredicates(
-          orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+          orCompletionPredicates(
+            orCompletionPredicates(orCompletionPredicates(priorReturn, priorThrow), priorBreak), priorContinue,
+          ),
+          priorLabeled,
         );
         if (isBooleanCompletionPredicate(priorAbrupt, true)) return residualCompletion;
         const beforeContinuation = new Map(updates);
@@ -1515,6 +1660,7 @@ function validateRefinementActionBodiesInSource(
           ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
           continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
           allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+          activeBreakLabels, activeContinueLabels,
         );
         if (!continued) return undefined;
         const normalWhen = notCompletionPredicate(priorAbrupt);
@@ -1525,6 +1671,8 @@ function validateRefinementActionBodiesInSource(
           sequenceThrowValue(residualCompletion, continued),
           orCompletionPredicates(priorBreak, andCompletionPredicates(normalWhen, completionPredicate(continued, "break"))),
           orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
+          mergeCompletionLabels(completionLabels(residualCompletion, "break"), completionLabels(continued, "break"), normalWhen),
+          mergeCompletionLabels(completionLabels(residualCompletion, "continue"), completionLabels(continued, "continue"), normalWhen),
         );
       }
       if (ts.isIfStatement(statement)) {
@@ -1536,8 +1684,8 @@ function validateRefinementActionBodiesInSource(
         const falseBlock = asBlock(statement.elseStatement);
         const trueUpdates = new Map(before);
         const falseUpdates = new Map(before);
-        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel);
-        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
         if (!whenTrue || !whenFalse) return undefined;
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
         if (hasAbruptBranch) {
@@ -1554,6 +1702,8 @@ function validateRefinementActionBodiesInSource(
             joinThrowValue(condition, whenTrue, whenFalse),
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "break"), completionPredicate(whenFalse, "break")),
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "continue"), completionPredicate(whenFalse, "continue")),
+            joinCompletionLabels(condition, completionLabels(whenTrue, "break"), completionLabels(whenFalse, "break")),
+            joinCompletionLabels(condition, completionLabels(whenTrue, "continue"), completionLabels(whenFalse, "continue")),
           );
         }
         continue;
@@ -1596,12 +1746,11 @@ function validateRefinementActionBodiesInSource(
           for (let clauseIndex = entry; clauseIndex < clauses.length && !stopped; clauseIndex++) {
             const statements = [...clauses[clauseIndex]!.statements];
             const abruptIndex = statements.findIndex((candidate) => ts.isBreakStatement(candidate)
-              || ts.isReturnStatement(candidate) || ts.isThrowStatement(candidate));
+              || ts.isContinueStatement(candidate) || ts.isReturnStatement(candidate) || ts.isThrowStatement(candidate));
             if (abruptIndex >= 0) {
               const abrupt = statements[abruptIndex]!;
               if (abruptIndex !== statements.length - 1) return undefined;
-              if (ts.isBreakStatement(abrupt)) {
-                if (abrupt.label) return undefined;
+              if (ts.isBreakStatement(abrupt) && !abrupt.label) {
                 pathStatements.push(...statements.slice(0, abruptIndex));
               } else pathStatements.push(...statements);
               stopped = true;
@@ -1611,6 +1760,8 @@ function validateRefinementActionBodiesInSource(
           const branch = collect(
             ts.factory.createBlock(pathStatements, true), receiver, runtimeClass, substitutions,
             branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+            activeBreakLabels, activeContinueLabels,
           );
           if (!branch) return undefined;
           if (condition) branches.push({ condition, updates: branchUpdates, completion: branch });
@@ -1672,12 +1823,36 @@ function validateRefinementActionBodiesInSource(
               completionPredicate(selectedCompletion, "throw"),
             ),
             joinThrowValue(branch.condition, branch.completion, selectedCompletion),
+            joinCompletionPredicate(
+              branch.condition,
+              completionPredicate(branch.completion, "break"),
+              completionPredicate(selectedCompletion, "break"),
+            ),
+            joinCompletionPredicate(
+              branch.condition,
+              completionPredicate(branch.completion, "continue"),
+              completionPredicate(selectedCompletion, "continue"),
+            ),
+            joinCompletionLabels(
+              branch.condition,
+              completionLabels(branch.completion, "break"),
+              completionLabels(selectedCompletion, "break"),
+            ),
+            joinCompletionLabels(
+              branch.condition,
+              completionLabels(branch.completion, "continue"),
+              completionLabels(selectedCompletion, "continue"),
+            ),
           );
         }
         const switchCompletion = makeCompletion(
           returnWhen,
           throwWhen,
           completionThrowValue(selectedCompletion),
+          completionPredicate(selectedCompletion, "break"),
+          completionPredicate(selectedCompletion, "continue"),
+          completionLabels(selectedCompletion, "break"),
+          completionLabels(selectedCompletion, "continue"),
         );
         if (switchCompletion !== "normal") {
           return applyContinuation(
@@ -1911,6 +2086,43 @@ function validateRefinementActionBodiesInSource(
     return "normal";
   };
 
+  const finiteLoopNestingWithinLimit = (root: ts.Node, limit = 64): boolean => {
+    const boundedForCount = (statement: ts.ForStatement): number | undefined => {
+      const declaration = statement.initializer && ts.isVariableDeclarationList(statement.initializer)
+        && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
+      const name = declaration && ts.isIdentifier(declaration.name) ? declaration.name.text : undefined;
+      const start = declaration?.initializer && ts.isNumericLiteral(declaration.initializer)
+        ? Number(declaration.initializer.text) : undefined;
+      const condition = statement.condition && ts.isBinaryExpression(statement.condition)
+        && statement.condition.operatorToken.kind === ts.SyntaxKind.LessThanToken
+        && ts.isIdentifier(statement.condition.left) && statement.condition.left.text === name
+        && ts.isNumericLiteral(statement.condition.right) ? Number(statement.condition.right.text) : undefined;
+      return start !== undefined && condition !== undefined && Number.isSafeInteger(start) && Number.isSafeInteger(condition)
+        && condition >= start ? condition - start : undefined;
+    };
+    const visit = (node: ts.Node, product: number): boolean => {
+      if (ts.isFunctionLike(node) && node !== root || ts.isClassLike(node)) return true;
+      if (ts.isForStatement(node)) {
+        const count = boundedForCount(node);
+        if (count !== undefined) {
+          const nestedProduct = product * count;
+          return nestedProduct <= limit && visit(node.statement, nestedProduct);
+        }
+      }
+      if (ts.isForOfStatement(node)) {
+        const iterable = ts.isAsExpression(node.expression) ? node.expression.expression : node.expression;
+        if (ts.isArrayLiteralExpression(iterable)) {
+          const nestedProduct = product * iterable.elements.length;
+          return nestedProduct <= limit && visit(node.statement, nestedProduct);
+        }
+      }
+      let valid = true;
+      node.forEachChild((child) => { if (valid) valid = visit(child, product); });
+      return valid;
+    };
+    return visit(root, 1);
+  };
+
   for (const action of spec.actions) {
     const exportName = manifest.actions[action.name];
     if (!exportName) {
@@ -1930,7 +2142,10 @@ function validateRefinementActionBodiesInSource(
       diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
     }
     const updates = new Map<string, TemporalExpression>();
-    const completion = guardedBody && receiver ? collect(guardedBody.updates, receiver, resolveRuntimeClass(runtimeParameter), new Map(), updates) : undefined;
+    finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
+    const completion = guardedBody && receiver && finiteLoopNestingWithinLimit(guardedBody.updates)
+      ? collect(guardedBody.updates, receiver, resolveRuntimeClass(runtimeParameter), new Map(), updates)
+      : undefined;
     if (!completion) {
       diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
       continue;

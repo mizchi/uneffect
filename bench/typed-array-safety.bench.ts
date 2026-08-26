@@ -982,6 +982,26 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
+  bench("compose an 8x8 nested outer-label transfer", () => {
+    const source = `/* uneffect:
+      state value: int
+      init value = 0
+      action scan: value' = value
+    */
+      interface Runtime { value: number }
+      /* uneffect: refinement nestedScan@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement nestedScan@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement nestedScan@1 action scan */
+      export function scan(runtime: Runtime) {
+        outer: for (let row = 0; row < 8; row++) {
+          for (let column = 0; column < 8; column++) continue outer
+          runtime.value++
+        }
+      }
+    `;
+    validateRefinementActionBodies("nested-scan.ts", source, "nestedScan", parseSpec("nested-scan.ts", source).temporal);
+  }, { time: 500, iterations: 20 });
+
   bench("reduce exact and ownership-aware bounded loops", () => {
     validateRefinementActionBodies(
       generatedMigrationFile,

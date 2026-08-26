@@ -650,6 +650,30 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("refines nested telemetry batches with outer continue and mandatory finalization", async () => {
+    const fileName = "examples/dogfood/nested-telemetry-scan.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "nestedTelemetryScan", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongOwner = source.replace("continue batch", "continue missing");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, wrongOwner, "nestedTelemetryScan", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "flush",
+    }));
+
+    const missingAudit = source.replace("    runtime.audited++;", "    // missing audit");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, missingAudit, "nestedTelemetryScan", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "flush", target: "audited",
+    }));
+  });
+
   it("proves an imported runtime class method through its immutable receiver alias", async () => {
     const fileName = "examples/dogfood/imported-runtime-refinement.ts";
     const runtimeFile = "examples/dogfood/imported-telemetry-runtime.ts";

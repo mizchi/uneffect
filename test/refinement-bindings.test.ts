@@ -2621,7 +2621,7 @@ describe("annotated refinement bindings", () => {
     const crossLoop = `/* uneffect:
       state value: int
       init value = 0
-      action run: value' = value + 1
+      action run: value' = value
     */
       interface Runtime { value: number }
       /* uneffect: refinement crossLoop@1 create */ export function create(initial: Runtime) { return initial }
@@ -2636,8 +2636,6 @@ describe("annotated refinement bindings", () => {
         }
       }
     `;
-    expect(validateRefinementActionBodies("cross-loop-continue.ts", crossLoop, "crossLoop", parseSpec("cross-loop-continue.ts", crossLoop).temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "run" }),
-    );
+    expect(validateRefinementActionBodies("cross-loop-continue.ts", crossLoop, "crossLoop", parseSpec("cross-loop-continue.ts", crossLoop).temporal)).toEqual([]);
   });
 });

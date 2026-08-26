@@ -392,9 +392,17 @@ After binding those two finite actions to their own loop labels and replacing
 the local transfers with `break label` and `continue label`, the renamed
 ownership-aware benchmark measured 0.8664 ms mean over 578 samples (1.18% RME).
 It covers exact owner-label propagation through `finally` and consumption at
-the finite loop boundary. Transfers to an outer loop, nested synthetic loop
-expansion, the Z3 equivalence pass, and general CFG fixed points remain outside
-the measurement and outside the proof claim.
+the finite loop boundary.
+
+On 2026-08-27, the target-aware benchmark `compose an 8x8 nested outer-label
+transfer` measured 1,894.50 ops/s (0.5278 ms mean over 948 samples, 6.19% RME).
+This includes capture-screened nested AST expansion and propagation of a
+`continue outer` through the inner finite loop. The analyzer caps the static
+nested trip-count product at 64 and total expanded iterations per action at
+256, counting each nested expansion, so the new support cannot create an
+unbounded Cartesian AST product. Exceeding either cap,
+dynamic bounds, ambiguous owners, Z3 equivalence, and general CFG fixed points
+remain outside the measurement and fail closed where applicable.
 
 After adding scalar action-body refinement, parsing plus structural coverage
 and semantic comparison of all five telemetry actions measured 0.4847 ms mean

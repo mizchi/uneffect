@@ -145,6 +145,64 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("labeled-delivery.ts", source, "telemetry", specification.temporal)).toEqual([]);
   });
 
+  it("preserves outer labeled loop transfers through an inner loop and finally", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const continueSource = `
+      /* uneffect:
+       * state visited: int
+       * state cleaned: int
+       * state audited: int
+       * state stop: int
+       * init visited = 0
+       * init cleaned = 0
+       * init audited = 0
+       * init stop = 0
+       * action scan: visited' = stop === 1 || stop === 2 || stop === 3 ? visited + 5 : visited + 6, cleaned' = cleaned + 3, audited' = stop === 1 || stop === 2 || stop === 3 ? audited + 2 : audited + 3
+       */
+      interface Runtime { visited: number; cleaned: number; audited: number; stop: number }
+      /* uneffect: refinement scan@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement scan@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement scan@1 action scan */
+      export function scan(runtime: Runtime) {
+        outer: for (let batch = 0; batch < 3; batch++) {
+          try {
+            for (let item = 0; item < 2; item++) {
+              runtime.visited++
+              if (runtime.stop === batch + 1) continue outer
+            }
+          } finally {
+            runtime.cleaned++
+          }
+          runtime.audited++
+        }
+      }
+    `;
+    const continueTemporal = (parseSpecification("outer-continue.ts", continueSource) as { temporal: unknown }).temporal;
+    await expect(validateActions("outer-continue.ts", continueSource, "scan", continueTemporal)).resolves.toEqual([]);
+
+    const breakSource = continueSource
+      .replace(
+        "visited' = stop === 1 || stop === 2 || stop === 3 ? visited + 5 : visited + 6, cleaned' = cleaned + 3, audited' = stop === 1 || stop === 2 || stop === 3 ? audited + 2 : audited + 3",
+        "visited' = stop === 1 ? visited + 1 : stop === 2 ? visited + 3 : stop === 3 ? visited + 5 : visited + 6, cleaned' = stop === 1 ? cleaned + 1 : stop === 2 ? cleaned + 2 : cleaned + 3, audited' = stop === 1 ? audited : stop === 2 ? audited + 1 : stop === 3 ? audited + 2 : audited + 3",
+      )
+      .replace("continue outer", "break outer");
+    const breakTemporal = (parseSpecification("outer-break.ts", breakSource) as { temporal: unknown }).temporal;
+    await expect(validateActions("outer-break.ts", breakSource, "scan", breakTemporal)).resolves.toEqual([]);
+
+    const unknownTarget = continueSource.replace("continue outer", "continue missing");
+    await expect(validateActions("unknown-loop-label.ts", unknownTarget, "scan", continueTemporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "scan" }),
+    );
+
+    const overBudget = continueSource
+      .replace("batch < 3", "batch < 17")
+      .replace("item < 2", "item < 16");
+    await expect(validateActions("over-budget-nested-loop.ts", overBudget, "scan", continueTemporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "scan" }),
+    );
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

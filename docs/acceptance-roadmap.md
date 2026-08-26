@@ -244,10 +244,11 @@ local-counter `while` deliberately rejects `continue`, because jumping over its
 terminal `i++` would invalidate the finite trip-count argument. An ascending
 finite `for` may instead name itself and use `break label` or `continue label`:
 the exact owner label is carried through branches and `finally` and consumed at
-that loop boundary. Transfers to an outer loop, nested synthetic loop
-expansion, and ambiguous switch/loop ownership remain fail-closed. A source-file
-identity guard makes the nested-expansion boundary a diagnostic rather than a
-TypeScript AST trivia failure.
+that loop boundary. The same target-aware completion maps now preserve an
+outer-loop transfer through an inner finite loop and mandatory `finally`; a
+capture-screened AST substitution replaces the old source-offset rewrite so
+nested finite expansion remains valid. Unknown labels, dynamic loop bounds,
+shadowed counters, and ambiguous switch/loop ownership remain fail-closed.
 
 A collection-backed lease acceptance adapter now checks the complete refinement
 boundary: Program-backed create/observe types must match `Set<int>` and

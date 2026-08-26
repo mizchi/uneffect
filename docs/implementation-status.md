@@ -99,9 +99,14 @@ same property is proved for arbitrary TypeScript.
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also
-  accepts `break label` and `continue label` when the label names that same
-  loop. Transfers to an outer loop, nested synthetic expansion, and ambiguous
-  switch/loop ownership remain unsupported and fail closed. An unlabeled
+  accepts `break label` and `continue label` for a statically known owning
+  finite loop. Target-aware completion maps preserve transfers to an outer
+  finite loop through nested finite loops, branches, supported switch paths,
+  and `try`/`finally`; capture-screened AST substitution permits nested finite
+  expansion without reusing source offsets from a synthetic tree. The nested
+  trip-count product is capped at 64 and total expansions per action at 256.
+  Dynamic,
+  duplicate, or ambiguous switch/loop ownership remains unsupported. An unlabeled
   `continue` is additionally tracked through branches and `try`/`finally`, but
   consumed only at finite `for`, literal `for...of`, and one-shot `do` iteration
   boundaries where advancement is guaranteed. Canonical `while` rejects it
@@ -116,8 +121,9 @@ same property is proved for arbitrary TypeScript.
   cannot satisfy a temporal action. Bare lexical blocks propagate the same
   normal/return/throw completion state into the enclosing sequence, but their
   local constants and receiver aliases do not escape the block.
-  Labeled loops, `continue`, nested/cross-label transfers, and real returns
-  inside that labeled fragment remain unsupported. The action-control subset
+  Non-loop labeled blocks still support only their own `break`; labeled
+  `continue`, nested block labels, and real returns inside that block-rewrite
+  fragment remain unsupported. The action-control subset
   keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
   their shared boundary. If the supported refinement fragment proves that the
