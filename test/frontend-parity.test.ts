@@ -2,6 +2,15 @@ import { describe, expect, it } from "vitest";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("TypeScript/Corsa neutral projection parity", () => {
+  it("preserves explicit empty effect declarations across the TypeScript and Rust projections", async () => {
+    const result = await compareUneffectFrontends({
+      files: { "pure.ts": `/* uneffect: effect none */ export function pure(value: number) { return value }` },
+    });
+    expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
+    expect(result.typescriptIr.functions).toContainEqual(expect.objectContaining({ name: "pure", effects: [] }));
+    expect(result.corsaIr!.functions).toContainEqual(expect.objectContaining({ name: "pure", effects: [] }));
+  });
+
   it("reports reference facts as reference facts and cannot satisfy a Corsa-checker requirement", async () => {
     const files = { "provenance.ts": `export function run() { return 1 }` };
     const reference = await compareUneffectFrontends({ files });

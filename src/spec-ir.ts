@@ -169,7 +169,8 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
   for (const node of source.statements) {
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const comments = leading(source, node);
-    const effects = extractLocatedAnnotations(comments, "effect", node.getFullStart()).flatMap((annotation): LocatedEffect[] => {
+    const effectAnnotations = extractLocatedAnnotations(comments, "effect", node.getFullStart());
+    const effects = effectAnnotations.flatMap((annotation): LocatedEffect[] => {
       let terms: string[];
       try {
         terms = splitTopLevel(annotation.value, "|");
@@ -177,6 +178,11 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
         const position = source.getLineAndCharacterOfPosition(annotation.span.start);
         const message = cause instanceof Error ? cause.message : String(cause);
         throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: ${message}`);
+      }
+      if (annotation.value === "none") return [];
+      if (terms.includes("none")) {
+        const position = source.getLineAndCharacterOfPosition(annotation.span.start);
+        throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: \`none\` must be the only member of an effect set`);
       }
       let cursor = 0;
       return terms.map((text): LocatedEffect => {
@@ -192,7 +198,7 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
         }
       });
     });
-    if (effects.length > 0) capabilities.push({ functionName: node.name.text, effects });
+    if (effectAnnotations.length > 0) capabilities.push({ functionName: node.name.text, effects });
     const requires = extractAnnotations(comments, "requires");
     const ensures = extractAnnotations(comments, "ensures");
     if (requires.length > 0 || ensures.length > 0) {

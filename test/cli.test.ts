@@ -145,7 +145,7 @@ describe("uneffect command line", () => {
       expect(verifiedWithBuiltin.stderr).toContain("reviewed Console log semantic overlay");
 
       const pureDeclaredFile = join(directory, "pure-declared.ts");
-      writeFileSync(pureDeclaredFile, `/* uneffect: effect Mutate<typeof value> */ export function update(value: { count: number }) { value.count++ }`);
+      writeFileSync(pureDeclaredFile, `/* uneffect: module_effect none */\n/* uneffect: effect none */ export function identity(value: number) { return value }`);
       const verifiedPure = capture();
       expect(await runCli(["check", "--assurance", "verified", pureDeclaredFile], verifiedPure)).toBe(exitCode.success);
       expect(verifiedPure.stderr).toContain("assurance verified: passed (verified)");

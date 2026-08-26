@@ -45,6 +45,13 @@ for CI on a deliberately selected file boundary. They do not silently broaden
 that boundary to dependencies, dynamically loaded code, native addons, or host
 behavior not represented by the builtin contract registry.
 
+An explicit pure function boundary is written as
+`/* uneffect: effect none */`. It creates a checked empty upper bound; an
+unannotated function with an empty inferred inventory does not. Use
+`module_effect none` when module initialization must also be constrained to an
+empty set. Neither declaration proves termination, allocation freedom, or the
+absence of semantic domains that were not enabled.
+
 Both profiles also require every selected source to be free of TypeScript
 syntax, semantic, and compiler-option errors. A source with an error receives
 `unknown` function and module evidence, even when the effect analyzer could

@@ -26,7 +26,27 @@ actual(f) <= allowed(f)
 
 Missing effects are errors. Declared but unobserved effects are warnings because a smaller effect set is a valid implementation of a wider contract. **Implemented.**
 
-An unannotated boundary is unknown, not pure. Uneffect may report locally inferred candidates, but an unresolved call, `any`, dynamic dispatch, `eval`, or an unknown native boundary prevents a verified closed summary. **Decided.**
+The reserved payload `none` denotes the empty upper-bound set:
+
+```ts
+/* uneffect: effect none */
+function increment(value: number) {
+  return value + 1
+}
+```
+
+This differs from merely observing no Effect in an unannotated body. The
+explicit declaration is checked and may receive `verified` evidence; the
+unannotated inventory remains `inferred`. `none | Console` is invalid rather
+than silently reducing to `Console`, and `none` is unavailable as a
+user-defined Effect constructor. `module_effect none` applies the same empty
+upper bound to module initialization. The TypeScript and Rust/Corsa set parsers
+share this representation as an empty semantic set. **Implemented.**
+
+An unannotated boundary is not declared pure. Uneffect may report a locally
+inferred empty inventory, but that is not an explicit contract; an unresolved
+call, `any`, dynamic dispatch, `eval`, or an unknown native boundary prevents a
+verified closed summary. **Decided.**
 
 ## Effect algebra
 

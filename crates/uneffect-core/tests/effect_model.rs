@@ -6,6 +6,19 @@ use uneffect_core::{
 };
 
 #[test]
+fn parses_none_as_the_explicit_empty_effect_set() {
+    let empty = EffectSet::parse("none").unwrap();
+    assert!(empty.permits_all(&EffectSet::parse("none").unwrap()));
+    assert!(!empty.permits_all(&EffectSet::parse("Console").unwrap()));
+    assert!(
+        EffectSet::parse("none | Console")
+            .unwrap_err()
+            .to_string()
+            .contains("`none` must be the only member")
+    );
+}
+
+#[test]
 fn located_effect_parse_preserves_corsa_friendly_byte_spans() {
     let input = "Console | Fetch<GET, \"https://example.com/**\">";
     let located = EffectSet::parse_located(input, 7, 100).unwrap();

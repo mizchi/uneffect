@@ -682,8 +682,17 @@ impl EffectSet {
         input: &str,
         schemas: &EffectSchemaRegistry,
     ) -> Result<Self, ParseEffectError> {
+        let terms = split_union(input)?;
+        if terms.iter().any(|term| *term == "none") {
+            if terms.len() != 1 {
+                return Err(ParseEffectError::new(
+                    "`none` must be the only member of an effect set",
+                ));
+            }
+            return Ok(Self::default());
+        }
         let mut effects = BTreeSet::new();
-        for term in split_union(input)? {
+        for term in terms {
             effects.insert(parse_effect(term, schemas)?);
         }
         if effects.is_empty() {
@@ -719,6 +728,22 @@ impl EffectSet {
                 base_offset.saturating_add(input.len() as u32),
             ))
         })?;
+        if terms.iter().any(|term| *term == "none") {
+            if terms.len() != 1 {
+                return Err(ParseEffectError::new(
+                    "`none` must be the only member of an effect set",
+                )
+                .at(SourceSpan::new(
+                    file_id,
+                    base_offset,
+                    base_offset.saturating_add(input.len() as u32),
+                )));
+            }
+            return Ok(LocatedEffectSet {
+                effects: Vec::new(),
+                effect_set: Self::default(),
+            });
+        }
         let mut effects = Vec::with_capacity(terms.len());
         let mut semantic = BTreeSet::new();
         for term in terms {
@@ -1073,6 +1098,11 @@ fn split_union(input: &str) -> Result<Vec<&str>, ParseEffectError> {
 }
 
 fn parse_effect(term: &str, schemas: &EffectSchemaRegistry) -> Result<Effect, ParseEffectError> {
+    if term == "none" {
+        return Err(ParseEffectError::new(
+            "`none` denotes an empty effect set, not an effect",
+        ));
+    }
     if let Some(inner) = term
         .strip_prefix("Mutate<")
         .and_then(|value| value.strip_suffix('>'))

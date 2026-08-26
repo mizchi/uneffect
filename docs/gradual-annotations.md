@@ -65,9 +65,9 @@ cannot write it.
 
 Temporal expressions are a restricted TypeScript expression subset. For example, write `phase === 0 && !cancelled`, not Quint's `phase == 0 and not(cancelled)`. Uneffect retains a neutral expression AST that can be lowered to a verifier expression or compiled into an optional runtime assertion.
 
-effect_decl    = "effect", effect_union ;
-effect_parameter_decl = "effect_parameter", identifier, "extends", effect_union ;
-module_effect_decl = "module_effect", effect_union ;
+effect_decl    = "effect", effect_set ;
+effect_parameter_decl = "effect_parameter", identifier, "extends", effect_set ;
+module_effect_decl = "module_effect", effect_set ;
 requires_decl  = "requires", expression ;
 ensures_decl   = "ensures", expression ;
 invariant_decl = "invariant", expression ;
@@ -82,6 +82,7 @@ abstraction_decl = "abstraction", identifier, "@", version,
 abstraction_expression = qualified_name
                        | "Set", "(", qualified_name, ")" ;
 
+effect_set   = "none" | effect_union ;
 effect_union = effect_term, { "|", effect_term } ;
 effect_term  = qualified_name
              | "Mutate", "<", "typeof", region, ">"
@@ -89,6 +90,11 @@ effect_term  = qualified_name
              | scoped_effect ;
 region       = identifier, { ".", identifier | "[", string_literal, "]" } ;
 ```
+
+`none` is the reserved empty Effect set. It must be the complete payload, so
+`effect none | Console` is invalid. In particular, `none` cannot name a custom
+Effect. Use `effect none` to distinguish an explicit checked empty upper bound
+from an unannotated function whose currently inferred inventory is empty.
 
 A region is a member path, so it can name a single property: `Mutate<typeof
 state.calls>` is the authority to write that property, and a declaration of any

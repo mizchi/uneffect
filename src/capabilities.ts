@@ -163,6 +163,7 @@ function set(input: string, domain?: AtomDomain): CapabilitySet {
 
 export function parseEffectExpression(input: string): Effect {
   const text = input.trim();
+  if (text === "none") throw new Error("`none` denotes an empty effect set, not an effect");
   const mutate = /^Mutate<\s*typeof\s+(.+)>$/.exec(text);
   if (mutate) return { kind: "mutate", region: mutate[1]!.trim() };
   const thrown = /^Throw<(.+)>$/.exec(text);
@@ -181,6 +182,17 @@ export function parseEffectExpression(input: string): Effect {
   if (!/^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*$/.test(text)) throw new Error(`invalid effect: ${text}`);
   const schema = effectSchema(text);
   return { kind: "capability", name: text, arguments: schema?.arguments.map(() => ({ kind: "all" })) ?? [] };
+}
+
+/** Parse an effect upper-bound set. `none` is the reserved spelling of the empty set. */
+export function parseEffectSet(input: string): Effect[] {
+  const terms = splitTopLevel(input, "|");
+  const none = terms.filter((term) => term === "none");
+  if (none.length > 0) {
+    if (terms.length !== 1) throw new Error("`none` must be the only member of an effect set");
+    return [];
+  }
+  return terms.map(parseEffectExpression);
 }
 
 export function formatEffect(effect: Effect): string {

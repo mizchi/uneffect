@@ -29,6 +29,12 @@ effects are errors; declared but unused effects are warnings. A function may
 use fewer effects than its declaration. No `yield`, wrapper function, or
 runtime handler is required.
 
+Use `/* uneffect: effect none */` for an explicit empty upper bound. This is
+different from an unannotated function whose currently inferred inventory is
+empty: `none` is checked and can produce `verified` Effect evidence, while the
+unannotated inventory remains `inferred`. `none` is reserved and cannot be
+combined with another Effect or used as a user-defined Effect name.
+
 Executable file initialization uses a separate header bound such as
 `/* uneffect: module_effect Console | FsRead */`. Its `<module>` evidence is a
 may-effect set; exact ESM and top-level-await ordering are not yet proved.
@@ -224,6 +230,13 @@ Built-in effect families include `FsRead`, `FsWrite`, `Console`, `Fetch`,
 `Dom`, `Mutate<typeof ref>`, and `Throw<ErrorType>`. Platform APIs receive their
 semantics through TypeChecker symbol identity; user code does not need wrapper
 functions.
+
+```ts
+/* uneffect: effect none */
+export function increment(value: number): number {
+  return value + 1
+}
+```
 
 Read [Gradual annotations](./docs/gradual-annotations.md),
 [Effect system](./docs/effect-system.md), and

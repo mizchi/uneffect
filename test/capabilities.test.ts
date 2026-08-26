@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   capabilityPermits,
   parseEffectExpression,
+  parseEffectSet,
   type CapabilityEffect,
 } from "../src/capabilities.js";
 
 describe("structured capability effects", () => {
+  it("reserves none for the empty effect set", () => {
+    expect(parseEffectSet("none")).toEqual([]);
+    expect(() => parseEffectSet("none | Console")).toThrow(/must be the only member/);
+    expect(() => parseEffectExpression("none")).toThrow(/empty effect set/);
+  });
+
   it("parses nested unions and domain-specific atoms through the schema", () => {
     expect(parseEffectExpression('Fetch<GET | POST, "https://api.example.com/v1/**">')).toEqual({
       kind: "capability",

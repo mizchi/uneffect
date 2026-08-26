@@ -277,6 +277,18 @@ version drift fail closed.
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
 
+```ts
+/* uneffect: module_effect none */
+/* uneffect: effect none */
+export function normalize(value: string): string {
+  return value.trim().toLowerCase()
+}
+```
+
+`none` is the explicit empty Effect set. An unannotated function that happens
+to infer no Effect is still only `inferred`, so it does not satisfy the
+`declared` or `verified` profile as a function boundary.
+
 ```sh
 npx uneffect check --assurance declared src/uneffect-example.ts
 ```

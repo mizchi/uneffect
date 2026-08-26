@@ -1,7 +1,7 @@
 import ts from "typescript";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
-import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
+import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
 import { builtinContractRegistry, resolveModuleInitializationContract, type BuiltinContractRegistry, type FsBuiltinOperation } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectContract, type IteratorEffectParameter } from "./call-graph.js";
@@ -102,6 +102,7 @@ interface FunctionInfo {
   node: ts.FunctionDeclaration;
   parameters: string[];
   declared: Effect[];
+  declaredPresent: boolean;
   direct: Effect[];
   calls: CallEdge[];
   locals: Set<string>;
@@ -165,11 +166,16 @@ function leadingText(source: ts.SourceFile, node: ts.Node): string {
   return source.text.slice(node.getFullStart(), node.getStart(source));
 }
 
-function declaration(source: ts.SourceFile, node: ts.Node): Effect[] {
+function effectDeclaration(source: ts.SourceFile, node: ts.Node): { effects: Effect[]; present: boolean } {
   const owner = (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
     ? node.parent.parent.parent : node;
   const text = leadingText(source, owner);
-  return extractAnnotations(text, "effect").flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
+  const annotations = extractAnnotations(text, "effect");
+  return { effects: annotations.flatMap(parseEffectSet), present: annotations.length > 0 };
+}
+
+function declaration(source: ts.SourceFile, node: ts.Node): Effect[] {
+  return effectDeclaration(source, node).effects;
 }
 
 interface EffectParameterAnnotation {
@@ -187,7 +193,7 @@ function effectParameterAnnotations(source: ts.SourceFile, node: ts.Node): Effec
     const match = /^([A-Za-z_$][\w$]*)\s+extends\s+(.+)$/u.exec(payload);
     return match ? {
       name: match[1], payload, start: span.start,
-      effects: splitTopLevel(match[2]!, "|").map(parseEffectExpression),
+      effects: parseEffectSet(match[2]!),
     } : { payload, effects: [], start: span.start };
   });
 }
@@ -624,15 +630,19 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   const fileName = source.fileName;
   const functions = new Map<string, FunctionInfo>();
   source.forEachChild((node) => {
-    if (ts.isFunctionDeclaration(node) && node.name && node.body) functions.set(node.name.text, {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      const declared = effectDeclaration(source, node);
+      functions.set(node.name.text, {
       name: node.name.text,
       node,
       parameters: node.parameters.map((p) => ts.isIdentifier(p.name) ? p.name.text : p.name.getText()),
-      declared: declaration(source, node),
+      declared: declared.effects,
+      declaredPresent: declared.present,
       direct: [],
       calls: [],
       locals: localBindings(node),
-    });
+      });
+    }
   });
   for (const info of functions.values()) {
     const asyncOwner = isAsyncFunction(info.node);
@@ -801,7 +811,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       message: `${info.name} declares unknown effect ${formatEffect(effect)}`,
       notes: unknownEffectNotes(info.declared, effect),
     });
-    for (const effect of actual) if (!permits(info.declared, effect) && (info.declared.length > 0 || options.requireAnnotations !== false)) diagnostics.push({
+    for (const effect of actual) if (!permits(info.declared, effect) && (info.declaredPresent || options.requireAnnotations !== false)) diagnostics.push({
       fileName, functionName: info.name, effect: formatEffect(effect), kind: "missing", severity: "error", line,
       message: `${info.name} requires /* uneffect: effect ${formatEffect(effect)} */`,
       notes: missingEffectNotes(info.declared, effect),
@@ -815,7 +825,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
   const summaries = [...functions.values()].map((info): EffectSummary => {
     const effects = inferred.get(info.name)!;
     const own = diagnostics.filter((diagnostic) => diagnostic.functionName === info.name);
-    const evidence: EvidenceStatus = info.declared.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+    const evidence: EvidenceStatus = !info.declaredPresent ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     return {
       functionName: info.name, effects, evidence,
       ...(evidence === "unknown" ? { unknownReasons: [{ code: "effect-diagnostic", message: "an effect declaration or inferred authority diagnostic prevents proof-grade evidence" }] } : {}),
@@ -879,7 +889,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   );
   const promiseModels = new Map<ts.SourceFile, PromiseChainModel>();
   const implicitDisposalEdges: CallGraphEdge[] = [];
-  const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
+  const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), declaredPresent = new Set<string>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
   const iteratorEffectBounds = new Map<string, Map<number, { name: string; effects: Effect[] }>>();
   const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
   const invalidEffectParameterOwners = new Set<string>();
@@ -908,7 +918,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const nameNode = (ts.isFunctionDeclaration(node) || ts.isMethodDeclaration(node) || ts.isFunctionExpression(node)) && node.name ? node.name
       : (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) ? node.parent.name : undefined;
     const symbol = nameNode ? checker.getSymbolAtLocation(nameNode) : undefined;
-    const declarationEffects = symbol?.declarations?.flatMap((item) => declaration(item.getSourceFile(), item)) ?? declaration(source, node);
+    const declarationOwners = symbol?.declarations ?? [node];
+    const declarations = declarationOwners.map((item) => effectDeclaration(item.getSourceFile(), item));
+    const declarationEffects = declarations.flatMap((item) => item.effects);
+    if (declarations.some((item) => item.present)) declaredPresent.add(graphNode.id);
     declared.set(graphNode.id, declarationEffects.filter((effect, index, all) => all.findIndex((item) => formatEffect(item) === formatEffect(effect)) === index));
     const parameterNames = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
     parameters.set(graphNode.id, parameterNames);
@@ -1169,7 +1182,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const actual = inferred.get(graphNode.id)!, allowed = declared.get(graphNode.id)!, source = nodes.get(graphNode.id)!.getSourceFile();
     const line = source.getLineAndCharacterOfPosition(graphNode.span.start).line + 1;
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({ fileName: source.fileName, functionName: graphNode.name, effect: formatEffect(effect), kind: "unknown", severity: options.mode === "strict" ? "error" : "warning", line, message: `${graphNode.name} declares unknown effect ${formatEffect(effect)}`, notes: unknownEffectNotes(allowed, effect) });
-    for (const effect of actual) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) {
+    for (const effect of actual) if (!permits(allowed, effect) && (declaredPresent.has(graphNode.id) || options.requireAnnotations !== false)) {
       const key = formatEffect(effect);
       diagnostics.push({
         fileName: source.fileName, functionName: graphNode.name, effect: key, kind: "missing", severity: "error", line,
@@ -1202,7 +1215,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       || unknownExternalEvidence.has(graphNode.id)
       || (polymorphicIterator && allowed.length > 0 && !fullyBoundIterator)
       ? "unknown" : fullyBoundIterator ? (own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified")
-        : allowed.length === 0 ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
+        : !declaredPresent.has(graphNode.id) ? "inferred" : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     if (evidence === "unknown" && unknownReasons.length === 0) addUnknownReason("effect-diagnostic", "an effect declaration or inferred authority diagnostic prevents proof-grade evidence");
     summaries.push({
       functionName: graphNode.name, effects: actual, evidence, id: graphNode.id, fileName: graphNode.fileName, span: graphNode.span,
@@ -1217,7 +1230,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   // source-attributed pseudo-summary prevents function evidence in a sibling
   // file from making executable top-level code disappear from assurance.
   const moduleRecords = new Map<string, {
-    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; unknownReasons: EffectUnknownReason[]; trusted: boolean; dependencies: string[];
+    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; declaredPresent: boolean; unknown: boolean; unknownReasons: EffectUnknownReason[]; trusted: boolean; dependencies: string[];
   }>();
   const moduleResolutionHost: ts.ModuleResolutionHost = {
     fileExists: (fileName) => program.getSourceFile(fileName) !== undefined || ts.sys.fileExists(fileName),
@@ -1476,10 +1489,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const statement of executable) visit(statement, false);
 
     const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
-    const allowed = extractAnnotations(moduleHeader, "module_effect")
-      .flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
+    const moduleDeclarations = extractAnnotations(moduleHeader, "module_effect");
+    const allowed = moduleDeclarations.flatMap(parseEffectSet);
     if (invalidSources.has(source.fileName)) markUnknown("typescript-errors", "TypeScript errors prevent proof-grade module effect evidence");
-    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, unknownReasons, trusted, dependencies });
+    moduleRecords.set(source.fileName, { source, id, effects, allowed, declaredPresent: moduleDeclarations.length > 0, unknown, unknownReasons, trusted, dependencies });
   }
 
   // Static module evaluation precedes the importing module. A monotone union
@@ -1504,7 +1517,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
 
-  for (const { source, id, effects, allowed, unknown, unknownReasons, trusted } of moduleRecords.values()) {
+  for (const { source, id, effects, allowed, declaredPresent: moduleDeclared, unknown, unknownReasons, trusted } of moduleRecords.values()) {
     const line = 1;
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unknown",
@@ -1512,7 +1525,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       message: `<module> declares unknown effect ${formatEffect(effect)}`,
       notes: unknownEffectNotes(allowed, effect),
     });
-    for (const effect of effects) if (!permits(allowed, effect) && (allowed.length > 0 || options.requireAnnotations !== false)) diagnostics.push({
+    for (const effect of effects) if (!permits(allowed, effect) && (moduleDeclared || options.requireAnnotations !== false)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "missing", severity: "error", line,
       message: `<module> requires /* uneffect: module_effect ${formatEffect(effect)} */`,
       notes: missingEffectNotes(allowed, effect),
@@ -1523,7 +1536,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       notes: unusedEffectNotes("<module>", allowed, effects, effect),
     });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === "<module>");
-    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : trusted ? "trusted" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
+    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : trusted ? "trusted" : !moduleDeclared ? (effects.length === 0 ? "verified" : "inferred")
       : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     if (evidence === "unknown" && unknownReasons.length === 0) unknownReasons.push({ code: "effect-diagnostic", message: "a module effect declaration or inferred authority diagnostic prevents proof-grade evidence" });
     summaries.push({

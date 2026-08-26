@@ -8,6 +8,44 @@ import { analyzeProgramEffects } from "../src/effects.js";
 import { formatEffect, parseEffectExpression } from "../src/capabilities.js";
 
 describe("multi-file call graph and effect polymorphism", () => {
+  it("distinguishes an explicit empty effect bound from an inferred empty inventory", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-empty-effect-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect none */
+        /* uneffect: effect none */ export function pure(value: number) { return value + 1 }
+        export function merelyInferred(value: number) { return value + 1 }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+      expect(result.diagnostics).toEqual([]);
+      expect(result.summaries.find((item) => item.functionName === "pure")).toMatchObject({ effects: [], evidence: "verified" });
+      expect(result.summaries.find((item) => item.functionName === "merelyInferred")).toMatchObject({ effects: [], evidence: "inferred" });
+      expect(result.summaries.find((item) => item.functionName === "<module>")).toMatchObject({ effects: [], evidence: "verified" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("rejects effects performed inside an explicit empty effect bound", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-empty-effect-violation-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `/* uneffect: effect none */ export function impure() { console.log("unexpected") }`);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+
+      expect(result.diagnostics).toContainEqual(expect.objectContaining({ functionName: "impure", kind: "missing", effect: "Console" }));
+      expect(result.summaries.find((item) => item.functionName === "impure")).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("summarizes direct and imported module-initialization effects", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-effects-"));
     try {

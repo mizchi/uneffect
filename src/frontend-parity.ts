@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
-import { formatEffect, parseEffectExpression, splitTopLevel } from "./capabilities.js";
+import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
 import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
@@ -171,7 +171,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
     const leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
-    const effects = extractAnnotations(leading, "effect").flatMap((union) => splitTopLevel(union, "|").map(parseEffectExpression)).map(formatEffect).sort();
+    const effects = extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect).sort();
     functions.push({ name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
