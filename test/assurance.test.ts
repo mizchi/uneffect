@@ -33,6 +33,23 @@ describe("assurance claim boundaries", () => {
     expect(assessment.exclusions).toContain("inferred effects need not have an explicit upper-bound declaration");
   });
 
+  it("reports trusted summaries as assumed rather than verified", () => {
+    const noUnknown = assessCheckAssurance({
+      summaries: [{ functionName: "<module>", fileName: "src/entry.ts", effects: [], evidence: "trusted" }],
+      artifacts: [],
+    }, "no-unknown");
+
+    expect(noUnknown).toMatchObject({ status: "assumed", passed: true, blockers: [] });
+    expect(noUnknown.exclusions).toContain(
+      "trusted effect summaries depend on reviewed contracts and are assumptions, not verified implementations",
+    );
+    expect(formatAssuranceAssessment(noUnknown)).toContain("passed (assumed)");
+    expect(assessCheckAssurance({
+      summaries: [{ functionName: "<module>", fileName: "src/entry.ts", effects: [], evidence: "trusted" }],
+      artifacts: [],
+    }, "declared")).toMatchObject({ status: "unknown", passed: false });
+  });
+
   it("accepts a represented iterator-effect parameter without claiming a closed concrete effect set", () => {
     const summary = {
       functionName: "consume", fileName: "src/consume.ts", effects: [], evidence: "inferred" as const,

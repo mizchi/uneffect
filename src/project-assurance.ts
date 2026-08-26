@@ -118,7 +118,7 @@ export function assessProjectVerification(
     "this assessment covers only explicitly supplied files and analyses represented in this result",
     "inferred effects need not have an explicit declaration",
     ...(hasOpenIteratorEffect ? ["unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set"] : []),
-    "trusted typed-array and builtin contracts remain assumptions, not derived proofs",
+    "trusted typed-array, builtin, and module-initialization contracts remain assumptions, not derived proofs",
     "emitted JavaScript is an adoption artifact and is not itself verified",
     ...(result.temporal ? [] : ["temporal behavior was not checked because no temporal runtime was selected"]),
   ];

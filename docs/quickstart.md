@@ -204,6 +204,10 @@ remains `unknown`. String-literal relative dynamic imports resolved to source fi
 the current Program contribute conditional may-effects. Computed or external
 dynamic imports remain `unknown`; this does not prove their asynchronous
 evaluation order.
+Static runtime imports from external packages likewise remain `unknown` unless
+their initialization has a reviewed, versioned registry contract. A matched
+contract is reported as `trusted` and is recorded as a project assumption;
+`--assurance no-unknown` may pass it as `assumed`, never as `verified`.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:

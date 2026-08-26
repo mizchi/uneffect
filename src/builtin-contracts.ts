@@ -74,13 +74,24 @@ export interface BuiltinContract {
   operation?: BuiltinOperation;
 }
 
+export interface ModuleInitializationContract {
+  /** Exact package specifier, or a trailing `*` prefix pattern such as `node:*`. */
+  module: string;
+  effects: readonly string[];
+  evidence: "trusted";
+  trustReason: string;
+  trustOwner: string;
+  trustExpiresOn?: string;
+}
+
 function trusted(contract: Omit<BuiltinContract, "evidence">): BuiltinContract {
   return { ...contract, evidence: "trusted" };
 }
 
 export interface BuiltinContractRegistry {
-  version: 1;
+  version: 2;
   contracts: readonly BuiltinContract[];
+  moduleInitializations: readonly ModuleInitializationContract[];
   declarations: readonly DeclarationFingerprint[];
 }
 
@@ -93,6 +104,15 @@ export function builtinSymbolId(symbol: BuiltinSymbolKey): string {
 export function findBuiltinContract(registry: BuiltinContractRegistry, symbol: BuiltinSymbolKey): BuiltinContract | undefined {
   const id = builtinSymbolId(symbol);
   return registry.contracts.find((contract) => builtinSymbolId(contract.symbol) === id);
+}
+
+export function findModuleInitializationContract(
+  registry: BuiltinContractRegistry,
+  moduleName: string,
+): ModuleInitializationContract | undefined {
+  return registry.moduleInitializations.find((contract) => contract.module.endsWith("*")
+    ? moduleName.startsWith(contract.module.slice(0, -1))
+    : contract.module === moduleName);
 }
 
 const fsReadNames = [
@@ -146,8 +166,18 @@ function fsBuiltinContracts(module: string): BuiltinContract[] {
  * not modify or wrap the runtime builtin.
  */
 export const builtinContractRegistry: BuiltinContractRegistry = {
-  version: 1,
+  version: 2,
   declarations: [{ library: "lib.dom.d.ts", compilerVersion: "6.0.3", sha256: "d6b1eba8496bdd0eed6fc8a685768fe01b2da4a0388b5fe7df558290bffcf32f" }],
+  moduleInitializations: [
+    {
+      module: "node:*", effects: [], evidence: "trusted",
+      trustReason: "reviewed Node builtin module initialization boundary", trustOwner: "@mizchi/uneffect",
+    },
+    ...["@oxlint/plugins", "corsa-oxlint", "effect", "typescript", "valibot", "z3-solver"].map((module): ModuleInitializationContract => ({
+      module, effects: [], evidence: "trusted",
+      trustReason: "reviewed package module initialization boundary", trustOwner: "@mizchi/uneffect",
+    })),
+  ],
   contracts: [
     trusted({
       symbol: { module: "node:os", export: "tmpdir" },

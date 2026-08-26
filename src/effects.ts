@@ -3,10 +3,11 @@ import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js"
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, splitTopLevel, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
-import type { FsBuiltinOperation } from "./builtin-contracts.js";
+import { builtinContractRegistry, findModuleInitializationContract, type FsBuiltinOperation } from "./builtin-contracts.js";
 import { buildProgramCallGraph, type CallGraphEdge, type IteratorEffectParameter } from "./call-graph.js";
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
+import { isRuntimeModuleDependency } from "./module-initialization.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -952,7 +953,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   // source-attributed pseudo-summary prevents function evidence in a sibling
   // file from making executable top-level code disappear from assurance.
   const moduleRecords = new Map<string, {
-    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; dependencies: string[];
+    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; trusted: boolean; dependencies: string[];
   }>();
   const moduleResolutionHost: ts.ModuleResolutionHost = {
     fileExists: (fileName) => program.getSourceFile(fileName) !== undefined || ts.sys.fileExists(fileName),
@@ -1047,8 +1048,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
     }
     const dependencies: string[] = [];
-    const addResolvedDependency = (specifier: ts.Expression): string | undefined => {
-      if (!ts.isStringLiteralLike(specifier) || !specifier.text.startsWith(".")) return undefined;
+    const addResolvedDependency = (specifier: ts.Expression, requireRelative = false): string | undefined => {
+      if (!ts.isStringLiteralLike(specifier) || (requireRelative && !specifier.text.startsWith("."))) return undefined;
       const symbol = checker.getSymbolAtLocation(specifier);
       const symbolSource = symbol?.declarations?.find(ts.isSourceFile)?.getSourceFile();
       const resolvedFileName = symbolSource?.fileName ?? ts.resolveModuleName(
@@ -1060,11 +1061,17 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       if (!dependencies.includes(dependencySource.fileName)) dependencies.push(dependencySource.fileName);
       return dependencySource.fileName;
     };
+    let unknown = false, trusted = false;
     for (const statement of source.statements) {
       if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier) continue;
-      addResolvedDependency(statement.moduleSpecifier);
+      if (!isRuntimeModuleDependency(statement)) continue;
+      if (addResolvedDependency(statement.moduleSpecifier)) continue;
+      const moduleName = ts.isStringLiteralLike(statement.moduleSpecifier) ? statement.moduleSpecifier.text : "";
+      const contract = findModuleInitializationContract(builtinContractRegistry, moduleName);
+      if (!contract) { unknown = true; continue; }
+      trusted = true;
+      for (const expression of contract.effects) addEffect(effects, parseEffectExpression(expression));
     }
-    let unknown = false;
     const visit = (node: ts.Node, catches: boolean): void => {
       if (node.kind === ts.SyntaxKind.ImportKeyword) return; // handled by the parent dynamic-import call
       if (ts.isFunctionLike(node)) return;
@@ -1108,12 +1115,12 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       const resolvedDynamicDependency = ts.isCallExpression(node)
         && node.expression.kind === ts.SyntaxKind.ImportKeyword
         && node.arguments.length === 1
-        ? addResolvedDependency(node.arguments[0]!) : undefined;
+        ? addResolvedDependency(node.arguments[0]!, true) : undefined;
       const resolvedAwaitedDynamicDependency = ts.isAwaitExpression(node)
         && ts.isCallExpression(node.expression)
         && node.expression.expression.kind === ts.SyntaxKind.ImportKeyword
         && node.expression.arguments.length === 1
-        ? addResolvedDependency(node.expression.arguments[0]!) : undefined;
+        ? addResolvedDependency(node.expression.arguments[0]!, true) : undefined;
       if (ts.isThrowStatement(node) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
       if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) unknown = true;
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
@@ -1175,7 +1182,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
     const allowed = extractAnnotations(moduleHeader, "module_effect")
       .flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
-    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, dependencies });
+    moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, trusted, dependencies });
   }
 
   // Static module evaluation precedes the importing module. A monotone union
@@ -1188,6 +1195,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       const dependency = moduleRecords.get(dependencyName);
       if (!dependency) continue;
       if (dependency.unknown && !record.unknown) { record.unknown = true; changedModules = true; }
+      if (dependency.trusted && !record.trusted) { record.trusted = true; changedModules = true; }
       for (const effect of dependency.effects) if (!record.effects.some((item) => formatEffect(item) === formatEffect(effect))) {
         record.effects.push(effect);
         changedModules = true;
@@ -1195,7 +1203,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
 
-  for (const { source, id, effects, allowed, unknown } of moduleRecords.values()) {
+  for (const { source, id, effects, allowed, unknown, trusted } of moduleRecords.values()) {
     const line = 1;
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unknown",
@@ -1214,7 +1222,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       notes: unusedEffectNotes("<module>", allowed, effects, effect),
     });
     const own = diagnostics.filter((diagnostic) => diagnostic.fileName === source.fileName && diagnostic.functionName === "<module>");
-    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
+    const evidence: EvidenceStatus = invalidSources.has(source.fileName) || unknown ? "unknown" : trusted ? "trusted" : allowed.length === 0 ? (effects.length === 0 ? "verified" : "inferred")
       : own.some((diagnostic) => diagnostic.severity === "error") ? "unknown" : "verified";
     summaries.push({ functionName: "<module>", effects, evidence, id, fileName: source.fileName, span: { start: 0, end: source.end } });
   }

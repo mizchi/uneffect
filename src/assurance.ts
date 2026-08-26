@@ -103,12 +103,16 @@ export function assessCheckAssurance(
   const exclusions = profile === "no-unknown"
     ? [...commonExclusions, "inferred effects need not have an explicit upper-bound declaration"]
     : [...commonExclusions];
+  const hasTrustedSummary = result.summaries.some((summary) => summary.evidence === "trusted");
+  if (hasTrustedSummary) exclusions.push(
+    "trusted effect summaries depend on reviewed contracts and are assumptions, not verified implementations",
+  );
   if (result.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)))) {
     exclusions.push("unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set");
   }
   const status: AssuranceStatus = blockers.some((blocker) => blocker.classification === "violation")
-    ? "violated" : blockers.length > 0 ? "unknown" : "verified";
+    ? "violated" : blockers.length > 0 ? "unknown" : hasTrustedSummary ? "assumed" : "verified";
   return { profile, status, passed: blockers.length === 0, blockers, coverage, claims, exclusions };
 }
 

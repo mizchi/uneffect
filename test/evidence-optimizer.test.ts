@@ -39,6 +39,20 @@ describe("evidence and optimizer obligations", () => {
     expect(assumed.assurance.assumptions).toBe(assumed.assumptions.entries.length);
   });
 
+  it("records reviewed external module initialization as an assumption", async () => {
+    const fileName = "src/node-module.ts";
+    const result = await verifyUneffectProject({ files: {
+      [fileName]: `import "node:path"; export const loaded = true`,
+    } });
+
+    expect(result.effects.summaries.find((item) => item.functionName === "<module>"))
+      .toMatchObject({ evidence: "trusted" });
+    expect(result.assumptions.entries).toContainEqual(expect.objectContaining({
+      domain: "module-initialization", scope: expect.objectContaining({ fileName }),
+    }));
+    expect(result.assurance).toMatchObject({ status: "assumed", passed: true });
+  });
+
   it("makes runtime instrumentation failures project assurance blockers", async () => {
     const fileName = "src/runtime-boundary.ts";
     const result = await verifyUneffectProject({ runtimeAssertions: "fallback", files: { [fileName]: `

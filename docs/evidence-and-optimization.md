@@ -102,7 +102,8 @@ Builtin overlays are `trusted`; Z3 `unsat` obligations are `verified`; Z3 counte
 `verifyUneffectProject` returns an `uneffect-assumptions/v1` ledger. It currently
 records every trusted builtin call that the frontend resolves, every
 function-level `trust typed-array` escape hatch, and every user-supplied
-temporal function summary. Each entry has a stable content-derived ID, reason,
+temporal function summary, dispatch-sealing assumption, and reviewed external
+module-initialization contract use. Each entry has a stable content-derived ID, reason,
 domain, file/function scope, UTF-16 source span, and optional owner and
 expiration date. Builtin defaults are owned by `@mizchi/uneffect`; their
 expiration is deliberately unbounded and must be explicitly allowed by policy.
@@ -128,7 +129,7 @@ const result = await verifyUneffectProject({
     requireOwner: true,
     requireExpiration: true,
     denyExpired: true,
-    allowUnboundedDomains: ["builtin"],
+    allowUnboundedDomains: ["builtin", "module-initialization"],
     asOf: "2026-08-21",
   },
 })
@@ -136,7 +137,7 @@ if (result.assumptions.violations.length > 0) process.exitCode = 1
 ```
 
 Violations also appear in project diagnostics with kind `assumption-policy`.
-The ledger is exhaustive for the three trusted domains listed above, not for
+The ledger is exhaustive for the trusted domains listed above, not for
 arbitrary objects constructed through the low-level `trustedSummary` evidence
 helper. New trusted domains must integrate with the collector before claiming
 project-wide audit completeness. Metadata is review accountability rather than

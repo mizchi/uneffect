@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
-import { builtinContractRegistry, findBuiltinContract } from "./builtin-contracts.js";
+import { builtinContractRegistry, findBuiltinContract, findModuleInitializationContract } from "./builtin-contracts.js";
 import { collectBuiltinCallRefinements } from "./frontend-adapter.js";
+import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypedArrayProgramSafetyResult } from "./typed-array-safety.js";
 
-export type AssumptionDomain = "builtin" | "typed-array" | "temporal-summary" | "dispatch-sealing";
+export type AssumptionDomain = "builtin" | "module-initialization" | "typed-array" | "temporal-summary" | "dispatch-sealing";
 
 export interface AssumptionScope {
   fileName: string;
@@ -107,6 +108,24 @@ export function collectAssumptionLedger(
   for (const fileName of Object.keys(files)) {
     const source = program.getSourceFile(fileName);
     if (!source) continue;
+    for (const statement of source.statements) {
+      if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
+        || !statement.moduleSpecifier || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
+      if (!isRuntimeModuleDependency(statement)) continue;
+      const contract = findModuleInitializationContract(builtinContractRegistry, statement.moduleSpecifier.text);
+      if (!contract) continue;
+      entries.push(entry({
+        domain: "module-initialization",
+        reason: contract.trustReason,
+        owner: contract.trustOwner,
+        ...(contract.trustExpiresOn ? { expiresOn: contract.trustExpiresOn } : {}),
+        scope: {
+          fileName,
+          functionName: "<module>",
+          span: { start: statement.moduleSpecifier.getStart(source), end: statement.moduleSpecifier.getEnd() },
+        },
+      }));
+    }
     for (const call of collectBuiltinCallRefinements(program, source)) {
       const contract = findBuiltinContract(builtinContractRegistry, call.symbol);
       if (!contract || contract.evidence !== "trusted") continue;

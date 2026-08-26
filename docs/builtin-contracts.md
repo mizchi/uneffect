@@ -27,6 +27,23 @@ renamed or namespace imports do not degrade the summary to unknown timing.
 The legacy `analyzeEffects(fileName, text)` convenience path remains a shallow
 single-source check; proof/adoption tooling uses `analyzeProgramEffects`.
 
+## Module initialization contracts
+
+A static runtime import executes package initialization before application
+code. Uneffect therefore does not infer an empty effect merely because an
+external package's implementation is absent from the current TypeScript
+Program. An unregistered external import makes the importing module summary
+`unknown`, and that evidence propagates through its local importers.
+
+The versioned registry may contain a reviewed exact package name or a trailing
+`*` prefix such as `node:*`, together with its initialization may-effects,
+owner, reason, and optional review expiration. A match changes evidence to
+`trusted`, never `verified`, and `verifyUneffectProject` records each use in the
+`module-initialization` assumption domain. Type-only imports and exports do not
+execute module initialization and are ignored. Dynamic external imports,
+declaration-only resolution, conditional exports, exact ESM/TLA ordering, and
+unreviewed transitive package code remain outside this contract.
+
 ## Contract lookup
 
 String matching such as `callee.getText() === "document.createElement"` is insufficient because of shadowing, aliases, inheritance, and overloads. The native frontend must resolve a call to a stable symbol key:

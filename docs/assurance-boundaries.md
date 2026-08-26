@@ -19,7 +19,7 @@ uneffect check --assurance declared src/file.ts
 | Mode | Exit 0 establishes | It does not establish |
 | --- | --- | --- |
 | default gradual check | No enabled checker emitted an error. Warnings and unknown effect summaries may remain. | Completeness, purity, or whole-program safety. |
-| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories and explicitly represented iterator-effect parameters are accepted. | That inferred effects are declaration-checked, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
+| `--assurance no-unknown` | The explicitly checked files have no opaque `unknown` effect summary and every emitted contract artifact is verified. Inferred inventories, explicitly represented iterator-effect parameters, and reviewed `trusted` boundaries are accepted. A passing result is `assumed`, not `verified`, when any summary is trusted. | That inferred effects are declaration-checked, that trusted contracts prove their implementations, that an unbounded iterator-effect parameter has a closed concrete effect set, or that an analysis was enabled for every semantic domain. |
 | `--assurance declared` | In addition, every emitted function effect summary is checked against explicit body-effect declarations and/or complete iterator-effect parameter bounds. | An assumption-free proof. Builtin contracts are trusted inputs, and absent annotations create no React, temporal, or Hoare claim. |
 
 Both assurance profiles print their scope and every blocker. They are intended
@@ -54,7 +54,7 @@ outcome into a green or red boolean:
 | `status` | Meaning | `passed` |
 | --- | --- | --- |
 | `verified` | All emitted obligations passed and the assumption ledger is empty. This remains scoped to `claims` and `exclusions`. | `true` |
-| `assumed` | All emitted obligations and the configured assumption policy passed, but one or more trusted builtin contracts, temporal summaries, dispatch seals, or escape hatches are recorded. | `true` |
+| `assumed` | All emitted obligations and the configured assumption policy passed, but one or more trusted builtin contracts, module-initialization contracts, temporal summaries, dispatch seals, or escape hatches are recorded. | `true` |
 | `unknown` | Coverage, resolution, instrumentation, lowering, or a solver result was insufficient to establish the claim. | `false` |
 | `violated` | At least one concrete type/effect/policy/ownership violation or solver counterexample was found. This takes precedence if other evidence is also unknown. | `false` |
 
@@ -144,6 +144,12 @@ remain `unknown`. A string-literal relative dynamic import that TypeScript resol
 non-declaration source in the current Program contributes that module's closure
 as a conditional may-effect, including when directly awaited. Computed,
 external, declaration-only, and unresolved dynamic imports remain `unknown`.
+Static runtime imports of external packages also fail closed unless the
+versioned builtin registry contains a reviewed module-initialization contract.
+Such a contract contributes its declared may-effects but makes the importing
+module and its local importers `trusted`, never `verified`; project verification
+records the import in the assumption ledger. Type-only imports do not execute
+module initialization and therefore do not require this assumption.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
 ordering. Uneffect's dogfood includes all 59 `src/*.ts` files, including the

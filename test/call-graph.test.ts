@@ -189,6 +189,39 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("marks reviewed external module initialization trusted and propagates it locally", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-trusted-external-"));
+    try {
+      const library = join(directory, "library.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(library, `import "node:path"; export const loaded = true`);
+      writeFileSync(entry, `import { loaded } from "./library.js"; export { loaded }`);
+      const program = ts.createProgram([library, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, types: ["node"], noEmit: true,
+      });
+      const modules = analyzeProgramEffects(program).summaries.filter((item) => item.functionName === "<module>");
+
+      expect(modules.find((item) => item.fileName === library)).toMatchObject({ evidence: "trusted", effects: [] });
+      expect(modules.find((item) => item.fileName === entry)).toMatchObject({ evidence: "trusted", effects: [] });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps unreviewed external module initialization unknown", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-unreviewed-external-"));
+    try {
+      const declaration = join(directory, "opaque.d.ts"), entry = join(directory, "entry.ts");
+      writeFileSync(declaration, `declare module "opaque-package" { export const value: number }`);
+      writeFileSync(entry, `import "opaque-package"; export const loaded = true`);
+      const program = ts.createProgram([declaration, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>"))
+        .toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("keeps computed and unresolved external dynamic imports unknown", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-dynamic-unknown-"));
     try {
