@@ -1418,41 +1418,48 @@ function validateRefinementActionBodiesInSource(
           );
           if (!tryCompletion) return undefined;
           const throwWhen = completionPredicate(tryCompletion, "throw");
-          if (isBooleanCompletionPredicate(throwWhen, false)) return undefined;
-          const beforeCatch = new Map(updates);
-          const caughtUpdates = new Map(updates);
-          const catchLocals = new Map(localValues);
-          const catchVariable = statement.catchClause.variableDeclaration?.name;
-          const throwValue = completionThrowValue(tryCompletion);
-          if (catchVariable && ts.isIdentifier(catchVariable) && throwValue) {
-            catchLocals.set(catchVariable.text, throwValue);
+          if (isBooleanCompletionPredicate(throwWhen, false)) {
+            // Within the supported refinement fragment every abrupt edge is
+            // explicit in ActionCompletion. A catch clause with no incoming
+            // throw edge is unreachable and must not make an otherwise exact
+            // transition unknown merely because its body is unmodeled.
+            residualCompletion = tryCompletion;
+          } else {
+            const beforeCatch = new Map(updates);
+            const caughtUpdates = new Map(updates);
+            const catchLocals = new Map(localValues);
+            const catchVariable = statement.catchClause.variableDeclaration?.name;
+            const throwValue = completionThrowValue(tryCompletion);
+            if (catchVariable && ts.isIdentifier(catchVariable) && throwValue) {
+              catchLocals.set(catchVariable.text, throwValue);
+            }
+            const catchCompletion = collect(
+              statement.catchClause.block, receiver, runtimeClass, substitutions,
+              caughtUpdates, catchLocals, activeCalls, true, true,
+              allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+            );
+            if (!catchCompletion) return undefined;
+            if (isBooleanCompletionPredicate(throwWhen, true)) {
+              updates.clear();
+              for (const [name, value] of caughtUpdates) updates.set(name, value);
+            } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
+            residualCompletion = makeCompletion(
+              orCompletionPredicates(
+                completionPredicate(tryCompletion, "return"),
+                andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "return")),
+              ),
+              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "throw")),
+              completionThrowValue(catchCompletion),
+              orCompletionPredicates(
+                completionPredicate(tryCompletion, "break"),
+                andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "break")),
+              ),
+              orCompletionPredicates(
+                completionPredicate(tryCompletion, "continue"),
+                andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "continue")),
+              ),
+            );
           }
-          const catchCompletion = collect(
-            statement.catchClause.block, receiver, runtimeClass, substitutions,
-            caughtUpdates, catchLocals, activeCalls, true, true,
-            allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
-          );
-          if (!catchCompletion) return undefined;
-          if (isBooleanCompletionPredicate(throwWhen, true)) {
-            updates.clear();
-            for (const [name, value] of caughtUpdates) updates.set(name, value);
-          } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
-          residualCompletion = makeCompletion(
-            orCompletionPredicates(
-              completionPredicate(tryCompletion, "return"),
-              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "return")),
-            ),
-            andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "throw")),
-            completionThrowValue(catchCompletion),
-            orCompletionPredicates(
-              completionPredicate(tryCompletion, "break"),
-              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "break")),
-            ),
-            orCompletionPredicates(
-              completionPredicate(tryCompletion, "continue"),
-              andCompletionPredicates(throwWhen, completionPredicate(catchCompletion, "continue")),
-            ),
-          );
         } else {
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,

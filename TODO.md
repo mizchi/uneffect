@@ -50,6 +50,7 @@ documentation are all updated.
   - [x] Migrate temporal semantic lint, bounded reachability, and structured scalar/Set/Map/record counterexample replay through named `get-value` observations; report backend failures instead of silently omitting lint findings.
   - [x] Migrate solver-backed property generation without losing model enumeration and shrinking.
   - [x] Migrate typed-array verification without losing structured obligation witnesses.
+- [x] Eliminate an unreachable `catch` edge when the supported refinement fragment proves the `try` body has no throw completion, while keeping unknown/effectful try edges fail-closed. ([#3](https://github.com/mizchi/uneffect/issues/3))
 - [x] Infer the member path a mutation writes, so `Mutate` names the property rather than only its container, and report a sibling-property declaration as an authority mismatch instead of a bare undeclared effect.
 - [x] Add the initial opt-in React function component semantics: replayable render, inline JSX events, layout/passive Effect setup, cleanup phases, selected render purity checks, conditional built-in Hook checks, and capability-level acquire/release matching.
 - [x] Resolve immutable component-local function/arrow callbacks and transitive `const` aliases used by JSX event attributes, while diagnosing reassigned or otherwise opaque handlers.

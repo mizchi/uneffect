@@ -314,9 +314,12 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("finally.ts", source, "accounting", parseSpec("finally.ts", source).temporal)).toEqual([]);
 
     const withCatch = source.replace("} finally {", "} catch (error) { runtime.phase = 3 } finally {");
-    expect(validateRefinementActionBodies("catch-finally.ts", withCatch, "accounting", parseSpec("catch-finally.ts", withCatch).temporal)).toEqual([
+    expect(validateRefinementActionBodies("catch-finally.ts", withCatch, "accounting", parseSpec("catch-finally.ts", withCatch).temporal)).toEqual([]);
+
+    const unknownTryEdge = withCatch.replace("runtime.phase = 1;", "runtime.phase = 1; mayThrow();");
+    expect(validateRefinementActionBodies("unknown-try-edge.ts", unknownTryEdge, "accounting", parseSpec("unknown-try-edge.ts", unknownTryEdge).temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "account" }),
-    ]);
+    );
 
     const abrupt = source.replace("runtime.phase = 1;", "runtime.phase = 1; return;");
     expect(validateRefinementActionBodies("return-finally.ts", abrupt, "accounting", parseSpec("return-finally.ts", abrupt).temporal)).toEqual([]);

@@ -1037,7 +1037,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActions("switch-completion.ts", source, "routing", temporal)).toEqual([]);
   });
 
-  it("refines a mandatory finally accounting update and rejects an unmodeled catch path", () => {
+  it("eliminates an unreachable catch edge but rejects an unknown throwing try edge", () => {
     const parseSpec = futureApi("parseSpec");
     const validateActions = futureApi("validateRefinementActionBodies");
     const source = `/* uneffect:
@@ -1058,8 +1058,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     `;
     const temporal = (parseSpec("finally-accounting.ts", source) as { temporal: unknown }).temporal;
     expect(validateActions("finally-accounting.ts", source, "accounting", temporal)).toEqual([]);
-    const withCatch = source.replace("finally {", "catch (error) { runtime.outcome-- } finally {");
-    expect(validateActions("catch-accounting.ts", withCatch, "accounting", temporal)).toContainEqual(
+    const unreachableCatch = source.replace("finally {", "catch (error) { runtime.outcome-- } finally {");
+    expect(validateActions("unreachable-catch-accounting.ts", unreachableCatch, "accounting", temporal)).toEqual([]);
+
+    const unknownThrowEdge = unreachableCatch.replace(
+      "runtime.outcome++",
+      "runtime.outcome++; mayThrow()",
+    );
+    expect(validateActions("unknown-throw-edge.ts", unknownThrowEdge, "accounting", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "deliver" }),
     );
   });

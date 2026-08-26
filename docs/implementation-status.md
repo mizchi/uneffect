@@ -120,7 +120,10 @@ same property is proved for arbitrary TypeScript.
   inside that labeled fragment remain unsupported. The action-control subset
   keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
-  their shared boundary. Post-try statements run only on the remaining normal
+  their shared boundary. If the supported refinement fragment proves that the
+  try body has no throw completion, its catch block is excluded as unreachable;
+  an unresolved or effectful try statement still makes the action unsupported
+  rather than silently removing a possible exception edge. Post-try statements run only on the remaining normal
   paths before joining with retained abrupt paths. Catch-local conditional void
   returns and supported pure rethrows are composed through the same predicates.
   Conditional returns and supported pure throws from finally override prior
