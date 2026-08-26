@@ -39,14 +39,16 @@ describe("CI test tier manifest", () => {
     }
   });
 
-  it("keeps native Z3 optional and the WASM fallback in the published toolchain", () => {
+  it("keeps native Z3 optional, tests WASM explicitly, and reserves native Z3 for solver-heavy integration", () => {
     const backend = readFileSync(join(process.cwd(), "src/z3.ts"), "utf8");
     expect(backend).toContain('process.env.UNEFFECT_Z3_BACKEND');
     expect(backend).toContain('process.env.UNEFFECT_Z3_PATH');
     expect(backend).toContain('wasmDriver');
     expect(backend).toContain('attempt(drivers.wasm)');
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
-    expect(workflow).not.toContain("install --yes z3");
+    expect(workflow).toContain("UNEFFECT_Z3_BACKEND: wasm");
+    expect(workflow).toContain("Install native Z3 for solver-heavy integration proofs");
+    expect(workflow).toContain("apt-get install --yes z3");
   });
 
   it("keeps solver-heavy test files serial to bound Z3 WASM memory", () => {

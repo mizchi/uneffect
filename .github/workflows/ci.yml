@@ -48,6 +48,8 @@ jobs:
 
   z3:
     runs-on: ubuntu-latest
+    env:
+      UNEFFECT_Z3_BACKEND: wasm
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -83,6 +85,8 @@ jobs:
 
   integration:
     runs-on: ubuntu-latest
+    env:
+      UNEFFECT_Z3_BACKEND: native
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -91,6 +95,10 @@ jobs:
         with: { node-version: 24, cache: pnpm }
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with: { distribution: temurin, java-version: "21" }
+      - name: Install native Z3 for solver-heavy integration proofs
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes z3
       - *install-just
       - run: pnpm install --frozen-lockfile
       - *install-quint-evaluator

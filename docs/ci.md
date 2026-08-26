@@ -49,9 +49,10 @@ keeps those selectors synchronized with every declared test. GitHub still runs
 independent capability-tier jobs in parallel, so this bounds memory without
 collapsing CI-level parallelism.
 
-CI deliberately does not install native Z3: this continuously proves that the
-published WASM fallback remains sufficient. `test/z3-backend.test.ts` also
-executes native Z3 when the host already supplies it and always exercises an
+The dedicated `z3` CI job forces the bundled WASM backend, continuously proving
+that native Z3 remains optional. The solver-heavy integration job installs and
+forces native Z3 so large telemetry proofs do not consume the WASM runtime's
+2 GiB memory ceiling. `test/z3-backend.test.ts` always exercises an
 absent-native fallback. The native/WASM common layer covers Hoare contracts,
 ownership evidence, temporal semantic/reachability lint, named-observation
 counterexample decoding, property model enumeration, and typed-array
