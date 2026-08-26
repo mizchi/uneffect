@@ -994,55 +994,78 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     symbolWriteCache.set(target, written);
     return written;
   };
+  const resolveStableFunctionDeclaration = (expression: ts.Expression): ts.FunctionLikeDeclaration | undefined => {
+    if (ts.isArrowFunction(expression) || ts.isFunctionExpression(expression)) return expression;
+    if (!ts.isIdentifier(expression)) return undefined;
+    let symbol = checker.getSymbolAtLocation(expression);
+    if (symbol && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+    const resolved = symbol?.declarations?.find((candidate) => {
+      if (ts.isVariableDeclaration(candidate)) {
+        return (candidate.parent.flags & ts.NodeFlags.Const) !== 0
+          && candidate.initializer !== undefined
+          && (ts.isArrowFunction(candidate.initializer) || ts.isFunctionExpression(candidate.initializer));
+      }
+      return ts.isFunctionDeclaration(candidate) && symbol !== undefined && !hasSymbolWrite(symbol);
+    });
+    return resolved && ts.isVariableDeclaration(resolved)
+      ? resolved.initializer as ts.ArrowFunction | ts.FunctionExpression
+      : resolved && ts.isFunctionDeclaration(resolved) ? resolved : undefined;
+  };
+  const resolveStableFunctionEffects = (expression: ts.Expression): Effect[] | undefined => {
+    const declaration = resolveStableFunctionDeclaration(expression);
+    if (!declaration) return undefined;
+    const declarationSource = declaration.getSourceFile();
+    return inferred.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
+  };
   for (const source of program.getSourceFiles()) {
     if (source.isDeclarationFile) continue;
     const executable = source.statements.filter((statement) => {
       if (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
         || ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)
         || ts.isFunctionDeclaration(statement)) return false;
-      if (ts.isClassDeclaration(statement)) return statement.members.some((member) =>
-        ts.isClassStaticBlockDeclaration(member)
-        || (ts.isPropertyDeclaration(member) && member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword) && member.initializer !== undefined));
+      if (ts.isClassDeclaration(statement)) return true;
       if (ts.isVariableStatement(statement)) return statement.declarationList.declarations.some((item) => {
         const value = item.initializer;
         return value !== undefined && !ts.isArrowFunction(value) && !ts.isFunctionExpression(value);
       });
-      return !ts.isEmptyStatement(statement) && !ts.isModuleDeclaration(statement);
+      if (ts.isModuleDeclaration(statement)) {
+        return !statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword)
+          && statement.body !== undefined;
+      }
+      return !ts.isEmptyStatement(statement);
     });
     const id = `${source.fileName}:<module>`, effects: Effect[] = [];
     const moduleLocals = new Set<string>();
     for (const statement of source.statements) if (ts.isVariableStatement(statement)) {
       for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
     }
-    const resolveKnownCallbackEffects = (callback: ts.Expression): Effect[] | undefined => {
-      let declaration: ts.FunctionLikeDeclaration | undefined;
-      if (ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) {
-        declaration = callback;
-      } else if (ts.isIdentifier(callback)) {
-        let symbol = checker.getSymbolAtLocation(callback);
-        const importedBinding = symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0;
-        if (importedBinding) symbol = checker.getAliasedSymbol(symbol!);
-        const resolved = symbol?.declarations?.find((candidate) => {
-          if (ts.isVariableDeclaration(candidate)) {
-            return (candidate.parent.flags & ts.NodeFlags.Const) !== 0
-              && candidate.initializer !== undefined
-              && (ts.isArrowFunction(candidate.initializer) || ts.isFunctionExpression(candidate.initializer));
-          }
-          return importedBinding && ts.isFunctionDeclaration(candidate) && symbol !== undefined && !hasSymbolWrite(symbol);
-        });
-        declaration = resolved && ts.isVariableDeclaration(resolved)
-          ? resolved.initializer as ts.ArrowFunction | ts.FunctionExpression
-          : resolved && ts.isFunctionDeclaration(resolved) ? resolved : undefined;
-      }
-      if (!declaration) return undefined;
-      const declarationSource = declaration.getSourceFile();
-      return inferred.get(`${declarationSource.fileName}:${declaration.getStart(declarationSource)}`);
-    };
     let unknown = false;
     const visit = (node: ts.Node, catches: boolean): void => {
       if (ts.isFunctionLike(node)) return;
+      if (ts.isModuleDeclaration(node)) {
+        if (node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword) || !node.body) return;
+        visit(node.body, catches);
+        return;
+      }
       if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+        const visitDecorators = (decorated: ts.Node): void => {
+          if (!ts.canHaveDecorators(decorated)) return;
+          for (const decorator of ts.getDecorators(decorated) ?? []) {
+            visit(decorator.expression, catches);
+            const decoratorEffects = resolveStableFunctionEffects(decorator.expression);
+            if (!decoratorEffects) unknown = true;
+            else for (const effect of decoratorEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
+          }
+        };
+        visitDecorators(node);
+        for (const clause of node.heritageClauses ?? []) for (const type of clause.types) visit(type.expression, catches);
         for (const member of node.members) {
+          visitDecorators(member);
+          if (member.name && ts.isComputedPropertyName(member.name)) visit(member.name.expression, catches);
+          if (ts.isConstructorDeclaration(member) || ts.isMethodDeclaration(member)
+            || ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) {
+            for (const parameter of member.parameters) visitDecorators(parameter);
+          }
           if (ts.isClassStaticBlockDeclaration(member)) visit(member.body, catches);
           else if (ts.isPropertyDeclaration(member)
             && member.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword)
@@ -1105,7 +1128,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         for (const index of callbackIndices) {
           const callback = node.arguments[index];
           if (!callback) { unknown = true; continue; }
-          const callbackEffects = resolveKnownCallbackEffects(callback);
+          const callbackEffects = resolveStableFunctionEffects(callback);
           if (!callbackEffects) { unknown = true; continue; }
           for (const effect of callbackEffects) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         }

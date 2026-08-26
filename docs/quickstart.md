@@ -197,7 +197,10 @@ top-level-await ordering. Known callback owners include effects from inline
 callbacks and immutable local/imported function identifiers. Mutable,
 reassigned, dynamically selected, or unresolved callbacks make the module
 summary `unknown`; adding a wider `module_effect` declaration does not discharge
-that uncertainty.
+that uncertainty. Runtime namespace bodies and class heritage, computed member
+names, stable decorator functions, static initializers, and static blocks are
+also included. A decorator factory whose returned function cannot be resolved
+remains `unknown`.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:

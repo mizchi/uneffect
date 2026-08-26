@@ -208,6 +208,104 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("includes executable namespace initialization but ignores ambient namespaces", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-namespace-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console */
+        declare namespace Types { const label: string }
+        export namespace Runtime {
+          export const initialized = console.log("namespace")
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>");
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect)).toEqual(["Console"]);
+      expect(result.diagnostics.filter((item) => item.functionName === "<module>")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("includes class heritage and computed member-name evaluation", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-class-evaluation-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console | Timer */
+        /* uneffect: effect Timer */
+        function makeBase() { setTimeout(() => {}, 0); return class {} }
+        /* uneffect: effect Console */
+        function memberName() { console.log("key"); return "run" }
+        export class Service extends makeBase() {
+          [memberName()]() {}
+        }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], types: ["node"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>");
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect).sort()).toEqual(["Console", "Timer"]);
+      expect(result.diagnostics.filter((item) => item.functionName === "<module>")).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("includes implicit invocation of a statically resolved decorator", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-decorator-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console */
+        /* uneffect: effect Console */
+        function audited(..._args: any[]) { console.log("decorate") }
+        @audited
+        export class Service {}
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+        experimentalDecorators: true, noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>");
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect)).toEqual(["Console"]);
+      expect(result.diagnostics).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps dynamically produced decorators unknown", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-decorator-factory-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        function decoratorFactory() {
+          return (..._args: any[]) => console.log("decorate")
+        }
+        @decoratorFactory()
+        export class Service {}
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"],
+        experimentalDecorators: true, noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>"))
+        .toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("resolves aliases, re-exports, methods, arrows, overloads, and callbacks", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-graph-"));
     const a = join(directory, "a.ts"), barrel = join(directory, "barrel.ts"), b = join(directory, "b.ts");
