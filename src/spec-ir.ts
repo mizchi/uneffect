@@ -170,6 +170,12 @@ export function parseSpec(fileName: string, text: string, options: { temporalSym
     if (!ts.isFunctionDeclaration(node) || !node.name || !node.body) continue;
     const comments = leading(source, node);
     const effectAnnotations = extractLocatedAnnotations(comments, "effect", node.getFullStart());
+    if (effectAnnotations.some((annotation) => annotation.value === "none")
+      && effectAnnotations.some((annotation) => annotation.value !== "none")) {
+      const annotation = effectAnnotations.find((item) => item.value === "none")!;
+      const position = source.getLineAndCharacterOfPosition(annotation.span.start);
+      throw new Error(`${fileName}:${position.line + 1}:${position.character + 1}: \`none\` cannot be combined with another effect declaration`);
+    }
     const effects = effectAnnotations.flatMap((annotation): LocatedEffect[] => {
       let terms: string[];
       try {

@@ -46,6 +46,30 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("reports an invalid empty module bound and empty iterator-effect bound without throwing", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-invalid-empty-bounds-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        /* uneffect: module_effect none | Console */
+        /* uneffect: effect none */
+        /* uneffect: effect_parameter iterator extends none | Console */
+        export function consume(iterator: Iterator<number>) { iterator.next() }
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: false });
+      expect(result.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ functionName: "<module>", kind: "invalid", message: expect.stringContaining("only member") }),
+        expect.objectContaining({ functionName: "consume", severity: "error", message: expect.stringContaining("only member") }),
+      ]));
+      expect(result.summaries.find((item) => item.functionName === "consume")).toMatchObject({ evidence: "unknown" });
+      expect(result.summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("summarizes direct and imported module-initialization effects", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-effects-"));
     try {

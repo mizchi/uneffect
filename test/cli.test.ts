@@ -279,6 +279,26 @@ describe("uneffect command line", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("emits invalid effect-set syntax as a structured JSON diagnostic", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-invalid-effect-set-"));
+    const fileName = join(directory, "invalid.ts");
+    try {
+      writeFileSync(fileName, `/* uneffect: effect none | Console */ export function invalid() {}`);
+      const io = capture();
+      expect(await runCli(["check", "--json", fileName], io)).toBe(exitCode.failed);
+      expect(io.stderr).toBe("");
+      expect(JSON.parse(io.stdout)).toMatchObject({
+        schema: "uneffect-check/v1",
+        outcome: "failed",
+        diagnostics: [expect.objectContaining({
+          code: "effect/invalid", severity: "error", functionName: "invalid",
+          message: expect.stringContaining("`none` must be the only member"),
+        })],
+        effects: expect.arrayContaining([expect.objectContaining({ functionName: "invalid", evidence: "unknown" })]),
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("fails assurance when the consumer TypeScript compiler is unresolved or version-drifted", async () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-ts-parity-"));
     const sourceDirectory = join(directory, "src"), fileName = join(sourceDirectory, "main.ts"), project = join(directory, "tsconfig.json");

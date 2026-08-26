@@ -617,6 +617,8 @@ describe("spec IR and generated verifier programs", () => {
     });
     expect(() => parseSpec("broken.ts", `/* uneffect: effect none | Console */\nfunction f() {}`))
       .toThrow(/broken\.ts:1:\d+: `none` must be the only member of an effect set/);
+    expect(() => parseSpec("broken.ts", `/*\n * uneffect:\n * effect none\n * effect Console\n */\nfunction f() {}`))
+      .toThrow(/broken\.ts:3:\d+: `none` cannot be combined with another effect declaration/);
   });
 
   it("generates an SMT-LIB proof obligation accepted as unsat by Z3", async () => {

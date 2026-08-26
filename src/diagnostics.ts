@@ -59,6 +59,7 @@ const hints: Readonly<Record<string, string>> = {
   "effect/missing": "declare the effect in the function's /* uneffect: effect ... */ comment, or move the operation into a callee that already declares it",
   "effect/unused": "delete the declared effect, or keep it deliberately as a wider upper bound; unused declarations never fail the CLI",
   "effect/unknown": "fix the effect name; the known constructors are FsRead, FsWrite, Console, Fetch, Dom, Env, Random, Timer, Mutate<region>, and Throw<ErrorType>",
+  "effect/invalid": "fix the effect-set syntax; use `none` by itself for an explicit empty set, or a `|`-separated union of Effect terms",
   "contract/ensures": "weaken the postcondition, strengthen the precondition, or change the returned expression so the counterexample above cannot occur",
   "contract/invariant": "establish the invariant before the loop and restore it in the body, or weaken it until both hold",
   "contract/unsupported": "rewrite the function into the verified subset (integer locals, assignments, if, while with an invariant, return), or drop the contract comment to opt out",

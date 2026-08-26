@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
+import { extractLocatedAnnotations } from "./annotations.js";
 import type { DiagnosticNote } from "./diagnostics.js";
 import { effectPermits, formatEffect, isKnownEffect, parseEffectExpression, parseEffectSet, type Effect } from "./capabilities.js";
 import { TypeScriptFrontendAdapter, type FrontendSymbolAdapter } from "./frontend-adapter.js";
@@ -13,7 +13,7 @@ export interface EffectDiagnostic {
   fileName: string;
   functionName: string;
   effect: string;
-  kind: "missing" | "unused" | "unknown";
+  kind: "missing" | "unused" | "unknown" | "invalid";
   severity: "error" | "warning";
   line: number;
   message: string;
@@ -103,6 +103,7 @@ interface FunctionInfo {
   parameters: string[];
   declared: Effect[];
   declaredPresent: boolean;
+  declarationProblems: EffectDeclarationProblem[];
   direct: Effect[];
   calls: CallEdge[];
   locals: Set<string>;
@@ -166,12 +167,37 @@ function leadingText(source: ts.SourceFile, node: ts.Node): string {
   return source.text.slice(node.getFullStart(), node.getStart(source));
 }
 
-function effectDeclaration(source: ts.SourceFile, node: ts.Node): { effects: Effect[]; present: boolean } {
+interface EffectDeclarationProblem { payload: string; start: number; message: string }
+interface ParsedEffectDeclaration { effects: Effect[]; present: boolean; problems: EffectDeclarationProblem[] }
+
+function parseEffectDeclarations(text: string, directive: "effect" | "module_effect", baseOffset: number): ParsedEffectDeclaration {
+  const annotations = extractLocatedAnnotations(text, directive, baseOffset);
+  const problems: EffectDeclarationProblem[] = [];
+  if (annotations.some((annotation) => annotation.value === "none")
+    && annotations.some((annotation) => annotation.value !== "none")) {
+    const annotation = annotations.find((item) => item.value === "none")!;
+    return {
+      effects: [], present: true,
+      problems: [{ payload: annotation.value, start: annotation.span.start, message: "`none` cannot be combined with another effect declaration" }],
+    };
+  }
+  const effects = annotations.flatMap((annotation) => {
+    try { return parseEffectSet(annotation.value); }
+    catch (cause) {
+      problems.push({
+        payload: annotation.value, start: annotation.span.start,
+        message: cause instanceof Error ? cause.message : String(cause),
+      });
+      return [];
+    }
+  });
+  return { effects: problems.length > 0 ? [] : effects, present: annotations.length > 0, problems };
+}
+
+function effectDeclaration(source: ts.SourceFile, node: ts.Node): ParsedEffectDeclaration {
   const owner = (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) && ts.isVariableDeclaration(node.parent) && ts.isVariableDeclarationList(node.parent.parent) && ts.isVariableStatement(node.parent.parent.parent)
     ? node.parent.parent.parent : node;
-  const text = leadingText(source, owner);
-  const annotations = extractAnnotations(text, "effect");
-  return { effects: annotations.flatMap(parseEffectSet), present: annotations.length > 0 };
+  return parseEffectDeclarations(leadingText(source, owner), "effect", owner.getFullStart());
 }
 
 function declaration(source: ts.SourceFile, node: ts.Node): Effect[] {
@@ -183,6 +209,7 @@ interface EffectParameterAnnotation {
   effects: Effect[];
   payload: string;
   start: number;
+  problem?: string;
 }
 
 function effectParameterAnnotations(source: ts.SourceFile, node: ts.Node): EffectParameterAnnotation[] {
@@ -191,10 +218,15 @@ function effectParameterAnnotations(source: ts.SourceFile, node: ts.Node): Effec
   const leading = leadingText(source, owner), baseOffset = owner.getFullStart();
   return extractLocatedAnnotations(leading, "effect_parameter", baseOffset).map(({ value: payload, span }) => {
     const match = /^([A-Za-z_$][\w$]*)\s+extends\s+(.+)$/u.exec(payload);
-    return match ? {
-      name: match[1], payload, start: span.start,
-      effects: parseEffectSet(match[2]!),
-    } : { payload, effects: [], start: span.start };
+    if (!match) return { payload, effects: [], start: span.start };
+    try {
+      return { name: match[1], payload, start: span.start, effects: parseEffectSet(match[2]!) };
+    } catch (cause) {
+      return {
+        name: match[1], payload, start: span.start, effects: [],
+        problem: cause instanceof Error ? cause.message : String(cause),
+      };
+    }
   });
 }
 
@@ -638,6 +670,7 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       parameters: node.parameters.map((p) => ts.isIdentifier(p.name) ? p.name.text : p.name.getText()),
       declared: declared.effects,
       declaredPresent: declared.present,
+      declarationProblems: declared.problems,
       direct: [],
       calls: [],
       locals: localBindings(node),
@@ -801,7 +834,11 @@ function analyzeSource(source: ts.SourceFile, options: EffectAnalysisOptions, ad
       }
     }
   }
-  const diagnostics: EffectDiagnostic[] = [];
+  const diagnostics: EffectDiagnostic[] = [...functions.values()].flatMap((info) => info.declarationProblems.map((problem) => ({
+    fileName, functionName: info.name, effect: problem.payload, kind: "invalid" as const, severity: "error" as const,
+    line: source.getLineAndCharacterOfPosition(problem.start).line + 1,
+    message: `invalid effect declaration for ${info.name}: ${problem.message}`,
+  })));
   for (const info of functions.values()) {
     const line = source.getLineAndCharacterOfPosition(info.node.getStart(source)).line + 1;
     const actual = inferred.get(info.name)!;
@@ -891,6 +928,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const implicitDisposalEdges: CallGraphEdge[] = [];
   const direct = new Map<string, Effect[]>(), declared = new Map<string, Effect[]>(), declaredPresent = new Set<string>(), parameters = new Map<string, string[]>(), localsById = new Map<string, Set<string>>(), asyncOwners = new Set<string>();
   const iteratorEffectBounds = new Map<string, Map<number, { name: string; effects: Effect[] }>>();
+  const effectDeclarationProblems: Array<EffectDeclarationProblem & { id: string; fileName: string }> = [];
   const effectParameterProblems: Array<{ id: string; payload: string; start: number; message: string }> = [];
   const invalidEffectParameterOwners = new Set<string>();
   const unknownExternalEvidence = new Set<string>();
@@ -920,7 +958,10 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const symbol = nameNode ? checker.getSymbolAtLocation(nameNode) : undefined;
     const declarationOwners = symbol?.declarations ?? [node];
     const declarations = declarationOwners.map((item) => effectDeclaration(item.getSourceFile(), item));
-    const declarationEffects = declarations.flatMap((item) => item.effects);
+    for (const [index, item] of declarations.entries()) for (const problem of item.problems) effectDeclarationProblems.push({
+      ...problem, id: graphNode.id, fileName: declarationOwners[index]!.getSourceFile().fileName,
+    });
+    const declarationEffects = declarations.some((item) => item.problems.length > 0) ? [] : declarations.flatMap((item) => item.effects);
     if (declarations.some((item) => item.present)) declaredPresent.add(graphNode.id);
     declared.set(graphNode.id, declarationEffects.filter((effect, index, all) => all.findIndex((item) => formatEffect(item) === formatEffect(effect)) === index));
     const parameterNames = node.parameters.map((parameter) => ts.isIdentifier(parameter.name) ? parameter.name.text : parameter.name.getText(source));
@@ -929,7 +970,8 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const bounds = new Map<number, { name: string; effects: Effect[] }>();
     for (const annotation of effectParameterAnnotations(source, node)) {
       const index = annotation.name === undefined ? -1 : parameterNames.indexOf(annotation.name);
-      if (annotation.name === undefined) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter syntax; expected <parameter> extends <Effect union>` });
+      if (annotation.problem) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter for ${annotation.name}: ${annotation.problem}` });
+      else if (annotation.name === undefined) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `invalid effect_parameter syntax; expected <parameter> extends <Effect union>` });
       else if (index < 0) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter names unknown parameter ${annotation.name}` });
       else if (!iteratorIndices.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `effect_parameter ${annotation.name} is not a consumed iterator parameter` });
       else if (bounds.has(index)) effectParameterProblems.push({ id: graphNode.id, payload: annotation.payload, start: annotation.start, message: `duplicate effect_parameter bound for ${annotation.name}` });
@@ -1085,12 +1127,22 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
     return steps.length > 0 ? steps.join("; ") : undefined;
   };
-  const diagnostics: EffectDiagnostic[] = effectParameterProblems.map((problem) => {
+  const diagnostics: EffectDiagnostic[] = effectDeclarationProblems.map((problem) => {
+    const graphNode = graphNodesById.get(problem.id)!;
+    const source = program.getSourceFile(problem.fileName) ?? nodes.get(problem.id)!.getSourceFile();
+    return {
+      fileName: problem.fileName, functionName: graphNode.name, effect: problem.payload, kind: "invalid", severity: "error",
+      line: source.getLineAndCharacterOfPosition(problem.start).line + 1,
+      message: `invalid effect declaration for ${graphNode.name}: ${problem.message}`,
+    };
+  });
+  diagnostics.push(...effectParameterProblems.map((problem) => {
     invalidEffectParameterOwners.add(problem.id);
     const graphNode = graphNodesById.get(problem.id)!;
     const source = nodes.get(problem.id)!.getSourceFile();
-    return { fileName: source.fileName, functionName: graphNode.name, effect: problem.payload, kind: "unknown", severity: "error", line: source.getLineAndCharacterOfPosition(problem.start).line + 1, message: problem.message };
-  }), summaries: EffectSummary[] = [];
+    return { fileName: source.fileName, functionName: graphNode.name, effect: problem.payload, kind: "unknown" as const, severity: "error" as const, line: source.getLineAndCharacterOfPosition(problem.start).line + 1, message: problem.message };
+  }));
+  const summaries: EffectSummary[] = [];
   for (const problem of externalInstantiationProblems) {
     const graphNode = graphNodesById.get(problem.id)!, source = problem.call.getSourceFile();
     diagnostics.push({
@@ -1230,7 +1282,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   // source-attributed pseudo-summary prevents function evidence in a sibling
   // file from making executable top-level code disappear from assurance.
   const moduleRecords = new Map<string, {
-    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; declaredPresent: boolean; unknown: boolean; unknownReasons: EffectUnknownReason[]; trusted: boolean; dependencies: string[];
+    source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; declaredPresent: boolean; declarationProblems: EffectDeclarationProblem[]; unknown: boolean; unknownReasons: EffectUnknownReason[]; trusted: boolean; dependencies: string[];
   }>();
   const moduleResolutionHost: ts.ModuleResolutionHost = {
     fileExists: (fileName) => program.getSourceFile(fileName) !== undefined || ts.sys.fileExists(fileName),
@@ -1489,10 +1541,11 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const statement of executable) visit(statement, false);
 
     const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
-    const moduleDeclarations = extractAnnotations(moduleHeader, "module_effect");
-    const allowed = moduleDeclarations.flatMap(parseEffectSet);
+    const moduleDeclaration = parseEffectDeclarations(moduleHeader, "module_effect", 0);
+    const allowed = moduleDeclaration.effects;
+    if (moduleDeclaration.problems.length > 0) markUnknown("effect-diagnostic", "the module effect declaration is invalid");
     if (invalidSources.has(source.fileName)) markUnknown("typescript-errors", "TypeScript errors prevent proof-grade module effect evidence");
-    moduleRecords.set(source.fileName, { source, id, effects, allowed, declaredPresent: moduleDeclarations.length > 0, unknown, unknownReasons, trusted, dependencies });
+    moduleRecords.set(source.fileName, { source, id, effects, allowed, declaredPresent: moduleDeclaration.present, declarationProblems: moduleDeclaration.problems, unknown, unknownReasons, trusted, dependencies });
   }
 
   // Static module evaluation precedes the importing module. A monotone union
@@ -1517,8 +1570,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     }
   }
 
-  for (const { source, id, effects, allowed, declaredPresent: moduleDeclared, unknown, unknownReasons, trusted } of moduleRecords.values()) {
+  for (const { source, id, effects, allowed, declaredPresent: moduleDeclared, declarationProblems: moduleProblems, unknown, unknownReasons, trusted } of moduleRecords.values()) {
     const line = 1;
+    for (const problem of moduleProblems) diagnostics.push({
+      fileName: source.fileName, functionName: "<module>", effect: problem.payload, kind: "invalid", severity: "error",
+      line: source.getLineAndCharacterOfPosition(problem.start).line + 1,
+      message: `invalid module effect declaration: ${problem.message}`,
+    });
     for (const effect of allowed) if (!isKnownEffect(effect)) diagnostics.push({
       fileName: source.fileName, functionName: "<module>", effect: formatEffect(effect), kind: "unknown",
       severity: options.mode === "strict" ? "error" : "warning", line,

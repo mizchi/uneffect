@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { analyzeEffects } from "../src/effects.js";
 
 describe("effect checker", () => {
+  it("reports an invalid effect-set annotation without crashing the checker", () => {
+    const source = `/* uneffect: effect none | Console */ function invalid() {}`;
+    expect(analyzeEffects("invalid-effect-set.ts", source)).toContainEqual(expect.objectContaining({
+      fileName: "invalid-effect-set.ts", functionName: "invalid", kind: "invalid", severity: "error",
+      message: expect.stringContaining("`none` must be the only member"),
+    }));
+  });
+
   it("propagates effects from implicit using disposal", () => {
     const source = `
       class Resource {

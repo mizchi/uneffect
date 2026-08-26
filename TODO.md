@@ -99,7 +99,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 
 - [x] Accept only the `uneffect:` block-comment marker.
 - [x] Parse source annotations into capability, invariant, and temporal projections.
-- [x] Reserve `effect none` and `module_effect none` as explicit empty upper bounds, distinguish checked function purity from an inferred empty inventory, reject mixed sets, and preserve the empty set through TypeScript and Rust/Corsa projections.
+- [x] Reserve `effect none` and `module_effect none` as explicit empty upper bounds, distinguish checked function purity from an inferred empty inventory, reject mixed function/module/iterator sets as structured diagnostics, and preserve the empty set through TypeScript and Rust/Corsa projections.
 - [x] Generate reviewable SMT-LIB for simple postcondition obligations and execute it with Z3.
 - [x] Generate reviewable Quint safety models and execute them with the Quint simulator.
 - [x] Replace string capabilities with one structured effect AST shared conceptually by TypeScript and Rust.

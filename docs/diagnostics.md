@@ -50,6 +50,13 @@ Constructs outside the verified subset are located at the offending statement,
 not at the first function in the file, and carry the edit that brings them back
 into the subset.
 
+Malformed Effect-set payloads are ordinary fail-closed checker diagnostics, not
+uncaught parser failures. Human output uses `effect/invalid`; `check --json`
+retains the same code, source owner, line, message, and repair hint. This covers
+function and module bounds as well as iterator `effect_parameter` bounds. For
+example, `none | Console` is rejected because `none` must be the complete empty
+set declaration.
+
 ## The fixture corpus
 
 `fixtures/` holds one small TypeScript file per capability and per failure mode,
