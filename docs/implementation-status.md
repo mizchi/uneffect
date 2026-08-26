@@ -449,6 +449,9 @@ same property is proved for arbitrary TypeScript.
   Runtime namespace bodies and class heritage, computed names, stable decorator
   invocation, static fields, and static blocks also contribute may-effects;
   dynamically produced decorators remain unknown.
+  TypeScript-resolved string-literal relative local dynamic imports contribute their
+  conditional dependency closure, while computed/external/unresolved dynamic
+  imports remain unknown. This is still not an ESM/TLA ordering proof.
   Exact ESM/TLA temporal ordering and external-package initialization remain
   explicit non-claims. Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic

@@ -166,6 +166,48 @@ describe("multi-file call graph and effect polymorphism", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("composes a conditionally imported local literal module as a may-effect", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-dynamic-local-"));
+    try {
+      const plugin = join(directory, "plugin.mts"), entry = join(directory, "entry.mts");
+      writeFileSync(plugin, `console.log("plugin initialization")`);
+      writeFileSync(entry, `
+        /* uneffect: module_effect Console */
+        declare const enabled: boolean
+        if (enabled) await import("./plugin.mjs")
+      `);
+      const program = ts.createProgram([plugin, entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts", "lib.dom.d.ts"], noEmit: true,
+      });
+      const result = analyzeProgramEffects(program, { requireAnnotations: true });
+      const module = result.summaries.find((item) => item.functionName === "<module>" && item.fileName === entry);
+
+      expect(module).toMatchObject({ evidence: "verified" });
+      expect(module?.effects.map(formatEffect)).toEqual(["Console"]);
+      expect(result.diagnostics.filter((item) => item.fileName === entry)).toEqual([]);
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps computed and unresolved external dynamic imports unknown", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-dynamic-unknown-"));
+    try {
+      const entry = join(directory, "entry.ts");
+      writeFileSync(entry, `
+        declare const specifier: string
+        void import(specifier)
+        void import("missing-external-package")
+      `);
+      const program = ts.createProgram([entry], {
+        target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext,
+        moduleResolution: ts.ModuleResolutionKind.NodeNext, noEmit: true,
+      });
+
+      expect(analyzeProgramEffects(program).summaries.find((item) => item.functionName === "<module>"))
+        .toMatchObject({ evidence: "unknown" });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("does not issue proof-grade module evidence for an ill-typed source", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-ill-typed-"));
     try {

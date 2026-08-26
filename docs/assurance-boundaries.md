@@ -140,7 +140,11 @@ monotone effect-set fixed point; unresolved calls and dynamic imports remain
 `unknown`. Executable namespace bodies and class heritage, computed member
 names, stable decorators, static initializers, and static blocks contribute
 may-effects. Decorator factories whose returned callable cannot be identified
-remain `unknown`. This establishes an
+remain `unknown`. A string-literal relative dynamic import that TypeScript resolves to a
+non-declaration source in the current Program contributes that module's closure
+as a conditional may-effect, including when directly awaited. Computed,
+external, declaration-only, and unresolved dynamic imports remain `unknown`.
+This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
 ordering. Uneffect's dogfood includes all 59 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.

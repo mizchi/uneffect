@@ -954,6 +954,13 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
   const moduleRecords = new Map<string, {
     source: ts.SourceFile; id: string; effects: Effect[]; allowed: Effect[]; unknown: boolean; dependencies: string[];
   }>();
+  const moduleResolutionHost: ts.ModuleResolutionHost = {
+    fileExists: (fileName) => program.getSourceFile(fileName) !== undefined || ts.sys.fileExists(fileName),
+    readFile: (fileName) => program.getSourceFile(fileName)?.text ?? ts.sys.readFile(fileName),
+    directoryExists: ts.sys.directoryExists,
+    getCurrentDirectory: ts.sys.getCurrentDirectory,
+    realpath: ts.sys.realpath,
+  };
   const symbolWriteCache = new Map<ts.Symbol, boolean>();
   const hasSymbolWrite = (target: ts.Symbol): boolean => {
     const cached = symbolWriteCache.get(target);
@@ -1039,8 +1046,27 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     for (const statement of source.statements) if (ts.isVariableStatement(statement)) {
       for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
     }
+    const dependencies: string[] = [];
+    const addResolvedDependency = (specifier: ts.Expression): string | undefined => {
+      if (!ts.isStringLiteralLike(specifier) || !specifier.text.startsWith(".")) return undefined;
+      const symbol = checker.getSymbolAtLocation(specifier);
+      const symbolSource = symbol?.declarations?.find(ts.isSourceFile)?.getSourceFile();
+      const resolvedFileName = symbolSource?.fileName ?? ts.resolveModuleName(
+        specifier.text, source.fileName, program.getCompilerOptions(), moduleResolutionHost,
+      ).resolvedModule?.resolvedFileName;
+      const dependencySource = resolvedFileName ? program.getSourceFile(resolvedFileName) : undefined;
+      if (!dependencySource || dependencySource.isDeclarationFile) return undefined;
+      if (dependencySource.fileName === source.fileName) return source.fileName;
+      if (!dependencies.includes(dependencySource.fileName)) dependencies.push(dependencySource.fileName);
+      return dependencySource.fileName;
+    };
+    for (const statement of source.statements) {
+      if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier) continue;
+      addResolvedDependency(statement.moduleSpecifier);
+    }
     let unknown = false;
     const visit = (node: ts.Node, catches: boolean): void => {
+      if (node.kind === ts.SyntaxKind.ImportKeyword) return; // handled by the parent dynamic-import call
       if (ts.isFunctionLike(node)) return;
       if (ts.isModuleDeclaration(node)) {
         if (node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.DeclareKeyword) || !node.body) return;
@@ -1079,8 +1105,17 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (node.finallyBlock) visit(node.finallyBlock, catches);
         return;
       }
+      const resolvedDynamicDependency = ts.isCallExpression(node)
+        && node.expression.kind === ts.SyntaxKind.ImportKeyword
+        && node.arguments.length === 1
+        ? addResolvedDependency(node.arguments[0]!) : undefined;
+      const resolvedAwaitedDynamicDependency = ts.isAwaitExpression(node)
+        && ts.isCallExpression(node.expression)
+        && node.expression.expression.kind === ts.SyntaxKind.ImportKeyword
+        && node.expression.arguments.length === 1
+        ? addResolvedDependency(node.expression.arguments[0]!) : undefined;
       if (ts.isThrowStatement(node) && !catches) addEffect(effects, { kind: "throw", errorType: adapter.thrownErrorType(node.expression) });
-      if (adapter.mayInvokeUserCode(node)) unknown = true;
+      if (adapter.mayInvokeUserCode(node) && !resolvedDynamicDependency && !resolvedAwaitedDynamicDependency) unknown = true;
       if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) for (const effect of effectsForDomProperty(node, adapter) ?? []) {
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
@@ -1099,7 +1134,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
       }
       if (ts.isCallExpression(node)) {
-        if (node.expression.kind === ts.SyntaxKind.ImportKeyword) unknown = true;
+        if (node.expression.kind === ts.SyntaxKind.ImportKeyword && !resolvedDynamicDependency) unknown = true;
         const resolvedBuiltin = adapter.resolveCall(node), primitive = primitiveEffects(node, adapter);
         for (const effect of primitive) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
         const target = checker.getResolvedSignature(node)?.declaration;
@@ -1115,7 +1150,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
           }
           for (const effect of inferred.get(targetId) ?? []) if (observableMutation(effect, moduleLocals)) addEffect(effects, effect);
           if (!inferred.has(targetId) && adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
-        } else if (adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
+        } else if (!resolvedDynamicDependency && adapter.mayInvokeUserCode(node) && primitive.length === 0) unknown = true;
         const callbackIndices = new Set(graphNodesById.get(targetId ?? "")?.effectParameters.map((parameter) => parameter.index) ?? []);
         const operation = resolvedBuiltin?.operation;
         const builtinCallback = operation?.kind === "timer" || operation?.kind === "scheduler-post-task"
@@ -1140,13 +1175,6 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
     const moduleHeader = source.text.slice(0, source.statements[0]?.getStart(source) ?? source.end);
     const allowed = extractAnnotations(moduleHeader, "module_effect")
       .flatMap((value) => splitTopLevel(value, "|")).map(parseEffectExpression);
-    const dependencies: string[] = [];
-    for (const statement of source.statements) {
-      if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier) continue;
-      const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
-      const dependency = symbol?.declarations?.find(ts.isSourceFile)?.getSourceFile().fileName;
-      if (dependency && dependency !== source.fileName && !dependencies.includes(dependency)) dependencies.push(dependency);
-    }
     moduleRecords.set(source.fileName, { source, id, effects, allowed, unknown, dependencies });
   }
 

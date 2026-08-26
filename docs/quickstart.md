@@ -200,7 +200,10 @@ summary `unknown`; adding a wider `module_effect` declaration does not discharge
 that uncertainty. Runtime namespace bodies and class heritage, computed member
 names, stable decorator functions, static initializers, and static blocks are
 also included. A decorator factory whose returned function cannot be resolved
-remains `unknown`.
+remains `unknown`. String-literal relative dynamic imports resolved to source files in
+the current Program contribute conditional may-effects. Computed or external
+dynamic imports remain `unknown`; this does not prove their asynchronous
+evaluation order.
 
 After every function in that boundary has an explicit effect upper bound, use
 the stronger effect gate:
