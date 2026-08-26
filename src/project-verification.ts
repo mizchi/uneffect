@@ -17,6 +17,7 @@ import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
+import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 
 export interface VerifyUneffectProjectOptions {
   files: Record<string, string>;
@@ -27,6 +28,8 @@ export interface VerifyUneffectProjectOptions {
   assumptionPolicy?: AssumptionPolicy;
   /** Caller-owned, versioned semantic contracts. Defaults to Uneffect's registry. */
   builtinRegistry?: BuiltinContractRegistry;
+  /** Opt in to source-mapped ESM initialization-order evidence for one entry module. */
+  moduleInitializationEntry?: string;
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -44,6 +47,7 @@ export interface VerifyUneffectProjectResult {
   effects: EffectAnalysisResult;
   assurance: ProjectAssuranceAssessment;
   temporal?: ProjectTemporalVerification;
+  moduleInitialization?: ModuleInitializationOrder;
 }
 
 export interface ProjectOwnershipDiagnostic extends OwnershipDiagnostic {
@@ -90,7 +94,13 @@ function inMemoryProgram(files: Readonly<Record<string, string>>): ts.Program {
   const moduleDirectory = dirname(fileURLToPath(import.meta.url));
   const selfPackageEntry = [join(moduleDirectory, "index.ts"), join(moduleDirectory, "index.d.ts")]
     .find((candidate) => ts.sys.fileExists(candidate));
+  const virtualDirectories = new Set(Object.keys(files).flatMap((fileName) => {
+    const directories: string[] = [];
+    for (let current = dirname(fileName); current !== dirname(current); current = dirname(current)) directories.push(current);
+    return directories;
+  }));
   host.fileExists = (fileName) => Object.hasOwn(files, fileName) || ts.sys.fileExists(fileName);
+  host.directoryExists = (directory) => virtualDirectories.has(directory) || ts.sys.directoryExists(directory);
   host.readFile = (fileName) => files[fileName] ?? ts.sys.readFile(fileName);
   host.getSourceFile = (fileName, languageVersion, onError, fresh) => Object.hasOwn(files, fileName)
     ? ts.createSourceFile(fileName, files[fileName]!, languageVersion, true, ts.ScriptKind.TS)
@@ -222,6 +232,11 @@ export async function verifyUneffectProject(options: VerifyUneffectProjectOption
   const temporal = options.temporalRuntime === "web" || options.temporalRuntime === "node"
     ? { sourceLanguage: "uneffect-ts" as const, backend: "quint" as const, models: temporalModels, properties: temporalProperties }
     : undefined;
-  const partial = { obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects, ...(temporal ? { temporal } : {}) };
+  const moduleInitialization = options.moduleInitializationEntry === undefined
+    ? undefined : analyzeModuleInitializationOrder(program, options.moduleInitializationEntry);
+  const partial = {
+    obligations, diagnostics, emittedFiles, typedArrays, ownership: { diagnostics: ownershipDiagnostics }, assumptions: assumptions.ledger, effects,
+    ...(temporal ? { temporal } : {}), ...(moduleInitialization ? { moduleInitialization } : {}),
+  };
   return { ...partial, assurance: assessProjectVerification(partial, Object.keys(options.files)) };
 }

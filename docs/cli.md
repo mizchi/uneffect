@@ -34,6 +34,7 @@ npx quint run protocol.qnt
 | `spec <backend> <file.ts> [function]` | The specification IR, or the verifier program a backend consumes: `ir`, `lint`, `z3`, `quint`, `compose`, `async-quint`, `web-loop-quint`, `node-loop-quint`, `promise-quint`. |
 | `instrument <file.ts>` | The source with runtime assertions inserted for contracts or ownership. |
 | `evidence <file.ts>` | The machine-readable effect evidence artifact plus a separate proof-eligibility assessment, as JSON. |
+| `module-order <entry.ts>` | The source-mapped ESM initialization partial-order artifact; `--require` rejects non-proof-grade extraction. |
 | `resource-model <file.ts>` | The Quint resource-safety model. |
 | `async-model <file.ts> <function>` | The unified Quint model of Promise, exception, and resource flow. |
 

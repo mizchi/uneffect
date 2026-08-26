@@ -7,8 +7,9 @@ import { evidenceCommand } from "./evidence-command.js";
 import { instrumentCommand } from "./instrument-command.js";
 import { asyncModelCommand, resourceCommand } from "./resource-command.js";
 import { specCommand } from "./spec-command.js";
+import { moduleOrderCommand } from "./module-order-command.js";
 
-export const cliCommands: readonly CliCommand[] = [checkCommand, doctorCommand, specCommand, instrumentCommand, evidenceCommand, resourceCommand, asyncModelCommand];
+export const cliCommands: readonly CliCommand[] = [checkCommand, doctorCommand, specCommand, instrumentCommand, evidenceCommand, moduleOrderCommand, resourceCommand, asyncModelCommand];
 
 /** The published version, read from this package's own manifest. */
 export async function cliVersion(): Promise<string> {

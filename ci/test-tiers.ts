@@ -15,6 +15,7 @@ export const ciTestTiers = {
     "test/frontend-adapter.test.ts",
     "test/frontend-parity.test.ts",
     "test/model-replay.test.ts",
+    "test/module-initialization.test.ts",
     "test/numeric-types.test.ts",
     "test/project-optimizer.test.ts",
     "test/quicksort.test.ts",

@@ -216,6 +216,29 @@ describe("uneffect command line", () => {
     expect(JSON.parse(io.stdout)).toMatchObject({ fileName: "examples/spec.ts" });
   });
 
+  it("emits module-order evidence and can require a proof-grade extraction", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-order-cli-"));
+    const dependency = join(directory, "dependency.mts"), entry = join(directory, "entry.mts"), external = join(directory, "external.mts");
+    try {
+      writeFileSync(dependency, "export const value = await Promise.resolve(1)");
+      writeFileSync(entry, 'import { value } from "./dependency.mjs"; console.log(value)');
+      writeFileSync(external, 'import "node:path"; export const ready = true');
+
+      const verified = capture();
+      expect(await runCli(["module-order", "--require", entry], verified)).toBe(exitCode.success);
+      expect(JSON.parse(verified.stdout)).toMatchObject({ evidence: "verified", entryFile: entry });
+
+      const inspected = capture();
+      expect(await runCli(["module-order", external], inspected)).toBe(exitCode.success);
+      expect(JSON.parse(inspected.stdout)).toMatchObject({ evidence: "unknown" });
+
+      const required = capture();
+      expect(await runCli(["module-order", "--require", external], required)).toBe(exitCode.failed);
+      expect(required.stderr).toContain("module initialization order is unknown");
+      expect(required.stderr).toContain("external-static-import");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("checks the toolchain and names what each unmet requirement blocks", async () => {
     const io = capture();
     const status = await runCli(["doctor", "--skip-solver-probe"], io);

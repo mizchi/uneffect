@@ -28,9 +28,12 @@ Executable module initialization has a separate file-header upper bound:
 await start()
 ```
 
-The current `<module>` summary is an authority may-set across static local
-imports. It does not claim exact ESM or top-level-await temporal order;
-unresolved calls and dynamic imports remain unknown.
+The `<module>` summary is an authority may-set across static local imports; it
+does not itself claim ESM or top-level-await temporal order. The separate
+`module-order` artifact can establish dependency-completion, straight-line TLA
+settlement, and direct-throw constraints for its documented acyclic fragment.
+Cycles, conditional awaits, external bodies, and dynamic imports remain
+non-proof-grade.
 
 ## Marker
 

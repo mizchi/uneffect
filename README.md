@@ -64,6 +64,24 @@ independently checkable proof certificates.
 See [Implementation status](./docs/implementation-status.md) and the
 [feature matrix](./docs/feature-matrix.md) before relying on a specific proof.
 
+### Safe usage line
+
+Uneffect is currently appropriate as an additional, fail-closed review and CI
+layer on an explicitly selected TypeScript boundary. It is safe to rely on a
+reported diagnostic or counterexample as evidence of a problem, and on a
+`verified` artifact only for the exact claim, source snapshot, configuration,
+supported syntax fragment, and backend recorded by that artifact.
+
+Do not currently use Uneffect as the sole security boundary, as a replacement
+for TypeScript or runtime validation at untrusted inputs, as a whole-program
+correctness claim, or as authorization for general code reordering and
+optimization. A default exit 0 is lint success, not proof. An `assumed` result
+is conditional on its visible trust ledger. An `unknown` result establishes
+nothing and must stay blocking wherever assurance is required.
+
+The normative interpretation of every result state and the per-domain reliance
+line are documented in [Assurance boundaries](./docs/assurance-boundaries.md).
+
 ## Quickstart
 
 Uneffect requires Node.js 24 or newer and uses the consuming project's

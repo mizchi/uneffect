@@ -459,7 +459,11 @@ same property is proved for arbitrary TypeScript.
   these entries remain trusted assumptions. `check` and `evidence` load the
   same extension from a strict `uneffect-registry/v1` JSON configuration.
   Specialized platform operation records are still code-owned rather than
-  configurable. Exact ESM/TLA temporal ordering remains an explicit non-claim.
+  configurable. A separate opt-in `module-order` artifact now extracts a
+  source-mapped acyclic partial order for dependency completion, straight-line
+  top-level-await resume/reject choices, and unconditional top-level throw.
+  Cycles, conditional TLA, external/dynamic bodies, sibling initiation order,
+  and decorator ordering remain explicit non-claims.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic
   `iteratorEffectParameters` in effect summaries. Known call sites specialize

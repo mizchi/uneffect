@@ -1,6 +1,6 @@
 import type { VerifyUneffectProjectResult } from "./project-verification.js";
 
-export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "instrument" | "assumption" | "temporal" | "coverage";
+export type ProjectAssuranceDomain = "typescript" | "effect" | "contract" | "typed-array" | "ownership" | "instrument" | "assumption" | "temporal" | "module-initialization" | "coverage";
 
 export interface ProjectAssuranceBlocker {
   domain: ProjectAssuranceDomain;
@@ -17,6 +17,7 @@ export interface ProjectAssuranceCoverage {
   typedArrayObligations: number;
   trustedTypedArrayObligations: number;
   temporalProperties: number;
+  moduleInitializationModels: number;
 }
 
 export interface ProjectAssuranceAssessment {
@@ -84,6 +85,9 @@ export function assessProjectVerification(
   for (const property of result.temporal?.properties ?? []) if (property.result !== "verified") {
     add("temporal", property.result === "counterexample" ? "violation" : "unknown", property.fileName, property.name, property.output || `temporal property is ${property.result}`);
   }
+  for (const unknown of result.moduleInitialization?.unknowns ?? []) {
+    add("module-initialization", "unknown", unknown.fileName, unknown.kind, unknown.detail);
+  }
 
   const coveredFiles = new Set(result.effects.summaries.flatMap((summary) => summary.fileName ? [summary.fileName] : []));
   for (const obligation of result.obligations) coveredFiles.add(obligation.source.fileName);
@@ -101,6 +105,7 @@ export function assessProjectVerification(
     typedArrayObligations: typedArrayObligations.length,
     trustedTypedArrayObligations: typedArrayObligations.filter((item) => item.result === "trusted").length,
     temporalProperties: result.temporal?.properties.length ?? 0,
+    moduleInitializationModels: result.moduleInitialization ? 1 : 0,
   };
   const claims = [
     "selected TypeScript sources have no syntax, semantic, or compiler-option errors",
@@ -111,6 +116,7 @@ export function assessProjectVerification(
     "runtime assertion generation emitted no unsupported-boundary diagnostic",
     "the configured assumption policy has no violation",
     ...(result.temporal ? ["every emitted temporal property is verified for its attributed source"] : []),
+    ...(result.moduleInitialization ? ["the selected ESM module-initialization partial-order extraction is proof-grade"] : []),
   ];
   const hasOpenIteratorEffect = result.effects.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)));
@@ -121,6 +127,7 @@ export function assessProjectVerification(
     "trusted typed-array, builtin, and module-initialization contracts remain assumptions, not derived proofs",
     "emitted JavaScript is an adoption artifact and is not itself verified",
     ...(result.temporal ? [] : ["temporal behavior was not checked because no temporal runtime was selected"]),
+    ...(result.moduleInitialization ? result.moduleInitialization.exclusions : ["ESM module-initialization order was not checked because no entry module was selected"]),
   ];
   const assumptions = result.assumptions.entries.length;
   const status: ProjectAssuranceAssessment["status"] = blockers.some((blocker) => blocker.classification === "violation")

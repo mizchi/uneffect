@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { assessEvidenceArtifactEligibility, builtinContractDigest, createEvidenceArtifact, validateEvidenceArtifact, validateOwnershipEvidence, verifyOwnershipObligationWithQuint, verifyOwnershipObligationWithZ3 } from "../src/evidence.js";
 import type { OwnershipGuardObligation } from "../src/async-safety.js";
@@ -18,6 +19,31 @@ function programOf(text: string) {
 }
 
 describe("evidence and optimizer obligations", () => {
+  it("makes module-order verification an explicit project assurance domain", async () => {
+    const root = join(process.cwd(), "virtual-module-order");
+    const dependency = join(root, "dependency.mts"), entry = join(root, "entry.mts");
+    const verified = await verifyUneffectProject({
+      files: {
+        [dependency]: "export const value = await Promise.resolve(1)",
+        [entry]: 'import { value } from "./dependency.mjs"; console.log(value)',
+      },
+      moduleInitializationEntry: entry,
+    });
+    expect(verified.moduleInitialization).toMatchObject({ evidence: "verified", entryFile: entry });
+    expect(verified.assurance.blockers.filter((item) => item.domain === "module-initialization")).toEqual([]);
+    expect(verified.assurance.claims).toContain("the selected ESM module-initialization partial-order extraction is proof-grade");
+
+    const unknown = await verifyUneffectProject({
+      files: { [entry]: 'import "node:path"; export const ready = true' },
+      moduleInitializationEntry: entry,
+    });
+    expect(unknown.moduleInitialization).toMatchObject({ evidence: "unknown" });
+    expect(unknown.assurance).toMatchObject({ status: "unknown", passed: false });
+    expect(unknown.assurance.blockers).toContainEqual(expect.objectContaining({
+      domain: "module-initialization", subject: "external-static-import",
+    }));
+  });
+
   it("binds persisted evidence to the caller-owned builtin registry", () => {
     const { program, source } = programOf("export function identity(value: number) { return value }");
     const summaries = analyzeEffectSummariesInProgram(program, source).summaries;

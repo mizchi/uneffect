@@ -8,6 +8,22 @@ unannotated semantic domain was modeled.
 This page defines the line a project may rely on without turning missing
 coverage into false confidence.
 
+## Current adoption classification
+
+| Use | Current recommendation | Required interpretation |
+| --- | --- | --- |
+| Local exploration and review | Recommended | Diagnostics, inferred inventories, generated models, and counterexamples are decision support. |
+| CI on a selected boundary | Recommended with a ratchet | Pin the file set and configuration, choose an assurance profile, retain artifacts, and reject `unknown` for claims that matter. |
+| Production runtime validation | Supplement only | Keep validation at untrusted boundaries; optional generated assertions do not make the static checker a runtime sandbox. |
+| Security or authorization boundary | Not sufficient alone | Host behavior, native code, reflection, dynamic loading, and registry trust remain outside general proof coverage. |
+| Proof-guided transformation | Prototype-only | Apply only a transformation with its own verified authorization artifact; general compression, mangling, reordering, and DCE are not authorized. |
+| Whole-program correctness claim | Unsupported | No profile quantifies over all JavaScript behavior or all semantic domains. |
+
+This classification is deliberately asymmetric: a concrete diagnostic or
+counterexample can falsify a claim even when the analyzer is incomplete, while
+a passing result supports only the explicitly emitted claim. Absence of a
+diagnostic is never promoted into an unstated guarantee.
+
 ## Check profiles
 
 ```sh
@@ -109,6 +125,7 @@ for “this function is correct.”
 | Property testing | Bugs found in generated cases and minimized counterexamples. | Proof of correctness from a passing finite sample. |
 | Optimization | Only `verified` evidence whose exact transformation-specific authorization schema and dependency snapshot match. | `trusted` assumptions, general compression, mangling, reordering, or DCE. |
 | Native frontend parity | `semanticEquivalent: true` establishes semantic agreement for the emitted neutral-IR fields. An in-process exporter result plus `requireCorsaCheckerFacts` establishes that supported top-level function declarations, single immutable arrow/function-expression bindings, identifier-named methods of top-level classes, named-function overload candidates/selections, type/trivia, and direct intra-project call facts came from full Corsa parser services, including cross-file and duplicate-spelling symbol identity. Overload metadata is compared separately because the normalized effect projection intentionally omits it. | Computed or polymorphically dispatched methods, nested callbacks/timing, method/generic overload edge cases, Promise/resource facts, and other neutral-IR domains are not checker-exported. Explicitly annotated computed methods make the comparison fail coverage even when both semantic projections are empty. Calls inside unsupported nested functions are omitted rather than presented as immediate calls, which makes parity fail when the reference frontend emits such an edge. Cloned/persisted facts are unauthenticated, and there is no signed evidence format or whole-program Corsa parity. |
+| ESM initialization order | A `uneffect-module-order/v1` artifact with `evidence: "verified"`, for its represented acyclic local graph and named partial-order claims. | Exact cycles, sibling initiation during suspension, conditional TLA/throw, decorators/classes, dynamic/external bodies, or proof that normal completion occurs. |
 
 The detailed tested fragments and open boundaries live in the
 [feature matrix](./feature-matrix.md). If a construct is not listed there, do
@@ -161,8 +178,17 @@ contracts remain assumptions and their merged-registry digest is bound into
 persisted effect evidence.
 This establishes an
 authority upper set, not exact ESM evaluation order or top-level-await temporal
-ordering. Uneffect's dogfood includes all 62 `src/*.ts` files, including the
+ordering. Uneffect's dogfood includes all 63 `src/*.ts` files, including the
 CLI entrypoint, while printing that temporal exclusion.
+
+ESM order is a separate opt-in domain. `uneffect module-order --require
+<entry>` and `verifyUneffectProject({ moduleInitializationEntry })` accept only
+the documented acyclic partial-order fragment. Unknown cycles,
+conditional top-level await/throw, class/decorator initialization,
+external/dynamic bodies, and TypeScript errors block that domain without
+changing what an ordinary capability-effect check claims. A normal `complete`
+event is conditional on normal evaluation; it does not prove arbitrary
+JavaScript expressions cannot throw.
 
 A type-only or otherwise evidence-free file intentionally cannot pass an
 assurance profile by itself. Keep it outside the asserted runtime boundary, or
