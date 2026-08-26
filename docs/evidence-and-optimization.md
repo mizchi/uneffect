@@ -54,6 +54,8 @@ dry-run freshness judgment load-bearing. Use `buildArtifacts: "require-exact"`
 when deployed code is the exact TypeScript emit: it additionally byte-compares
 all emitted declarations and runtime JavaScript. `noEmit`, `emitDeclarationOnly`,
 bundlers, and post-emit transforms do not satisfy that stronger claim.
+The composition status is deliberately non-vacuous: zero links and zero
+blockers is `not-applicable`, not `verified`.
 
 `uneffect evidence file.ts` emits `schemaVersion: 3`. Each summary retains its
 stable Program identity, source file, UTF-16 span, formatted concrete effects,

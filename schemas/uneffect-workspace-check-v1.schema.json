@@ -23,7 +23,7 @@
     "effectComposition": {
       "type": "object", "additionalProperties": false, "required": ["status", "links", "blockers"],
       "properties": {
-        "status": { "enum": ["verified", "unknown"] },
+        "status": { "enum": ["not-applicable", "verified", "unknown"] },
         "links": { "type": "array", "items": {
           "type": "object", "additionalProperties": false,
           "required": ["kind", "fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects", "declarationIntegrity"],

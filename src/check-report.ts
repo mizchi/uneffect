@@ -62,7 +62,7 @@ export interface CheckWorkspaceJsonReport {
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: CheckJsonReport[];
   effectComposition: {
-    status: "verified" | "unknown";
+    status: "not-applicable" | "verified" | "unknown";
     links: Array<{
       kind: "function" | "module"; fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string;
       evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[]; parameters?: readonly string[];
@@ -182,7 +182,7 @@ export function createCheckWorkspaceJsonReport(
     buildArtifacts: workspace.buildArtifacts, outputIntegrity,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })), projects, blockers, assurance,
     effectComposition: {
-      status: compositionBlockers.length === 0 ? "verified" : "unknown",
+      status: compositionBlockers.length > 0 ? "unknown" : (effectComposition?.links.length ?? 0) > 0 ? "verified" : "not-applicable",
       links: (effectComposition?.links ?? []).map(({ iteratorEffectBounds, mutationRoots, ...link }) => ({
         ...link, effects: link.effects.map(formatEffect),
         ...(iteratorEffectBounds ? { iteratorEffectBounds: iteratorEffectBounds.map((bound) => ({

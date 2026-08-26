@@ -120,6 +120,8 @@ also records `effectComposition`: uniquely resolved child function and module su
 are applied only when their evidence is `verified`. Inferred/trusted/unknown or
 ambiguous summaries, inaccessible/non-exported `Mutate`, host-global aliases,
 unbounded iterator Effect parameters, and opaque iterator arguments produce blockers.
+An empty ledger has status `not-applicable`; `verified` requires at least one
+accepted link, preventing an unexercised composition domain from looking proved.
 Parameter-rooted mutation is instantiated from addressable call arguments. An exported
 function-closure or module-initialization root is instantiated only through a
 named or namespace import resolving to the same ultimate TypeChecker declaration,

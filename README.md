@@ -116,7 +116,9 @@ checked as separate compiler domains and the command emits
 closed. The CLI composes the same narrow, verified function and module Effect interface as
 the project API and records it in `effectComposition`; every consumed child
 `.d.ts` must exactly match an in-memory same-compiler declaration re-emission.
-It does not compose the other proof domains.
+It does not compose the other proof domains. A ledger with no accepted link and
+no blocker reports `not-applicable`, never `verified`; an empty composition is
+not evidence that a cross-project property was checked.
 
 The programmatic overload `verifyUneffectProject({ projectFile })` applies the
 same graph separation to the effect, contract, typed-array, ownership,

@@ -97,7 +97,7 @@ export interface VerifyUneffectWorkspaceResult {
   outputIntegrity: BuildOutputIntegrity;
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: ProjectWorkspaceVerificationDomain[];
-  effectComposition: { status: "verified" | "unknown"; links: WorkspaceEffectLink[]; blockers: WorkspaceEffectCompositionBlocker[] };
+  effectComposition: { status: "not-applicable" | "verified" | "unknown"; links: WorkspaceEffectLink[]; blockers: WorkspaceEffectCompositionBlocker[] };
   blockers: ProjectWorkspaceVerificationBlocker[];
   assurance: ProjectWorkspaceAssurance;
 }
@@ -416,7 +416,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     references: workspace.references, buildOrder: workspace.buildOrder,
     buildArtifacts: workspace.buildArtifacts, outputIntegrity,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })),
-    projects, effectComposition: { status: effectBlockers.length === 0 ? "verified" : "unknown", links: effectLinks, blockers: effectBlockers }, blockers, assurance,
+    projects, effectComposition: { status: effectBlockers.length > 0 ? "unknown" : effectLinks.length > 0 ? "verified" : "not-applicable", links: effectLinks, blockers: effectBlockers }, blockers, assurance,
   };
 }
 

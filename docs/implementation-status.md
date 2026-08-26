@@ -437,6 +437,7 @@ same property is proved for arbitrary TypeScript.
   parameters, and opaque iterator arguments block assurance.
   Every declaration consumed by an Effect link must exactly match an in-memory
   same-compiler re-emission, with expected/actual SHA-256 digests in the ledger;
+  an empty ledger is `not-applicable`, while `verified` requires an accepted link;
   SolutionBuilder freshness remains a separate reportable/required gate. This
   is content integrity, not an independently checkable TypeScript compiler proof.
   An optional exact-build gate also compares every TypeScript-emitted runtime

@@ -133,3 +133,33 @@ configured buildinfo output was absent, so `buildArtifacts.status` was `stale`.
 The adoption probe did not require prebuilt outputs. Enabling
 `buildArtifacts: "require-fresh"` or the CLI flag would add a separate unknown
 blocker before any result could authorize consumption of those artifacts.
+
+## luna.mbt bundled UI runtime
+
+Observed read-only on 2026-08-26 against `mizchi/luna.mbt` revision
+`9f36cd8d2d02cd82418cf96ce8aae7aee27975da`, selecting
+`js/luna/tsconfig.json`. Unrelated MoonBit package manifests in the repository
+were already modified and were not touched by this probe. The selected config
+contains 34 TypeScript source roots, resolves the same TypeScript 6.0.3 package
+version as Uneffect, enables `composite`, and deliberately sets `noEmit: true`.
+Its checked-in `dist` directory is produced by a separate bundling pipeline.
+
+```sh
+uneffect check --project /path/to/luna.mbt/js/luna/tsconfig.json \
+  --infer --assurance no-unknown \
+  --require-exact-build-artifacts --json
+```
+
+SolutionBuilder reported `fresh` from `tsconfig.tsbuildinfo`, but exact output
+assurance returned `outputIntegrity.status: "error"` with
+`TypeScript project does not emit runtime JavaScript`. This is the intended
+decision: the existing bundled `dist/*.js` files must not be equated with a
+TypeScript emit merely because both are current. The same run also found many
+unknown higher-order/dynamic Effect summaries, so it is not application-level
+proof even apart from build mapping.
+
+This observation exposed a presentation-level vacuity: an empty
+`effectComposition` ledger was previously labelled `verified`. It now reports
+`not-applicable`; `verified` requires at least one accepted cross-project link.
+Supporting Luna's bundled output requires an explicit, validated transform
+mapping and remains open work rather than a trusted bypass.

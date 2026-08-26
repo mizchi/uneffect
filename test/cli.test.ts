@@ -310,6 +310,7 @@ describe("uneffect command line", () => {
       expect(valid.stderr).toBe("");
       const validReport = JSON.parse(valid.stdout) as CheckWorkspaceJsonReport;
       expect(validReport).toMatchObject({ schema: "uneffect-workspace-check/v1", outcome: "passed", rootProjectFile: project, blockers: [] });
+      expect(validReport.effectComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
       expect(validReport.buildArtifacts.status).toBe("stale");
       expect(validReport.buildOrder).toEqual([join(a, "tsconfig.json"), join(b, "tsconfig.json"), project]);
       expect(validReport.configs.find((item) => item.projectFile === join(a, "tsconfig.json"))?.rootFiles).toEqual([join(a, "src", "a.ts")]);

@@ -96,7 +96,9 @@ every child assurance blocker feed one fail-closed workspace assessment. The
 programmatic verifier composes a deliberately narrow cross-project interface:
 a uniquely resolved function call or runtime import may consume a child summary only when that
 summary is `verified`. The machine-readable `effectComposition` ledger records
-each link. A function `Mutate` rooted at a declared parameter is substituted at
+each link. Its status is `not-applicable` when no link was accepted or blocked,
+`verified` only when at least one link was accepted, and `unknown` when a
+candidate was blocked. A function `Mutate` rooted at a declared parameter is substituted at
 the call site when the corresponding argument is an identifier, `this`, a
 property chain, or a string-literal element chain. Missing/spread arguments and
 fresh or computed expressions remain unknown rather than inventing an alias.
