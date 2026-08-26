@@ -344,7 +344,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Dogfood stabilization as a shutdown-drain property with a missing-fairness negative control.
     - [x] Distinguish bounded, inductively proven, finite-state-complete, and strengthened stabilization targets that cannot occur from `init`.
     - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support arbitrary nested/general temporal formulas beyond the eventuality, response, recurrence, and stabilization fragments.
-- [ ] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and contract-refined boundaries.
+- [x] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and supported contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
   - [x] Generate `BoundedUint8Array<N>`, `BoundedUint32Array<N>`, scalar/literal union values, and structure-aware array shrinkers.
@@ -352,7 +352,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Preserve boolean literal unions as finite Z3 Bool domains and correlate feature flags with numeric deployment boundaries.
   - [x] Preserve string literal unions as finite Z3 String domains and correlate deployment regions without encoding strings as integers.
   - [x] Match JavaScript signed remainder and truncating integer division in solver-generated boundaries, excluding zero divisors from the integer refinement fragment.
-  - [ ] Derive tighter generators from arbitrary contract refinements instead of filtering candidates only at runtime.
+  - [x] Derive tighter generators from the supported first-order contract refinements instead of filtering candidates only at runtime.
     - [x] Seed valid boundary-adjacent values from conjunctive integer comparisons (`>=`, `>`, `<=`, `<`, `===`), including reversed operands.
     - [x] Derive boundary unions from disjunctions and normalize single-variable affine arithmetic.
     - [x] Derive aligned boundary candidates from conjunctive positive-modulo refinements.
