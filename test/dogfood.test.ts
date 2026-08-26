@@ -571,7 +571,7 @@ describe("Uneffect dogfood", () => {
     );
     const missingNestedThrow = source.replace('      if (runtime.attempted > 0) throw "nested telemetry rejection";\n', "      // missing nested throw\n");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingNestedThrow, "telemetryRouting", temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "nestedReject" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "nestedReject", target: "postProcessed" }),
     );
     const missingHeterogeneousReturn = source.replace("      return;\n    }\n    throw \"telemetry not armed\";", "      // missing heterogeneous return\n    }\n    throw \"telemetry not armed\";");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingHeterogeneousReturn, "telemetryRouting", temporal)).toContainEqual(
@@ -618,7 +618,7 @@ describe("Uneffect dogfood", () => {
     );
     const missingSwitchThrow = source.replace("        throw runtime.recovered;", "        break;");
     expect(await validateRefinementActionBodiesWithZ3(fileName, missingSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
-      expect.objectContaining({ code: "unsupported-action-body", modelName: "routeRecovery" }),
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "routeRecovery", target: "dropped" }),
     );
     const effectfulSwitchThrow = source.replace("throw runtime.recovered;", 'throw new Error("telemetry recovery failed")');
     expect(await validateRefinementActionBodiesWithZ3(fileName, effectfulSwitchThrow, "telemetryRouting", temporal)).toContainEqual(
