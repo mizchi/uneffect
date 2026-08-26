@@ -13,7 +13,7 @@ import { verifyTypedArraySafetyInProgram, type TypedArrayDiagnostic, type TypedA
 import { collectAssumptionLedger, type AssumptionLedger, type AssumptionPolicy, type AssumptionPolicyDiagnostic } from "./assumptions.js";
 import { extractAnnotations } from "./annotations.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
-import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract } from "./effects.js";
+import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
 import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
@@ -191,6 +191,7 @@ interface ProjectVerificationCompilerContext {
   project: TypeScriptProject;
   program?: ts.Program;
   externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+  externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
 }
 
 async function verifyUneffectProjectFiles(
@@ -222,6 +223,7 @@ async function verifyUneffectProjectFiles(
   const effects = analyzeProgramEffects(program, {
     requireAnnotations: false, builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: compilerContext?.externalFunctionEffects,
+    externalModuleEffects: compilerContext?.externalModuleEffects,
   });
   diagnostics.push(...effects.diagnostics);
   const ownershipDiagnostics: ProjectOwnershipDiagnostic[] = [];
@@ -362,7 +364,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       ...base, files: selected.files,
       ...(moduleInitializationEntry !== undefined && project.fileNames.includes(moduleInitializationEntry)
         ? { moduleInitializationEntry } : {}),
-    }, { project, program, externalFunctionEffects: composition.contracts });
+    }, { project, program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts });
     projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
     completed.push({ project, summaries: verification.effects.summaries });
     for (const blocker of verification.assurance.blockers) blockers.push({
@@ -384,7 +386,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       "every referenced compiler domain passed project verification",
       "every selected source root belongs to exactly one TypeScript project",
       "every participating config resolves the exact analyzer TypeScript version",
-      ...(effectLinks.length > 0 ? ["verified child-project function effects are composed into resolved parent call sites"] : []),
+      ...(effectLinks.length > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
     ] : [],
     exclusions: [
       "contract, ownership, refinement, and temporal evidence is not composed across project boundaries",

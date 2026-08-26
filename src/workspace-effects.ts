@@ -1,9 +1,11 @@
-import { isAbsolute, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import ts from "typescript";
-import type { EffectSummary, ExternalFunctionEffectContract } from "./effects.js";
+import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "./effects.js";
+import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypeScriptProject } from "./typescript-project.js";
 
 export interface WorkspaceEffectLink {
+  kind: "function" | "module";
   fromProject: string;
   toProject: string;
   callerFile: string;
@@ -28,8 +30,14 @@ export interface CompletedEffectProject {
 
 export interface WorkspaceEffectComposition {
   contracts: Map<string, ExternalFunctionEffectContract>;
+  moduleContracts: Map<string, ExternalModuleEffectContract>;
   links: WorkspaceEffectLink[];
   blockers: WorkspaceEffectCompositionBlocker[];
+}
+
+function configuredPath(project: TypeScriptProject, value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  return isAbsolute(value) ? value : resolve(dirname(project.projectFile), value);
 }
 
 function contains(directory: string, fileName: string): boolean {
@@ -50,6 +58,31 @@ function callSymbol(checker: ts.TypeChecker, call: ts.CallExpression): ts.Symbol
   return symbol;
 }
 
+function withoutSourceExtension(fileName: string): string {
+  return fileName.replace(/(?:\.d)?\.(?:[cm]?tsx?|[cm]?jsx?)$/, "");
+}
+
+function childModuleSummary(owner: CompletedEffectProject, declarationFile: string): EffectSummary | undefined {
+  const modules = owner.summaries.filter((summary) => summary.functionName === "<module>" && summary.fileName !== undefined);
+  const exact = modules.filter((summary) => summary.fileName === declarationFile);
+  if (exact.length === 1) return exact[0];
+  const outputRoot = configuredPath(owner.project,
+    owner.project.compilerOptions.declarationDir === undefined
+      ? owner.project.compilerOptions.outDir as string | undefined
+      : owner.project.compilerOptions.declarationDir as string);
+  const sourceRoot = configuredPath(owner.project, owner.project.compilerOptions.rootDir as string | undefined)
+    ?? (owner.project.compilerOptions.composite ? dirname(owner.project.projectFile) : undefined);
+  if (outputRoot && sourceRoot && contains(outputRoot, declarationFile)) {
+    const expected = withoutSourceExtension(relative(outputRoot, declarationFile));
+    const mapped = modules.filter((summary) => withoutSourceExtension(relative(sourceRoot, summary.fileName!)) === expected);
+    if (mapped.length === 1) return mapped[0];
+  }
+  const stem = withoutSourceExtension(basename(declarationFile));
+  const sameStem = modules.filter((summary) => withoutSourceExtension(basename(summary.fileName!)) === stem);
+  if (sameStem.length === 1) return sameStem[0];
+  return modules.length === 1 ? modules[0] : undefined;
+}
+
 /** Bind child-first verified summaries to the declarations resolved by a parent Program. */
 export function composeWorkspaceEffects(
   program: ts.Program,
@@ -58,6 +91,7 @@ export function composeWorkspaceEffects(
 ): WorkspaceEffectComposition {
   const checker = program.getTypeChecker();
   const contracts = new Map<string, ExternalFunctionEffectContract>();
+  const moduleContracts = new Map<string, ExternalModuleEffectContract>();
   const links: WorkspaceEffectLink[] = [], blockers: WorkspaceEffectCompositionBlocker[] = [];
   const seen = new Set<string>();
   for (const fileName of current.fileNames) {
@@ -88,7 +122,7 @@ export function composeWorkspaceEffects(
           effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
         };
         contracts.set(key, contract);
-        links.push({
+        links.push({ kind: "function",
           fromProject: current.projectFile, toProject: owner.project.projectFile, callerFile: source.fileName,
           callee: name, declarationFile: declarationSource.fileName, evidence: contract.evidence, effects: contract.effects,
         });
@@ -100,6 +134,37 @@ export function composeWorkspaceEffects(
       ts.forEachChild(node, visit);
     };
     visit(source);
+    for (const statement of source.statements) {
+      if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement))
+        || !statement.moduleSpecifier || !isRuntimeModuleDependency(statement)
+        || !ts.isStringLiteralLike(statement.moduleSpecifier)) continue;
+      const symbol = checker.getSymbolAtLocation(statement.moduleSpecifier);
+      const declarationFile = symbol?.declarations?.find(ts.isSourceFile)?.getSourceFile().fileName
+        ?? ts.resolveModuleName(statement.moduleSpecifier.text, source.fileName, program.getCompilerOptions(), ts.sys).resolvedModule?.resolvedFileName;
+      if (!declarationFile || moduleContracts.has(declarationFile)) continue;
+      const owner = owningProject(declarationFile, completed);
+      if (!owner) continue;
+      const summary = childModuleSummary(owner, declarationFile);
+      const unsupportedMutation = summary?.effects.some((effect) => effect.kind === "mutate") ?? false;
+      const verified = summary?.evidence === "verified" && !unsupportedMutation;
+      const reason = summary === undefined
+        ? `cannot uniquely match ${declarationFile} to a child-project module summary`
+        : unsupportedMutation ? `cross-project module Mutate region composition is not implemented for ${summary.fileName}`
+        : summary.evidence !== "verified" ? `${summary.fileName} module has ${summary.evidence} child-project evidence`
+        : undefined;
+      const contract: ExternalModuleEffectContract = {
+        effects: summary?.effects ?? [], evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
+      };
+      moduleContracts.set(declarationFile, contract);
+      links.push({
+        kind: "module", fromProject: current.projectFile, toProject: owner.project.projectFile,
+        callerFile: source.fileName, callee: "<module>", declarationFile, evidence: contract.evidence, effects: contract.effects,
+      });
+      if (!verified) blockers.push({
+        kind: "effect-composition", classification: "unknown", projectFile: current.projectFile,
+        subject: declarationFile, message: reason ?? `module effect composition for ${declarationFile} is unknown`,
+      });
+    }
   }
-  return { contracts, links, blockers };
+  return { contracts, moduleContracts, links, blockers };
 }

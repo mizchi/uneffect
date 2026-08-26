@@ -25,6 +25,7 @@ export interface ExternalFunctionEffectContract {
   evidence: EvidenceStatus;
   reason?: string;
 }
+export type ExternalModuleEffectContract = ExternalFunctionEffectContract;
 export interface EffectSummary {
   functionName: string;
   effects: Effect[];
@@ -422,6 +423,8 @@ export interface EffectAnalysisOptions {
   builtinRegistry?: BuiltinContractRegistry;
   /** Effects proved in another TypeScript Program, keyed by the target declaration id. */
   externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+  /** Module-evaluation effects proved in another Program, keyed by resolved declaration file. */
+  externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
 }
 
 function externalContractForCall(
@@ -1101,6 +1104,7 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
       for (const item of statement.declarationList.declarations) if (ts.isIdentifier(item.name)) moduleLocals.add(item.name.text);
     }
     const dependencies: string[] = [];
+    let unknown = false, trusted = false;
     const addResolvedDependency = (specifier: ts.Expression, requireRelative = false): string | undefined => {
       if (!ts.isStringLiteralLike(specifier) || (requireRelative && !specifier.text.startsWith("."))) return undefined;
       const symbol = checker.getSymbolAtLocation(specifier);
@@ -1109,12 +1113,18 @@ export function analyzeProgramEffects(program: ts.Program, options: EffectAnalys
         specifier.text, source.fileName, program.getCompilerOptions(), moduleResolutionHost,
       ).resolvedModule?.resolvedFileName;
       const dependencySource = resolvedFileName ? program.getSourceFile(resolvedFileName) : undefined;
-      if (!dependencySource || dependencySource.isDeclarationFile) return undefined;
+      if (!dependencySource || dependencySource.isDeclarationFile) {
+        const external = resolvedFileName ? options.externalModuleEffects?.get(resolvedFileName) : undefined;
+        if (!external) return undefined;
+        if (external.evidence === "trusted") trusted = true;
+        else if (external.evidence !== "verified") unknown = true;
+        for (const effect of external.effects) addEffect(effects, effect);
+        return resolvedFileName;
+      }
       if (dependencySource.fileName === source.fileName) return source.fileName;
       if (!dependencies.includes(dependencySource.fileName)) dependencies.push(dependencySource.fileName);
       return dependencySource.fileName;
     };
-    let unknown = false, trusted = false;
     for (const statement of source.statements) {
       if ((!ts.isImportDeclaration(statement) && !ts.isExportDeclaration(statement)) || !statement.moduleSpecifier) continue;
       if (!isRuntimeModuleDependency(statement)) continue;

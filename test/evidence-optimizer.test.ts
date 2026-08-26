@@ -24,6 +24,7 @@ describe("evidence and optimizer obligations", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-project-workspace-"));
     const root = join(directory, "tsconfig.json");
     const packageDirectory = join(directory, "node_modules", "typescript");
+    const reviewedPackageDirectory = join(directory, "node_modules", "reviewed");
     const aDirectory = join(directory, "packages", "a");
     const bDirectory = join(directory, "packages", "b");
     const cDirectory = join(directory, "packages", "c");
@@ -32,8 +33,11 @@ describe("evidence and optimizer obligations", () => {
       mkdirSync(join(bDirectory, "src"), { recursive: true });
       mkdirSync(join(cDirectory, "src"), { recursive: true });
       mkdirSync(packageDirectory, { recursive: true });
+      mkdirSync(reviewedPackageDirectory, { recursive: true });
       writeFileSync(join(packageDirectory, "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
       writeFileSync(join(packageDirectory, "index.js"), "module.exports = {}\n");
+      writeFileSync(join(reviewedPackageDirectory, "package.json"), JSON.stringify({ name: "reviewed", version: "1.0.0", types: "index.d.ts" }));
+      writeFileSync(join(reviewedPackageDirectory, "index.d.ts"), "export {}\n");
       writeFileSync(join(aDirectory, "src", "a.ts"), "export const a: number = 1\n");
       writeFileSync(join(bDirectory, "src", "b.ts"), "export function loose(value) { return value }\n");
       writeFileSync(join(aDirectory, "tsconfig.json"), JSON.stringify({
@@ -75,10 +79,13 @@ describe("evidence and optimizer obligations", () => {
       expect(freshArtifacts.assurance).toMatchObject({ status: "verified", passed: true });
 
       writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: module_effect Console */
+        console.log("module-a")
         /* uneffect: effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Console */
         import { report } from "../../a/src/a.js"
         /* uneffect: effect Console */
         export function relay() { report() }
@@ -94,13 +101,65 @@ describe("evidence and optimizer obligations", () => {
         effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
         evidence: "verified",
       });
+      expect(bVerification.effects.summaries.find((item) => item.functionName === "<module>")).toMatchObject({
+        effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
+        evidence: "verified",
+      });
+      expect(composed.assurance).toMatchObject({ status: "assumed", passed: true });
       expect(composed.effectComposition).toMatchObject({
         status: "verified",
-        links: [expect.objectContaining({ callee: "report", evidence: "verified" })],
+        links: expect.arrayContaining([
+          expect.objectContaining({ kind: "function", callee: "report", evidence: "verified" }),
+          expect.objectContaining({ kind: "module", callee: "<module>", evidence: "verified" }),
+        ]),
         blockers: [],
       });
 
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect FsRead<"$CWD/**"> */
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      const missingModuleAuthority = await verifyUneffectProject({ projectFile: root });
+      expect(missingModuleAuthority.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.diagnostics).toContainEqual(expect.objectContaining({
+          functionName: "<module>", effect: "Console", kind: "missing", severity: "error",
+        }));
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        import "reviewed"
+        /* uneffect: effect Console */
+        export function report() { console.log("a") }
+      `);
+      writeFileSync(join(bDirectory, "src", "b.ts"), `
+        /* uneffect: module_effect Console */
+        import { report } from "../../a/src/a.js"
+        /* uneffect: effect Console */
+        export function relay() { report() }
+      `);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const reviewedRegistry = extendBuiltinContractRegistry(builtinContractRegistry, { moduleInitializations: [{
+        module: "reviewed", runtime: { kind: "package", version: "1.0.0" }, effects: [], evidence: "trusted",
+        trustReason: "test-reviewed module initialization", trustOwner: "test",
+      }] });
+      const trustedModule = await verifyUneffectProject({ projectFile: root, builtinRegistry: reviewedRegistry });
+      expect(trustedModule.effectComposition).toMatchObject({
+        status: "unknown",
+        blockers: [expect.objectContaining({ kind: "effect-composition", message: expect.stringContaining("module has trusted") })],
+      });
+      expect(trustedModule.projects.find((item) => item.project.projectFile === join(bDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "<module>")).toMatchObject({ evidence: "unknown" });
+
+      writeFileSync(join(aDirectory, "src", "a.ts"), `
+        /* uneffect: module_effect Console */
+        console.log("module-a")
+        /* uneffect: effect Console */
+        export function report() { console.log("a") }
+      `);
+
       writeFileSync(join(cDirectory, "src", "c.ts"), `
+        /* uneffect: module_effect Console */
         import { relay } from "../../b/src/b.js"
         /* uneffect: effect Console */
         export function forward() { relay() }
@@ -118,6 +177,11 @@ describe("evidence and optimizer obligations", () => {
       ]));
       expect(transitive.projects.find((item) => item.project.projectFile === join(cDirectory, "tsconfig.json"))!
         .verification.effects.summaries.find((item) => item.functionName === "forward")).toMatchObject({
+          effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
+          evidence: "verified",
+        });
+      expect(transitive.projects.find((item) => item.project.projectFile === join(cDirectory, "tsconfig.json"))!
+        .verification.effects.summaries.find((item) => item.functionName === "<module>")).toMatchObject({
           effects: expect.arrayContaining([expect.objectContaining({ kind: "capability", name: "Console" })]),
           evidence: "verified",
         });

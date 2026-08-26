@@ -122,7 +122,7 @@ export const u32Table = <const Values extends readonly number[]>(values: Values)
 export const toU32 = u32;
 
 export { analyzeEffectSummariesInProgram, analyzeEffects, analyzeEffectsInProgram, analyzeProgramEffects } from "./effects.js";
-export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus, ExternalFunctionEffectContract } from "./effects.js";
+export type { EffectAnalysisOptions, EffectAnalysisResult, EffectDiagnostic, EffectSummary, EvidenceStatus, ExternalFunctionEffectContract, ExternalModuleEffectContract } from "./effects.js";
 export { capabilityPermits, effectSchema, formatEffect, parseEffectExpression, registerEffectSchema, unknownCapabilityReasons } from "./capabilities.js";
 export type { AtomDomain, CapabilityAtom, CapabilityComparisonOptions, CapabilityEffect, CapabilitySet, Effect, EffectSchema } from "./capabilities.js";
 export { buildVerifiedOwnership, buildVerifiedOwnershipCached, instrumentOwnershipAssertions, instrumentRuntimeAssertions, optimizeOwnershipAssertions } from "./instrument.js";

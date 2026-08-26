@@ -337,10 +337,13 @@ describe("uneffect command line", () => {
       });
 
       writeFileSync(join(a, "src", "a.ts"), `
+        /* uneffect: module_effect Console */
+        console.log("module-a")
         /* uneffect: effect Console */
         export function report() { console.log("a") }
       `);
       writeFileSync(join(b, "src", "b.ts"), `
+        /* uneffect: module_effect Console */
         import { report } from "../../a/src/a.js"
         /* uneffect: effect Console */
         export function relay() { report() }
@@ -351,11 +354,14 @@ describe("uneffect command line", () => {
       }));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
       const composedEffects = capture();
-      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedEffects)).toBe(exitCode.failed);
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--json"], composedEffects)).toBe(exitCode.success);
       expect(JSON.parse(composedEffects.stdout)).toMatchObject({
         effectComposition: {
           status: "verified",
-          links: [expect.objectContaining({ callee: "report", evidence: "verified", effects: ["Console"] })],
+          links: expect.arrayContaining([
+            expect.objectContaining({ kind: "function", callee: "report", evidence: "verified", effects: ["Console"] }),
+            expect.objectContaining({ kind: "module", callee: "<module>", evidence: "verified", effects: ["Console"] }),
+          ]),
           blockers: [],
         },
       });

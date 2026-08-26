@@ -73,7 +73,7 @@ aggregate assurance result.
 A passing CLI workspace result establishes only that every listed domain passed
 the selected profile relative to the recorded assumptions and that root-source
 ownership was unambiguous. It is not a cross-project whole-program proof:
-only uniquely resolved `verified` function Effect summaries are composed by the
+only uniquely resolved `verified` function and module Effect summaries are composed by the
 CLI, while refinements and the other proof domains are not,
 build-artifact freshness is not load-bearing unless explicitly required,
 declaration contents are not independently attested, and runtime package resolution
@@ -94,10 +94,10 @@ compiler options, native references, root selection, and compiler provenance.
 It returns `uneffect-project-workspace/v1`; graph blockers, compiler drift, and
 every child assurance blocker feed one fail-closed workspace assessment. The
 programmatic verifier composes a deliberately narrow cross-project interface:
-a uniquely resolved function call may consume a child summary only when that
+a uniquely resolved function call or runtime import may consume a child summary only when that
 summary is `verified`. The machine-readable `effectComposition` ledger records
 each link. Inferred, trusted, unknown, or ambiguous summaries become blockers;
-cross-project `Mutate` substitution and iterator Effect parameters are not yet
+cross-project function/module `Mutate` substitution and iterator Effect parameters are not yet
 supported. Success still excludes cross-project refinements, contracts,
 ownership, temporal composition, and independent declaration-output content
 validation. SolutionBuilder

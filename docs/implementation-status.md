@@ -422,9 +422,9 @@ same property is proved for arbitrary TypeScript.
   child-first build order, config roots/provenance, child decisions, and
   aggregate assurance. Missing/malformed references, cycles, empty leaves, and
   duplicate source ownership fail closed. The CLI and programmatic workspace
-  API compose uniquely resolved `verified` function Effect summaries
+  API compose uniquely resolved `verified` function and module Effect summaries
   child-first and emit a provenance ledger; inferred/trusted/unknown summaries, ambiguous matches,
-  `Mutate` substitution, and iterator Effect parameters block assurance.
+  function/module `Mutate` substitution, and iterator Effect parameters block assurance.
   Independent declaration-output content validation remains incomplete;
   SolutionBuilder freshness can be reported or required.
 - Performance-sensitive paths have Vitest Bench baselines. Benchmarks are
@@ -451,7 +451,7 @@ same property is proved for arbitrary TypeScript.
   that verifier independently for each source-bearing config with its native
   options, reference edges, root set, and compiler provenance. The versioned
   workspace result aggregates graph and child blockers without flattening the
-  Programs. Only the narrow verified function-Effect interface described above
+  Programs. Only the narrow verified function/module-Effect interface described above
   is linked across projects. Cross-project refinements, contracts, ownership,
   temporal models, advanced Effect substitution, and declaration/build artifact
   content validation remain explicit non-claims.

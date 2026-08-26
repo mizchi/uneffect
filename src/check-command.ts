@@ -58,7 +58,7 @@ export const checkCommand: CliCommand = {
     if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"])) {
       const reports = [];
       const completed: CompletedEffectProject[] = [];
-      const composed: WorkspaceEffectComposition = { contracts: new Map(), links: [], blockers: [] };
+      const composed: WorkspaceEffectComposition = { contracts: new Map(), moduleContracts: new Map(), links: [], blockers: [] };
       for (const domain of workspace.projects) {
         if (domain.fileNames.length === 0) continue;
         const program = createCheckProgram(domain.fileNames, {
@@ -71,7 +71,7 @@ export const checkCommand: CliCommand = {
           mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry,
           compilerOptions: domain.compilerOptions, project: domain.provenance,
           projectReferences: domain.projectReferences,
-          program, externalFunctionEffects: composition.contracts,
+          program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts,
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });

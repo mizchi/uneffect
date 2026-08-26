@@ -3,7 +3,7 @@ import ts from "typescript";
 import { analyzeAsyncSafetyInProgram } from "./async-safety.js";
 import { verifyContractObligations, type VerificationArtifact } from "./contracts.js";
 import { fromTypeScriptDiagnostic, type CheckerDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
-import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract } from "./effects.js";
+import { analyzeProgramEffects, type EffectSummary, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { analyzeReactProgram } from "./react-semantics.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
@@ -27,6 +27,8 @@ export interface CheckOptions {
   program?: ts.Program;
   /** Verified child-program function contracts keyed by resolved declaration id. */
   externalFunctionEffects?: ReadonlyMap<string, ExternalFunctionEffectContract>;
+  /** Verified child-program module-evaluation contracts keyed by declaration file. */
+  externalModuleEffects?: ReadonlyMap<string, ExternalModuleEffectContract>;
 }
 
 export interface CheckResult {
@@ -73,6 +75,7 @@ export async function checkFiles(fileNames: readonly string[], options: CheckOpt
     mode: options.mode ?? "gradual", requireAnnotations: options.requireAnnotations ?? true,
     builtinRegistry: options.builtinRegistry,
     externalFunctionEffects: options.externalFunctionEffects,
+    externalModuleEffects: options.externalModuleEffects,
   });
   const react = analyzeReactProgram(program);
   const diagnostics: CheckerDiagnostic[] = [];

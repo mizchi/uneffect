@@ -113,7 +113,7 @@ provenance, and assurance rejects unresolved or non-exact compiler versions.
 For a solution-style root with no positional files, referenced configs are
 checked as separate compiler domains and the command emits
 `uneffect-workspace-check/v1`. Graph errors and ambiguous source ownership fail
-closed. The CLI composes the same narrow, verified function Effect interface as
+closed. The CLI composes the same narrow, verified function and module Effect interface as
 the project API and records it in `effectComposition`; it does not compose the
 other proof domains or validate build artifact contents.
 
@@ -122,10 +122,10 @@ same graph separation to the effect, contract, typed-array, ownership,
 assumption, and optional temporal verifier bundle. It returns
 `uneffect-project-workspace/v1` with every child result and one aggregate
 assurance decision. Cross-project evidence composition and declaration-output
-validation remain explicit exclusions except for verified function Effect
-summaries. Those summaries are composed child-first at resolved call sites and
+validation remain explicit exclusions except for verified function and module
+Effect summaries. Those summaries are composed child-first at resolved call sites/imports and
 reported in `effectComposition`. Ambiguous matches, inferred/trusted/unknown
-child evidence, `Mutate` region substitution, and iterator Effect parameters
+child evidence, `Mutate` region substitution, module mutation regions, and iterator Effect parameters
 fail closed as `effect-composition` blockers.
 Use `--require-build-artifacts` in the CLI or
 `buildArtifacts: "require-fresh"` in the project API when TypeScript composite

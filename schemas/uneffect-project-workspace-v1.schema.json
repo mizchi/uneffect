@@ -24,8 +24,9 @@
         "status": { "enum": ["verified", "unknown"] },
         "links": { "type": "array", "items": {
           "type": "object", "additionalProperties": false,
-          "required": ["fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects"],
+          "required": ["kind", "fromProject", "toProject", "callerFile", "callee", "declarationFile", "evidence", "effects"],
           "properties": {
+            "kind": { "enum": ["function", "module"] },
             "fromProject": { "type": "string" }, "toProject": { "type": "string" },
             "callerFile": { "type": "string" }, "callee": { "type": "string" },
             "declarationFile": { "type": "string" },

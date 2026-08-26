@@ -42,10 +42,10 @@ ambiguous root ownership, unreadable sources, TypeScript version drift, and a
 failed child domain block the aggregate result. The published envelope schema
 is `schemas/uneffect-project-workspace-v1.schema.json`.
 
-This aggregation links only uniquely resolved `verified` function Effect
-summaries across project declaration boundaries and records every accepted or
+This aggregation links only uniquely resolved `verified` function and module Effect
+summaries across project declaration/import boundaries and records every accepted or
 blocked link in `effectComposition`. It does not link solver obligations,
-refinements, ownership, temporal evidence, `Mutate` substitutions, or iterator
+refinements, ownership, temporal evidence, function/module `Mutate` substitutions, or iterator
 Effect parameters. It also does not establish that `.d.ts`,
 `.tsbuildinfo`, or emitted JavaScript bytes are semantically equivalent to the
 sources. Pass `buildArtifacts: "require-fresh"` to make TypeScript

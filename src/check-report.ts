@@ -59,7 +59,7 @@ export interface CheckWorkspaceJsonReport {
   projects: CheckJsonReport[];
   effectComposition: {
     status: "verified" | "unknown";
-    links: Array<{ fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string; evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[] }>;
+    links: Array<{ kind: "function" | "module"; fromProject: string; toProject: string; callerFile: string; callee: string; declarationFile: string; evidence: "verified" | "trusted" | "inferred" | "unknown"; effects: string[] }>;
     blockers: WorkspaceCheckBlocker[];
   };
   blockers: WorkspaceCheckBlocker[];
@@ -140,12 +140,12 @@ export function createCheckWorkspaceJsonReport(
         "every referenced compiler domain passed its selected assurance profile",
         "every selected source root belongs to exactly one checked TypeScript project",
         "every project config resolves the exact analyzer TypeScript version",
-        ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function effects are composed into resolved parent call sites"] : []),
+        ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
-        "cross-project module initialization, Mutate regions, and iterator effect parameters are not composed",
+        "cross-project Mutate regions and iterator effect parameters are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         "declaration output content integrity and semantic equivalence are not independently validated",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
