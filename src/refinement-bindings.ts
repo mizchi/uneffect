@@ -1485,10 +1485,27 @@ function validateRefinementActionBodiesInSource(
         const normalizedGuard = normalizeRefinementExpression(
           statement.expression, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
         );
-        if (!normalizedGuard || normalizedGuard.kind !== "binary" || normalizedGuard.operator !== "gt"
-          || normalizedGuard.left.kind !== "name" || normalizedGuard.right.kind !== "integer"
-          || normalizedGuard.right.value !== "0" || !stateNames.has(normalizedGuard.left.name)
+        const signedSafeInteger = (expression: TemporalExpression): number | undefined => {
+          if (expression.kind === "integer") {
+            const value = Number(expression.value);
+            return Number.isSafeInteger(value) ? value : undefined;
+          }
+          if (expression.kind === "unary" && expression.operator === "negate" && expression.operand.kind === "integer") {
+            const value = -Number(expression.operand.value);
+            return Number.isSafeInteger(value) ? value : undefined;
+          }
+          return undefined;
+        };
+        if (!normalizedGuard || normalizedGuard.kind !== "binary" || !["gt", "gte"].includes(normalizedGuard.operator)
+          || normalizedGuard.left.kind !== "name" || !stateNames.has(normalizedGuard.left.name)
         ) return undefined;
+        const lowerBound = signedSafeInteger(normalizedGuard.right);
+        if (lowerBound === undefined) return undefined;
+        const stopValue = normalizedGuard.operator === "gte" ? lowerBound - 1 : lowerBound;
+        if (!Number.isSafeInteger(stopValue)) return undefined;
+        const integerExpression = (value: number): TemporalExpression => value >= 0
+          ? { kind: "integer", value: String(value) }
+          : { kind: "unary", operator: "negate", operand: { kind: "integer", value: String(-value) } };
         const counterName = normalizedGuard.left.name;
         const entryValues = new Map<string, TemporalExpression>();
         for (const name of stateNames) {
@@ -1529,17 +1546,21 @@ function validateRefinementActionBodiesInSource(
         }
         if (deltas.get(counterName) !== -1) return undefined;
         const zero: TemporalExpression = { kind: "integer", value: "0" };
+        const stop = integerExpression(stopValue);
         const entryCounter = entryValues.get(counterName)!;
+        const distance: TemporalExpression = stopValue === 0 ? entryCounter : {
+          kind: "binary", operator: "subtract", left: entryCounter, right: stop,
+        };
         const iterations: TemporalExpression = {
           kind: "conditional", condition: entryGuard,
-          whenTrue: entryCounter, whenFalse: zero,
+          whenTrue: distance, whenFalse: zero,
         };
         for (const [name, delta] of deltas) {
           const entryValue = entryValues.get(name)!;
           if (name === counterName) {
             updates.set(name, {
               kind: "conditional", condition: entryGuard,
-              whenTrue: zero, whenFalse: entryValue,
+              whenTrue: stop, whenFalse: entryValue,
             });
             continue;
           }

@@ -1329,12 +1329,13 @@ or TypeScript transforms. It is an observation rather than a regression budget;
 the relatively high margin of error makes it unsuitable for small comparative
 claims.
 
-On 2026-08-27, after composing a preceding symbolic enqueue into the loop-entry
-state, summarizing the telemetry-backlog countdown measured 0.1013 ms mean
-(9,873.37 operations/second over 4,937 samples, 3.27% relative margin of error).
-The warm benchmark parses neither the source nor the temporal spec on each
-sample and does not invoke Z3; it measures action-body collection, entry-state
-substitution, termination-shape validation, and closed-form affine summary
-construction. This run is an observation rather than a regression budget; it
-does not isolate the cost of entry-state composition and does not represent
-general loop fixed points or exception-heavy CFGs.
+On 2026-08-27, after changing the symbolic telemetry batching loop to retain a
+two-sample floor with an inclusive constant bound, its summary measured 0.0993
+ms mean (10,071.69 operations/second over 5,036 samples, 9.16% relative margin
+of error). The warm benchmark parses neither the source nor the temporal spec
+on each sample and does not invoke Z3; it measures action-body collection,
+entry-state substitution, bound normalization, termination-shape validation,
+and closed-form affine summary construction. The high margin of error makes
+this run an observation rather than a comparative claim or regression budget;
+it does not isolate bound-normalization cost and does not represent general
+loop fixed points or exception-heavy CFGs.

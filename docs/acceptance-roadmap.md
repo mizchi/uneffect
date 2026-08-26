@@ -229,16 +229,18 @@ iterations. Dynamic bounds, non-unit increments, uses of the final mutable
 counter, `continue`, and labeled transfers are rejected. This remains finite
 specialization, not a general loop fixed point.
 
-A distinct symbolic affine fragment summarizes `while (runtime.counter > 0)`
+A distinct symbolic affine fragment summarizes `while (runtime.counter > L)`
+and `while (runtime.counter >= L)` for a signed safe-integer constant `L`
 without finite expansion. It proves termination only when the loop body
 decrements that counter by exactly one, every other state write is a
 safe-integer constant delta per iteration, and the body completes normally.
 The loop-entry state may itself be a supported symbolic update: the derived
 trip count and closed-form results are substituted over that entry snapshot
 before entering the ordinary lexical continuation. The telemetry-backlog
-dogfood first accounts for the sample that triggered the flush, then checks
-exact backlog accounting, a double-accounting mismatch, and a nonterminating
-increment control. Changed guards, non-unit steps, coupled recurrences, opaque
+dogfood first accounts for the sample that triggered a batching pass, drains
+only entries above a two-sample reserve, then checks exact accounting, a
+double-accounting mismatch, and a nonterminating increment control. Dynamic or
+unsafe bounds, other guard shapes, non-unit steps, coupled recurrences, opaque
 entry updates, break/continue, throw/return, and general loop invariants remain
 fail-closed. This is one affine fixed-point rule, not a general TypeScript CFG
 proof.

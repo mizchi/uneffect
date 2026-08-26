@@ -272,6 +272,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions("affine-entry.ts", source, "affineEntry", temporal)).resolves.toEqual([]);
   });
 
+  it("summarizes an inclusive constant-lower-bound countdown from symbolic entry state", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * init pending = 0
+       * init processed = 0
+       * action retainTwo: pending' = pending + 2 >= 3 ? 2 : pending + 2, processed' = processed + (pending + 2 >= 3 ? pending : 0)
+       */
+      interface Runtime { pending: number; processed: number }
+      /* uneffect: refinement boundedFloor@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement boundedFloor@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement boundedFloor@1 action retainTwo */
+      export function retainTwo(runtime: Runtime) {
+        runtime.pending += 2
+        while (runtime.pending >= 3) {
+          runtime.pending--
+          runtime.processed++
+        }
+      }
+    `;
+    const temporal = (parseSpecification("bounded-floor.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("bounded-floor.ts", source, "boundedFloor", temporal)).resolves.toEqual([]);
+  });
+
   it("drops unreachable statements after unconditional return and throw", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");

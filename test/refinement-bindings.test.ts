@@ -2483,7 +2483,6 @@ describe("annotated refinement bindings", () => {
     await expect(validateRefinementActionBodiesWithZ3("countdown.ts", source, "countdown", temporal)).resolves.toEqual([]);
 
     for (const [fileName, changed] of [
-      ["countdown-gte.ts", source.replace("while (runtime.pending > 0)", "while (runtime.pending >= 0)")],
       ["countdown-step.ts", source.replace("pending--", "pending -= 2")],
       ["countdown-growing.ts", source.replace("pending--", "pending++")],
       ["countdown-coupled.ts", source.replace("processed++", "processed += runtime.pending")],
@@ -2505,6 +2504,31 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies("countdown-opaque-prefix.ts", opaquePrefix, "countdown", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
     );
+
+    const negativeFloor = source
+      .replace("pending' = pending > 0 ? 0 : pending", "pending' = pending > -2 ? -2 : pending")
+      .replace("processed' = processed + (pending > 0 ? pending : 0)", "processed' = processed + (pending > -2 ? pending + 2 : 0)")
+      .replace("runtime.pending > 0", "runtime.pending > -2");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "countdown-negative-floor.ts", negativeFloor, "countdown", parseSpec("countdown-negative-floor.ts", negativeFloor).temporal,
+    )).resolves.toEqual([]);
+
+    const exclusiveFloor = source
+      .replace("pending' = pending > 0 ? 0 : pending", "pending' = pending > 3 ? 3 : pending")
+      .replace("processed' = processed + (pending > 0 ? pending : 0)", "processed' = processed + (pending > 3 ? pending - 3 : 0)")
+      .replace("runtime.pending > 0", "runtime.pending > 3");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "countdown-exclusive-floor.ts", exclusiveFloor, "countdown", parseSpec("countdown-exclusive-floor.ts", exclusiveFloor).temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["countdown-dynamic-floor.ts", source.replace("runtime.pending > 0", "runtime.pending > runtime.processed")],
+      ["countdown-unsafe-floor.ts", source.replace("runtime.pending > 0", "runtime.pending >= -9007199254740991")],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "countdown", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
   });
 
   it("unrolls only canonical bounded local-counter while loops", () => {
