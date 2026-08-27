@@ -65,6 +65,25 @@ describe("TODO hierarchy consistency", () => {
     }
   });
 
+  it("lists every open issue under its owning roadmap phase", () => {
+    const roadmap = readFileSync("docs/roadmap.md", "utf8");
+    const phase = (number: number) =>
+      roadmap
+        .split(new RegExp(`## Phase ${number} [^\\n]*\\n`), 2)[1]
+        ?.split(/^## /m, 1)[0] ?? "";
+
+    expect(phase(1)).toContain("issues/9");
+    expect(phase(1)).toContain("issues/20");
+    expect(phase(1)).toContain("issues/18");
+    for (const issue of [23, 2, 5, 4, 6]) {
+      expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
+    }
+    for (const issue of [24, 8, 10, 7, 16]) {
+      expect(phase(3), `Phase 3 is missing issue #${issue}`).toContain(`issues/${issue}`);
+    }
+    expect(phase(4)).toContain("issues/13");
+  });
+
   it("keeps the active issue index in roadmap execution order", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;

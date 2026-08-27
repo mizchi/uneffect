@@ -81,7 +81,7 @@ by the phase ordering.
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #23, #24 | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
-| Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Shared completion contract | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
+| Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | #23 for CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |

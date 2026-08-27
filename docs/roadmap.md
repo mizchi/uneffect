@@ -115,25 +115,31 @@ explicit conservative boundaries rather than untracked support.
 
 ## Phase 2 — Increase specification and test expressiveness
 
-1. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
+1. [General refinement CFG fixed points](https://github.com/mizchi/uneffect/issues/23)
+   replaces the bounded path walker with explicit fixed points and proof budgets
+   while preserving completion kinds and fail-closed non-convergence.
+2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.
-2. [Collection-valued state and TLC interoperability](https://github.com/mizchi/uneffect/issues/5)
+3. [Collection-valued state and TLC interoperability](https://github.com/mizchi/uneffect/issues/5)
    makes Node Lease-style models direct and preserves external counterexamples.
-3. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
+4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
-4. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
+5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
    completes alias, resize, control-flow, and shared-memory reasoning.
 
 ## Phase 3 — Production integration and trust
 
-1. [Native Corsa semantic parity](https://github.com/mizchi/uneffect/issues/8)
+1. [Interprocedural alias and dynamic refinement evidence](https://github.com/mizchi/uneffect/issues/24)
+   adds explicit region identity, higher-order summaries, closed-world dispatch,
+   and checkable abstraction relations without treating assumptions as proofs.
+2. [Native Corsa semantic parity](https://github.com/mizchi/uneffect/issues/8)
    moves inferred facts and ordered events off the TypeScript reference adapter.
-2. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
+3. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
    fills host phases, dynamic cancellation, and polymorphic callback gaps.
-3. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
+4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)
    evaluates certificates and narrows the trusted computing base.
-4. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
+5. [React function component lifecycle semantics](https://github.com/mizchi/uneffect/issues/16)
    extends the tested symbol-resolved lifecycle fragment through dynamic
    component/Hook flow, server boundaries, and broader concurrent scheduling.
 [DOM property getter/setter effects](https://github.com/mizchi/uneffect/issues/14)
