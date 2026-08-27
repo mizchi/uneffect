@@ -1,11 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { createSolverRetryEvidenceSession } from "./solver-retry-evidence.js";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, type CiTestTier } from "./test-tiers.js";
+import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTierFiles, type CiTestTier } from "./test-tiers.js";
+import { runBoundedVerifierAttempts } from "./verifier-retry.js";
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const allTiers = ["fast", "z3", "quint", "integration"] as const;
-const maxSolverAttempts = 3;
+const maxVerifierAttempts = 3;
 const requested = process.argv[2] as CiTestTier | undefined;
 const requestedFile = process.argv[3];
 if (requested && !allTiers.includes(requested)) throw new Error(`unknown CI test tier: ${requested}`);
@@ -39,45 +40,58 @@ for (const tier of tiers) {
       const runIsolated = (attemptEnvironment: NodeJS.ProcessEnv = {}) => spawnSync(pnpm, args, {
         cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier, ...attemptEnvironment },
         encoding: "utf8", maxBuffer: 20 * 1024 * 1024,
-        timeout: ciIsolatedProcessTimeoutMs, killSignal: "SIGKILL",
+        ...(testName ? { timeout: ciIsolatedProcessTimeoutMs, killSignal: "SIGKILL" as const } : {}),
       });
       const emit = (captured: ReturnType<typeof runIsolated>) => {
         if (captured.stdout) process.stdout.write(captured.stdout);
         if (captured.stderr) process.stderr.write(captured.stderr);
       };
       let result;
-      if (testName) {
+      if (testName || (file && ciExternalVerifierTestFiles.includes(file))) {
         const evidence = createSolverRetryEvidenceSession(
-          resolve(process.env.UNEFFECT_SOLVER_RETRY_EVIDENCE_ROOT ?? ".uneffect/solver-retry-evidence"),
+          resolve(process.env.UNEFFECT_VERIFIER_RETRY_EVIDENCE_ROOT ?? process.env.UNEFFECT_SOLVER_RETRY_EVIDENCE_ROOT ?? ".uneffect/verifier-retry-evidence"),
           tier,
           file!,
-          testName,
+          testName ?? "<file>",
+          maxVerifierAttempts,
+          [pnpm, ...args],
         );
-        let attempt = 1;
-        for (;;) {
+        const execution = runBoundedVerifierAttempts(maxVerifierAttempts, (attempt) => {
           const startedAt = Date.now();
-          result = runIsolated(evidence.environmentForAttempt(attempt));
-          emit(result);
-          const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-          const hardTimeout = isIsolatedSolverHardTimeout(result.error);
+          const captured = runIsolated(evidence.environmentForAttempt(attempt));
+          const output = `${captured.stdout ?? ""}\n${captured.stderr ?? ""}`;
+          const hardTimeout = isIsolatedSolverHardTimeout(captured.error);
+          const externalVerifierFailure = classifyIsolatedVerifierFailure(tier, output);
           const classifiedFailure = classifyIsolatedSolverFailure(output);
           const retryReason = hardTimeout ? "hard-timeout" as const
+            : externalVerifierFailure ? "external-process-timeout" as const
             : classifiedFailure ? "recognized-wasm-failure" as const : undefined;
+          return {
+            captured,
+            durationMs: Date.now() - startedAt,
+            hardTimeout,
+            externalVerifierFailure,
+            classifiedFailure,
+            retryReason,
+          };
+        }, ({ captured, retryReason }) => captured.status === 0 ? undefined : retryReason, ({ attempt, result: attempted, retryReason, willRetry }) => {
+          emit(attempted.captured);
           evidence.recordAttempt({
             attempt,
-            status: result.status,
-            signal: result.signal,
-            hardTimeout,
+            status: attempted.captured.status,
+            signal: attempted.captured.signal,
+            hardTimeout: attempted.hardTimeout,
             retryReason,
-            failureKind: hardTimeout ? "hard-timeout" : classifiedFailure,
-            durationMs: Date.now() - startedAt,
+            failureKind: attempted.hardTimeout ? "hard-timeout" : attempted.externalVerifierFailure ?? attempted.classifiedFailure,
+            durationMs: attempted.durationMs,
+            stdout: attempted.captured.stdout ?? "",
+            stderr: attempted.captured.stderr ?? "",
           });
-          if (result.status === 0 || attempt >= maxSolverAttempts || !retryReason) break;
-          attempt++;
-          process.stderr.write(`retrying isolated test after a recognized transient solver-process ${hardTimeout ? "hard timeout" : "failure"} (attempt ${attempt}/${maxSolverAttempts}): ${file} -t ${testName}\n`);
-        }
+          if (willRetry) process.stderr.write(`retrying isolated test after a recognized transient verifier-process ${retryReason} (attempt ${attempt + 1}/${maxVerifierAttempts}): ${file}${testName ? ` -t ${testName}` : ""}\n`);
+        });
+        result = execution.result.captured;
         const evidenceManifest = evidence.finish();
-        if (evidenceManifest) process.stderr.write(`retained solver retry evidence: ${evidenceManifest}\n`);
+        if (evidenceManifest) process.stderr.write(`retained verifier retry evidence: ${evidenceManifest}\n`);
       } else {
         result = spawnSync(pnpm, args, {
           cwd: process.cwd(), env: { ...process.env, UNEFFECT_CI_TIER: tier }, stdio: "inherit",

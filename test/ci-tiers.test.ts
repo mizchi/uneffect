@@ -2,9 +2,10 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
+import { ciExternalVerifierTestFiles, ciIsolatedProcessTimeoutMs, ciIsolatedTestFiles, ciIsolatedTestNames, ciIsolatedTestTimeoutMs, ciTestTiers, classifyIsolatedSolverFailure, classifyIsolatedVerifierFailure, didVitestRunExactlyOneTest, isIsolatedSolverHardTimeout, parseVitestListNames, resolveCiTestIncludes, resolveCiTierFiles, shouldRetryIsolatedSolverFailure } from "../ci/test-tiers.js";
 import { classifySolverRetryAttempts, createSolverRetryEvidenceSession } from "../ci/solver-retry-evidence.js";
 import { boundedRepetitions } from "../ci/run-solver-stress.js";
+import { runBoundedVerifierAttempts } from "../ci/verifier-retry.js";
 
 describe("CI test tier manifest", () => {
   it("supports an explicit remote verification run when a push event is absent", () => {
@@ -64,7 +65,7 @@ describe("CI test tier manifest", () => {
     expect(runner).toContain('["fast", "z3", "quint", "integration"]');
     expect(runner).toContain("resolveCiTierFiles(tier, requestedFile)");
     expect(runner).toContain("ciIsolatedTestNames[file]");
-    expect(runner).toContain("const maxSolverAttempts = 3");
+    expect(runner).toContain("const maxVerifierAttempts = 3");
     const justfile = readFileSync(join(process.cwd(), "justfile"), "utf8");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts z3");
     expect(justfile).toContain("tsx ci/run-test-tiers.ts quint");
@@ -79,13 +80,19 @@ describe("CI test tier manifest", () => {
     expect(workflow).toContain('echo "$QUINT_EVALUATOR_SHA256  $archive" | sha256sum --check');
   });
 
-  it("uploads retained solver retry evidence even when a later attempt passes", () => {
+  it("uploads retained verifier retry evidence even when a later attempt passes", () => {
     const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
     expect(workflow).toContain("actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f");
     expect(workflow).toContain("if: always()");
-    expect(workflow).toContain(".uneffect/solver-retry-evidence");
+    expect(workflow).toContain(".uneffect/verifier-retry-evidence");
     expect(workflow).toContain("if-no-files-found: ignore");
-    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(2);
+    expect(workflow.match(/include-hidden-files: true/gu)).toHaveLength(4);
+  });
+
+  it("uploads retained external-verifier retry evidence from every verifier tier", () => {
+    const workflow = readFileSync(join(process.cwd(), ".github/workflows/ci.yml"), "utf8");
+    expect(workflow.match(/path: \.uneffect\/verifier-retry-evidence/gu)).toHaveLength(3);
+    expect(workflow.match(/name: verifier-retry-evidence-/gu)).toHaveLength(3);
   });
 
   it("repeats the telemetry accounting proof in fresh WASM processes", () => {
@@ -115,6 +122,8 @@ describe("CI test tier manifest", () => {
 
   it("discovers named tests for whole-file process isolation", () => {
     expect(ciIsolatedTestFiles).toContain("test/dogfood.test.ts");
+    expect(ciTestTiers.quint.every((file) => ciExternalVerifierTestFiles.includes(file))).toBe(true);
+    expect(ciTestTiers.quint.some((file) => ciIsolatedTestFiles.includes(file))).toBe(false);
     expect(ciIsolatedTestTimeoutMs).toBe(60_000);
     expect(parseVitestListNames("test/dogfood.test.ts", [
       "test/dogfood.test.ts > Uneffect dogfood > first proof",
@@ -133,6 +142,44 @@ describe("CI test tier manifest", () => {
     expect(didVitestRunExactlyOneTest("\u001b[2m      Tests \u001b[22m \u001b[1m\u001b[32m1 passed\u001b[39m\u001b[22m \u001b[2m| \u001b[22m\u001b[33m45 skipped\u001b[39m")).toBe(true);
     expect(didVitestRunExactlyOneTest("Tests  46 skipped (46)")).toBe(false);
     expect(didVitestRunExactlyOneTest("Tests  2 passed | 44 skipped (46)")).toBe(false);
+  });
+
+  it("retries only process-level external verifier timeouts", () => {
+    const timedOut = [
+      "AssertionError: expected Error: spawnSync pnpm ETIMEDOUT to be undefined",
+      "command: pnpm exec quint run /tmp/model.qnt",
+    ].join("\n");
+    expect(classifyIsolatedVerifierFailure("quint", timedOut)).toBe("external-process-timeout");
+    expect(classifyIsolatedVerifierFailure("integration", timedOut)).toBe("external-process-timeout");
+    expect(classifyIsolatedVerifierFailure("z3", timedOut)).toBeUndefined();
+    expect(classifyIsolatedVerifierFailure("quint", "Invariant violated\nstatus: 1")).toBeUndefined();
+    expect(classifyIsolatedVerifierFailure("quint", "QuintError: parse error at model.qnt:1:1")).toBeUndefined();
+    expect(classifyIsolatedVerifierFailure("quint", "Test timed out in 30000ms")).toBeUndefined();
+  });
+
+  it("runs a deterministic bounded verifier retry loop without retrying semantic failures", () => {
+    const transientRuns: number[] = [];
+    const recovered = runBoundedVerifierAttempts(
+      3,
+      (attempt) => ({ status: attempt === 1 ? 1 : 0, timeout: attempt === 1 }),
+      ({ timeout }) => timeout ? "external-process-timeout" as const : undefined,
+      ({ attempt }) => transientRuns.push(attempt),
+    );
+    expect(recovered).toMatchObject({ result: { status: 0 }, attemptCount: 2 });
+    expect(transientRuns).toEqual([1, 2]);
+
+    const semanticRuns: number[] = [];
+    const semanticFailure = runBoundedVerifierAttempts(
+      3,
+      (attempt) => ({ status: 1, verdict: "invariant-violated", attempt }),
+      () => undefined,
+      ({ attempt }) => semanticRuns.push(attempt),
+    );
+    expect(semanticFailure).toMatchObject({ result: { verdict: "invariant-violated" }, attemptCount: 1 });
+    expect(semanticRuns).toEqual([1]);
+
+    const exhausted = runBoundedVerifierAttempts(2, () => ({ status: 1 }), () => "external-process-timeout" as const);
+    expect(exhausted).toMatchObject({ attemptCount: 2, exhausted: true });
   });
 
   it("retries only known transient Z3 WASM process failures", () => {
@@ -186,7 +233,7 @@ describe("CI test tier manifest", () => {
     expect(isIsolatedSolverHardTimeout(undefined)).toBe(false);
     const runner = readFileSync(join(process.cwd(), "ci/run-test-tiers.ts"), "utf8");
     expect(runner).toContain("timeout: ciIsolatedProcessTimeoutMs");
-    expect(runner).toContain("isIsolatedSolverHardTimeout(result.error)");
+    expect(runner).toContain("isIsolatedSolverHardTimeout(captured.error)");
   });
 
   it("retains retry attempts and removes evidence for a clean first attempt", () => {
@@ -222,6 +269,28 @@ describe("CI test tier manifest", () => {
       clean.environmentForAttempt(1);
       clean.recordAttempt({ attempt: 1, status: 0, signal: null, hardTimeout: false });
       expect(clean.finish()).toBeUndefined();
+
+      const external = createSolverRetryEvidenceSession(root, "quint", "test/formal-models.test.ts", "model", 2, ["pnpm", "vitest", "run", "test/formal-models.test.ts"]);
+      external.environmentForAttempt(1);
+      external.recordAttempt({
+        attempt: 1, status: 1, signal: null, hardTimeout: false,
+        retryReason: "external-process-timeout", failureKind: "external-process-timeout",
+        stdout: "", stderr: "Error: spawnSync pnpm ETIMEDOUT\ncommand: pnpm exec quint run model.qnt",
+      });
+      external.environmentForAttempt(2);
+      external.recordAttempt({ attempt: 2, status: 0, signal: null, hardTimeout: false, stdout: "No violation found", stderr: "" });
+      const externalManifestPath = external.finish();
+      if (!externalManifestPath) throw new Error("external verifier retry evidence was discarded");
+      const externalManifest = JSON.parse(readFileSync(externalManifestPath, "utf8")) as {
+        schema: string; command: string[]; attempts: Array<{ stdoutPath?: string; stderrPath?: string }>;
+        assessment: { classification: string; finalOutcome: string };
+      };
+      expect(externalManifest.schema).toBe("uneffect.verifier-retry-evidence/v1");
+      expect(externalManifest.command).toEqual(["pnpm", "vitest", "run", "test/formal-models.test.ts"]);
+      expect(externalManifest.assessment).toMatchObject({
+        classification: "transient-external-process-failure", finalOutcome: "passed-after-retry",
+      });
+      expect(readFileSync(join(external.directory, externalManifest.attempts[0]!.stderrPath!), "utf8")).toContain("ETIMEDOUT");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

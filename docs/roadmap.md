@@ -8,24 +8,22 @@ release date commitment.
 
 ## Phase 1 — Make proof boundaries dependable
 
-1. [Solver backend reliability](https://github.com/mizchi/uneffect/issues/17)
-   must preserve failing inputs and resource telemetry, distinguish deterministic
-   complexity from corrupted WASM state, and keep fallback/retry visible.
-2. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
+1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
    must replace the remaining syntax-fragment walkers with an exception-aware
    control-flow fixed point. A first unbounded directional affine-loop rule now
    derives a closed form from a symbolic loop-entry state and signed constant
    bound without finite expansion, including positive constant step magnitudes
    and exact overshoot in both countdown and scale-up directions; arbitrary
    loop joins and exception-heavy recurrences remain.
-3. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
+2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
-4. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
+3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
-   build-artifact validation remain.
-5. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
+   build-artifact validation are implemented; general cross-project refinement
+   and non-identical declaration-transform validation remain.
+4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
 
@@ -37,6 +35,13 @@ rule applies; absence of a bounded witness is never promoted to a proof.
 
 These are the highest-priority soundness gaps because they determine whether a
 local result survives composition with real application control flow.
+
+[Native/WASM Z3 backend reliability](https://github.com/mizchi/uneffect/issues/17)
+is complete for all current solver clients. It preserves attempts and falls
+back only after classified infrastructure failure. The matching
+[external-verifier process boundary](https://github.com/mizchi/uneffect/issues/22)
+is also complete: child Quint `ETIMEDOUT` failures receive bounded file-level
+retry with retained evidence, while semantic failures are never retried.
 
 [Reviewed synchronous compiler callback timing](https://github.com/mizchi/uneffect/issues/21)
 is complete for the exact TypeScript 6.0.3 symbol-identified fragment documented

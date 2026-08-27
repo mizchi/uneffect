@@ -77,8 +77,17 @@ never retried, and a repeated crash or timeout still fails the job. This is
 process recovery for recognized verifier-runtime failures, not a flaky-test
 allowance or weakened proof obligation.
 
+Quint-bearing files use a separate file-granularity boundary. If a live Vitest
+process reports that its child `pnpm exec quint` process failed with
+`ETIMEDOUT`, the runner repeats that file at most twice in fresh processes.
+Quint invariant violations, parse/type errors, ordinary nonzero verdicts, and
+Vitest test timeouts do not match this classifier and are never retried. File
+granularity avoids starting a separate Vitest process for every Quint-backed
+case while still preventing one transient child-process timeout from erasing
+the original incident.
+
 Each isolated process attempt receives a private
-`.uneffect/solver-retry-evidence/.../attempt-N` directory. Before a backend is
+`.uneffect/verifier-retry-evidence/.../attempt-N` directory. Before a backend is
 entered, the common Z3 layer writes the complete SMT-LIB input under its SHA-256
 digest and appends a `start` event containing the process RSS and heap snapshot.
 Every returned backend attempt appends its version, verdict/failure kind,
@@ -88,9 +97,10 @@ leaves its input and start event. Repeated inputs share one digest file while
 retaining distinct execution records.
 
 A clean first attempt removes this opt-in telemetry. A failed or retried test
-keeps every attempt plus a manifest linking the directories to the CI tier,
-source test file, selector, retry reason, signal, exit status, duration, and
-parent-process memory. The integration job uploads that directory with
+keeps every attempt plus a `uneffect.verifier-retry-evidence/v1` manifest
+linking the directories to the exact command, CI tier, source test file,
+selector, retry reason, signal, exit status, duration, output digests/files, and
+parent-process memory. The Z3, Quint, and integration jobs upload that directory with
 `if: always()` even when a later retry succeeds. SMT-LIB and solver output can
 contain application literals, so evidence recording is disabled outside the
 isolated runner unless `Z3ExecutionOptions.evidence` or
@@ -106,8 +116,10 @@ recorded SMT-LIB digest. A failed digest that passes in a fresh process is
 the full attempt budget is `deterministic-resource-limit`; repeated assertion,
 heap-corruption, or memory-fault signatures are
 `reproducible-runtime-failure`. Missing or changing digests remain
-`inconclusive`. A passed retry is therefore never serialized as an ordinary
-clean pass.
+`inconclusive`. A Quint child timeout that passes on retry is separately
+`transient-external-process-failure`; exhausting the attempt budget is
+`reproducible-external-process-failure`. These classifications describe process
+execution only. A passed retry is never serialized as an ordinary clean pass.
 
 The WASM job separately runs the telemetry-routing conservation dogfood three
 times in fresh processes. It requires identical digest sets and solver-call

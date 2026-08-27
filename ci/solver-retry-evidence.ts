@@ -7,13 +7,16 @@ export interface SolverProcessAttempt {
   status: number | null;
   signal: NodeJS.Signals | null;
   hardTimeout: boolean;
-  retryReason?: "recognized-wasm-failure" | "hard-timeout";
+  retryReason?: "recognized-wasm-failure" | "hard-timeout" | "external-process-timeout";
   failureKind?: SolverFailureKind;
   /** The SMT-LIB execution that was incomplete or returned an infrastructure error. */
   programDigest?: string;
   /** Every SMT-LIB input entered by this fresh process attempt. */
   programDigests?: readonly string[];
   durationMs?: number;
+  /** Captured output is written beside the manifest rather than embedded in it. */
+  stdout?: string;
+  stderr?: string;
 }
 
 export type SolverFailureKind =
@@ -22,18 +25,25 @@ export type SolverFailureKind =
   | "wasm-memory-fault"
   | "wasm-heap-corruption"
   | "z3-internal-assertion"
-  | "known-timeout";
+  | "known-timeout"
+  | "external-process-timeout";
 
 export type SolverRetryClassification =
   | "clean-first-attempt"
   | "transient-runtime-failure"
   | "deterministic-resource-limit"
   | "reproducible-runtime-failure"
+  | "transient-external-process-failure"
+  | "reproducible-external-process-failure"
   | "inconclusive";
 
-export interface RecordedSolverProcessAttempt extends SolverProcessAttempt {
+export interface RecordedSolverProcessAttempt extends Omit<SolverProcessAttempt, "stdout" | "stderr"> {
   timestamp: string;
   process: ReturnType<typeof processTelemetry>;
+  stdoutPath?: string;
+  stdoutDigest?: string;
+  stderrPath?: string;
+  stderrDigest?: string;
 }
 
 export interface SolverRetryAssessment {
@@ -58,6 +68,23 @@ export function classifySolverRetryAttempts(
     return { classification: "clean-first-attempt", finalOutcome: "passed", reason: "the first process attempt passed" };
   }
   const failures = attempts.filter(({ status }) => status !== 0);
+  if (failures.length > 0 && failures.every(({ failureKind }) => failureKind === "external-process-timeout")) {
+    if (finalAttempt.status === 0) {
+      return {
+        classification: "transient-external-process-failure",
+        finalOutcome: "passed-after-retry",
+        reason: "the same verifier-bearing test file or selector passed in a fresh process after a process-level timeout",
+      };
+    }
+    if (attempts.length >= maxAttempts) {
+      return {
+        classification: "reproducible-external-process-failure",
+        finalOutcome: "failed",
+        reason: "the external verifier process timed out in every fresh isolated attempt",
+      };
+    }
+    return { classification: "inconclusive", finalOutcome: "failed", reason: "the external verifier retry budget was not exhausted" };
+  }
   if (failures.some(({ programDigest }) => !programDigest)) {
     return { classification: "inconclusive", finalOutcome: finalAttempt.status === 0 ? "passed-after-retry" : "failed", reason: "a failed attempt has no recorded SMT-LIB digest" };
   }
@@ -111,7 +138,14 @@ function readAttemptPrograms(directory: string): Pick<SolverProcessAttempt, "pro
  * attempt is discarded; once a retry occurs all process and solver evidence is
  * retained so a later green attempt cannot erase the original failure.
  */
-export function createSolverRetryEvidenceSession(root: string, tier: string, source: string, testName: string, maxAttempts = 3) {
+export function createSolverRetryEvidenceSession(
+  root: string,
+  tier: string,
+  source: string,
+  testName: string,
+  maxAttempts = 3,
+  command?: readonly string[],
+) {
   const identity = createHash("sha256").update(`${tier}\0${source}\0${testName}`).digest("hex").slice(0, 16);
   const directory = join(root, tier, `${identity}-${process.pid}-${Date.now()}`);
   const startedAt = new Date().toISOString();
@@ -128,7 +162,16 @@ export function createSolverRetryEvidenceSession(root: string, tier: string, sou
     recordAttempt(attempt: SolverProcessAttempt) {
       const attemptDirectory = attemptDirectories.get(attempt.attempt);
       const programs = attemptDirectory ? readAttemptPrograms(attemptDirectory) : {};
-      attempts.push({ ...programs, ...attempt, timestamp: new Date().toISOString(), process: processTelemetry() });
+      const { stdout, stderr, ...metadata } = attempt;
+      const captured: Pick<RecordedSolverProcessAttempt, "stdoutPath" | "stdoutDigest" | "stderrPath" | "stderrDigest"> = {};
+      for (const [stream, output] of [["stdout", stdout], ["stderr", stderr]] as const) {
+        if (!output || !attemptDirectory) continue;
+        const path = join(attemptDirectory, `${stream}.log`);
+        writeFileSync(path, output, "utf8");
+        captured[`${stream}Path`] = `attempt-${attempt.attempt}/${stream}.log`;
+        captured[`${stream}Digest`] = `sha256:${createHash("sha256").update(output).digest("hex")}`;
+      }
+      attempts.push({ ...programs, ...metadata, ...captured, timestamp: new Date().toISOString(), process: processTelemetry() });
     },
     finish(): string | undefined {
       if (attempts.length === 1 && attempts[0]?.status === 0 && !attempts[0].hardTimeout) {
@@ -139,10 +182,11 @@ export function createSolverRetryEvidenceSession(root: string, tier: string, sou
       const manifest = join(directory, "manifest.json");
       const assessment = classifySolverRetryAttempts(attempts, maxAttempts);
       writeFileSync(manifest, `${JSON.stringify({
-        schema: "uneffect.solver-retry-evidence/v1",
+        schema: "uneffect.verifier-retry-evidence/v1",
         tier,
         source,
         testName,
+        command,
         startedAt,
         finishedAt: new Date().toISOString(),
         attempts,

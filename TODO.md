@@ -32,7 +32,10 @@ create a second work queue from them.
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
 the reviewed DOM overlay expansion closed [#14](https://github.com/mizchi/uneffect/issues/14),
-and reviewed TypeScript traversal callback timing closed [#21](https://github.com/mizchi/uneffect/issues/21).
+the common native/WASM Z3 execution layer closed [#17](https://github.com/mizchi/uneffect/issues/17),
+reviewed external-registry configuration closed [#19](https://github.com/mizchi/uneffect/issues/19),
+reviewed TypeScript traversal callback timing closed [#21](https://github.com/mizchi/uneffect/issues/21),
+and evidence-preserving external-verifier timeout recovery closed [#22](https://github.com/mizchi/uneffect/issues/22).
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -41,6 +44,7 @@ documentation are all updated.
 - [x] Upgrade the SHA-pinned `pnpm/action-setup` workflow dependency to Node 24-native v6.0.9 and retain `actions/setup-node` pnpm-store caching.
 - [x] Isolate every solver-bearing test file in its own Vitest process so a Z3 WASM heap failure cannot poison later suites in the same CI tier.
 - [x] Enforce a parent-process deadline for explicitly isolated solver tests so synchronous Z3 WASM cannot block Vitest's in-process timeout indefinitely, with only bounded whole-process retries.
+- [x] Retry only classified child Quint process `ETIMEDOUT` failures at file granularity, retain every command/output/attempt in `verifier-retry-evidence/v1`, and upload it from every verifier CI tier. ([#22](https://github.com/mizchi/uneffect/issues/22))
 - [x] Route `just dogfood` through the manifest-validated isolated tier runner, including validated single-file tier selection, so a Z3 WASM failure cannot poison the remaining dogfood cases.
 - [x] Explain diagnostics instead of reporting solver verdicts: replay contract counterexamples over the invariant IR, trace effects to the operation that produces them, and locate unsupported constructs where they appear.
 - [x] Commit a `fixtures/` corpus that pairs each input with its generated `.diag` report, and score every diagnostic against a committed quality rubric that CI holds at its current level.

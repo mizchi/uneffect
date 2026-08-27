@@ -82,6 +82,13 @@ export const ciIsolatedTestNames: Readonly<Record<string, readonly string[]>> = 
 };
 
 export const ciIsolatedTestFiles: readonly string[] = ["test/dogfood.test.ts"];
+
+/** Files whose child Quint process failures must be captured at file granularity. */
+export const ciExternalVerifierTestFiles: readonly string[] = [
+  ...ciTestTiers.quint,
+  "test/async-safety.test.ts",
+  "test/spec-backends.test.ts",
+];
 export const ciIsolatedTestTimeoutMs = 60_000;
 /** Parent-process deadline for synchronous WASM calls that can block Vitest's own timer. */
 export const ciIsolatedProcessTimeoutMs = ciIsolatedTestTimeoutMs + 15_000;
@@ -113,6 +120,18 @@ export function resolveCiTestIncludes(tier: CiTestTier | undefined, argv: readon
 
 export function shouldRetryIsolatedSolverFailure(output: string): boolean {
   return classifyIsolatedSolverFailure(output) !== undefined;
+}
+
+/**
+ * Classifies only a child Quint process timeout reported by an otherwise live
+ * Vitest process. Model verdicts, parser errors, and Vitest timeouts are not
+ * infrastructure failures and deliberately do not match.
+ */
+export function classifyIsolatedVerifierFailure(tier: CiTestTier, output: string): "external-process-timeout" | undefined {
+  if (tier !== "quint" && tier !== "integration") return undefined;
+  if (!output.includes("ETIMEDOUT") || !/spawnSync\s+pnpm/.test(output)) return undefined;
+  if (tier === "integration" && !/\bquint\b/.test(output)) return undefined;
+  return "external-process-timeout";
 }
 
 export function classifyIsolatedSolverFailure(output: string): import("./solver-retry-evidence.js").SolverFailureKind | undefined {

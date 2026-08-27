@@ -438,7 +438,9 @@ same property is proved for arbitrary TypeScript.
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test
-  files are process-isolated.
+  files run in separate processes. Z3 tests that need heap-failure containment
+  can be isolated by selector; Quint-bearing files are captured and retried at
+  file granularity only for a child `spawnSync pnpm ETIMEDOUT` signature.
 - Hoare-contract, ownership-evidence, and temporal SMT-LIB share an
   `auto | native | wasm` execution boundary. Auto mode prefers an available
   native process, falls back only after classified infrastructure failure, and
@@ -448,14 +450,19 @@ same property is proved for arbitrary TypeScript.
   Temporal semantic lint, bounded reachability, structured trace decoding,
   property model enumeration, and typed-array obligations all use the same
   boundary; structured values are reconstructed from named scalar observations.
-- Explicitly isolated solver retries preserve an opt-in, source-linked evidence
-  bundle. It contains digest-addressed SMT-LIB, backend attempts, output,
-  verdict/failure kind, exit status, duration, and process memory snapshots.
+- Verifier-process retries preserve an opt-in, source-linked
+  `uneffect.verifier-retry-evidence/v1` bundle. It contains digest-addressed
+  SMT-LIB, backend attempts, output,
+  the exact runner command, verdict/failure kind, exit status, duration, and
+  process memory snapshots. Captured stdout/stderr are stored beside the
+  manifest with SHA-256 digests.
   A clean first attempt is removed; failed/retried attempts are uploaded from CI
   even if a later attempt passes. This makes transient failures reviewable but
   classifies only comparable cross-process observations: transient recovery,
   repeated time/memory exhaustion, reproducible runtime failure, or
-  inconclusive evidence. The WASM CI job repeats the telemetry-routing
+  inconclusive evidence. External Quint process recovery is classified
+  separately and never treats invariant violations, parse/type errors, or test
+  timeouts as retryable. The WASM CI job repeats the telemetry-routing
   conservation dogfood in three fresh processes with identical digest/call-count
   checks and a 64-execution budget.
 - Diagnostics from every checker share one reportable shape with explanation

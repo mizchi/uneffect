@@ -60,6 +60,15 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: just formal-z3
       - run: just formal-z3-stress
+      - name: Upload retained verifier retry evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: verifier-retry-evidence-${{ github.run_id }}-${{ github.job }}
+          path: .uneffect/verifier-retry-evidence
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
       - name: Upload solver stress evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -92,6 +101,15 @@ jobs:
       - name: Warm Quint evaluator cache without worker races
         run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-quint
+      - name: Upload retained verifier retry evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: verifier-retry-evidence-${{ github.run_id }}-${{ github.job }}
+          path: .uneffect/verifier-retry-evidence
+          if-no-files-found: ignore
+          include-hidden-files: true
+          retention-days: 14
 
   integration:
     runs-on: ubuntu-latest
@@ -115,12 +133,12 @@ jobs:
       - name: Warm Quint evaluator cache without worker races
         run: pnpm exec quint run specs/invalidate.qnt --invariant=cacheIsSound --max-steps=2 --max-samples=1 --verbosity=1
       - run: just formal-integration
-      - name: Upload retained solver retry evidence
+      - name: Upload retained verifier retry evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
-          name: solver-retry-evidence-${{ github.run_id }}-${{ github.job }}
-          path: .uneffect/solver-retry-evidence
+          name: verifier-retry-evidence-${{ github.run_id }}-${{ github.job }}
+          path: .uneffect/verifier-retry-evidence
           if-no-files-found: ignore
           include-hidden-files: true
           retention-days: 14
