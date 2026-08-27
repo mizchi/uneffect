@@ -2250,6 +2250,7 @@ interface UnifiedAsyncQuintOptions {
   reorderCleanup?: boolean;
   acquireBothBranches?: boolean;
   wrongBranchCleanup?: boolean;
+  bypassIntermediateCleanup?: boolean;
 }
 
 export function generateUnifiedAsyncQuint(
@@ -2440,7 +2441,7 @@ export function generateUnifiedAsyncQuint(
   };
   const ifGroupIdFromId = (id: string): string | undefined => /@if:\d+$/.test(id) ? id : undefined;
   const ifGroupId = (condition: AsyncControlCondition): string | undefined => ifGroupIdFromId(condition.id);
-  const resourceDecisionGroups = [...resources.reduce((groups, resource, resourceIndex) => {
+  const allResourceDecisionGroups = [...resources.reduce((groups, resource, resourceIndex) => {
     const groupIds = new Set(resource.controlPaths.flatMap((path) => {
       const root = path.find((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined);
       return root ? [switchGroupId(root) ?? ifGroupId(root)!] : [];
@@ -2451,7 +2452,76 @@ export function generateUnifiedAsyncQuint(
       groups.set(groupId, indexes);
     }
     return groups;
-  }, new Map<string, number[]>()).entries()].filter(([, resourceIndexes]) => resourceIndexes.length >= 2);
+  }, new Map<string, number[]>()).entries()];
+  const resourceDecisionGroups = allResourceDecisionGroups.filter(([, resourceIndexes]) => resourceIndexes.length >= 2);
+  const decisionGroupConditions = (resourceIndexes: readonly number[]): AsyncControlCondition[] =>
+    resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.flat())
+      .filter((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined);
+  const sequentialResourceGroups = allResourceDecisionGroups.length === 2
+    ? allResourceDecisionGroups.slice().sort((left, right) => {
+      const first = Math.min(...left[1].map((resourceIndex) => resources[resourceIndex]!.span.start));
+      const second = Math.min(...right[1].map((resourceIndex) => resources[resourceIndex]!.span.start));
+      return first - second;
+    })
+    : [];
+  const sequentialResourcePairs: Array<readonly [number, number]> = [];
+  if (sequentialResourceGroups.length === 2) {
+    const earlierIndexes = sequentialResourceGroups[0]![1];
+    const laterIndexes = sequentialResourceGroups[1]![1];
+    const earlierConditions = new Set(decisionGroupConditions(earlierIndexes).map(({ id }) => id));
+    const laterConditions = new Set(decisionGroupConditions(laterIndexes).map(({ id }) => id));
+    const independent = [...earlierConditions].every((id) => !laterConditions.has(id));
+    const cleanupPrecedesLaterAcquisition = earlierIndexes.every((earlierIndex) => laterIndexes.every((laterIndex) =>
+      resources[earlierIndex]!.scopeEnd <= resources[laterIndex]!.span.start,
+    ));
+    if (independent && cleanupPrecedesLaterAcquisition) {
+      const combinedConditionCount = new Set([...earlierConditions, ...laterConditions]).size;
+      if (combinedConditionCount > 8) {
+        throw new Error(`${owner} sequential resource decisions exceed the eight-condition proof budget`);
+      }
+      for (const [groupId, resourceIndexes] of sequentialResourceGroups) {
+        const conditions = decisionGroupConditions(resourceIndexes);
+        const conditionIds = [...new Set(conditions.map(({ id }) => id))];
+        if (groupId.includes("@switch:")) {
+          const decision = result.resourceSwitches.find((candidate) => candidate.owner === owner && candidate.id === groupId);
+          if (!decision || decision.discriminant !== "finite-string-identifier") {
+            throw new Error(`${owner} sequential resource decision ${groupId} requires a finite string-literal union identifier discriminant`);
+          }
+          if (!decision.hasDefault) {
+            throw new Error(`${owner} sequential resource decision ${groupId} has incomplete leaf coverage; add an explicit default resource path`);
+          }
+        }
+        const unsupportedPredicate = conditionIds.find((conditionId) => ifGroupIdFromId(conditionId) !== undefined
+          && !result.resourceIfs.some((decision) => decision.owner === owner
+            && decision.id === conditionId
+            && decision.predicate === "boolean-identifier"));
+        if (unsupportedPredicate) {
+          throw new Error(`${owner} sequential resource decision ${unsupportedPredicate} requires a Boolean identifier predicate`);
+        }
+        for (let left = 0; left < resourceIndexes.length; left++) for (let right = left + 1; right < resourceIndexes.length; right++) {
+          if (conditionPathsOverlap(
+            resources[resourceIndexes[left]!]!.controlPaths,
+            resources[resourceIndexes[right]!]!.controlPaths,
+          )) {
+            throw new Error(`${owner} sequential resource decision ${groupId} has overlapping acquisition paths`);
+          }
+        }
+        const groupPaths = resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.map((path) =>
+          path.filter((condition) => conditionIds.includes(condition.id)),
+        ));
+        const coversSelection = (selection: number): boolean => groupPaths.some((path) => path.every((condition) => {
+          const index = conditionIds.indexOf(condition.id);
+          return index >= 0 && Boolean(selection & (1 << index)) === condition.expected;
+        }));
+        if (!Array.from({ length: 1 << conditionIds.length }, (_, selection) => selection).every(coversSelection)) {
+          throw new Error(`${owner} sequential resource decision ${groupId} has incomplete leaf coverage`);
+        }
+      }
+      for (const earlierIndex of earlierIndexes) for (const laterIndex of laterIndexes) {
+        sequentialResourcePairs.push([earlierIndex, laterIndex]);
+      }
+    }
+  }
   const mixedResourceGroups = resourceDecisionGroups.filter(([, resourceIndexes]) => {
     const conditions = resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.flat());
     return conditions.some((condition) => switchGroupId(condition) !== undefined)
@@ -2713,6 +2783,21 @@ export function generateUnifiedAsyncQuint(
       const resource = resources[event.index]!;
       const guards = [`pc == ${pc}`, ...conditionPathGuards(resource.controlPaths)];
       emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], ...resetCaughtDisposalState(resource), [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, options.reuseStaleDisposal ? `disposed_${event.index}` : "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
+      if (options.bypassIntermediateCleanup) for (const [earlierIndex, laterIndex] of sequentialResourcePairs) {
+        if (laterIndex !== event.index) continue;
+        emit(`acquire_${labels[laterIndex]}_before_${labels[earlierIndex]}_cleanup`, [
+          ...guards,
+          `acquired_${earlierIndex}`,
+          `disposed_${earlierIndex}`,
+          `disposed_generation_${earlierIndex} == generation_${earlierIndex}`,
+        ], new Map([
+          ["pc", "-3"],
+          [`acquired_${laterIndex}`, "true"],
+          [`disposed_${laterIndex}`, "false"],
+          [`generation_${laterIndex}`, `generation_${laterIndex} + 1`],
+          [`disposed_${earlierIndex}`, "false"],
+        ]));
+      }
       const protectedCleanup = resource.catchesFailure && eventRegion && eventRegionLayout?.catchLayout.length
         ? normalLayout.slice(eventIndex + 1).find(({ event: candidate }) => candidate.kind === "dispose"
           && disposals[candidate.index]!.catchesFailure
@@ -2977,6 +3062,9 @@ export function generateUnifiedAsyncQuint(
   const branchResourceExclusivity = resourceDecisionGroups.flatMap(([, resourceIndexes]) => resourceIndexes.flatMap((left, leftIndex) =>
     resourceIndexes.slice(leftIndex + 1).map((right) => `not(acquired_${left} and acquired_${right})`),
   )).join(" and ") || "true";
-  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  const sequentialResourceJoinSafety = sequentialResourcePairs.map(([earlierIndex, laterIndex]) =>
+    `(not(acquired_${laterIndex}) or not(acquired_${earlierIndex}) or (disposed_${earlierIndex} and disposed_generation_${earlierIndex} == generation_${earlierIndex}))`,
+  ).join(" and ") || "true";
+  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val sequentialResourceJoinSafe = ${sequentialResourceJoinSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and sequentialResourceJoinSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

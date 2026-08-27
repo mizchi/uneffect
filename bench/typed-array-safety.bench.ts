@@ -42,6 +42,7 @@ const branchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/
 const switchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/switch-correlated-cleanup.ts", import.meta.url), "utf8");
 const nestedBranchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/nested-branch-correlated-cleanup.ts", import.meta.url), "utf8");
 const mixedDecisionCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/mixed-decision-correlated-cleanup.ts", import.meta.url), "utf8");
+const sequentialDecisionCleanupSource = readFileSync(new URL("../examples/dogfood/sequential-decision-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -490,6 +491,11 @@ describe("typed-array static verification", () => {
   bench("lower mixed switch and Boolean cleanup through shared handler", () => {
     const result = analyzeAsyncSafety("mixed-decision-correlated-cleanup.ts", mixedDecisionCorrelatedCleanupSource);
     generateUnifiedAsyncQuint("mixed_decision_correlated_cleanup", result, "deliverMixedChoice");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower sequential decision cleanup through an intermediate join", () => {
+    const result = analyzeAsyncSafety("sequential-decision-cleanup.ts", sequentialDecisionCleanupSource);
+    generateUnifiedAsyncQuint("sequential_decision_cleanup", result, "deliverSequential");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

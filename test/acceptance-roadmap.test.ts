@@ -3412,6 +3412,35 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toThrow(/requires a Boolean identifier predicate/);
   });
 
+  it("preserves independent sequential resource decisions across an intermediate join", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/sequential-decision-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; controlConditions: Array<{ id: string; expected: boolean }> }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true] },
+      { binding: "secondary", polarity: [false] },
+      { binding: "archive", polarity: [true] },
+      { binding: "mirror", polarity: [false] },
+    ]);
+    expect(result.resources[1]?.controlConditions[0]?.id).toBe(result.resources[2]?.controlConditions[0]?.id);
+    expect(result.resources[3]?.controlConditions[0]?.id).toBe(result.resources[4]?.controlConditions[0]?.id);
+    expect(result.resources[1]?.controlConditions[0]?.id).not.toBe(result.resources[3]?.controlConditions[0]?.id);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("sequential_decision_cleanup", result, "deliverSequential") as string;
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_3 and acquired_4\)/);
+    expect(quint).toContain("val sequentialResourceJoinSafe");
+    expect(quint).toMatch(/not\(acquired_3\) or not\(acquired_1\) or \(disposed_1 and disposed_generation_1 == generation_1\)/);
+    expect(quint).toMatch(/not\(acquired_4\) or not\(acquired_2\) or \(disposed_2 and disposed_generation_2 == generation_2\)/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

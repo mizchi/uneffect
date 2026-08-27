@@ -1735,3 +1735,18 @@ an expression predicate, an open discriminant, incomplete or overlapping mixed
 leaves, a ninth combined condition, multiple acquisition, wrong-leaf cleanup,
 skipped cleanup, premature handler entry, and floating rejection. The timing is
 not a CI budget or evidence for arbitrary decision shapes or general CFG joins.
+
+The sequential-decision-cleanup workload completes one Boolean-selected
+resource scope, reconverges, and then enters an independent finite
+string-literal switch resource scope. It keeps the two condition groups
+separate and emits an intermediate invariant requiring every selected first
+stage resource to be disposed before either second-stage resource is acquired.
+A filtered run on 2026-08-28 measured 151.04 ms mean (6.6206
+operations/second over 20 fixed iterations, 3.55% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model, prove the
+intermediate invariant load-bearing by weakening it, and reject delayed first
+stage cleanup, wrong-stage acquisition, wrong-resource cleanup, incomplete or
+overlapping stages, an escaped disposed alias, a ninth combined condition,
+premature handler entry, and floating rejection. The timing is not a CI budget
+or evidence for non-uniform completion joins, loops, or arbitrary CFGs.

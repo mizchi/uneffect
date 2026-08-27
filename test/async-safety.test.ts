@@ -1641,6 +1641,99 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 120_000);
 
+  it("keeps sequential resource decisions independent across an intermediate cleanup join", () => {
+    const fileName = "examples/dogfood/sequential-decision-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const quint = generateUnifiedAsyncQuint("sequential_decision_cleanup", result, "deliverSequential");
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_3 and acquired_4\)/);
+    expect(quint).toMatch(/val sequentialResourceJoinSafe = \(not\(acquired_3\) or not\(acquired_1\)/);
+    const positive = run(quint, 60);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["intermediate_cleanup_bypassed", { bypassIntermediateCleanup: true }],
+      ["wrong_stage_path", { acquireBothBranches: true }],
+      ["wrong_resource_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `sequential_decision_cleanup_${name}`,
+        result,
+        "deliverSequential",
+        options,
+      ), 60);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+    const bypassed = generateUnifiedAsyncQuint(
+      "sequential_decision_cleanup_load_bearing",
+      result,
+      "deliverSequential",
+      { bypassIntermediateCleanup: true },
+    );
+    const withoutIntermediateInvariant = bypassed.replace(
+      /val sequentialResourceJoinSafe = .*$/m,
+      "val sequentialResourceJoinSafe = true",
+    );
+    const weakened = run(withoutIntermediateInvariant, 60);
+    expect(weakened.status, weakened.stdout + weakened.stderr).toBe(0);
+
+    const incomplete = analyzeAsyncSafety("sequential-decision-incomplete.ts", source.replace(
+      `    } else {
+      await using secondary = openSecondary();
+      await secondary.send().then(() => undefined);
+    }`,
+      "    }",
+    ));
+    expect(() => generateUnifiedAsyncQuint("sequential_decision_incomplete", incomplete, "deliverSequential"))
+      .toThrow(/sequential resource decision .* incomplete leaf coverage/);
+
+    const overlapping = analyzeAsyncSafety("sequential-decision-overlap.ts", source.replace(
+      "      await using primary = openPrimary();",
+      "      await using primary = openPrimary();\n      await using duplicate = openSecondary();",
+    ));
+    expect(() => generateUnifiedAsyncQuint("sequential_decision_overlap", overlapping, "deliverSequential"))
+      .toThrow(/overlapping acquisition paths/);
+
+    const leaked = analyzeAsyncSafety("sequential-decision-leak.ts", source
+      .replace("  using audit = openAudit();", "  using audit = openAudit();\n  let leaked: SequentialChannel | undefined;")
+      .replace("      await primary.send().then(() => undefined);", "      await primary.send().then(() => undefined);\n      leaked = primary;")
+      .replace("      await secondary.send().then(() => undefined);", "      await secondary.send().then(() => undefined);\n      leaked = secondary;")
+      .replace("\n    switch (laterRoute)", "\n    await leaked!.send().then(() => undefined);\n\n    switch (laterRoute)"));
+    expect(leaked.diagnostics).toContainEqual(expect.objectContaining({ kind: "disposed-resource-use" }));
+
+    const predicates = Array.from({ length: 8 }, (_, index) => `b${index}: boolean`).join(", ");
+    const decisions = Array.from({ length: 8 }, (_, index) => `${index === 0 ? "if" : "else if"} (b${index}) { await using r${index} = open(); await r${index}.send() }`).join(" ");
+    const overBudget = analyzeAsyncSafety("sequential-decision-over-budget.ts", `
+      type Route = "archive" | "mirror"
+      interface R extends AsyncDisposable { send(): Promise<void> }
+      declare function open(): R
+      async function overBudget(route: Route, ${predicates}) {
+        try {
+          ${decisions} else { await using r8 = open(); await r8.send() }
+          switch (route) {
+            case "archive": { await using archive = open(); await archive.send(); break }
+            default: { await using mirror = open(); await mirror.send() }
+          }
+        } catch {}
+        await Promise.resolve(1).then(value => value)
+      }
+    `);
+    expect(() => generateUnifiedAsyncQuint("sequential_decision_over_budget", overBudget, "overBudget"))
+      .toThrow(/sequential resource decisions exceed the eight-condition proof budget/);
+
+    const floating = analyzeAsyncSafety("sequential-decision-floating.ts", source.replace(
+      "await mirror.send().then(() => undefined);",
+      "mirror.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverSequential",
+      kind: "floating-promise",
+    }));
+  }, 150_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

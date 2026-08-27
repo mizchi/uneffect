@@ -362,6 +362,15 @@ same property is proved for arbitrary TypeScript.
   overlapping leaves, multiple resources per leaf, and larger mixed trees are
   explicit non-proofs. Cleanup, handler, acquisition, and floating-Promise fault
   injections remain load-bearing.
+- A sequential extension accepts two independent finite resource decisions in
+  one protected `try`, with the first lexical resource scope ending before the
+  second begins. It validates each stage and one shared eight-condition budget,
+  keeps pairwise exclusion local to each decision, and emits a load-bearing
+  `sequentialResourceJoinSafe` invariant requiring first-stage disposal before
+  second-stage acquisition. Incomplete or overlapping stages, aliases used
+  after the intermediate join, delayed/skipped/wrong cleanup, wrong-stage
+  acquisition, premature handler entry, and floating rejection are explicit
+  negative controls. This is not a general CFG fixed point.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

@@ -27,8 +27,10 @@ release date commitment.
    implemented, as is one exhaustive finite string-literal `switch` with three
    branch-local resources. One three-leaf nested Boolean decision tree is also
    implemented. One finite switch with a nested Boolean preferred choice and a
-   default backup is also implemented. Other mixed shapes and arbitrary CFG
-   work remain, without weakening floating-error checks.
+   default backup is also implemented. Two independent finite resource
+   decisions may now reconverge sequentially with an explicit
+   dispose-before-next-acquire invariant. Non-uniform completion joins and
+   arbitrary CFG work remain, without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies

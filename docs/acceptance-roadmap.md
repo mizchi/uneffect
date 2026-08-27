@@ -752,6 +752,20 @@ Multiple acquisition, wrong-leaf cleanup, skipped cleanup, premature handler
 entry, and floating rejection remain negative controls. Other mixed shapes,
 arbitrary CFG joins, loops, and escaping aliases remain open.
 
+A sequential-decision sibling accepts two independent finite resource
+decisions in one protected `try`. The first decision's selected lexical resource
+is awaited and disposed before control reconverges; a later decision then
+selects another resource. Generation validates each stage's provenance,
+complete/non-overlapping coverage, and one combined eight-condition budget,
+while keeping their acquisition-exclusion groups separate. Quint additionally
+requires every acquired first-stage resource to be disposed before any
+second-stage acquisition. A dedicated delayed-cleanup fault passes when that
+invariant is weakened, so the check is load-bearing. Incomplete/overlapping
+stages, disposed aliases crossing the join, wrong-stage acquisition,
+wrong-resource or skipped cleanup, premature handler entry, and floating
+rejection are negative controls. Non-uniform return/throw joins, more than two
+stages, loops, and arbitrary CFGs remain open.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with

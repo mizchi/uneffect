@@ -203,6 +203,26 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val disposalAcquisitionSafe");
   });
 
+  it("preserves independent sequential resource decisions through shared recovery", () => {
+    const fileName = "examples/dogfood/sequential-decision-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true] },
+      { binding: "secondary", polarity: [false] },
+      { binding: "archive", polarity: [true] },
+      { binding: "mirror", polarity: [false] },
+    ]);
+    expect(result.resources[1]?.controlConditions[0]?.id).not.toBe(result.resources[3]?.controlConditions[0]?.id);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("sequential_decision_cleanup", result, "deliverSequential");
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_3 and acquired_4\)/);
+    expect(quint).toContain("val sequentialResourceJoinSafe");
+    expect(quint).toContain("val disposalAcquisitionSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");
