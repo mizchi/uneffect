@@ -2580,6 +2580,47 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("summarizes affine branch joins only when their condition is loop-invariant", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state weighted: int
+      state priority: bool
+      init pending = 0
+      init weighted = 0
+      init priority = false
+      action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : pending) : 0)
+    */
+      interface Runtime { pending: number; weighted: number; priority: boolean }
+      /* uneffect: refinement branchDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement branchDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement branchDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          if (runtime.priority) runtime.weighted += runtime.pending
+          else runtime.weighted++
+        }
+      }
+    `;
+    const temporal = parseSpec("branch-drain.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "branch-drain.ts", source, "branchDrain", temporal,
+    )).resolves.toEqual([]);
+
+    const mutatedCondition = source.replace(
+      "else runtime.weighted++",
+      "else runtime.weighted++\n          runtime.priority = false",
+    );
+    expect(validateRefinementActionBodies(
+      "branch-drain-mutated-condition.ts", mutatedCondition, "branchDrain", temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+
+    const counterCondition = source.replaceAll("runtime.priority", "runtime.pending > 2");
+    expect(validateRefinementActionBodies(
+      "branch-drain-counter-condition.ts", counterCondition, "branchDrain", temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

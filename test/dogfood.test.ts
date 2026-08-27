@@ -95,6 +95,35 @@ describe("Uneffect dogfood", () => {
     );
   });
 
+  it("proves priority-only telemetry pressure across a symbolic branch join", async () => {
+    const fileName = "examples/dogfood/priority-telemetry-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
+
+    const wrongOrder = source.replace(
+      "runtime.queued--;\n    if (runtime.priority) runtime.pressure += runtime.queued;",
+      "if (runtime.priority) runtime.pressure += runtime.queued;\n    runtime.queued--;",
+    );
+    expect(await validateRefinementActionBodiesWithZ3(
+      fileName, wrongOrder, "priorityTelemetry", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "drain", target: "pressure",
+    }));
+
+    const mutablePriority = source.replace(
+      "if (runtime.priority) runtime.pressure += runtime.queued;",
+      "if (runtime.priority) runtime.pressure += runtime.queued;\n    runtime.priority = false;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, mutablePriority, "priorityTelemetry", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("proves pairwise worker-pool scale-up including target overshoot", async () => {
     const fileName = "examples/dogfood/worker-pool-scale-up.ts";
     const source = readFileSync(fileName, "utf8");

@@ -535,6 +535,48 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("summarizes a loop-invariant conditional affine recurrence", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * state priority: bool
+       * init pending = 0
+       * init weighted = 0
+       * init priority = false
+       * action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : 0) : 0)
+       */
+      interface Runtime { pending: number; weighted: number; priority: boolean }
+      /* uneffect: refinement conditionalDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          if (runtime.priority) runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("conditional-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("conditional-drain.ts", source, "conditionalDrain", temporal)).resolves.toEqual([]);
+
+    const mutatingGuard = source.replace(
+      "if (runtime.priority) runtime.weighted += runtime.pending",
+      "if (runtime.priority) runtime.weighted += runtime.pending\n          runtime.priority = false",
+    );
+    await expect(validateActions(
+      "conditional-drain-mutating-guard.ts",
+      mutatingGuard,
+      "conditionalDrain",
+      temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body",
+      modelName: "drain",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

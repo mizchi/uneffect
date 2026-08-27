@@ -138,6 +138,9 @@ export function drain(runtime: Runtime) {
   }
 }`;
 const triangularDrainSpec = parseSpec(triangularDrainFile, triangularDrainSource).temporal;
+const priorityTelemetryFile = "examples/dogfood/priority-telemetry-drain.ts";
+const priorityTelemetrySource = readFileSync(priorityTelemetryFile, "utf8");
+const priorityTelemetrySpec = parseSpec(priorityTelemetryFile, priorityTelemetrySource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
 const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
 const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
@@ -1049,6 +1052,15 @@ describe("typed-array static verification", () => {
       triangularDrainSource,
       "triangularDrain",
       triangularDrainSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("summarize a loop-invariant conditional affine recurrence", () => {
+    validateRefinementActionBodies(
+      priorityTelemetryFile,
+      priorityTelemetrySource,
+      "priorityTelemetry",
+      priorityTelemetrySpec,
     );
   }, { time: 500, iterations: 20 });
 

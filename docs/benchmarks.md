@@ -1373,3 +1373,12 @@ but the singleton summary emitted by the current runner did not include sample
 statistics, so no timing or regression claim is recorded. The workload covers
 affine decomposition and triangular closed-form construction; it excludes
 parsing, Z3 equivalence, mutually coupled recurrences, and general CFG joins.
+
+On 2026-08-27, the realistic priority-telemetry variant measured 0.1175 ms mean
+(8,509.42 operations/second over 4,255 samples, 9.14% relative margin of error).
+A stable boolean selects between triangular pressure accounting and stuttering
+while a backlog drains. The warm workload measures branch collection, invariant
+condition screening, affine decomposition, and piecewise closed-form
+construction. Its high margin of error makes it an observation rather than a
+comparative claim or regression budget. It excludes nested/dynamically changing
+conditions, Z3 equivalence, and exception-aware loop joins.

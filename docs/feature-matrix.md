@@ -48,10 +48,13 @@ negative or fractional division, and the final counter preserves overshoot.
 Supported symbolic updates at loop entry are substituted through the guard,
 trip count, and final values. For a unit countdown, another state field may
 change by an affine function of the ranking counter; the checker derives its
-triangular closed form. Update order remains significant. Dynamic or unsafe
-bounds or steps, other guards, mutually coupled or self-amplifying recurrences,
-opaque entry updates, and abrupt exits remain unsupported. This is a closed-form
-affine rule, not a general loop fixed point.
+triangular closed form. One scalar conditional join is accepted when its
+condition is unchanged by the loop and both branches have affine deltas; the
+condition is evaluated from loop-entry state. Update order remains significant.
+Dynamic or unsafe bounds or steps, other loop guards, mutated or counter-dependent
+branch conditions, nested piecewise joins, mutually coupled or self-amplifying
+recurrences, opaque entry updates, and abrupt exits remain unsupported. This is
+a closed-form affine rule, not a general loop fixed point.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

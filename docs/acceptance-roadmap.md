@@ -274,11 +274,13 @@ step-sensitive final backlog, exact accounting, a
 double-accounting mismatch, and a nonterminating increment control. A separate
 acceptance case derives a triangular total when a unit countdown updates a
 second field by an affine function of the post-decrement ranking counter; an
-update-order change and a self-amplifying recurrence are negative controls.
-Dynamic or unsafe bounds or steps, other guard shapes, mutually coupled
-recurrences, opaque entry updates, break/continue, throw/return, and general
-loop invariants remain fail-closed. These are closed-form affine rules, not a
-general TypeScript CFG proof.
+update-order change and a self-amplifying recurrence are negative controls. A
+third case joins two affine deltas behind a loop-invariant scalar condition and
+rejects a condition that the loop mutates. Dynamic or unsafe bounds or steps,
+other loop guards, counter-dependent or nested piecewise conditions, mutually
+coupled recurrences, opaque entry updates, break/continue, throw/return, and
+general loop invariants remain fail-closed. These are closed-form affine rules,
+not a general TypeScript CFG proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

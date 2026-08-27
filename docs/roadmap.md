@@ -13,9 +13,10 @@ release date commitment.
    control-flow fixed point. A first unbounded directional affine-loop rule now
    derives a closed form from a symbolic loop-entry state and signed constant
    bound without finite expansion, including positive constant step magnitudes,
-   exact overshoot in both directions, and triangular totals for unit-countdown
-   state deltas affine in the ranking counter. Arbitrary mutually coupled loop
-   joins and exception-heavy recurrences remain.
+   exact overshoot in both directions, triangular totals for unit-countdown
+   state deltas affine in the ranking counter, and one loop-invariant scalar
+   conditional join over affine branches. Nested/dynamically changing joins,
+   arbitrary mutually coupled loops, and exception-heavy recurrences remain.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

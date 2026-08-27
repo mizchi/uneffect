@@ -261,6 +261,20 @@ interface AffineStateExpression {
   coefficients: ReadonlyMap<string, number>;
 }
 
+interface AffineLoopDelta {
+  constant: number;
+  counterCoefficient: number;
+}
+
+type PiecewiseAffineLoopDelta =
+  | { kind: "affine"; value: AffineLoopDelta }
+  | {
+    kind: "conditional";
+    condition: TemporalExpression;
+    whenTrue: AffineLoopDelta;
+    whenFalse: AffineLoopDelta;
+  };
+
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
   const safe = (value: number): number | undefined => Number.isSafeInteger(value) ? value : undefined;
@@ -1635,16 +1649,79 @@ function validateRefinementActionBodiesInSource(
         const counterDelta = counterForm?.constant;
         if (!counterForm || counterForm.coefficients.size !== 1 || counterForm.coefficients.get(counterName) !== 1) return undefined;
         if (counterDelta === undefined || (descending ? counterDelta >= 0 : counterDelta <= 0)) return undefined;
-        const deltas = new Map<string, { constant: number; counterCoefficient: number }>();
-        for (const name of stateNames) {
-          if (name === counterName) {
-            deltas.set(name, { constant: counterDelta, counterCoefficient: 0 });
-            continue;
-          }
-          const form = decomposeAffineStateExpression(loopUpdates.get(name) ?? { kind: "name", name });
+        const affineDelta = (name: string, expression: TemporalExpression): AffineLoopDelta | undefined => {
+          const form = decomposeAffineStateExpression(expression);
           if (!form || form.coefficients.get(name) !== 1) return undefined;
           if ([...form.coefficients].some(([symbol, coefficient]) => coefficient !== 0 && symbol !== name && symbol !== counterName)) return undefined;
-          deltas.set(name, { constant: form.constant, counterCoefficient: form.coefficients.get(counterName) ?? 0 });
+          return { constant: form.constant, counterCoefficient: form.coefficients.get(counterName) ?? 0 };
+        };
+        const scalarNames = (expression: TemporalExpression): ReadonlySet<string> | undefined => {
+          if (expression.kind === "integer" || expression.kind === "boolean") return new Set();
+          if (expression.kind === "name") return new Set([expression.name]);
+          if (expression.kind === "unary") return scalarNames(expression.operand);
+          if (expression.kind === "binary") {
+            const left = scalarNames(expression.left);
+            const right = scalarNames(expression.right);
+            return left && right ? new Set([...left, ...right]) : undefined;
+          }
+          if (expression.kind === "conditional") {
+            const condition = scalarNames(expression.condition);
+            const whenTrue = scalarNames(expression.whenTrue);
+            const whenFalse = scalarNames(expression.whenFalse);
+            return condition && whenTrue && whenFalse
+              ? new Set([...condition, ...whenTrue, ...whenFalse])
+              : undefined;
+          }
+          return undefined;
+        };
+        const atLoopEntry = (expression: TemporalExpression): TemporalExpression | undefined => {
+          if (expression.kind === "integer" || expression.kind === "boolean") return expression;
+          if (expression.kind === "name") return entryValues.get(expression.name) ?? expression;
+          if (expression.kind === "unary") {
+            const operand = atLoopEntry(expression.operand);
+            return operand ? { ...expression, operand } : undefined;
+          }
+          if (expression.kind === "binary") {
+            const left = atLoopEntry(expression.left);
+            const right = atLoopEntry(expression.right);
+            return left && right ? { ...expression, left, right } : undefined;
+          }
+          if (expression.kind === "conditional") {
+            const condition = atLoopEntry(expression.condition);
+            const whenTrue = atLoopEntry(expression.whenTrue);
+            const whenFalse = atLoopEntry(expression.whenFalse);
+            return condition && whenTrue && whenFalse
+              ? { ...expression, condition, whenTrue, whenFalse }
+              : undefined;
+          }
+          return undefined;
+        };
+        const piecewiseDelta = (name: string, expression: TemporalExpression): PiecewiseAffineLoopDelta | undefined => {
+          const direct = affineDelta(name, expression);
+          if (direct) return { kind: "affine", value: direct };
+          if (expression.kind !== "conditional") return undefined;
+          const conditionNames = scalarNames(expression.condition);
+          if (!conditionNames || [...conditionNames].some((conditionName) => stateNames.has(conditionName)
+            && !sameRefinementExpression(
+              loopUpdates.get(conditionName) ?? { kind: "name", name: conditionName },
+              { kind: "name", name: conditionName },
+            ))) return undefined;
+          const whenTrue = affineDelta(name, expression.whenTrue);
+          const whenFalse = affineDelta(name, expression.whenFalse);
+          const condition = atLoopEntry(expression.condition);
+          return whenTrue && whenFalse && condition
+            ? { kind: "conditional", condition, whenTrue, whenFalse }
+            : undefined;
+        };
+        const deltas = new Map<string, PiecewiseAffineLoopDelta>();
+        for (const name of stateNames) {
+          if (name === counterName) {
+            deltas.set(name, { kind: "affine", value: { constant: counterDelta, counterCoefficient: 0 } });
+            continue;
+          }
+          const delta = piecewiseDelta(name, loopUpdates.get(name) ?? { kind: "name", name });
+          if (!delta) return undefined;
+          deltas.set(name, delta);
         }
         const stepValue = Math.abs(counterDelta);
         if (!Number.isSafeInteger(stepValue) || stepValue <= 0) return undefined;
@@ -1700,26 +1777,11 @@ function validateRefinementActionBodiesInSource(
           left: { kind: "binary", operator: "multiply", left: loopIterations, right: entryCounter },
           right: multiplyByInteger(triangularLoopIterations, counterDelta),
         };
-        for (const [name, delta] of deltas) {
-          const entryValue = entryValues.get(name)!;
-          if (name === counterName) {
-            const totalDecrease: TemporalExpression = stepValue === 1 ? loopIterations : {
-              kind: "binary", operator: "multiply", left: step, right: loopIterations,
-            };
-            updates.set(name, {
-              kind: "conditional", condition: entryGuard,
-              whenTrue: stepValue === 1 ? stop : {
-                kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
-              },
-              whenFalse: entryValue,
-            });
-            continue;
-          }
-          if (delta.constant === 0 && delta.counterCoefficient === 0) continue;
+        const totalFor = (delta: AffineLoopDelta): TemporalExpression => {
           const canonicalUnitCountdown = counterDelta === -1
             && sameRefinementExpression(loopIterations, entryCounter)
             && delta.counterCoefficient !== 0;
-          const unguardedTotal: TemporalExpression = canonicalUnitCountdown ? (() => {
+          return canonicalUnitCountdown ? (() => {
             const reducibleByTwo = delta.counterCoefficient % 2 === 0
               && (delta.counterCoefficient + 2 * delta.constant) % 2 === 0;
             const linearCoefficient = reducibleByTwo ? delta.counterCoefficient / 2 : delta.counterCoefficient;
@@ -1743,6 +1805,34 @@ function validateRefinementActionBodiesInSource(
               : delta.counterCoefficient === 0 ? constantTotal
               : { kind: "binary", operator: "add", left: constantTotal, right: counterTotal };
           })();
+        };
+        for (const [name, piecewise] of deltas) {
+          const entryValue = entryValues.get(name)!;
+          if (name === counterName) {
+            const totalDecrease: TemporalExpression = stepValue === 1 ? loopIterations : {
+              kind: "binary", operator: "multiply", left: step, right: loopIterations,
+            };
+            updates.set(name, {
+              kind: "conditional", condition: entryGuard,
+              whenTrue: stepValue === 1 ? stop : {
+                kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
+              },
+              whenFalse: entryValue,
+            });
+            continue;
+          }
+          const unguardedTotal: TemporalExpression = piecewise.kind === "affine"
+            ? totalFor(piecewise.value)
+            : {
+              kind: "conditional", condition: piecewise.condition,
+              whenTrue: totalFor(piecewise.whenTrue),
+              whenFalse: totalFor(piecewise.whenFalse),
+            };
+          const unchanged = piecewise.kind === "affine"
+            ? piecewise.value.constant === 0 && piecewise.value.counterCoefficient === 0
+            : piecewise.whenTrue.constant === 0 && piecewise.whenTrue.counterCoefficient === 0
+              && piecewise.whenFalse.constant === 0 && piecewise.whenFalse.counterCoefficient === 0;
+          if (unchanged) continue;
           const totalDelta: TemporalExpression = {
             kind: "conditional", condition: entryGuard, whenTrue: unguardedTotal, whenFalse: zero,
           };
