@@ -39,10 +39,14 @@ consumes labeled `continue` and `break` paths owned by a canonical bounded outer
 `for` after loop-scoped async disposal; break reaches the first post-loop await
 without routing ordinary completion out of the loop. A function-scoped caught
 await rejection now traverses mandatory `finally` and mixed async/sync cleanup
-in reverse acquisition order; generated Quint makes that order an invariant
-and rejects reordered, skipped, and floating-Promise controls. The next
-Red/Green slice generalizes nested scopes and joins without weakening rejection
-ownership. Cross/nested labels, dynamic
+in reverse acquisition order. The nested fragment now carries two independently
+rejecting awaits through a conditional recover/rethrow join and mandatory
+finally, disposes an inner async scope before an outer awaited continuation,
+and extends the cleanup invariant across containing scopes. Generated Quint
+rejects reordered and skipped cleanup while floating and unresolved-label
+controls remain diagnostics. The next Red/Green slice composes nested disposal
+failure into an enclosing catch before moving to the general CFG fixed point.
+Cross/nested labels, dynamic
 loops, aliases, opaque throw payloads, and dynamic dispatch remain explicit
 non-proofs. The detailed tested
 fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
@@ -76,7 +80,7 @@ by the phase ordering.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Nested-scope and arbitrary-join Promise/exception/disposal CFG fixed point |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Nested disposal-failure catch composition, then arbitrary-join CFG fixed point |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -741,6 +745,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Lower a labeled `continue` from mandatory `finally` to its canonical bounded outer `for`, completing reverse-order loop-scoped async disposal before reacquiring the next resource generation; reject unknown labels, non-canonical/dynamic bounds, intervening statements, and loops beyond the explicit eight-iteration proof budget.
     - [x] Lower the matching labeled `break` through a distinct reverse-order cleanup path to the first post-loop await, while ordinary completion still advances the bounded loop; retain non-canonical bounds and non-loop label owners as explicit non-proofs and reject a cleanup-skip fault in Quint.
     - [x] Route one caught awaited rejection through concrete catch/finally statements and two function-scoped sync/async resources, prove reverse acquisition order with an explicit Quint invariant, and reject reordered cleanup, skipped cleanup, and a floating Promise control.
+    - [x] Join two independently rejecting awaits through a conditional catch recover/rethrow and mandatory finally, dispose an inner async scope before an outer awaited continuation, extend cleanup precedence across containing scopes, and retain reorder/skip/floating/unresolved-label controls.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

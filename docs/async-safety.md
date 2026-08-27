@@ -572,8 +572,22 @@ exposes `cleanupOrderSafe`: disposing an earlier same-scope acquisition is safe
 only when every later acquired resource has completed disposal for its current
 generation. Reordered and skipped-cleanup fault lowerings violate
 `resourceSafe`; removing the source `await` still produces `floating-promise`.
-This is not yet a proof for nested resource scopes, arbitrary handler joins, or
-multiple independently rejected awaited chains.
+That function-scoped case alone does not establish nested resource scopes,
+arbitrary handler joins, or multiple independently rejected awaited chains.
+
+The next checked nested fragment has one outer synchronous resource and one
+contained asynchronous resource. Either of two sequential awaited chains may
+enter the same catch. A finite Boolean catch join either recovers or rethrows;
+both paths traverse mandatory finally. Recovery completes the inner scope's
+async disposal before the first outer awaited continuation, while rethrow
+enters terminal cleanup. `cleanupOrderSafe` now covers both same-scope reverse
+acquisition and containing-scope precedence: an outer resource cannot be
+disposed while an acquired inner resource generation remains live. Quint
+rejects outer-before-inner cleanup and a scope-exit-cleanup skip. A branch that
+drops the second `await` is still `floating-promise`, and a handler transfer to
+an unresolved enclosing label remains `unsupported-control-transfer`.
+Disposal rejection entering a general enclosing handler and arbitrary or
+irreducible joins remain outside this fragment.
 
 `controlRegions` gives every `try` statement a stable source-derived identity
 and retains its protected, catch, finally, and complete source spans.

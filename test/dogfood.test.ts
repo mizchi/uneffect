@@ -80,6 +80,22 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val cleanupOrderSafe");
   });
 
+  it("keeps nested session cleanup ahead of outer audit continuation", () => {
+    const fileName = "examples/dogfood/nested-rejection-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.promises.filter(({ observation }) => observation === "await")).toHaveLength(3);
+    expect(result.disposals.map(({ binding, scopeDepth }) => ({ binding, scopeDepth }))).toEqual([
+      { binding: "session", scopeDepth: 1 },
+      { binding: "audit", scopeDepth: 0 },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("nested_rejection_cleanup", result, "deliverNested");
+    expect(quint).toContain("action promise_0_reject_caught");
+    expect(quint).toContain("action promise_1_reject_caught");
+    expect(quint).toContain("action dispose_start_session_scope_exit");
+    expect(quint).toContain("not(disposed_0) or not(acquired_1) or (disposed_1");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

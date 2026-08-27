@@ -2184,7 +2184,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
+export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; skipScopeCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
@@ -2379,10 +2379,15 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     aliases.forEach((_, index) => lines.push(`    alias_generation_${index}' = ${updates.get(`alias_generation_${index}`) ?? `alias_generation_${index}`},`));
     lines.push("  }");
   };
-  const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
+  const resourceIndexForDisposal = (disposalIndex: number): number => {
     const disposal = disposals[disposalIndex]!;
     const resourceIndex = resources.findIndex((resource) => resource.binding === disposal.binding && resource.scopeId === disposal.scopeId);
-    if (resourceIndex < 0) return;
+    if (resourceIndex < 0) throw new Error(`${owner} disposal ${disposal.binding} has no matching resource`);
+    return resourceIndex;
+  };
+  const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
+    const disposal = disposals[disposalIndex]!;
+    const resourceIndex = resourceIndexForDisposal(disposalIndex);
     const label = `${labels[resourceIndex]!}${suffix}`;
     emit(`skip_unacquired_${label}`, [`pc == ${current}`, `not(acquired_${resourceIndex})`], new Map([["pc", String(next)]]));
     emit(`skip_disposed_${label}`, [`pc == ${current}`, `disposed_${resourceIndex}`, `disposed_generation_${resourceIndex} == generation_${resourceIndex}`], new Map([["pc", String(next)]]));
@@ -2495,6 +2500,9 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (event.kind === "dispose") {
       const failureTarget = disposals[event.index]!.catchesFailure && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
       emitDisposal(event.index, pc, next, "_scope_exit", failureTarget);
+      if (options.skipScopeCleanup) emit(`skip_scope_cleanup_${labels[resourceIndexForDisposal(event.index)]!}`, [
+        `pc == ${pc}`,
+      ], new Map([["pc", String(next)], ["broken", "true"]]));
       return;
     }
     const observation = awaited[event.index]!;
@@ -2634,8 +2642,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   if (options.skipCleanup) emit("finish_without_cleanup", [`pc == ${cleanupPc}`], new Map([["pc", "-2"], ["broken", "true"]]));
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const disposed = resources.map((_, index) => `(not(acquired_${index}) or (disposed_${index} and disposed_generation_${index} == generation_${index}))`).join(" and ") || "true";
+  const scopeStart = (resource: ResourceBinding): number => Number(resource.scopeId.slice(resource.scopeId.lastIndexOf("@") + 1));
   const cleanupOrder = resources.flatMap((earlier, earlierIndex) => resources.flatMap((later, laterIndex) =>
-    earlier.scopeId === later.scopeId && earlier.acquisitionIndex < later.acquisitionIndex
+    (earlier.scopeId === later.scopeId && earlier.acquisitionIndex < later.acquisitionIndex)
+      || (later.scopeDepth > earlier.scopeDepth
+        && scopeStart(later) >= scopeStart(earlier)
+        && later.scopeEnd <= earlier.scopeEnd)
       ? [`(not(disposed_${earlierIndex}) or not(acquired_${laterIndex}) or (disposed_${laterIndex} and disposed_generation_${laterIndex} == generation_${laterIndex}))`]
       : [],
   )).join(" and ") || "true";

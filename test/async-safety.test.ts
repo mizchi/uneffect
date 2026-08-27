@@ -1245,6 +1245,59 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 30_000);
 
+  it("proves nested cleanup before continuation across two caught awaits", () => {
+    const fileName = "examples/dogfood/nested-rejection-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.disposals.map(({ binding, scopeDepth }) => ({ binding, scopeDepth }))).toEqual([
+      { binding: "session", scopeDepth: 1 },
+      { binding: "audit", scopeDepth: 0 },
+    ]);
+
+    const positive = run(generateUnifiedAsyncQuint("nested_rejection_cleanup", result, "deliverNested"), 24);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    const reordered = run(generateUnifiedAsyncQuint(
+      "nested_rejection_cleanup_reordered",
+      result,
+      "deliverNested",
+      { reorderCleanup: true },
+    ), 24);
+    expect(reordered.status).not.toBe(0);
+    expect(reordered.stdout + reordered.stderr).toMatch(/violation|counterexample/i);
+
+    const skipped = run(generateUnifiedAsyncQuint(
+      "nested_rejection_cleanup_skipped",
+      result,
+      "deliverNested",
+      { skipScopeCleanup: true },
+    ), 24);
+    expect(skipped.status).not.toBe(0);
+    expect(skipped.stdout + skipped.stderr).toMatch(/violation|counterexample/i);
+
+    const floating = analyzeAsyncSafety("nested-rejection-floating.ts", source.replace(
+      "await session.send().then(() => undefined);",
+      "if (recover) await session.send().then(() => undefined);\n      else session.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverNested",
+      kind: "floating-promise",
+    }));
+
+    const dynamicJoin = analyzeAsyncSafety("nested-rejection-dynamic-join.ts", `
+      async function run(recover: boolean) {
+        selected: try { await Promise.reject(new Error("no")) }
+        catch (error) { if (recover) break selected; throw error }
+      }
+    `);
+    expect(dynamicJoin.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run",
+      kind: "unsupported-control-transfer",
+    }));
+    expect(() => generateUnifiedAsyncQuint("nested_rejection_dynamic_join", dynamicJoin, "run"))
+      .toThrow(/break selected leaves the modeled handler CFG/);
+  }, 30_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

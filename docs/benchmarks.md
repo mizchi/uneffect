@@ -1653,3 +1653,13 @@ This includes cold TypeScript parsing/type checking and Quint source generation
 but excludes Quint execution. Separate tests run the positive model and reject
 reordered cleanup, skipped cleanup, and floating-Promise controls; the timing is
 not a CI budget or evidence for general nested-scope control flow.
+
+The nested rejection-cleanup workload adds a contained async session, two
+independently rejecting awaited chains, a conditional recover/rethrow catch,
+mandatory finally, and an outer awaited audit flush. A filtered run on
+2026-08-27 measured 133.85 ms mean (7.4709 operations/second over 20 fixed
+iterations, 2.27% relative margin of error). This includes cold TypeScript
+parsing/type checking and Quint source generation but excludes Quint execution.
+Separate tests prove the bounded model and reject reordered containing-scope
+cleanup, skipped scope cleanup, floating rejection, and unresolved-label
+controls. The timing is not a CI budget or evidence for arbitrary CFG joins.

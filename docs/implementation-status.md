@@ -307,6 +307,12 @@ same property is proved for arbitrary TypeScript.
   disposes an async resource before an earlier sync resource. Quint checks an
   explicit same-scope reverse-order invariant; reordered cleanup, skipped
   cleanup, and a source-level floating Promise are load-bearing controls.
+- A nested acceptance model lets either of two awaits reject into one finite
+  conditional recover/rethrow catch, traverses mandatory finally, and releases
+  an inner async resource before an outer awaited continuation. The cleanup
+  invariant includes containing-scope precedence; reordered terminal cleanup,
+  skipped normal scope cleanup, floating rejection, and unresolved outer-label
+  transfer are negative controls.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

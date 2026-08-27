@@ -694,6 +694,16 @@ lowering both produce Quint counterexamples. Removing `await` remains a
 `floating-promise` diagnostic, so model support does not discharge rejection
 ownership. Nested resource scopes and arbitrary handler joins remain open.
 
+The nested rejection path extends that model with an outer synchronous audit,
+an inner asynchronous session, and two independently rejecting awaits. A
+finite Boolean catch join recovers or rethrows and both outcomes traverse
+mandatory finally. Recovery disposes the inner session before the outer audit
+flush; rethrow enters terminal inner-then-outer cleanup. Quint checks
+containing-scope precedence and rejects both outer-before-inner terminal cleanup
+and skipped normal scope cleanup. A conditionally floating second operation and
+a transfer to an unresolved enclosing label remain diagnostics/non-proofs.
+General nested disposal-failure routing and arbitrary CFG joins remain open.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with
