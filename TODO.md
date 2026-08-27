@@ -25,34 +25,31 @@ traceability and map to those issues rather than forming a second active queue.
 
 ## Current focus
 
-[#3](https://github.com/mizchi/uneffect/issues/3) remains the active issue. The
-first reusable flow-state seam now joins state and initialized mutable scalar
-locals through normal `if` diamonds, a one-arm early return, and a supported
-typed scalar throw/catch edge. Throw and normal predecessors retain distinct
-local snapshots, with acceptance, negative controls, adaptive-billing dogfood,
-measured benchmarks, and boundary documentation. A mandatory `finally` now
-observes the local snapshot owned by each normal, return, and supported typed
-throw/catch predecessor. Scalar `switch` now preserves those snapshots through
-case selection, fallthrough, break, default, return, and typed throw/catch. The
-same edge ownership now carries initialized mutable scalars through bounded
-finite-loop iterations and normal, break, continue, direct-return, and typed
-throw/finally exits. Ordinary standalone lexical blocks project only
-outer-visible bindings through normal and abrupt exits. Statically owned
-labeled blocks and bounded `for`/literal-`for...of` labels now retain those
-snapshots through their own `break`/`continue` transfers. Dynamic loops,
-cross/nested mutable-local label capture, shadowing or alias escape remain
-unsupported. A normally completing `catch` now joins its outer-visible
-mutations with the normal `try` predecessor, while a direct return retains the
-mutated snapshot for an enclosing mandatory `finally`. A direct supported
-scalar rethrow likewise retains the transformed snapshot and payload for an
-outer catch. A conditional catch return keeps its return snapshot separate
-from the normally completing catch snapshot, which joins the normal try
-predecessor. A conditional scalar rethrow likewise keeps its payload-bearing
-throw snapshot separate from its normally completing catch snapshot.
-Break/continue/label transfer, conditional/abrupt finally mutation, and dispatch
-boundaries remain explicitly unsupported. A normally completing mandatory
-`finally` may mutate outer-visible scalars; its transformation is replayed on
-each normal/return/throw/break/continue predecessor snapshot.
+[#3](https://github.com/mizchi/uneffect/issues/3) remains the sole active issue.
+The checked fragment now carries initialized mutable-scalar snapshots through
+the documented branch, switch, bounded-loop, lexical-block, owned-label,
+return, supported scalar throw/catch, and normally completing mandatory
+`finally` paths. Catch-side direct/conditional return and supported scalar
+rethrow keep abrupt snapshots separate from normal catch completion.
+
+The next Red/Green slice is catch-side conditional `break` through its owning
+bounded loop and a mandatory `finally`. Catch-side `continue`/labels,
+conditional or abrupt `finally` override, dynamic loops, aliases, opaque throw
+payloads, and dynamic dispatch remain explicit non-proofs. The detailed tested
+fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
+controls live in Issue #3.
+
+## Immediate execution queue
+
+Only the first row is active. `Next` rows are ordered consumers of the CFG and
+summary work; they are not parallel implementation promises.
+
+| Order | Issue | Exit condition for handoff |
+| --- | --- | --- |
+| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Catch-owned transfer slices land, then the reusable exception-aware CFG boundary is documented or remaining gaps are split into independently executable issues. |
+| 2 | [#9](https://github.com/mizchi/uneffect/issues/9) | Promise/rejection/disposal paths consume the shared completion representation without suppressing floating errors. |
+| 3 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
+| 4 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #3 and #20 establish the required control-flow and project-boundary evidence. |
 
 ## Active issue index
 

@@ -90,6 +90,27 @@ describe("TODO hierarchy consistency", () => {
     expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
   });
 
+  it("keeps one ordered immediate queue with explicit handoff conditions", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const immediateQueue = todo
+      .split("## Immediate execution queue", 2)[1]
+      ?.split("## Active issue index", 1)[0];
+
+    expect(immediateQueue).toBeDefined();
+    const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
+      ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
+    );
+    expect(rows.map(([order, issue]) => [order, issue])).toEqual([
+      [1, 3],
+      [2, 9],
+      [3, 20],
+      [4, 18],
+    ]);
+    for (const [, , exitCondition] of rows) {
+      expect(exitCondition).not.toBe("");
+    }
+  });
+
   it("keeps closed issue history outside the active issue table", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
