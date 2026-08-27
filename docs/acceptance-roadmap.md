@@ -677,6 +677,14 @@ fault injection. An adjacent unknown-label case still reports
 lowerable. Outer break, dynamic/non-canonical bounds, nested ownership, and
 arbitrary loop bodies remain explicit non-proofs.
 
+The matching early-exit acceptance path replaces the retry transfer with
+`break attempts` and adds a post-loop awaited report. Unified lowering gives
+ordinary completion the bounded repeat/exit cleanup path but gives the selected
+break its own reverse-order cleanup edge. The break target is exactly the report
+await state. Quint accepts terminal disposal and rejects a fault that jumps over
+transfer cleanup. A dynamic bound and a label owned by a non-loop block remain
+diagnosed rather than being guessed as the finite `for` owner.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with

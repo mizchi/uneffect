@@ -3141,6 +3141,26 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toBeLessThan(quint.indexOf("action continue_attempts_repeat"));
   });
 
+  it("lowers cleanup before a statically owned outer break and post-loop await", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/target-aware-break-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      kind: "unsupported-control-transfer",
+    }));
+    const quint = generateUnified("target_aware_break_cleanup", result, "deliverUntilStop") as string;
+    expect(quint).toContain("action dispose_start_session_break_attempts");
+    expect(quint).toContain("action break_attempts_exit");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(quint.indexOf("action dispose_start_session_break_attempts"))
+      .toBeLessThan(quint.indexOf("action break_attempts_exit"));
+    expect(quint.indexOf("action break_attempts_exit"))
+      .toBeLessThan(quint.indexOf("action promise_1_fulfill"));
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

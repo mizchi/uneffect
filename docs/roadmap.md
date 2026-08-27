@@ -75,12 +75,12 @@ release date commitment.
    statically resolved owner label is accepted; cross/nested capture remains a
    non-proof. A shared completion contract now carries these kinds, targets,
    predicates, payloads, and snapshots into Promise/resource analysis. The next
-   handoff slice now models one statically owned bounded outer `continue` after
-   cleanup; unresolved ownership still fails closed. The next slice adds the
-   matching outer `break` and post-loop continuation.
+   handoff now models statically owned bounded outer `continue` and `break`
+   paths after cleanup; unresolved ownership still fails closed. The next slice
+   composes rejection through multiple sync/async disposals.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
-   is active. Its bounded outer `continue` slice is implemented; outer `break`
-   is next, followed by compositional rejection handling and disposal guarantees
+   is active. Its bounded outer `continue` and `break` slices are implemented;
+   multiple-disposal rejection composition is next, followed by general joins
    without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI

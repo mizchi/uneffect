@@ -13,6 +13,7 @@ import {
   type CompletionKind,
   type CompletionPath,
   type CompletionTarget,
+  type LoopTransferKind,
 } from "./completion-flow.js";
 
 export type PromiseObservationKind = "await" | "return" | "catch" | "then-rejection" | "ignored" | "floating";
@@ -157,6 +158,7 @@ export interface AsyncControlTransferOwner {
   regionId: string;
   label?: string;
   kind: "for";
+  transfers: LoopTransferKind[];
   iterations: number;
   span: { start: number; end: number };
   bodySpan: { start: number; end: number };
@@ -1891,6 +1893,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     && (statement.declarationList.flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
   const resolveTransferOwner = (
     statement: ts.Statement,
+    completion: LoopTransferKind,
     target: CompletionTarget | undefined,
     owner: string,
     regionId: string,
@@ -1917,6 +1920,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         regionId,
         ...(labeled ? { label: labeled.label.text } : {}),
         kind: "for",
+        transfers: [completion],
         iterations,
         span: { start: spanNode.getStart(source), end: spanNode.getEnd() },
         bodySpan: { start: current.statement.getStart(source), end: current.statement.getEnd() },
@@ -2010,9 +2014,12 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         };
         const paths = execute(statement, []).map((path): AsyncControlCompletionPath => {
           if (!isLoopTransfer(path.completion)) return path;
-          const transferOwner = resolveTransferOwner(statement, path.target, owner, regionId, node);
+          const transferOwner = resolveTransferOwner(statement, path.completion, path.target, owner, regionId, node);
           if (!transferOwner) return path;
-          if (!controlTransferOwners.some((candidate) => candidate.id === transferOwner.id)) controlTransferOwners.push(transferOwner);
+          const existing = controlTransferOwners.find((candidate) => candidate.id === transferOwner.id);
+          if (existing) {
+            if (!existing.transfers.includes(path.completion)) existing.transfers.push(path.completion);
+          } else controlTransferOwners.push(transferOwner);
           return { ...path, ownerId: transferOwner.id };
         });
         for (const path of paths) {
@@ -2177,7 +2184,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean } = {}): string {
+export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean } = {}): string {
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
@@ -2298,7 +2305,10 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const cleanupPc = nextPc;
     nextPc += disposalIndexes.length;
     const decisionPc = nextPc++;
-    return { transferOwner, disposalIndexes, entryPc, cleanupPc, decisionPc };
+    const breakCleanupPc = transferOwner.transfers.includes("break") ? nextPc : undefined;
+    if (breakCleanupPc !== undefined) nextPc += disposalIndexes.length;
+    const breakDecisionPc = breakCleanupPc === undefined ? undefined : nextPc++;
+    return { transferOwner, disposalIndexes, entryPc, cleanupPc, decisionPc, breakCleanupPc, breakDecisionPc };
   });
   const cleanupPc = nextPc, completePc = cleanupPc + disposals.length;
   const containingTry = (position: number) => controlRegions
@@ -2317,7 +2327,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   };
   const continuationPc = (end: number) => normalLayout.find(({ event }) => event.position > end)?.pc ?? cleanupPc;
   const transferLayoutForRegion = (regionId: string) => transferLayouts.find((layout) => layout.transferOwner.regionId === regionId);
-  const transferLayoutForPath = (path: AsyncControlCompletionPath) => transferLayouts.find((layout) => layout.transferOwner.id === path.ownerId);
+  const transferTargetForPath = (path: AsyncControlCompletionPath): number | undefined => {
+    const layout = transferLayouts.find((candidate) => candidate.transferOwner.id === path.ownerId);
+    if (!layout) return undefined;
+    return path.completion === "break" ? layout.breakCleanupPc : layout.cleanupPc;
+  };
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
   const branchIds = [...new Set([
     ...resources.flatMap((item) => item.controlPaths.flat()),
@@ -2382,7 +2396,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     }
   };
-  transferLayouts.forEach(({ transferOwner, disposalIndexes, entryPc, cleanupPc: transferCleanupPc, decisionPc }) => {
+  transferLayouts.forEach(({ transferOwner, disposalIndexes, entryPc, cleanupPc: transferCleanupPc, decisionPc, breakCleanupPc, breakDecisionPc }) => {
     const transferName = safe(transferOwner.label ?? transferOwner.id);
     disposalIndexes.forEach((disposalIndex, order) => {
       const current = transferCleanupPc + order;
@@ -2403,6 +2417,20 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       `${iteration} >= ${transferOwner.iterations - 1}`,
       "completion == 0",
     ], new Map([["pc", String(continuationPc(transferOwner.span.end))]]));
+    if (breakCleanupPc !== undefined && breakDecisionPc !== undefined) {
+      disposalIndexes.forEach((disposalIndex, order) => {
+        const current = breakCleanupPc + order;
+        const next = order + 1 < disposalIndexes.length ? current + 1 : breakDecisionPc;
+        emitDisposal(disposalIndex, current, next, `_break_${transferName}`, cleanupPc);
+      });
+      emit(`break_${transferName}_exit`, [
+        `pc == ${breakDecisionPc}`,
+        "completion == 0",
+      ], new Map([["pc", String(continuationPc(transferOwner.span.end))]]));
+      if (options.skipTransferCleanup) emit(`break_${transferName}_without_cleanup`, [
+        `pc == ${breakCleanupPc}`,
+      ], new Map([["pc", String(breakDecisionPc)], ["broken", "true"]]));
+    }
   });
   branchIds.forEach((_, index) => {
     emit(`choose_branch_${index}_true`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "1"]]));
@@ -2586,7 +2614,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       }
       const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
       for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
-        const transferTarget = transferLayoutForPath(path)?.cleanupPc;
+        const transferTarget = transferTargetForPath(path);
         const target = transferTarget ?? (path.completion === "normal" ? next : path.completion === "return" ? cleanupPc : exceptionalTarget(layout.region));
         const updates = new Map<string, string>([["pc", String(target)]]);
         if (path.completion === "return") updates.set("completion", "0");

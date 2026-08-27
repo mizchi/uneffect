@@ -47,6 +47,24 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action continue_attempts_exit");
   });
 
+  it("lowers bounded early delivery exit through cleanup to post-loop work", () => {
+    const fileName = "examples/dogfood/target-aware-break-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({
+      owner: "deliverUntilStop",
+      label: "attempts",
+      iterations: 2,
+      transfers: ["break"],
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      kind: "unsupported-control-transfer",
+    }));
+    const quint = generateUnifiedAsyncQuint("target_aware_break_cleanup", result, "deliverUntilStop");
+    expect(quint).toContain("action dispose_start_session_break_attempts");
+    expect(quint).toContain("action break_attempts_exit");
+    expect(quint).toContain("action promise_1_fulfill");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

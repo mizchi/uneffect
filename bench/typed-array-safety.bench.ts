@@ -33,6 +33,7 @@ const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts
 const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/worker-codec-transfer.ts", import.meta.url), "utf8");
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
 const targetAwareRetryCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-retry-cleanup.ts", import.meta.url), "utf8");
+const targetAwareBreakCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-break-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -436,6 +437,11 @@ describe("typed-array static verification", () => {
   bench("lower bounded target-aware retry cleanup", () => {
     const result = analyzeAsyncSafety("target-aware-retry-cleanup.ts", targetAwareRetryCleanupSource);
     generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower bounded target-aware break cleanup", () => {
+    const result = analyzeAsyncSafety("target-aware-break-cleanup.ts", targetAwareBreakCleanupSource);
+    generateUnifiedAsyncQuint("target_aware_break_cleanup", result, "deliverUntilStop");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

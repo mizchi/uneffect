@@ -618,12 +618,14 @@ continue that leaves the modeled handler statement retains a shared
 one narrow outer-owner fragment: a canonical ascending `for` with one to eight
 iterations, a block containing only leading lexical `using` declarations and a
 final `try`, and a `finally` path whose labeled `continue` resolves to that
-loop. The transfer overrides a pending rejection, completes reverse-order
+loop. A `continue` overrides a pending rejection, completes reverse-order
 loop-scope disposal, and only then enters the next acquisition generation or
-the post-loop continuation. The generated Quint model proves terminal disposal;
-the stale-generation fault injection is rejected. Unknown/cross labels,
-non-canonical or larger loops, intervening statements, nested ownership, and
-outer `break` still emit `unsupported-control-transfer` and fail closed.
+the natural post-loop continuation. A `break` uses a distinct cleanup path and
+enters the first post-loop modeled await without making an ordinary iteration
+exit early. The generated Quint models prove terminal disposal; stale-generation
+and transfer-cleanup-skip fault injections are rejected. Unknown/cross or
+non-loop labels, non-canonical or larger loops, intervening statements, and
+nested ownership still emit `unsupported-control-transfer` and fail closed.
 Awaited handler loops additionally receive explicit repeat and exit states, so
 the control graph covers arbitrary finite repetition of their awaited chains.
 Lexical `using` and `await using` declarations in those loops are handler

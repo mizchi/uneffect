@@ -1634,3 +1634,12 @@ generation, but excludes Quint execution. The separately executed acceptance
 model and stale-generation negative control establish the modeled invariant;
 this high-variance measurement is not a CI budget or a claim about unsupported
 outer transfers.
+
+The target-aware break-cleanup workload adds a post-loop awaited report and
+separates ordinary bounded-loop advancement from a finally-owned early exit.
+A filtered run on 2026-08-27 measured 387.06 ms mean (2.5836
+operations/second over 20 fixed iterations, 6.38% relative margin of error).
+It includes cold TypeScript parsing/type checking and unified Quint source
+generation but excludes Quint execution. The executable test separately proves
+the model and rejects skipped transfer cleanup; this observation is not a CI
+budget or evidence for non-canonical loops.

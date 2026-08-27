@@ -2044,6 +2044,71 @@ describe("async error and explicit resource safety", () => {
     expect(run(stale, 32).status).not.toBe(0);
   }, 20_000);
 
+  it("disposes before a bounded outer break reaches its post-loop await", () => {
+    const fileName = "examples/dogfood/target-aware-break-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.controlTransferOwners).toEqual([
+      expect.objectContaining({
+        owner: "deliverUntilStop",
+        label: "attempts",
+        kind: "for",
+        iterations: 2,
+        transfers: ["break"],
+      }),
+    ]);
+    const quint = generateUnifiedAsyncQuint("target_aware_break_cleanup", result, "deliverUntilStop");
+    const breakTarget = /action break_attempts_exit = all \{[\s\S]*?pc' = (-?\d+),/.exec(quint)?.[1];
+    const reportPc = /action promise_1_fulfill = all \{\s*pc == (-?\d+),/.exec(quint)?.[1];
+    expect(breakTarget).toBe(reportPc);
+    expect(run(quint, 32).status).toBe(0);
+
+    const broken = generateUnifiedAsyncQuint("target_aware_break_cleanup_broken", result, "deliverUntilStop", {
+      skipTransferCleanup: true,
+    });
+    expect(broken).toContain("action break_attempts_without_cleanup");
+    expect(run(broken, 32).status).not.toBe(0);
+  }, 20_000);
+
+  it("rejects non-canonical and non-loop outer break owners", () => {
+    const dynamic = analyzeAsyncSafety("dynamic-outer-break.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function run(limit: number, stop: boolean) {
+        attempts: for (let attempt = 0; attempt < limit; attempt++) {
+          await using resource = open()
+          try { await Promise.resolve("attempt").then(value => value) }
+          finally { if (stop) break attempts }
+        }
+      }
+    `);
+    expect(dynamic.controlTransferOwners).toEqual([]);
+    expect(dynamic.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run",
+      kind: "unsupported-control-transfer",
+    }));
+    expect(() => generateUnifiedAsyncQuint("dynamic_outer_break", dynamic, "run"))
+      .toThrow(/break attempts leaves the modeled handler CFG/);
+
+    const block = analyzeAsyncSafety("block-outer-break.ts", `
+      interface Resource { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Resource
+      async function run(stop: boolean) {
+        policy: {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            await using resource = open()
+            try { await Promise.resolve("attempt").then(value => value) }
+            finally { if (stop) break policy }
+          }
+        }
+      }
+    `);
+    expect(block.controlTransferOwners).toEqual([]);
+    expect(block.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run",
+      kind: "unsupported-control-transfer",
+    }));
+  });
+
   it("rejects direct aliases of a using resource used after its lexical scope", () => {
     const result = analyzeAsyncSafety("escaping-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
