@@ -124,6 +124,25 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves that a paused telemetry drain leaves the backlog untouched", async () => {
+    const fileName = "examples/dogfood/paused-telemetry-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "pausedTelemetry", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "pausedTelemetry", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(fileName, source, "pausedTelemetry", temporal)).toEqual([]);
+
+    const latePauseCheck = source.replace(
+      "if (runtime.paused) break;\n    runtime.queued--;",
+      "runtime.queued--;\n    if (runtime.paused) break;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, latePauseCheck, "pausedTelemetry", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("proves pairwise worker-pool scale-up including target overshoot", async () => {
     const fileName = "examples/dogfood/worker-pool-scale-up.ts";
     const source = readFileSync(fileName, "utf8");

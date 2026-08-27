@@ -283,8 +283,12 @@ counter-dependent or over-budget piecewise conditions, mutually coupled
 recurrences, opaque entry updates, and general loop invariants remain
 fail-closed. A fifth case consumes an unlabeled `continue` after a guaranteed
 ranking update, including mandatory `finally` accounting, and rejects the same
-continue before that update. Break, throw, and return remain fail-closed. These
-are closed-form affine rules, not a general TypeScript CFG proof.
+continue before that update. A sixth zero-update early-break case lets a
+loop-entry pause flag
+selects untouched state instead of the recurrence, while a counter-dependent or
+post-update break is rejected. State-changing break branches, mixed
+break/continue flow, throw, and return remain fail-closed. These are closed-form
+affine rules, not a general TypeScript CFG proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

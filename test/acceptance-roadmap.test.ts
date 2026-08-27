@@ -657,6 +657,45 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("splits an affine loop at a loop-invariant early break", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * state paused: bool
+       * init pending = 0
+       * init weighted = 0
+       * init paused = false
+       * action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0)
+       */
+      interface Runtime { pending: number; weighted: number; paused: boolean }
+      /* uneffect: refinement breakDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement breakDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement breakDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.paused) break
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("break-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("break-drain.ts", source, "breakDrain", temporal)).resolves.toEqual([]);
+
+    const counterDependentBreak = source.replace(
+      "if (runtime.paused) break",
+      "if (runtime.pending === 2) break",
+    );
+    await expect(validateActions(
+      "break-drain-counter-dependent.ts", counterDependentBreak, "breakDrain", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

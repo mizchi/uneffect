@@ -1643,16 +1643,54 @@ function validateRefinementActionBodiesInSource(
         const loopCompletion = collect(
           asBlock(statement.statement), receiver, runtimeClass, substitutions,
           loopUpdates, new Map(localValues), activeCalls,
-          false, false, false, true,
+          false, false, true, true,
           undefined, undefined, activeBreakLabels, activeContinueLabels,
         );
         if (!loopCompletion) return undefined;
-        const hasOnlyConsumedContinue = isBooleanCompletionPredicate(completionPredicate(loopCompletion, "return"), false)
+        const breakWhen = completionPredicate(loopCompletion, "break");
+        const hasInvariantEarlyBreak = !isBooleanCompletionPredicate(breakWhen, false);
+        const hasOnlyConsumedLoopTransfer = isBooleanCompletionPredicate(completionPredicate(loopCompletion, "return"), false)
           && isBooleanCompletionPredicate(completionPredicate(loopCompletion, "throw"), false)
-          && isBooleanCompletionPredicate(completionPredicate(loopCompletion, "break"), false)
+          && (!hasInvariantEarlyBreak || isBooleanCompletionPredicate(completionPredicate(loopCompletion, "continue"), false))
           && isBooleanCompletionPredicate(labeledCompletionPredicate(loopCompletion), false);
-        if (loopCompletion !== "normal" && !hasOnlyConsumedContinue) return undefined;
-        const counterForm = decomposeAffineStateExpression(loopUpdates.get(counterName) ?? { kind: "name", name: counterName });
+        if (loopCompletion !== "normal" && !hasOnlyConsumedLoopTransfer) return undefined;
+        const specializeCondition = (
+          expression: TemporalExpression,
+          condition: TemporalExpression,
+          value: boolean,
+        ): TemporalExpression => {
+          if (sameRefinementExpression(expression, condition)) return { kind: "boolean", value };
+          if (expression.kind === "unary") return {
+            ...expression, operand: specializeCondition(expression.operand, condition, value),
+          };
+          if (expression.kind === "binary") return {
+            ...expression,
+            left: specializeCondition(expression.left, condition, value),
+            right: specializeCondition(expression.right, condition, value),
+          };
+          if (expression.kind === "conditional") {
+            if (sameRefinementExpression(expression.condition, condition)) {
+              return specializeCondition(value ? expression.whenTrue : expression.whenFalse, condition, value);
+            }
+            return {
+              ...expression,
+              condition: specializeCondition(expression.condition, condition, value),
+              whenTrue: specializeCondition(expression.whenTrue, condition, value),
+              whenFalse: specializeCondition(expression.whenFalse, condition, value),
+            };
+          }
+          return expression;
+        };
+        const specializedStateUpdate = (name: string, value: boolean): TemporalExpression => {
+          const expression = loopUpdates.get(name) ?? { kind: "name", name } as TemporalExpression;
+          return sameRefinementExpression(expression, { kind: "name", name })
+            ? expression
+            : specializeCondition(expression, breakWhen, value);
+        };
+        const iterationUpdates = hasInvariantEarlyBreak
+          ? new Map([...stateNames].map((name) => [name, specializedStateUpdate(name, false)]))
+          : loopUpdates;
+        const counterForm = decomposeAffineStateExpression(iterationUpdates.get(counterName) ?? { kind: "name", name: counterName });
         const counterDelta = counterForm?.constant;
         if (!counterForm || counterForm.coefficients.size !== 1 || counterForm.coefficients.get(counterName) !== 1) return undefined;
         if (counterDelta === undefined || (descending ? counterDelta >= 0 : counterDelta <= 0)) return undefined;
@@ -1730,12 +1768,24 @@ function validateRefinementActionBodiesInSource(
           };
         };
         const deltas = new Map<string, PiecewiseAffineLoopDelta>();
+        const breakConditionNames = hasInvariantEarlyBreak ? scalarNames(breakWhen) : new Set<string>();
+        const breakCondition = hasInvariantEarlyBreak ? atLoopEntry(breakWhen) : undefined;
+        if (!breakConditionNames || (hasInvariantEarlyBreak && !breakCondition)
+          || [...breakConditionNames].some((name) => stateNames.has(name)
+            && !sameRefinementExpression(
+              loopUpdates.get(name) ?? { kind: "name", name },
+              { kind: "name", name },
+            ))) return undefined;
         for (const name of stateNames) {
+          if (hasInvariantEarlyBreak && !sameRefinementExpression(
+            specializedStateUpdate(name, true),
+            { kind: "name", name },
+          )) return undefined;
           if (name === counterName) {
             deltas.set(name, { kind: "affine", value: { constant: counterDelta, counterCoefficient: 0 } });
             continue;
           }
-          const delta = piecewiseDelta(name, loopUpdates.get(name) ?? { kind: "name", name });
+          const delta = piecewiseDelta(name, iterationUpdates.get(name) ?? { kind: "name", name });
           if (!delta) return undefined;
           deltas.set(name, delta.value);
         }
@@ -1840,7 +1890,13 @@ function validateRefinementActionBodiesInSource(
             };
             updates.set(name, {
               kind: "conditional", condition: entryGuard,
-              whenTrue: stepValue === 1 ? stop : {
+              whenTrue: hasInvariantEarlyBreak ? {
+                kind: "conditional", condition: breakCondition!,
+                whenTrue: entryCounter,
+                whenFalse: stepValue === 1 ? stop : {
+                  kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
+                },
+              } : stepValue === 1 ? stop : {
                 kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
               },
               whenFalse: entryValue,
@@ -1850,7 +1906,11 @@ function validateRefinementActionBodiesInSource(
           const unguardedTotal = totalForPiecewise(piecewise);
           if (piecewiseStutters(piecewise)) continue;
           const totalDelta: TemporalExpression = {
-            kind: "conditional", condition: entryGuard, whenTrue: unguardedTotal, whenFalse: zero,
+            kind: "conditional", condition: entryGuard,
+            whenTrue: hasInvariantEarlyBreak ? {
+              kind: "conditional", condition: breakCondition!, whenTrue: zero, whenFalse: unguardedTotal,
+            } : unguardedTotal,
+            whenFalse: zero,
           };
           updates.set(name, {
             kind: "binary", operator: "add", left: entryValue, right: totalDelta,

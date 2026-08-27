@@ -2714,6 +2714,60 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("splits a zero-update early break from the repeating affine path", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state weighted: int
+      state paused: bool
+      state requestedPause: bool
+      init pending = 0
+      init weighted = 0
+      init paused = false
+      init requestedPause = false
+      action drain: pending' = pending > 0 ? (requestedPause ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (requestedPause ? 0 : pending * (pending - 1) / 2) : 0), paused' = requestedPause
+    */
+      interface Runtime { pending: number; weighted: number; paused: boolean; requestedPause: boolean }
+      /* uneffect: refinement earlyBreak@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement earlyBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement earlyBreak@1 action drain */
+      export function drain(runtime: Runtime) {
+        runtime.paused = runtime.requestedPause
+        while (runtime.pending > 0) {
+          if (runtime.paused) break
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = parseSpec("early-break.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "early-break.ts", source, "earlyBreak", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["early-break-after-update.ts", source.replace(
+        "if (runtime.paused) break\n          runtime.pending--",
+        "runtime.pending--\n          if (runtime.paused) break",
+      )],
+      ["early-break-mutated-condition.ts", source.replace(
+        "runtime.weighted += runtime.pending",
+        "runtime.weighted += runtime.pending\n          runtime.paused = true",
+      )],
+      ["early-break-counter-condition.ts", source.replace(
+        "if (runtime.paused) break",
+        "if (runtime.pending === 2) break",
+      )],
+      ["early-break-finally-update.ts", source.replace(
+        "if (runtime.paused) break",
+        "try { if (runtime.paused) break } finally { runtime.weighted++ }",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "earlyBreak", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

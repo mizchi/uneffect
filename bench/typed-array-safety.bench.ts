@@ -141,6 +141,9 @@ const triangularDrainSpec = parseSpec(triangularDrainFile, triangularDrainSource
 const priorityTelemetryFile = "examples/dogfood/priority-telemetry-drain.ts";
 const priorityTelemetrySource = readFileSync(priorityTelemetryFile, "utf8");
 const priorityTelemetrySpec = parseSpec(priorityTelemetryFile, priorityTelemetrySource).temporal;
+const pausedTelemetryFile = "examples/dogfood/paused-telemetry-drain.ts";
+const pausedTelemetrySource = readFileSync(pausedTelemetryFile, "utf8");
+const pausedTelemetrySpec = parseSpec(pausedTelemetryFile, pausedTelemetrySource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1097,6 +1100,15 @@ describe("typed-array static verification", () => {
       affineBranchBudgetSource,
       "affineBranchBudget",
       affineBranchBudgetSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("split a loop-invariant early break from an affine recurrence", () => {
+    validateRefinementActionBodies(
+      pausedTelemetryFile,
+      pausedTelemetrySource,
+      "pausedTelemetry",
+      pausedTelemetrySpec,
     );
   }, { time: 500, iterations: 20 });
 

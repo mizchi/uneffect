@@ -1391,3 +1391,11 @@ reported an unusable `NaNx` ratio), so no timing claim is recorded. The
 executable workload is retained to expose crashes or accidental unbounded tree
 construction; the eight-leaf acceptance and nine-leaf rejection are asserted
 separately in the unit suite.
+
+On 2026-08-27, splitting the paused-telemetry zero-update early-break path from
+its affine drain recurrence measured 0.1677 ms mean (5,962.15 operations/second
+over 2,982 samples, 3.44% relative margin of error). The warm workload measures
+completion collection, break-condition invariance, true/false specialization,
+entry-state substitution, and closed-form construction; it excludes Z3 and
+state-changing, counter-dependent, or mixed abrupt-flow breaks. This is an
+observation rather than a CI regression budget.

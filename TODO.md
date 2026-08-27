@@ -8,10 +8,11 @@ traceability and map to those issues rather than forming a second active queue.
 
 ## Active issue index
 
-GitHub Issues and their milestones are the active queue. The table is ordered
-by execution phase and then dependency order, not by issue number. Unchecked
-entries later in this file are historical detail mapped to these issues; do not
-create a second work queue from them.
+GitHub Issues and their priority labels are the active queue. The table is
+ordered by execution phase and then dependency order, not by issue number.
+Unchecked entries later in this file are historical detail mapped to these
+issues; do not create a second work queue from them. Issue bodies own acceptance
+criteria and the current supported/unsupported boundary.
 
 | Phase | Issue | Area | Remaining boundary |
 | --- | --- | --- | --- |
@@ -28,6 +29,23 @@ create a second work queue from them.
 | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Independently checkable certificates or a measured rejection |
 | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
 | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | Evidence-gated transformations; general optimization remains unimplemented |
+
+## Current execution order
+
+1. [#3](https://github.com/mizchi/uneffect/issues/3): widen the
+   TypeScript-to-model refinement fragment one Red/Green acceptance slice at a
+   time. The next slice must retain an adjacent unsupported negative control
+   and a benchmark.
+2. [#9](https://github.com/mizchi/uneffect/issues/9): reuse the resulting
+   completion/CFG representation to unify Promise rejection, exceptions, and
+   disposal.
+3. [#20](https://github.com/mizchi/uneffect/issues/20) and
+   [#18](https://github.com/mizchi/uneffect/issues/18): carry trustworthy
+   refinement evidence across project and module-initialization boundaries.
+
+Phase 2 and later issues remain intentionally queued behind these proof-boundary
+items. Priority labels express assurance risk, not a promise that every P0 item
+is worked in parallel.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -233,7 +251,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Discover same-element `Set` equality/subset candidates recursively through record field paths.
     - [x] Treat finite `Map.keys()` domains, including record-nested maps, as derived Set views for directional subset synthesis.
     - [x] Treat scalar finite `Map.values()` domains as derived Set views without generalizing unsupported composite values.
-    - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants.
+    - [ ] Synthesize general affine/polyhedral, quantified, and richer field-correlated collection invariants. ([#2](https://github.com/mizchi/uneffect/issues/2))
       - [x] Validate that refinement manifests cover every temporal action and invariant without stale model names.
       - [x] Prove direct scalar action assignments, increments, stuttering, and one-level literal-specialized local class methods against temporal assignments.
       - [x] Compose repeated and cross-field scalar writes in TypeScript execution order before comparing them with simultaneous temporal updates.
@@ -290,7 +308,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Require Program-backed create/observe parameter and return types to match temporal scalar/nested-record state; reject `any`, `unknown`, optional/missing fields, and scalar-kind mismatches.
       - [x] Match temporal Set/Map state to exact builtin TypeScript collection symbols and compatible element/key/value types; accept transparent aliases while rejecting readonly variants, subclasses, and lookalikes.
       - [x] Canonicalize complete nested-record reconstruction at create/observe boundaries from temporal field types; reject missing, extra, or redirected nested fields.
-      - [ ] Generalize refinement mapping from the currently proven TypeScript fragments to arbitrary adjacent implementation updates and temporal model actions; current dogfood verifies the supported fragments rather than the whole language.
+      - [ ] Generalize refinement mapping from the currently proven TypeScript fragments to arbitrary adjacent implementation updates and temporal model actions; current dogfood verifies the supported fragments rather than the whole language. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [x] Track whole-runtime receiver updates and reads through lexical, non-escaping `const` alias chains; reject `let`, unknown escapes, cycles, member/destructuring aliases, and aliases outside their block.
         - [x] Specialize reviewed local runtime-class method calls through the same whole-runtime `const` alias chains while retaining mutable-alias and recursive-method rejection.
         - [x] Resolve imported runtime classes through Program TypeChecker symbol identity before specializing identifier-named methods; keep syntax-only imports and structural interface lookalikes unsupported.
@@ -307,9 +325,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Extend the unit-countdown fixed point to state deltas that are affine in the loop-carried ranking counter, including triangular and scaled triangular totals; reject self-amplifying or other-state-coupled recurrences and retain update-order mismatches as negative controls.
         - [x] Compose one loop-invariant scalar conditional join whose two branches each have an affine ranking-counter delta; the initial slice rejected conditions mutated by the loop, counter-dependent conditions, nested piecewise joins, and non-affine branches.
         - [x] Generalize the same rule to a recursively nested decision tree capped at eight affine leaves; retain a nine-leaf rejection control so expression and solver growth cannot become implicit.
-        - [x] Consume unlabeled `continue` in the symbolic affine loop only when the merged counter update still proves the ranking step on every path, including through mandatory `finally`; reject skipped steps and retain break/return/throw as unsupported abrupt exits.
-        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in.
-        - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in.
+        - [x] Consume unlabeled `continue` in the symbolic affine loop only when the merged counter update still proves the ranking step on every path, including through mandatory `finally`; the initial slice rejected skipped steps and retained break/return/throw as unsupported abrupt exits.
+        - [x] Split one loop-invariant zero-update early `break` from the repeating affine path, substituting supported entry-state updates into the condition; reject counter-dependent or mutated conditions, post-update breaks, break-side state changes, continue/break mixtures, and other abrupt exits.
+        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
+        - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
           - [x] Normalize native `Set.has(value)` and `Set.size` predicates to temporal `contains` and `size`, while retaining mismatched members as refinement diagnostics.
           - [x] Normalize TypeChecker-identified builtin `Map.has(key)` to temporal `map.keys().contains(key)` and verify it in the collection-backed lease acceptance adapter.
@@ -324,8 +343,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Resolve immutable local/imported function-declaration predicate values passed to builtin array `every`/`some`, normalize their single-return bodies to collection quantifiers, and reject mutable aliases.
           - [x] Extend quantified predicate-value resolution to immutable exported/local arrow functions and function expressions through `const` alias chains, without widening action/helper dispatch resolution.
           - [x] Resolve function-valued predicate properties from a direct builtin `Object.freeze({...})` registry by TypeChecker identity; reject unfrozen registries and same-named `freeze` lookalikes.
-          - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target.
-        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch.
+          - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target. ([#3](https://github.com/mizchi/uneffect/issues/3))
+        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.
           - [x] Extend one-to-one abstraction relations to non-overlapping dotted concrete property paths, including nested create reconstruction and Program-backed type traversal.
           - [x] Add a proof-directed `Set(arrayPath)` computed abstraction with builtin `Array.from`/`new Set` boundaries and `push`/`includes` action/invariant refinement.
@@ -339,7 +358,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Refine entry-array value-only `every`/`some` predicates to Map value quantifiers and compare lambda bodies alpha-equivalently.
           - [x] Simplify a same-key entry-array filter-then-push upsert sequence to temporal `Map.put` while retaining different-key removals.
           - [x] Refine exact builtin entry-array `find(entry => entry[0] === key)![1]` reads to guarded temporal `Map.get(key)` without treating `!` as proof evidence.
-          - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters.
+          - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters. ([#3](https://github.com/mizchi/uneffect/issues/3))
   - [x] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress for the documented bounded, finite-state, inductive, and reachable-lasso fragments.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.
@@ -365,7 +384,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add typed stabilization `temporal_stabilizes name: predicate`, lower it to `eventually(always(predicate))`, and find fairness-respecting Z3 lasso violations.
     - [x] Dogfood stabilization as a shutdown-drain property with a missing-fairness negative control.
     - [x] Distinguish bounded, inductively proven, finite-state-complete, and strengthened stabilization targets that cannot occur from `init`.
-    - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support arbitrary nested/general temporal formulas beyond the eventuality, response, recurrence, and stabilization fragments.
+    - [ ] Synthesize general affine/polyhedral/quantified collection invariants and support arbitrary nested/general temporal formulas beyond the eventuality, response, recurrence, and stabilization fragments. ([#2](https://github.com/mizchi/uneffect/issues/2))
 - [x] Generate QuickCheck-style property tests and shrinkers from `Int`, `Nat`, machine-number, bounded-array, union, and supported contract-refined boundaries.
   - [x] Generate deterministic standalone Vitest tests for scalar `Int`, `Nat`, `U8`, `U32`, and `I32` parameters with restricted `requires`/`ensures` expressions.
   - [x] Shrink scalar counterexamples toward zero without adding a production runtime dependency.
@@ -396,7 +415,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Generate optional object-valued fields with one shared parent presence bit across nested leaves.
         - [x] Separate nested optional child presence from its optional parent, enforce child-implies-parent in Z3, and dogfood a rollout configuration boundary.
       - [x] Minimize a shared structural-size objective and confirm minimality with repeated strict-bound SAT checks instead of trusting nonlinear `Optimize` results.
-    - [ ] Derive constructive generators and shrinkers for unsupported higher-order, recursive, and user-defined contract predicates.
+    - [ ] Derive constructive generators and shrinkers for unsupported higher-order, recursive, and user-defined contract predicates. ([#4](https://github.com/mizchi/uneffect/issues/4))
 - [x] Persist minimized counterexamples and replay them against implementation/model refinement adapters.
   - [x] Persist and prioritize replay of versioned scalar and structured property-test counterexamples (`v1` remains scalar-only; `v2` adds JSON-safe arrays and literals).
   - [x] Optionally persist minimized failures from standalone generated Vitest files and replay the artifact before newly generated candidates.
@@ -407,7 +426,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Extract shortest bounded temporal-Z3 counterexamples with explicit action selectors into normalized traces automatically.
     - [x] Parse standalone scalar TLC counterexample output and recover unambiguous actions from the neutral temporal IR into normalized traces automatically.
     - [x] Parse multiline finite Set, scalar-key Map, and closed-record TLC console values and recover their neutral collection actions.
-    - [ ] Support the remaining general TLA+ values and upstream machine-readable TLC traces when Quint exposes them.
+    - [ ] Support the remaining general TLA+ values and upstream machine-readable TLC traces when Quint exposes them. ([#5](https://github.com/mizchi/uneffect/issues/5))
 - [x] Merge the direct Z3 checker and SMT-LIB generator onto one invariant IR.
 - [x] Lower simple assignments and branches to SSA proof obligations.
 - [x] Lower loop initialization, preservation, and exit obligations through the shared IR.
@@ -420,7 +439,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 ## P4 — Temporal logic and ownership
 
 - [x] Encode a bounded two-node Node Lease clock-skew model and lock both the vulnerable counterexample and skew-grace candidate with Quint tests.
-- [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening.
+- [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening. ([#5](https://github.com/mizchi/uneffect/issues/5))
   - [x] Add `Set<int>`/`Set<bool>`, `Set(...)`, immutable `union`, `contains`, `size`, and finite `forall` to the neutral expression AST, Quint lowering, and runtime assertion lowering.
   - [x] Keep collection models explicit `unknown`/unsupported in scalar-only Z3 and TLC replay paths instead of coercing them to booleans.
   - [x] Replace per-node writer-presence fields with a finite Set in a Node Lease positive/negative Quint model.
@@ -433,7 +452,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Encode closed scalar-field records as canonical Z3 datatypes with field reads, immutable spread updates, and JSON-object counterexample extraction.
   - [x] Recursively compose Z3 Set, Map, and record sorts for nested semantic lint and bounded reachability; recursively extract counterexamples where every Set has scalar elements and every Map key comes from the literal finite universe.
   - [x] Preflight Z3 expression support so infinite-domain Set cardinality returns an explicit unsupported/`unknown` non-proof instead of throwing or using a finite approximation.
-  - [ ] Add the remaining general TLA+ TLC values and upstream machine-readable trace forms.
+  - [ ] Add the remaining general TLA+ TLC values and upstream machine-readable trace forms. ([#5](https://github.com/mizchi/uneffect/issues/5))
 - [x] Add an extensible temporal semantic-domain registry; use optional wall-clock/monotonic-clock/skew contracts as one domain pack rather than privileged core semantics.
   - [x] Route protected logical-clock state/init/actions through a public directive registry and allow independently registered domain directives.
   - [x] Add an optional physical-clock pack that distinguishes protected monotonic ticks, rollback-capable wall clocks, and explicit transition-guarded skew assumptions.
@@ -476,10 +495,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Derive safe integer intervals from simple `requires` bounds and expose solver-query statistics; reduce DNS codec verification from six queries to zero.
 - [x] Distinguish resizable capacity (`BoundedArrayBuffer`) from exact non-resizable length (`FixedArrayBuffer`) and verify explicit/implicit DataView constructor regions.
 - [x] Compose fixed-buffer DataView constructor evidence with definite transfer/detachment ownership in project verification.
-- [ ] Extend that composition through mutable/interprocedural aliases, resize transitions, conditional control flow, and SharedArrayBuffer concurrency.
+- [ ] Extend that composition through mutable/interprocedural aliases, resize transitions, conditional control flow, and SharedArrayBuffer concurrency. ([#6](https://github.com/mizchi/uneffect/issues/6))
 - [x] Add `U32`, bounded Uint32Array runtime refinements, and ECMAScript-aware ranges for SHA-256-style shifts, masks, and explicit `>>> 0` normalization.
 - [x] Generate independent bounded-index and dynamic shift-count obligations instead of trusting JavaScript out-of-range or modulo-32 behavior.
-- [ ] Compose the verified SHA-256 building blocks interprocedurally and cover non-canonical control-flow bounds.
+- [ ] Compose the verified SHA-256 building blocks interprocedurally and cover non-canonical control-flow bounds. ([#6](https://github.com/mizchi/uneffect/issues/6))
 - [x] Derive canonical ascending-loop bounds for SHA-256 schedule reads/writes and recognize `toU32(sum)` as an explicit modular-addition boundary.
 - [x] Provide explicit `u8`, `u32`, `i32`, and `f32` runtime coercion helpers with branded return domains, distinct from rejecting parsers.
 - [x] Check TypedArray `.set()` copy bounds and reject implicit cross-element-domain narrowing.
@@ -503,7 +522,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 ## P5 — Evidence and optimization
 
 - [x] Add a cross-domain assumption ledger for every currently emitted `trusted` builtin call, typed-array escape hatch, and temporal summary, with reason, scope, source span, expiration/owner metadata, and CI policy. Extend it when new trusted domains are introduced.
-- [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms.
+- [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms. ([#7](https://github.com/mizchi/uneffect/issues/7))
 - [x] Attach `verified`, `trusted`, `inferred`, or `unknown` evidence to every summary.
 - [x] Attach a non-empty stable-coded `unknownReasons` ledger to every unknown Effect summary, require it in JSON Schema, surface it through assurance blockers, and reject unresolved top-level calls without analyzed/builtin/verified-contract evidence.
 - [x] Model reviewed synchronous ECMAScript collection callbacks as inline Effect edges, add narrow pure Node/ECMAScript helper contracts, and resolve named imports from export-equals Node declarations without name-based matching.
@@ -536,10 +555,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Re-emit child declarations in memory with the exact analyzer TypeScript Program, compare SHA-256-bound exact bytes with every `.d.ts` consumed by an Effect link, and fail closed on missing/mismatched outputs even when SolutionBuilder reports fresh.
     - [x] Add an opt-in exact-build gate that requires freshness and byte-compares all TypeScript-emitted runtime JavaScript and declarations, rejecting declaration-only/no-emit and transformed pipelines without a validated mapping.
     - [x] Make an empty cross-project Effect composition ledger `not-applicable` rather than vacuously `verified`, and lock the distinction with programmatic and CLI tests.
-    - [ ] Compose refinement evidence and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission.
+    - [ ] Compose refinement evidence and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.
 - [x] Make `no-unknown` reject unresolved capability argument sets such as `Fetch<POST, Unknown<dynamic-url>>`, not only summaries whose outer evidence status is `unknown`.
-- [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA/decorator ordering, side-effectful external packages, computed/external dynamic imports, dynamically selected or mutable callback identifiers, and dynamically produced decorator application. Immutable local/imported function identifiers for known callback owners are resolved by TypeChecker identity; reassigned live bindings fail closed.
+- [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA/decorator ordering, side-effectful external packages, computed/external dynamic imports, dynamically selected or mutable callback identifiers, and dynamically produced decorator application. Immutable local/imported function identifiers for known callback owners are resolved by TypeChecker identity; reassigned live bindings fail closed. ([#18](https://github.com/mizchi/uneffect/issues/18))
 - [x] Define one proof-obligation schema per optimizer transformation.
 - [x] Prototype stable-read reuse only when no overlapping mutate/invalidate/transfer event exists.
 - [x] Evaluate property mangling separately under closed-world reflection and escape constraints.
@@ -558,7 +577,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 ## P6 — Native integration and productization
 
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
-- [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts.
+- [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts. ([#8](https://github.com/mizchi/uneffect/issues/8))
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
   - [x] Carry mandatory fact provenance through schema v7 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
   - [x] Export the initial real checker-backed slice through the `corsa-oxlint` plugin context: top-level named functions and single immutable arrow/function-expression bindings, Corsa type text, direct call edges, and leading Uneffect trivia.
@@ -567,9 +586,9 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
   - [x] Export identifier-named methods of top-level classes and resolve direct cross-file method calls by checker symbol identity; reject explicitly annotated computed methods as uncovered instead of accepting empty parity.
   - [x] Export source-ordered named-function overload candidates and resolve call-site selections through Corsa signature identity using literal/base/union argument type alternatives; compare candidate text and selected index independently of normalized effect parity.
-  - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript.
-    - [ ] Extend the checker-backed exporter beyond named-function overloads and identifier-named methods of top-level classes to method/generic edge-case overloads, computed/polymorphic methods, nested callbacks/timing, Promise/resource records, and the complete neutral IR.
-    - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate.
+  - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript. ([#8](https://github.com/mizchi/uneffect/issues/8))
+    - [ ] Extend the checker-backed exporter beyond named-function overloads and identifier-named methods of top-level classes to method/generic edge-case overloads, computed/polymorphic methods, nested callbacks/timing, Promise/resource records, and the complete neutral IR. ([#8](https://github.com/mizchi/uneffect/issues/8))
+    - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate. ([#8](https://github.com/mizchi/uneffect/issues/8))
 - [x] Define a frontend adapter boundary that can be implemented by Corsa.
 - [x] Consume Corsa symbol, type, overload, and trivia information from Rust.
 - [x] Add multi-file call graphs, aliases, re-exports, methods, arrows, overloads, and callbacks.
@@ -627,12 +646,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v6 Corsa contract validates protocol-symbol edges and disjunctive correlated control paths; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.
   - [x] Cover typed aliases, interface inheritance, intersections, and generic constraints in the TypeChecker frontend.
-- [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model.
+- [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model. ([#9](https://github.com/mizchi/uneffect/issues/9))
   - [x] Connect analyzed Promise-chain terminal states to await resume/rejection edges.
   - [x] Route disposal throw/rejection through catch and the async function's returned Promise in the shared IR.
   - [x] Preserve concrete catch/finally statement sequencing in the unified graph.
   - [x] Lower the single-function unified graph into one Quint transition module.
-  - [ ] Generalize unified lowering to multiple awaited chains, nested scopes, and arbitrary control-flow joins.
+  - [ ] Generalize unified lowering to multiple awaited chains, nested scopes, and arbitrary control-flow joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
     - [x] Give sequential awaited chains distinct wait/resume states and preserve their source order before cleanup.
     - [x] Dispose resources from a straight-line nested scope before a following outer await, while retaining idempotent final cleanup on failure paths.
     - [x] Dispose a resource whose complete nested scope precedes the first modeled await before entering that await.
@@ -671,7 +690,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Prove default-free resource-alias cleanup switches exhaustive over finite TypeScript string, number, and boolean literal unions.
     - [x] Treat terminal `return` paths, including exhaustive terminal `if`/`else` both inside and outside switches, as not reaching subsequent disposed-resource alias uses.
     - [x] Keep resource-alias kills inside `try` and `catch` conditional while recognizing mandatory `finally` clears, preventing exception-path false negatives.
-    - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins.
+    - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
       - [x] Join resource aliases introduced in `for`/`for...in`/`for...of`/`while`/`do...while` bodies when every executed iteration terminally clears or returns; preserve zero-iteration state and reject pre-clear abrupt completion.
       - [x] Compute a finite per-target loop exit summary so clear-before-`break`/`continue` paths join safely, while uncleared exits and clear-then-reassign paths remain escaping.
       - [x] Treat an unconditional direct/static-slot alias clear in a loop-local `finally` as the common exceptional, normal, and transfer exit; retain conditional or uncleared finally paths conservatively.
@@ -702,20 +721,20 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Join exhaustive finite-literal/default `switch` catch-entry paths, including empty-label fallthrough groups, when every possible entry must observe before risk; reject unobserved cases and throw-capable discriminants or labels.
       - [x] Compose nested `try`/`catch`/`finally` into an outer catch-entry proof when the inner try must observe first and its handlers do not replace the tracked generation; reject replacement-before-later-throw paths.
       - [x] Treat every TypeScript assignment operator, including logical assignment, as a tracked Promise generation replacement in the ownership fixed point.
-      - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow.
+      - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow. ([#9](https://github.com/mizchi/uneffect/issues/9))
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
   - [x] Add restricted path-sensitive must-observe analysis for `if` branches, Promise reassignment, zero-iteration `while`/`for` paths, and at-least-once `do` loops.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
-  - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins, irreducible loops, and dynamically resolved control flow.
+  - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins, irreducible loops, and dynamically resolved control flow. ([#9](https://github.com/mizchi/uneffect/issues/9))
     - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.
     - [x] Preserve guaranteed throw completion through `&&`/`||` when the left throws or finite literal/immutable-const truthiness proves the throwing right side is evaluated; retain unknown short-circuit paths conservatively.
     - [x] Preserve guaranteed throw completion through `??` when the left throws or a statically nullish literal, `void`, global `undefined`, or immutable alias proves the throwing right side is evaluated; retain nullable unions and shadowed identifiers conservatively.
-    - [ ] Build a general exception-aware CFG fixed point for complex/irreducible loop joins beyond the bounded, statically owned nested-label fragment.
+    - [ ] Build a general exception-aware CFG fixed point for complex/irreducible loop joins beyond the bounded, statically owned nested-label fragment. ([#9](https://github.com/mizchi/uneffect/issues/9))
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
   - [x] Add `consumes_callback_rejection` for Promise-returning callback ownership and diagnose unsafe async callbacks such as `forEach(async ...)`.
@@ -822,7 +841,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Distinguish `finite-path-limit` from general `dynamic-cardinality` in async IR and rejected Quint generation.
     - [x] Report recognized but unsupported generator guards/loops/delegation as `unsupported-generator-control-flow` rather than generic dynamic cardinality.
     - [x] Flatten a direct finite builtin `Set` used as an array-literal spread while retaining stored mutable Sets as an unbounded dynamic boundary.
-- [ ] Extend timer/event-loop ownership.
+- [ ] Extend timer/event-loop ownership. ([#10](https://github.com/mizchi/uneffect/issues/10))
   - [x] Add a Web event-loop profile for timer tasks, intervals, draining microtask checkpoints, animation-frame callbacks, and paint opportunities.
   - [x] Model direct `cancelAnimationFrame` handles and recurring `setInterval` scheduling.
   - [x] Resolve reassignment-free local timer-handle alias chains for direct cancellation.
@@ -839,7 +858,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Model static `scheduler.postTask` priority, FIFO, minimum delay, pre-abort, and Promise-returning task boundaries.
   - [x] Model top-level `scheduler.yield` at default priority and inline `postTask` continuations with inherited static priority and parent-time enqueue.
   - [x] Cancel modeled `scheduler.postTask` jobs after timeout/composition abort and inherit the same cancellation source across inline `scheduler.yield` continuations.
-  - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/imported/interprocedural abort compositions, TaskSignal reprioritization, direct external-signal state, and dynamically resolved parent callbacks.
+  - [ ] Track computed properties and imported closure factories, host-specific Node/browser timer phases and cross-host cancellation compatibility, dynamic/imported/interprocedural abort compositions, TaskSignal reprioritization, direct external-signal state, and dynamically resolved parent callbacks. ([#10](https://github.com/mizchi/uneffect/issues/10))
     - [x] Resolve direct property-access and literal computed-property method callbacks by TypeChecker symbol identity, including microtasks scheduled from their bodies.
     - [x] Resolve direct imported source callback factories when exactly one function-valued return is present in the analyzed Program.
     - [x] Preserve a direct external `AbortSignal` passed to `scheduler.postTask` as a nondeterministic cancellation state and transition, including inherited `scheduler.yield` continuations.
@@ -862,7 +881,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Keep independent fs poll completions unordered instead of inventing timer-style FIFO from source registration order.
     - [x] Classify reviewed fs callbacks as deferred by resolved builtin identity in the program call graph, preserving callback effects in the parent's capability summary across aliases.
     - [x] Dynamically register static nested Node timeout/interval calls from non-repeating callbacks.
-    - [ ] Model repeated-parent timer instances, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch.
+    - [ ] Model repeated-parent timer instances, concrete poll/I/O and close callbacks, ESM top-level ordering, dynamic abort composition, and polymorphic parent callback dispatch. ([#10](https://github.com/mizchi/uneffect/issues/10))
       - [x] Preserve the multiplicity of pending one-shot timeout instances registered by a repeating parent with an unbounded integer count.
       - [x] Preserve exact FIFO due times for repeated-parent one-shot timeout instances with a Quint `List[int]` queue.
       - [x] Model repeated creation of recurring intervals by retaining each instance and rotating its next due time through the same FIFO queue.
@@ -887,7 +906,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Preserve finite conditional timer callback alternatives in IR and emit exclusive Node/Web parent actions instead of enqueueing every branch's nested jobs together.
       - [x] Generalize exclusive callback-alternative actions to Node next-tick/microtask/poll/check/close and Web microtask/animation-frame/scheduler parents.
       - [x] Specialize callback parameters of non-exported, non-escaping local higher-order functions when every direct call supplies a finite source callback candidate set.
-      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, escaped/mutated dynamic abort composition, and open/imported polymorphic callback-parameter dispatch.
+      - [ ] Model remaining concrete poll/I/O and close event/listener callbacks, escaped/mutated dynamic abort composition, and open/imported polymorphic callback-parameter dispatch. ([#10](https://github.com/mizchi/uneffect/issues/10))
   - [x] Unify definitely queued Promise reactions, `queueMicrotask`, and modeled microtask checkpoints.
   - [x] Preserve dynamic FIFO enqueue order between Promise reactions created by reactions and already queued jobs.
   - [x] Extract `queueMicrotask` calls made inside inline callbacks and enqueue them dynamically rather than only modeling top-level registrations.
@@ -915,7 +934,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Bind an exported function-closure mutation root to a project/source/export identity, verify its current declaration with TypeChecker identity, and substitute only a matching named or namespace import in the parent; inaccessible, same-named-different, and non-exported roots remain unknown.
       - [x] Extend the same identity contract to module-initialization mutation regions and multi-hop re-export chains; the importing module must expose an exact TypeChecker-resolved binding or its module evidence becomes unknown.
       - [x] Define `globalThis` as the explicit `ecmascript:realm.globalThis` identity for function and module mutation composition within one runtime realm.
-      - [ ] Define opt-in runtime/realm-specific identities for aliases such as browser `window`, Node `global`/`process`, Workers, and iframes; non-exported lexical roots remain intentionally uncomposable.
+      - [ ] Define opt-in runtime/realm-specific identities for aliases such as browser `window`, Node `global`/`process`, Workers, and iframes; non-exported lexical roots remain intentionally uncomposable. ([#20](https://github.com/mizchi/uneffect/issues/20))
     - [x] Instantiate fully bounded iterator Effect parameters across project-reference call boundaries, including direct/stored/pure/forwarded arguments, bound mismatch diagnostics, and Promise `Throw` conversion; unbounded or opaque inputs remain unknown.
   - [x] Share cross-project Effect composition with the `uneffect check --project` CLI workspace path and expose the same provenance/blocker ledger in JSON.
   - [x] Attach stable source identity and spans to Program-produced effect summaries so same-named callables remain distinguishable.
