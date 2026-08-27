@@ -685,6 +685,15 @@ await state. Quint accepts terminal disposal and rejects a fault that jumps over
 transfer cleanup. A dynamic bound and a label owned by a non-loop block remain
 diagnosed rather than being guessed as the finite `for` owner.
 
+The mixed-disposal rejection path acquires a synchronous audit resource before
+an asynchronous delivery session at function scope. A rejected awaited send
+enters the concrete catch, continues through mandatory finally, and disposes
+the session before the audit resource. The generated `cleanupOrderSafe`
+invariant is load-bearing: a swapped cleanup lowering and a cleanup-skip
+lowering both produce Quint counterexamples. Removing `await` remains a
+`floating-promise` diagnostic, so model support does not discharge rejection
+ownership. Nested resource scopes and arbitrary handler joins remain open.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with

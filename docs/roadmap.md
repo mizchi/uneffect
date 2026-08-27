@@ -77,11 +77,12 @@ release date commitment.
    predicates, payloads, and snapshots into Promise/resource analysis. The next
    handoff now models statically owned bounded outer `continue` and `break`
    paths after cleanup; unresolved ownership still fails closed. The next slice
-   composes rejection through multiple sync/async disposals.
+   now also composes one caught awaited rejection through mandatory finally and
+   reverse mixed sync/async function-scope disposal.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
-   is active. Its bounded outer `continue` and `break` slices are implemented;
-   multiple-disposal rejection composition is next, followed by general joins
-   without weakening floating-error checks.
+   is active. Its bounded outer `continue`/`break` and mixed-disposal rejection
+   slices are implemented. Nested scopes and arbitrary joins are next, without
+   weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies

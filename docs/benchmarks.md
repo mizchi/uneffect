@@ -1643,3 +1643,13 @@ It includes cold TypeScript parsing/type checking and unified Quint source
 generation but excludes Quint execution. The executable test separately proves
 the model and rejects skipped transfer cleanup; this observation is not a CI
 budget or evidence for non-canonical loops.
+
+The mixed-disposal rejection workload parses a function-scoped synchronous
+audit resource and asynchronous delivery session, analyzes a caught awaited
+rejection plus mandatory finally, and generates the reverse-order Quint model.
+A filtered run on 2026-08-27 measured 135.03 ms mean (7.4057
+operations/second over 20 fixed iterations, 2.30% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model and reject
+reordered cleanup, skipped cleanup, and floating-Promise controls; the timing is
+not a CI budget or evidence for general nested-scope control flow.

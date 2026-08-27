@@ -3161,6 +3161,38 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toBeLessThan(quint.indexOf("action promise_1_fulfill"));
   });
 
+  it("preserves a caught rejection through finally and reverse mixed disposal", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/rejected-await-multiple-disposal.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      promises: Array<{ observation: string; catchesRejection: boolean }>;
+      disposals: Array<{ binding: string; asynchronous: boolean }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.promises).toContainEqual(expect.objectContaining({
+      observation: "await",
+      catchesRejection: true,
+    }));
+    expect(result.disposals.map(({ binding, asynchronous }) => ({ binding, asynchronous }))).toEqual([
+      { binding: "session", asynchronous: true },
+      { binding: "audit", asynchronous: false },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("rejected_await_multiple_disposal", result, "deliverWithRecovery") as string;
+    expect(quint).toContain("action promise_0_reject_caught");
+    expect(quint).toContain("action catch_statement_0");
+    expect(quint).toContain("action finally_statement_0");
+    expect(quint).toContain("action dispose_start_session");
+    expect(quint).toContain("action dispose_audit");
+    expect(quint).toContain("val cleanupOrderSafe");
+    expect(quint.indexOf("action dispose_start_session")).toBeLessThan(quint.indexOf("action dispose_audit"));
+    expect(generateUnified("rejected_await_multiple_disposal_reordered", result, "deliverWithRecovery", {
+      reorderCleanup: true,
+    })).toContain("cleanupOrderSafe");
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

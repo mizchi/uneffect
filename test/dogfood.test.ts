@@ -65,6 +65,21 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("action promise_1_fulfill");
   });
 
+  it("keeps caught delivery rejection, finally, and mixed cleanup in one model", () => {
+    const fileName = "examples/dogfood/rejected-await-multiple-disposal.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.disposals.map(({ binding, asynchronous }) => ({ binding, asynchronous }))).toEqual([
+      { binding: "session", asynchronous: true },
+      { binding: "audit", asynchronous: false },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("rejected_await_multiple_disposal", result, "deliverWithRecovery");
+    expect(quint).toContain("action promise_0_reject_caught");
+    expect(quint).toContain("action catch_statement_0");
+    expect(quint).toContain("action finally_statement_0");
+    expect(quint).toContain("val cleanupOrderSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

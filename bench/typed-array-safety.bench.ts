@@ -34,6 +34,7 @@ const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/work
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
 const targetAwareRetryCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-retry-cleanup.ts", import.meta.url), "utf8");
 const targetAwareBreakCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-break-cleanup.ts", import.meta.url), "utf8");
+const rejectedAwaitMultipleDisposalSource = readFileSync(new URL("../examples/dogfood/rejected-await-multiple-disposal.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -444,6 +445,11 @@ describe("typed-array static verification", () => {
     generateUnifiedAsyncQuint("target_aware_break_cleanup", result, "deliverUntilStop");
   }, { time: 500, iterations: 20 });
 
+  bench("lower caught rejection through mixed disposal", () => {
+    const result = analyzeAsyncSafety("rejected-await-multiple-disposal.ts", rejectedAwaitMultipleDisposalSource);
+    generateUnifiedAsyncQuint("rejected_await_multiple_disposal", result, "deliverWithRecovery");
+  }, { time: 500, iterations: 20 });
+
   bench("parse, lint, and generate flattened Node Lease Quint", () => {
     const temporal = parseSpec("lease.ts", `/* uneffect:
       clock realNow: 1
@@ -506,7 +512,8 @@ describe("typed-array static verification", () => {
       maxSteps: 2,
       synthesizeRelationalStrengtheningProperties: true,
       relationalStrengtheningMaxCoefficient: 3,
-    });
+  });
+
   }, { time: 2_000, iterations: 1 });
 
   bench("synthesize a pairwise affine quota conservation invariant", async () => {

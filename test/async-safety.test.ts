@@ -1205,6 +1205,46 @@ describe("async error and explicit resource safety", () => {
     expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
   }, 20_000);
 
+  it("proves reverse mixed disposal after a caught awaited rejection", () => {
+    const fileName = "examples/dogfood/rejected-await-multiple-disposal.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.disposals.map(({ binding, asynchronous }) => ({ binding, asynchronous }))).toEqual([
+      { binding: "session", asynchronous: true },
+      { binding: "audit", asynchronous: false },
+    ]);
+
+    const positive = run(generateUnifiedAsyncQuint("rejected_await_multiple_disposal", result, "deliverWithRecovery"), 16);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    const reordered = run(generateUnifiedAsyncQuint(
+      "rejected_await_multiple_disposal_reordered",
+      result,
+      "deliverWithRecovery",
+      { reorderCleanup: true },
+    ), 16);
+    expect(reordered.status).not.toBe(0);
+    expect(reordered.stdout + reordered.stderr).toMatch(/violation|counterexample/i);
+
+    const skipped = run(generateUnifiedAsyncQuint(
+      "rejected_await_multiple_disposal_skipped",
+      result,
+      "deliverWithRecovery",
+      { skipCleanup: true },
+    ), 16);
+    expect(skipped.status).not.toBe(0);
+    expect(skipped.stdout + skipped.stderr).toMatch(/violation|counterexample/i);
+
+    const floating = analyzeAsyncSafety("floating-rejected-delivery.ts", source.replace(
+      "await session.send().then(() => undefined);",
+      "session.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverWithRecovery",
+      kind: "floating-promise",
+    }));
+  }, 30_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

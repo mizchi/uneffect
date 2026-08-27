@@ -563,6 +563,18 @@ the unified module consumes its abstract fulfilled/rejected terminal boundary.
 A negative lowering can finish without cleanup, and the shared resource safety
 invariant rejects that execution.
 
+The checked mixed-disposal fragment permits two or more function-scoped
+resources acquired in source order, including a synchronous `using` followed
+by an asynchronous `await using`. One rejected awaited chain inside `try`
+enters its concrete `catch`, normal catch completion traverses mandatory
+`finally`, and cleanup then runs in reverse acquisition order. Generated Quint
+exposes `cleanupOrderSafe`: disposing an earlier same-scope acquisition is safe
+only when every later acquired resource has completed disposal for its current
+generation. Reordered and skipped-cleanup fault lowerings violate
+`resourceSafe`; removing the source `await` still produces `floating-promise`.
+This is not yet a proof for nested resource scopes, arbitrary handler joins, or
+multiple independently rejected awaited chains.
+
 `controlRegions` gives every `try` statement a stable source-derived identity
 and retains its protected, catch, finally, and complete source spans.
 `controlStatements` links each concrete catch and finally statement to that

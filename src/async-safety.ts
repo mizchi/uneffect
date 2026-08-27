@@ -2184,7 +2184,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean } = {}): string {
+export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
@@ -2624,12 +2624,21 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       }
     });
   });
-  disposals.forEach((_, order) => emitDisposal(order, cleanupPc + order, cleanupPc + order + 1));
+  const cleanupDisposalIndexes = disposals.map((_, index) => index);
+  if (options.reorderCleanup && cleanupDisposalIndexes.length > 1) {
+    [cleanupDisposalIndexes[0], cleanupDisposalIndexes[1]] = [cleanupDisposalIndexes[1]!, cleanupDisposalIndexes[0]!];
+  }
+  cleanupDisposalIndexes.forEach((disposalIndex, order) => emitDisposal(disposalIndex, cleanupPc + order, cleanupPc + order + 1));
   emit("finish_fulfilled", [`pc == ${completePc}`, "completion == 0"], new Map([["pc", "-2"]]));
   emit("finish_rejected", [`pc == ${completePc}`, "completion != 0"], new Map([["pc", "-1"]]));
   if (options.skipCleanup) emit("finish_without_cleanup", [`pc == ${cleanupPc}`], new Map([["pc", "-2"], ["broken", "true"]]));
   lines.push("", "  action step = any {", ...actions.map((name) => `    ${name},`), "  }");
   const disposed = resources.map((_, index) => `(not(acquired_${index}) or (disposed_${index} and disposed_generation_${index} == generation_${index}))`).join(" and ") || "true";
-  lines.push("", `  val resourceSafe = not(broken) and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  const cleanupOrder = resources.flatMap((earlier, earlierIndex) => resources.flatMap((later, laterIndex) =>
+    earlier.scopeId === later.scopeId && earlier.acquisitionIndex < later.acquisitionIndex
+      ? [`(not(disposed_${earlierIndex}) or not(acquired_${laterIndex}) or (disposed_${laterIndex} and disposed_generation_${laterIndex} == generation_${laterIndex}))`]
+      : [],
+  )).join(" and ") || "true";
+  lines.push("", `  val cleanupOrderSafe = ${cleanupOrder}`, `  val resourceSafe = not(broken) and cleanupOrderSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

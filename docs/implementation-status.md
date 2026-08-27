@@ -302,6 +302,11 @@ same property is proved for arbitrary TypeScript.
   generations and rejects stale or skipped transfer cleanup. Other outer
   transfers remain visible in `completionPaths`, emit
   `unsupported-control-transfer`, and make unified lowering refuse the model.
+- A function-scoped mixed-disposal acceptance model routes one caught awaited
+  rejection through concrete catch and mandatory finally statements, then
+  disposes an async resource before an earlier sync resource. Quint checks an
+  explicit same-scope reverse-order invariant; reordered cleanup, skipped
+  cleanup, and a source-level floating Promise are load-bearing controls.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`
