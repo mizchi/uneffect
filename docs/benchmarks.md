@@ -1763,5 +1763,19 @@ generation but excludes Quint execution. Separate tests run the positive model,
 prove both completion invariants load-bearing, and reject return fallthrough,
 return-before-cleanup, skipped normal continuation, wrong/skipped cleanup,
 premature handler entry, incomplete/overlapping paths, and floating rejection.
-The timing is not a CI budget or evidence for throw-versus-normal joins,
-additional sequential stages, or arbitrary CFGs.
+That return-workload timing is not a CI budget or evidence for the typed-throw
+workload below, additional sequential stages, or arbitrary CFGs.
+
+The nonuniform-throw-cleanup workload replaces the first-stage early return
+with a directly typed `NonUniformDeliveryError`. It preserves a distinct pending
+throw through branch-local async disposal, enters a conditional recover/rethrow
+catch, traverses mandatory `finally`, and permits only the normal arm to enter
+the later switch. A filtered run on 2026-08-28 measured 146.53 ms mean (6.8247
+operations/second over 20 fixed iterations, 3.25% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model, prove
+`throwCompletionSafe` load-bearing, and reject throw fallthrough,
+cleanup-before-throw, handler bypass, skipped normal continuation,
+wrong/skipped cleanup, premature handler entry, incomplete/overlapping paths,
+and floating rejection. The timing is not a CI budget or evidence for indirect
+throw expressions, outer-loop resource generations, or arbitrary CFGs.

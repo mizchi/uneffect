@@ -372,18 +372,21 @@ same property is proved for arbitrary TypeScript.
   acquisition, premature handler entry, and floating rejection are explicit
   negative controls. This is not a general CFG fixed point.
 - A non-uniform completion extension accepts one Boolean first-stage decision
-  where one async-resource arm completes with early `return` and the other
-  completes normally into a later finite switch. Analysis distinguishes a
-  fallthrough condition from an acquisition decision, while Quint uses a
-  distinct return completion kind, disposes the selected return resource before
-  mandatory `finally`, and prevents the return path from reaching later
-  acquisitions or the outer continuation. A rejection before the return still
-  enters catch after cleanup rather than being mislabeled as return. Dedicated
-  return-fallthrough, return-before-cleanup, and normal-continuation-skip faults
-  prove `returnCompletionSafe` and `normalContinuationSafe` load-bearing;
-  incomplete/overlapping paths, wrong/skipped cleanup, premature handler entry,
-  and floating rejection remain negative controls. Throw-versus-normal joins,
-  more than two stages, and arbitrary CFGs remain unsupported.
+  where one async-resource arm completes with early `return` or a directly
+  typed `throw`, and the other completes normally into a later finite switch.
+  Analysis distinguishes fallthrough conditions from acquisition decisions.
+  Quint gives return and pending typed throw distinct completion kinds, disposes
+  the selected abrupt resource first, routes throw to catch for conditional
+  recover/rethrow, and traverses mandatory `finally`. Neither abrupt path may
+  reach later acquisitions; return also cannot reach the outer continuation.
+  Rejection before the abrupt statement still enters catch after cleanup rather
+  than being mislabeled. Dedicated fallthrough, cleanup-before-completion,
+  throw-handler-bypass, and normal-continuation-skip faults prove
+  `returnCompletionSafe`, `throwCompletionSafe`, and `normalContinuationSafe`
+  load-bearing. Incomplete/overlapping paths, wrong/skipped cleanup, premature
+  handler entry, and floating rejection remain negative controls. Indirect or
+  expression-level throw production, more than two stages, and arbitrary CFGs
+  remain unsupported.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

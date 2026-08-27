@@ -3466,6 +3466,31 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toContain("completion == 4");
   });
 
+  it("preserves typed throw through branch-local cleanup, catch, and mandatory finally", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/nonuniform-throw-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; controlPaths: Array<Array<{ id: string; expected: boolean }>> }>;
+      throwCompletions: Array<{ errorType: string; controlPaths: Array<Array<{ id: string; expected: boolean }>> }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    const resources = Object.fromEntries(result.resources.map((resource) => [resource.binding, resource]));
+    expect(resources.primary?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([true]);
+    expect(resources.secondary?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false]);
+    expect(resources.archive?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false, true]);
+    expect(resources.mirror?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false, false]);
+    expect(result.throwCompletions).toContainEqual(expect.objectContaining({
+      errorType: "NonUniformDeliveryError",
+      controlPaths: [expect.arrayContaining([expect.objectContaining({ expected: true })])],
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("nonuniform_throw_cleanup", result, "deliverNonUniformThrow") as string;
+    expect(quint).toContain("val throwCompletionSafe");
+    expect(quint).toContain("completion == 5");
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

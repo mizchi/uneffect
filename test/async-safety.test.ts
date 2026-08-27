@@ -1817,6 +1817,87 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 120_000);
 
+  it("routes a typed throw through branch cleanup, catch, and mandatory finally", () => {
+    const fileName = "examples/dogfood/nonuniform-throw-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const throws = result.throwCompletions.filter(({ owner }) => owner === "deliverNonUniformThrow");
+    expect(throws).toContainEqual(expect.objectContaining({
+      errorType: "NonUniformDeliveryError",
+      controlPaths: [expect.arrayContaining([expect.objectContaining({ expected: true })])],
+    }));
+
+    const quint = generateUnifiedAsyncQuint("nonuniform_throw_cleanup", result, "deliverNonUniformThrow");
+    expect(quint).toContain("val throwCompletionSafe");
+    expect(quint).toContain("completion == 5");
+    const positive = run(quint, 60);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["fallthrough_after_throw", { fallthroughAfterThrow: true }],
+      ["throw_before_cleanup", { throwBeforeCleanup: true }],
+      ["bypass_throw_handler", { bypassThrowHandler: true }],
+      ["normal_continuation_skipped", { skipNormalContinuation: true }],
+      ["wrong_resource_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `nonuniform_throw_cleanup_${name}`,
+        result,
+        "deliverNonUniformThrow",
+        options,
+      ), 60);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const bypassed = generateUnifiedAsyncQuint(
+      "nonuniform_throw_cleanup_load_bearing",
+      result,
+      "deliverNonUniformThrow",
+      { bypassThrowHandler: true },
+    );
+    const weakened = run(bypassed.replace(
+      /val throwCompletionSafe = .*$/m,
+      "val throwCompletionSafe = true",
+    ), 60);
+    expect(weakened.status, weakened.stdout + weakened.stderr).toBe(0);
+
+    const incomplete = analyzeAsyncSafety("nonuniform-throw-incomplete.ts", source.replace(
+      `    } else {
+      await using secondary = openSecondary();
+      await secondary.send().then(() => undefined);
+    }`,
+      "    }",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nonuniform_throw_incomplete", incomplete, "deliverNonUniformThrow"))
+      .toThrow(/resource decision .* incomplete leaf coverage/);
+
+    const overlapping = analyzeAsyncSafety("nonuniform-throw-overlap.ts", source.replace(
+      "      await using primary = openPrimary();",
+      "      await using primary = openPrimary();\n      await using duplicate = openSecondary();",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nonuniform_throw_overlap", overlapping, "deliverNonUniformThrow"))
+      .toThrow(/overlapping acquisition paths/);
+
+    const floating = analyzeAsyncSafety("nonuniform-throw-floating.ts", source.replace(
+      "await mirror.send().then(() => undefined);",
+      "mirror.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverNonUniformThrow",
+      kind: "floating-promise",
+    }));
+
+    const nonError = analyzeAsyncSafety("nonuniform-throw-non-error.ts", source.replace(
+      "throw new NonUniformDeliveryError(\"primary delivery failed\");",
+      "throw \"primary delivery failed\";",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nonuniform_throw_non_error", nonError, "deliverNonUniformThrow"))
+      .toThrow(/non-uniform throw requires a TypeChecker-proven Error-like value/);
+  }, 150_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

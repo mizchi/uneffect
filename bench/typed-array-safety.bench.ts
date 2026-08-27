@@ -44,6 +44,7 @@ const nestedBranchCorrelatedCleanupSource = readFileSync(new URL("../examples/do
 const mixedDecisionCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/mixed-decision-correlated-cleanup.ts", import.meta.url), "utf8");
 const sequentialDecisionCleanupSource = readFileSync(new URL("../examples/dogfood/sequential-decision-cleanup.ts", import.meta.url), "utf8");
 const nonUniformReturnCleanupSource = readFileSync(new URL("../examples/dogfood/nonuniform-return-cleanup.ts", import.meta.url), "utf8");
+const nonUniformThrowCleanupSource = readFileSync(new URL("../examples/dogfood/nonuniform-throw-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -502,6 +503,11 @@ describe("typed-array static verification", () => {
   bench("lower non-uniform return through cleanup and mandatory finally", () => {
     const result = analyzeAsyncSafety("nonuniform-return-cleanup.ts", nonUniformReturnCleanupSource);
     generateUnifiedAsyncQuint("nonuniform_return_cleanup", result, "deliverNonUniform");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower non-uniform typed throw through cleanup, catch, and finally", () => {
+    const result = analyzeAsyncSafety("nonuniform-throw-cleanup.ts", nonUniformThrowCleanupSource);
+    generateUnifiedAsyncQuint("nonuniform_throw_cleanup", result, "deliverNonUniformThrow");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

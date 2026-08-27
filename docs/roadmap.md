@@ -34,8 +34,10 @@ commitment.
    decisions may now reconverge sequentially with an explicit
    dispose-before-next-acquire invariant. One bounded early-return-versus-normal
    decision now retains cleanup and mandatory `finally` while excluding later
-   normal work. Throw-versus-normal resource joins remain here without
-   weakening floating-error checks; general scalar CFG
+   normal work. Its typed throw-versus-normal counterpart now cleans up before
+   catch, distinguishes recovery from rethrow, and excludes later normal work
+   without weakening floating-error checks. Resource generations through a
+   supported outer loop remain here; general scalar CFG
    fixed points and dynamic alias evidence are separately owned by #23 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI

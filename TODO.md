@@ -39,10 +39,12 @@ cleanup/handler join, including one three-leaf nested Boolean tree, one finite
 switch whose preferred case contains a nested Boolean choice, and two
 independent sequential resource decisions separated by a verified cleanup
 join. A non-uniform Boolean decision may now dispose an async resource before
-an early `return`, preserve that completion through mandatory `finally`, and
-prevent both the later resource decision and normal outer continuation. The
-next Red/Green slice adds the bounded throw-versus-normal counterpart without
-claiming an arbitrary CFG fixed point prematurely.
+an early `return` or typed `throw`. Return remains distinct through mandatory
+`finally`; throw remains distinct until branch cleanup enters catch, where the
+supported handler either recovers it or rethrows before mandatory `finally`.
+Neither abrupt arm may enter the later resource decision. The next Red/Green
+slice extends resource-generation identity through one supported outer loop
+without claiming a general CFG or alias fixed point prematurely.
 
 This summary deliberately does not restate the full proof boundary. Use
 `docs/feature-matrix.md` for supported and unsupported user-visible behavior,
@@ -59,7 +61,7 @@ that every later row depends on completion of every earlier row. In particular,
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Preserve bounded throw versus normal completion across branch-local async cleanup, catch/finally, and a later resource decision. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Preserve resource-generation identity across one supported outer loop without weakening floating-rejection diagnostics. |
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Promote after #9's current bounded slice; independently consume #3's provenance-preserving summaries across project references. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
@@ -764,6 +766,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Preserve one finite string-literal switch whose preferred case contains a Boolean resource choice and whose explicit default owns a backup resource; validate both provenance kinds, combined complete/non-overlapping leaf coverage, and one shared eight-condition budget while retaining cleanup, handler, acquisition, and floating-Promise negative controls.
     - [x] Preserve two independent finite resource decisions across an intermediate join; validate both stages and a combined eight-condition budget, keep exclusion local to each stage, require first-stage disposal before second-stage acquisition, and reject delayed/skipped/wrong cleanup, wrong-stage acquisition, incomplete/overlapping stages, disposed alias use, premature handler entry, and floating rejection.
     - [x] Preserve one non-uniform Boolean return-versus-normal resource decision: distinguish fallthrough guards from acquisition-decision conditions, dispose the return arm before completion, retain return through mandatory `finally`, and prevent later acquisition or outer continuation; keep await rejection routed through catch and retain return-fallthrough, normal-skip, cleanup-before-return, wrong/skipped cleanup, premature-handler, incomplete/overlapping, and floating-Promise controls.
+    - [x] Preserve the bounded typed-throw-versus-normal counterpart with a distinct completion kind: dispose the throw arm before catch, distinguish handler recovery from rethrow, traverse mandatory `finally`, and prevent the throw path from entering the later decision; retain throw-fallthrough, cleanup-before-throw, handler-bypass, normal-skip, wrong/skipped cleanup, premature-handler, incomplete/overlapping, and floating-Promise controls.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

@@ -122,6 +122,7 @@ export interface AsyncSafetyResult {
   controlStatements: AsyncControlStatement[];
   controlTransferOwners: AsyncControlTransferOwner[];
   returnCompletions: AsyncReturnCompletion[];
+  throwCompletions: AsyncThrowCompletion[];
   resourceSwitches: ResourceSwitchDecision[];
   resourceIfs: ResourceIfDecision[];
   ownershipObligations: OwnershipGuardObligation[];
@@ -129,6 +130,13 @@ export interface AsyncSafetyResult {
 }
 export interface AsyncReturnCompletion {
   owner: string;
+  controlPaths: AsyncControlCondition[][];
+  span: { start: number; end: number };
+}
+export interface AsyncThrowCompletion {
+  owner: string;
+  errorType: string;
+  errorLike: boolean;
   controlPaths: AsyncControlCondition[][];
   span: { start: number; end: number };
 }
@@ -610,7 +618,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
   const resourceRetentionCache = new Map<ts.SignatureDeclaration, ReadonlySet<number>>();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], resourceSwitches: ResourceSwitchDecision[] = [], resourceIfs: ResourceIfDecision[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], controlTransferOwners: AsyncControlTransferOwner[] = [], returnCompletions: AsyncReturnCompletion[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], resourceSwitches: ResourceSwitchDecision[] = [], resourceIfs: ResourceIfDecision[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], controlTransferOwners: AsyncControlTransferOwner[] = [], returnCompletions: AsyncReturnCompletion[] = [], throwCompletions: AsyncThrowCompletion[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "an ownership directive that does not resolve against this declaration transfers nothing, so callers keep the rejection responsibility" }] });
@@ -1013,6 +1021,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (ts.isReturnStatement(node)) {
         returnCompletions.push({ owner, controlPaths: controlPaths(node), span: { start: node.getStart(source), end: node.getEnd() } });
         if (node.expression && isPromiseLike(checker, node.expression)) { observe(node.expression, "return", false); markBinding(node.expression, "observed", "return"); }
+      }
+      if (ts.isThrowStatement(node)) {
+        const thrownType = checker.getTypeAtLocation(node.expression);
+        throwCompletions.push({
+          owner,
+          errorType: checker.typeToString(thrownType),
+          errorLike: Boolean(checker.getPropertyOfType(thrownType, "name") && checker.getPropertyOfType(thrownType, "message")),
+          controlPaths: controlPaths(node),
+          span: { start: node.getStart(source), end: node.getEnd() },
+        });
       }
       if (ts.isExpressionStatement(node)) {
         let expression = node.expression;
@@ -2178,7 +2196,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, controlTransferOwners, returnCompletions, resourceSwitches, resourceIfs, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, controlTransferOwners, returnCompletions, throwCompletions, resourceSwitches, resourceIfs, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
@@ -2295,6 +2313,9 @@ interface UnifiedAsyncQuintOptions {
   bypassIntermediateCleanup?: boolean;
   fallthroughAfterReturn?: boolean;
   returnBeforeCleanup?: boolean;
+  fallthroughAfterThrow?: boolean;
+  throwBeforeCleanup?: boolean;
+  bypassThrowHandler?: boolean;
   skipNormalContinuation?: boolean;
 }
 
@@ -2324,6 +2345,7 @@ export function generateUnifiedAsyncQuint(
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
   const transferOwners = result.controlTransferOwners.filter((item) => item.owner === owner);
   const returnCompletions = result.returnCompletions.filter((item) => item.owner === owner);
+  const throwCompletions = result.throwCompletions.filter((item) => item.owner === owner);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
   type NormalEvent =
     | { kind: "acquire"; index: number; position: number }
@@ -2458,6 +2480,7 @@ export function generateUnifiedAsyncQuint(
     ...awaited.flatMap((item) => item.controlPaths.flat()),
     ...result.controlStatements.filter((item) => item.owner === owner).flatMap((item) => item.completionPaths.flatMap((path) => path.controlConditions)),
     ...returnCompletions.flatMap((item) => item.controlPaths.flat()),
+    ...throwCompletions.flatMap((item) => item.controlPaths.flat()),
     ...aliases.flatMap((item) => item.generation.controlPaths.flat()),
   ].map((condition) => condition.id))];
   const branchIndex = new Map(branchIds.map((id, index) => [id, index]));
@@ -2687,6 +2710,28 @@ export function generateUnifiedAsyncQuint(
       ? [{ completion, returnCondition, returnResourceIndexes, normalResourceIndexes, laterResourceIndexes }]
       : [];
   });
+  const nonUniformThrowFacts = throwCompletions.flatMap((completion) => {
+    const throwCondition = completion.controlPaths.flat().find((condition) =>
+      condition.role !== "fallthrough" && ifGroupId(condition) !== undefined);
+    if (!throwCondition) return [];
+    const group = resourceDecisionGroups.find(([groupId]) => groupId === ifGroupId(throwCondition));
+    if (!group) return [];
+    const throwResourceIndexes = group[1].filter((resourceIndex) => resources[resourceIndex]!.controlPaths.some((path) =>
+      path.some((condition) => condition.id === throwCondition.id && condition.expected === throwCondition.expected)));
+    const normalResourceIndexes = group[1].filter((resourceIndex) => resources[resourceIndex]!.controlPaths.some((path) =>
+      path.some((condition) => condition.id === throwCondition.id && condition.expected !== throwCondition.expected)));
+    const laterResourceIndexes = resources.flatMap((resource, resourceIndex) => resource.controlPaths.some((path) =>
+      path.some((condition) => condition.role === "fallthrough"
+        && condition.id === throwCondition.id
+        && condition.expected !== throwCondition.expected)) ? [resourceIndex] : []);
+    return throwResourceIndexes.length > 0 && normalResourceIndexes.length > 0 && laterResourceIndexes.length > 0
+      ? [{ completion, throwCondition, throwResourceIndexes, normalResourceIndexes, laterResourceIndexes }]
+      : [];
+  });
+  const unsupportedNonUniformThrow = nonUniformThrowFacts.find(({ completion }) => !completion.errorLike);
+  if (unsupportedNonUniformThrow) {
+    throw new Error(`${owner} non-uniform throw requires a TypeChecker-proven Error-like value; ${unsupportedNonUniformThrow.completion.errorType} is unsupported`);
+  }
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool", "  var disposal_failure_pending: bool", "  var disposal_failure_count: int", "  var disposal_failure_events: int", "  var handled_disposal_failure_kind: int", "  var handled_cleanup_failure: bool"];
   transferLayouts.forEach(({ transferOwner }) => lines.push(`  var loop_iteration_${safe(transferOwner.id)}: int`));
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
@@ -2803,6 +2848,19 @@ export function generateUnifiedAsyncQuint(
     emit(`choose_branch_${index}_true`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "1"]]));
     emit(`choose_branch_${index}_false`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "0"]]));
   });
+  if (options.skipNormalContinuation) {
+    [
+      ...nonUniformReturnFacts.map((fact) => fact.returnCondition),
+      ...nonUniformThrowFacts.map((fact) => fact.throwCondition),
+    ].forEach((condition, index) => {
+      const branch = branchIndex.get(condition.id)!;
+      emit(`skip_normal_continuation_fault_${index}`, ["pc == 0"], new Map([
+        ["pc", "-2"],
+        ["completion", "0"],
+        [`branch_${branch}`, condition.expected ? "0" : "1"],
+      ]));
+    });
+  }
   normalLayout.forEach(({ event, pc }, eventIndex) => {
     const nextEvent = normalLayout[eventIndex + 1];
     const eventRegion = containingTry(event.position);
@@ -2904,6 +2962,11 @@ export function generateUnifiedAsyncQuint(
         return candidate.span.start >= scopeStart && candidate.span.end <= resource.scopeEnd
           && conditionPathsOverlap(candidate.controlPaths, resource.controlPaths);
       });
+      const throwCompletion = throwCompletions.find((candidate) => {
+        const scopeStart = Number(resource.scopeId.slice(resource.scopeId.lastIndexOf("@") + 1));
+        return candidate.span.start >= scopeStart && candidate.span.end <= resource.scopeEnd
+          && conditionPathsOverlap(candidate.controlPaths, resource.controlPaths);
+      });
       const failureEntersCatch = Boolean(disposals[event.index]!.catchesFailure && eventRegionLayout?.catchLayout.length);
       const nextIsSameScopeDisposal = nextEvent?.event.kind === "dispose"
         && disposals[nextEvent.event.index]!.scopeId === disposals[event.index]!.scopeId;
@@ -2922,8 +2985,14 @@ export function generateUnifiedAsyncQuint(
       const returnSuccessTarget = returnTarget !== undefined && failureEntersCatch
         ? `if (disposal_failure_pending) ${eventRegionLayout!.catchPc} else ${returnTarget}`
         : returnTarget;
+      const throwTarget = throwCompletion && eventRegionLayout?.catchLayout.length
+        ? eventRegionLayout.catchPc
+        : throwCompletion ? cleanupPc : undefined;
+      const throwSuccessTarget = throwTarget !== undefined && failureEntersCatch
+        ? `if (disposal_failure_pending) ${eventRegionLayout!.catchPc} else ${options.bypassThrowHandler ? eventRegionLayout?.finallyLayout.length ? eventRegionLayout.finallyPc : cleanupPc : throwTarget}`
+        : throwTarget;
       const skipsNormalContinuation = options.skipNormalContinuation
-        && nonUniformReturnFacts.some((fact) => fact.normalResourceIndexes.includes(resourceIndex));
+        && [...nonUniformReturnFacts, ...nonUniformThrowFacts].some((fact) => fact.normalResourceIndexes.includes(resourceIndex));
       const skippedNormalTarget = skipsNormalContinuation
         ? failureEntersCatch
           ? `if (disposal_failure_pending) ${eventRegionLayout!.catchPc} else ${eventRegionLayout?.finallyLayout.length ? eventRegionLayout.finallyPc : cleanupPc}`
@@ -2935,8 +3004,11 @@ export function generateUnifiedAsyncQuint(
         handlerBypassNext: handlerBypassTarget,
         prematureHandlerNext: failureEntersCatch && nextIsSameScopeDisposal ? eventRegionLayout!.catchPc : undefined,
         successNext: skippedNormalTarget
-          ?? (returnSuccessTarget !== undefined && !options.fallthroughAfterReturn ? returnSuccessTarget : undefined),
-        successCompletion: returnTarget !== undefined
+          ?? (returnSuccessTarget !== undefined && !options.fallthroughAfterReturn ? returnSuccessTarget : undefined)
+          ?? (throwSuccessTarget !== undefined && !options.fallthroughAfterThrow ? throwSuccessTarget : undefined),
+        successCompletion: throwTarget !== undefined
+          ? failureEntersCatch ? "if (disposal_failure_pending) 0 else 5" : "5"
+          : returnTarget !== undefined
           ? failureEntersCatch ? "if (disposal_failure_pending) 0 else 4" : "4"
           : undefined,
       });
@@ -2945,6 +3017,11 @@ export function generateUnifiedAsyncQuint(
         `acquired_${resourceIndex}`,
         `not(disposed_${resourceIndex})`,
       ], new Map([["pc", String(returnTarget)], ["completion", "4"]]));
+      if (throwTarget !== undefined && options.throwBeforeCleanup) emit(`throw_before_cleanup_${labels[resourceIndex]}`, [
+        `pc == ${pc}`,
+        `acquired_${resourceIndex}`,
+        `not(disposed_${resourceIndex})`,
+      ], new Map([["pc", String(options.bypassThrowHandler ? eventRegionLayout?.finallyLayout.length ? eventRegionLayout.finallyPc : cleanupPc : throwTarget)], ["completion", "5"]]));
       if (options.wrongBranchCleanup) {
         const resourceIndex = resourceIndexForDisposal(event.index);
         const resource = resources[resourceIndex]!;
@@ -3074,6 +3151,7 @@ export function generateUnifiedAsyncQuint(
       const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
       for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
         const updates = new Map<string, string>([["pc", String(path.completion === "normal" ? next : finalEntry)]]);
+        if (path.completion === "normal") updates.set("completion", "if (completion == 5) 0 else completion");
         if (path.completion === "throw") updates.set("completion", "1");
         if (path.completion !== "normal") {
           updates.set("handled_cleanup_failure", "disposal_failure_pending");
@@ -3178,12 +3256,28 @@ export function generateUnifiedAsyncQuint(
     const routing = forbiddenPcs.map((pc) => `pc != ${pc}`);
     return `(completion != 4 or (${[...cleanup, ...routing].join(" and ") || "true"}))`;
   }).join(" and ") || "true";
-  const normalContinuationSafety = nonUniformReturnFacts.map((fact) => {
-    const branch = branchIndex.get(fact.returnCondition.id)!;
-    const normalValue = fact.returnCondition.expected ? 0 : 1;
+  const throwCompletionSafety = nonUniformThrowFacts.map(({ completion }) => {
+    const containingResources = resources.map((resource, index) => ({ resource, index })).filter(({ resource }) => {
+      const start = Number(resource.scopeId.slice(resource.scopeId.lastIndexOf("@") + 1));
+      return completion.span.start >= start && completion.span.end <= resource.scopeEnd;
+    });
+    const depth = Math.max(...containingResources.map(({ resource }) => resource.scopeDepth));
+    const local = containingResources.filter(({ resource }) => resource.scopeDepth === depth);
+    const forbiddenPcs = normalLayout.filter(({ event }) => event.position > completion.span.end).map(({ pc }) => pc);
+    const cleanup = local.map(({ index }) => `(disposed_${index} and disposed_generation_${index} == generation_${index})`);
+    const routing = [...forbiddenPcs.map((pc) => `pc != ${pc}`), "pc != -1", "pc != -2"];
+    return `(completion != 5 or (${[...cleanup, ...routing].join(" and ") || "true"}))`;
+  }).join(" and ") || "true";
+  const nonUniformCompletionFacts = [
+    ...nonUniformReturnFacts.map((fact) => ({ condition: fact.returnCondition, normalResourceIndexes: fact.normalResourceIndexes, laterResourceIndexes: fact.laterResourceIndexes })),
+    ...nonUniformThrowFacts.map((fact) => ({ condition: fact.throwCondition, normalResourceIndexes: fact.normalResourceIndexes, laterResourceIndexes: fact.laterResourceIndexes })),
+  ];
+  const normalContinuationSafety = nonUniformCompletionFacts.map((fact) => {
+    const branch = branchIndex.get(fact.condition.id)!;
+    const normalValue = fact.condition.expected ? 0 : 1;
     const laterAcquired = fact.laterResourceIndexes.map((index) => `acquired_${index}`).join(" or ") || "false";
     return `(pc != -2 or completion != 0 or branch_${branch} != ${normalValue} or handled_cleanup_failure or (${laterAcquired}))`;
   }).join(" and ") || "true";
-  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val sequentialResourceJoinSafe = ${sequentialResourceJoinSafety}`, `  val returnCompletionSafe = ${returnCompletionSafety}`, `  val normalContinuationSafe = ${normalContinuationSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and sequentialResourceJoinSafe and returnCompletionSafe and normalContinuationSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val sequentialResourceJoinSafe = ${sequentialResourceJoinSafety}`, `  val returnCompletionSafe = ${returnCompletionSafety}`, `  val throwCompletionSafe = ${throwCompletionSafety}`, `  val normalContinuationSafe = ${normalContinuationSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and sequentialResourceJoinSafe and returnCompletionSafe and throwCompletionSafe and normalContinuationSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

@@ -242,6 +242,24 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val normalContinuationSafe");
   });
 
+  it("preserves non-uniform typed throw through cleanup, catch, and finally", () => {
+    const fileName = "examples/dogfood/nonuniform-throw-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    const resources = Object.fromEntries(result.resources.map((resource) => [resource.binding, resource]));
+    expect(resources.archive?.controlPaths[0]).toContainEqual(expect.objectContaining({
+      expected: false,
+      role: "fallthrough",
+    }));
+    expect(result.throwCompletions).toContainEqual(expect.objectContaining({
+      owner: "deliverNonUniformThrow",
+      errorType: "NonUniformDeliveryError",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("nonuniform_throw_cleanup", result, "deliverNonUniformThrow");
+    expect(quint).toContain("val throwCompletionSafe");
+    expect(quint).toContain("val normalContinuationSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");
