@@ -319,6 +319,13 @@ same property is proved for arbitrary TypeScript.
   outer cleanup still run. Quint rejects a transition that bypasses the handler.
   The model records handled/pending state, not a concrete rejection payload or
   multi-disposal `SuppressedError` tree.
+- A two-resource protected-scope model routes body rejection and later-resource
+  acquisition failure through the same reverse disposal chain. One or both
+  disposals may reject; catch begins only after both finish, and Quint records a
+  finite single/suppressed kind. Premature handler entry, lost suppression,
+  skipped scope cleanup, reordered cleanup, and floating rejection are
+  load-bearing controls. Exact nested error payloads remain in the analysis IR,
+  not in this finite Quint state.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

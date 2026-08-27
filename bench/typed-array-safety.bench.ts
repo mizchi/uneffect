@@ -37,6 +37,7 @@ const targetAwareBreakCleanupSource = readFileSync(new URL("../examples/dogfood/
 const rejectedAwaitMultipleDisposalSource = readFileSync(new URL("../examples/dogfood/rejected-await-multiple-disposal.ts", import.meta.url), "utf8");
 const nestedRejectionCleanupSource = readFileSync(new URL("../examples/dogfood/nested-rejection-cleanup.ts", import.meta.url), "utf8");
 const caughtDisposalRejectionSource = readFileSync(new URL("../examples/dogfood/caught-disposal-rejection.ts", import.meta.url), "utf8");
+const suppressedDisposalRejectionsSource = readFileSync(new URL("../examples/dogfood/suppressed-disposal-rejections.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -460,6 +461,11 @@ describe("typed-array static verification", () => {
   bench("lower caught inner disposal rejection through handler", () => {
     const result = analyzeAsyncSafety("caught-disposal-rejection.ts", caughtDisposalRejectionSource);
     generateUnifiedAsyncQuint("caught_disposal_rejection", result, "deliverAfterDisposal");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower two failing disposals through suppression handler", () => {
+    const result = analyzeAsyncSafety("suppressed-disposal-rejections.ts", suppressedDisposalRejectionsSource);
+    generateUnifiedAsyncQuint("suppressed_disposal_rejections", result, "deliverWithSuppression");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

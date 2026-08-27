@@ -592,9 +592,18 @@ entering the enclosing catch. Normal recovery and explicit rethrow both consume
 that pending handler obligation, then traverse mandatory finally and remaining
 outer cleanup. Generated Quint exposes `disposalHandlerSafe`; a fault transition
 that bypasses catch while retaining the pending failure reaches a counterexample.
-This is a finite handled/pending abstraction and does not retain the concrete
-error payload. Multiple failing disposals in one scope, their `SuppressedError`
-composition, and arbitrary or irreducible joins remain outside this fragment.
+The two-resource extension treats one protected scope as a cleanup chain. A
+body rejection or later-resource acquisition failure enters the first disposal
+state rather than catch. Both inner resources then finish in reverse order;
+only the final cleanup edge may enter catch. `disposal_failure_count` and its
+independent event count use `0 | 1 | 2`, where `2` means a finite suppressed
+completion. `disposalSuppressionSafe` rejects a lost promotion,
+`handlerAfterCleanupSafe` rejects premature handler entry, and the existing
+order/terminal invariants reject reordered or skipped cleanup. The analysis IR
+still retains the exact nested `ResourceError`, but Quint does not retain its
+payload. This model is limited to at most two resources in one protected scope.
+Three or more failures, cleanup across multiple nested scopes, correlated
+branch-local ownership, and arbitrary or irreducible joins remain outside it.
 
 `controlRegions` gives every `try` statement a stable source-derived identity
 and retains its protected, catch, finally, and complete source spans.

@@ -21,9 +21,10 @@ release date commitment.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    is active. Its bounded outer `continue`/`break`, mixed-disposal rejection,
    restricted nested-scope conditional-join, and single caught inner-disposal
-   rejection slices are implemented. Multiple failing inner disposals and their
-   finite `SuppressedError` completion are next, followed by arbitrary CFG joins
-   without weakening floating-error checks.
+   rejection slices are implemented. A two-resource protected disposal stack
+   now completes before catch and retains a finite single/suppressed failure
+   kind. A branch-correlated cleanup join is next, followed by the general CFG
+   work without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies

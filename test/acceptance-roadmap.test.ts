@@ -3254,6 +3254,31 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toMatch(/action finally_statement_0 = all \{[\s\S]*?pc' = if \(completion == 0\) \d+ else \d+/);
   });
 
+  it("completes two failing inner disposals before handling suppression", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/suppressed-disposal-rejections.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      disposals: Array<{ binding: string; catchesFailure: boolean; scopeId: string }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.disposals.map(({ binding, catchesFailure }) => ({ binding, catchesFailure }))).toEqual([
+      { binding: "secondary", catchesFailure: true },
+      { binding: "primary", catchesFailure: true },
+      { binding: "audit", catchesFailure: false },
+    ]);
+    expect(result.disposals[0]?.scopeId).toBe(result.disposals[1]?.scopeId);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("suppressed_disposal_rejections", result, "deliverWithSuppression") as string;
+    expect(quint).toContain("var disposal_failure_count: int");
+    expect(quint).toContain("var handled_disposal_failure_kind: int");
+    expect(quint).toMatch(/action dispose_reject_secondary_scope_exit = all \{[\s\S]*?pc' = \d+,[\s\S]*?disposal_failure_count' = if \(disposal_failure_count == 0\) 1 else 2,/);
+    expect(quint).toMatch(/action dispose_reject_primary_scope_exit = all \{[\s\S]*?disposal_failure_count' = if \(disposal_failure_count == 0\) 1 else 2,/);
+    expect(quint).toContain("val disposalSuppressionSafe");
+    expect(quint).toContain("val handlerAfterCleanupSafe");
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

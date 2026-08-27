@@ -111,6 +111,22 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val disposalHandlerSafe");
   });
 
+  it("empties a two-resource inner stack before handling suppression", () => {
+    const fileName = "examples/dogfood/suppressed-disposal-rejections.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.disposals.map(({ binding, catchesFailure }) => ({ binding, catchesFailure }))).toEqual([
+      { binding: "secondary", catchesFailure: true },
+      { binding: "primary", catchesFailure: true },
+      { binding: "audit", catchesFailure: false },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("suppressed_disposal_rejections", result, "deliverWithSuppression");
+    expect(quint).toMatch(/action dispose_reject_secondary_scope_exit = all \{[\s\S]*?pc' = \d+,[\s\S]*?disposal_failure_count' = if \(disposal_failure_count == 0\) 1 else 2,/);
+    expect(quint).toMatch(/action catch_return = all \{[\s\S]*?handled_disposal_failure_kind' = disposal_failure_count,/);
+    expect(quint).toContain("val disposalSuppressionSafe");
+    expect(quint).toContain("val handlerAfterCleanupSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

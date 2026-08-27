@@ -708,8 +708,12 @@ A second nested path declares the async session inside the protected try, so
 its disposal rejection enters the enclosing conditional catch. Quint retains a
 pending handler obligation until recovery or rethrow and rejects a handler
 bypass before mandatory finally and remaining outer cleanup. Multiple failing
-disposals and their `SuppressedError` composition, plus arbitrary CFG joins,
-remain open.
+disposals in one protected scope now continue in reverse order before catch and
+retain a finite single/suppressed failure kind. Protected body rejection and a
+later acquisition failure enter that same cleanup chain. The checked bound is
+two resources in one scope; larger stacks, multiple nested cleanup scopes,
+branch-correlated ownership, concrete error payloads in Quint, and arbitrary CFG
+joins remain open.
 
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding

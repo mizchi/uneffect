@@ -1342,6 +1342,59 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 30_000);
 
+  it("finishes a failing inner disposal stack before handling SuppressedError", () => {
+    const fileName = "examples/dogfood/suppressed-disposal-rejections.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.disposals.map(({ binding, catchesFailure }) => ({ binding, catchesFailure }))).toEqual([
+      { binding: "secondary", catchesFailure: true },
+      { binding: "primary", catchesFailure: true },
+      { binding: "audit", catchesFailure: false },
+    ]);
+    expect(composeResourceFailures(result, "deliverWithSuppression", undefined, ["secondary", "primary"])).toEqual({
+      kind: "suppressed",
+      error: { kind: "error", errorType: "unknown", source: "dispose:primary" },
+      suppressed: { kind: "error", errorType: "unknown", source: "dispose:secondary" },
+    });
+
+    const quint = generateUnifiedAsyncQuint(
+      "suppressed_disposal_rejections",
+      result,
+      "deliverWithSuppression",
+    );
+    const scopeCleanupPc = quint.match(/action dispose_start_secondary_scope_exit = all \{\s+pc == (\d+)/)?.[1];
+    expect(scopeCleanupPc).toBeDefined();
+    expect(quint.match(/action promise_0_reject_caught = all \{[\s\S]*?pc' = (\d+)/)?.[1]).toBe(scopeCleanupPc);
+    expect(quint.match(/action acquire_fail_secondary = all \{[\s\S]*?pc' = (\d+)/)?.[1]).toBe(scopeCleanupPc);
+    const positive = run(quint, 30);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["premature_handler", { prematureDisposalHandler: true }],
+      ["lost_suppression", { dropDisposalSuppression: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["reordered_cleanup", { reorderCleanup: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `suppressed_disposal_rejections_${name}`,
+        result,
+        "deliverWithSuppression",
+        options,
+      ), 30);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const floating = analyzeAsyncSafety("suppressed-disposal-floating.ts", source.replace(
+      "await secondary.send().then(() => undefined);",
+      "secondary.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverWithSuppression",
+      kind: "floating-promise",
+    }));
+  }, 45_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

@@ -1674,3 +1674,14 @@ but excludes Quint execution. Separate tests run the positive model and reject
 handler bypass, skipped scope cleanup, and a floating-Promise source control.
 The timing is not a CI budget or evidence for concrete error payloads,
 multi-disposal `SuppressedError` composition, or arbitrary CFG joins.
+
+The suppressed-disposal-rejections workload adds two async resources in one
+protected scope, routes body/acquisition failure through their reverse cleanup
+chain, and generates the finite single/suppressed handler state. A filtered run
+on 2026-08-27 measured 206.85 ms mean (4.8344 operations/second over 20 fixed
+iterations, 6.10% relative margin of error). This includes cold TypeScript
+parsing/type checking and Quint source generation but excludes Quint execution.
+Separate tests run the positive model and reject premature handler entry, lost
+suppression, skipped scope cleanup, reordered cleanup, and floating rejection.
+The timing is not a CI budget or evidence for larger stacks, multiple nested
+cleanup scopes, branch-correlated ownership, or arbitrary CFG joins.
