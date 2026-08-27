@@ -309,6 +309,16 @@ true conjunction is specialized into its constituent facts; its false case is
 kept intact because `!(a && b)` does not establish either individual negation.
 These are closed-form affine rules, not a general TypeScript CFG proof.
 
+A tenth case accepts a disjunctive invariant stop policy without choosing one
+true disjunct as proof. The stopping update retains its aligned conditional
+tree, so a fatal stop can record one backlog weight while an open circuit
+records two. On the repeating path, a false disjunction safely establishes
+that every stop flag is false. Both the stopping update tree and its cumulative
+leaf count are capped at eight. A ninth leaf, a stop flag mutated by the loop,
+a different ranking-counter delta, cross-state coupling, or a nonlinear stop
+update remains unsupported. The circuit-breaker telemetry dogfood preserves
+these boundaries with a cross-state-coupled negative control.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

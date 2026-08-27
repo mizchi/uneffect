@@ -1432,3 +1432,13 @@ the single-attempt break result and the continuing affine retry recurrence,
 including conjunction specialization and mandatory-finally ranking evidence.
 Because the workload changed, this is not compared as a regression against the
 earlier caught-break number.
+
+The circuit-breaker telemetry workload retains two disjunctive invariant stop
+paths with different affine accounting and one ordinary triangular drain
+recurrence. A filtered run on 2026-08-27 measured 0.6420 ms mean (1,557.63
+operations/second over 779 samples, 9.04% relative margin of error). The warm
+benchmark excludes parsing and Z3 and measures safe false-disjunction
+specialization, aligned true-path conditional retention, piecewise affine
+decomposition, and leaf-budget enforcement. Its high variance prevents a
+comparative claim; the eight-leaf acceptance and nine-leaf rejection remain
+unit-test obligations rather than a timing threshold.

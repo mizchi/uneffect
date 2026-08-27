@@ -1,10 +1,35 @@
 # Uneffect implementation roadmap
 
+Last reconciled with GitHub Issues: 2026-08-27.
+
 This file is the historical implementation ledger. Completed work is summarized
 in `docs/implementation-status.md` and classified by confidence in
 `docs/feature-matrix.md`. Unfinished work is tracked in GitHub Issues and
 prioritized in `docs/roadmap.md`; unchecked entries below are retained for
 traceability and map to those issues rather than forming a second active queue.
+
+## Status convention
+
+- GitHub Issues, milestones, and priority labels describe the state of `main`
+  and are the source of truth for unfinished work.
+- This file records completed implementation history and links every unchecked
+  item to exactly one owning Issue. An unchecked item without an Issue link is
+  a bookkeeping error.
+- Local work is not reported as implemented until its acceptance test, adjacent
+  negative controls, benchmark where required, English documentation, and full
+  validation have landed on `main`.
+- `priority:P0` means a proof-boundary or reliability dependency, not that all
+  P0 Issues should be developed concurrently.
+
+## Current focus
+
+[#3](https://github.com/mizchi/uneffect/issues/3) remains the active issue. The
+disjunctive invariant stop-policy slice has acceptance, negative controls,
+circuit-breaker dogfood, a measured benchmark, boundary documentation, and full
+local validation. The next slice should generalize nested invariant Boolean
+stop formulas through a bounded proof-preserving decision tree without choosing
+an arbitrary satisfying atom; dynamic policies and general CFG joins remain
+explicitly unsupported.
 
 ## Active issue index
 
@@ -14,21 +39,21 @@ Unchecked entries later in this file are historical detail mapped to these
 issues; do not create a second work queue from them. Issue bodies own acceptance
 criteria and the current supported/unsupported boundary.
 
-| Phase | Issue | Area | Remaining boundary |
-| --- | --- | --- | --- |
-| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | One general Promise/exception/disposal CFG fixed point |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | Remaining cross-project refinement/declaration semantic validation |
-| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Exact ESM/TLA/external/dynamic initialization semantics |
-| 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | General polyhedral/quantified invariants and nested formulas |
-| 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | Collection-valued state and remaining TLC values/traces |
-| 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Higher-order, recursive, and user-defined predicates |
-| 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
-| 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Complete real Corsa checker fact parity |
-| 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
-| 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Independently checkable certificates or a measured rejection |
-| 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | Evidence-gated transformations; general optimization remains unimplemented |
+| Phase | Issue | Area | Depends on | Remaining boundary |
+| --- | --- | --- | --- | --- |
+| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | — | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | #3 CFG representation | One general Promise/exception/disposal CFG fixed point |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
+| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #3, #20 | Exact ESM/TLA/external/dynamic initialization semantics |
+| 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
+| 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
+| 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
+| 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #3 alias/CFG work | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
+| 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
+| 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
+| 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #3, #9, #10 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
+| 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #3, #7, #8 | Evidence-gated transformations; general optimization remains unimplemented |
 
 ## Current execution order
 
@@ -329,6 +354,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Split one loop-invariant early `break` from the repeating affine path, substituting supported entry-state updates into the condition and permitting up to eight independent non-counter affine break-side updates; the initial slice rejected counter/post-update breaks and continues to reject a ninth update, cross-state-coupled/non-affine updates, counter-dependent or mutated conditions, continue/break mixtures, and other abrupt exits.
         - [x] Join a caught scalar throw into that invariant break path and execute mandatory `finally` before consuming the break, permitting the ranking counter to advance once only when its delta exactly matches an ordinary iteration; reject different counter steps, rethrows, mutated conditions, and coupled catch updates.
         - [x] Join invariant catch-side `break` and `continue` policies when one mandatory `finally` proves the ordinary ranking delta on both outcomes; specialize true conjunctions into their invariant atoms while retaining false conjunctions, and reject skipped continue steps, dynamic/counter-dependent policies, rethrows, and coupled updates.
+        - [x] Retain an aligned path-wise affine update tree for disjunctive invariant stop policies without selecting an arbitrary true disjunct; safely specialize a false disjunction on the repeating path, cap stopping trees at eight leaves, and reject cross-state/non-affine/different-counter/mutated-policy and ninth-leaf controls.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.

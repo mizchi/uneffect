@@ -277,6 +277,7 @@ type PiecewiseAffineLoopDelta =
 
 const MAX_AFFINE_LOOP_BRANCH_LEAVES = 8;
 const MAX_AFFINE_LOOP_BREAK_UPDATES = 8;
+const MAX_AFFINE_LOOP_BREAK_LEAVES = 8;
 
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
@@ -1692,12 +1693,47 @@ function validateRefinementActionBodiesInSource(
             if (condition.kind === "binary" && condition.operator === "and") {
               specialized = specializeTrueConjunction(specialized, condition.left);
               specialized = specializeTrueConjunction(specialized, condition.right);
+            } else if (condition.kind === "conditional"
+              && isBooleanCompletionPredicate(condition.whenTrue, true)
+              && specialized.kind === "conditional"
+              && sameRefinementExpression(specialized.condition, condition.condition)) {
+              const whenFalse = specializeTrueConjunction(specialized.whenFalse, condition.whenFalse);
+              specialized = sameRefinementExpression(specialized.whenTrue, whenFalse)
+                ? specialized.whenTrue
+                : { ...specialized, whenFalse };
+            } else if (condition.kind === "conditional"
+              && isBooleanCompletionPredicate(condition.whenFalse, true)
+              && specialized.kind === "conditional"
+              && sameRefinementExpression(specialized.condition, condition.condition)) {
+              const whenTrue = specializeTrueConjunction(specialized.whenTrue, condition.whenTrue);
+              specialized = sameRefinementExpression(whenTrue, specialized.whenFalse)
+                ? specialized.whenFalse
+                : { ...specialized, whenTrue };
+            }
+            return specialized;
+          };
+          const specializeFalseDisjunction = (
+            current: TemporalExpression,
+            condition: TemporalExpression,
+          ): TemporalExpression => {
+            let specialized = specializeCondition(current, condition, false);
+            if (condition.kind === "binary" && condition.operator === "or") {
+              specialized = specializeFalseDisjunction(specialized, condition.left);
+              specialized = specializeFalseDisjunction(specialized, condition.right);
+            } else if (condition.kind === "conditional"
+              && isBooleanCompletionPredicate(condition.whenTrue, true)) {
+              specialized = specializeCondition(specialized, condition.condition, false);
+              specialized = specializeFalseDisjunction(specialized, condition.whenFalse);
+            } else if (condition.kind === "conditional"
+              && isBooleanCompletionPredicate(condition.whenFalse, true)) {
+              specialized = specializeCondition(specialized, condition.condition, true);
+              specialized = specializeFalseDisjunction(specialized, condition.whenTrue);
             }
             return specialized;
           };
           return value
             ? specializeTrueConjunction(expression, breakWhen)
-            : specializeCondition(expression, breakWhen, false);
+            : specializeFalseDisjunction(expression, breakWhen);
         };
         const iterationUpdates = hasInvariantEarlyBreak
           ? new Map([...stateNames].map((name) => [name, specializedStateUpdate(name, false)]))
@@ -1782,6 +1818,7 @@ function validateRefinementActionBodiesInSource(
         const deltas = new Map<string, PiecewiseAffineLoopDelta>();
         const breakUpdates = new Map<string, TemporalExpression>();
         let stateChangingBreakUpdates = 0;
+        let stateChangingBreakLeaves = 0;
         const breakConditionNames = hasInvariantEarlyBreak ? scalarNames(breakWhen) : new Set<string>();
         const breakCondition = hasInvariantEarlyBreak ? atLoopEntry(breakWhen) : undefined;
         if (!breakConditionNames || (hasInvariantEarlyBreak && !breakCondition)
@@ -1810,8 +1847,10 @@ function validateRefinementActionBodiesInSource(
                 || breakCounterForm.coefficients.size !== 1
                 || breakCounterForm.coefficients.get(counterName) !== 1) return undefined;
             } else {
-              if (!affineDelta(name, breakUpdateExpression)
-                || ++stateChangingBreakUpdates > MAX_AFFINE_LOOP_BREAK_UPDATES) return undefined;
+              const breakPiecewise = piecewiseDelta(name, breakUpdateExpression);
+              if (!breakPiecewise
+                || ++stateChangingBreakUpdates > MAX_AFFINE_LOOP_BREAK_UPDATES
+                || (stateChangingBreakLeaves += breakPiecewise.leaves) > MAX_AFFINE_LOOP_BREAK_LEAVES) return undefined;
             }
             const breakUpdate = atLoopEntry(breakUpdateExpression);
             if (!breakUpdate) return undefined;

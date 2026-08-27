@@ -24,8 +24,11 @@ release date commitment.
    stopping path. A caught scalar failure can break after mandatory `finally`
    advances the ranking counter by the ordinary iteration delta;
    an invariant retry/stop policy can instead select continue while sharing the
-   same ranking `finally`. Differently-counter-changing, cross-state-coupled,
-   non-affine, over-budget, and dynamically selected outcomes remain open.
+   same ranking `finally`. A disjunctive invariant stop policy may retain an
+   aligned path-wise affine update tree of at most eight leaves; it does not
+   select an arbitrary true disjunct. Differently-counter-changing,
+   cross-state-coupled, non-affine, over-budget, unaligned, and dynamically
+   selected outcomes remain open.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

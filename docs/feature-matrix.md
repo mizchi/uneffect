@@ -69,11 +69,15 @@ advances and audits once before the catch-side break is consumed. The same
 caught failure may choose an invariant break or continue policy; the common
 `finally` must prove the ordinary ranking delta on both paths. True
 conjunctions in the break condition are specialized into their invariant
-constituents, while false conjunctions are not unsafely decomposed. A different
-counter delta, a ninth non-counter update, cross-state-coupled or non-affine
-break-side updates, a mutated or counter-dependent policy, and dynamically
-selected completion remain unsupported. This is a closed-form affine rule, not
-a general loop fixed point.
+constituents, while false conjunctions are not unsafely decomposed. A
+disjunctive invariant stop condition retains its aligned path-wise affine
+update tree instead of selecting an arbitrary true atom; on the repeating path,
+the false disjunction is safely specialized into false constituent atoms. The
+stopping tree is capped at eight leaves. A different counter delta, a ninth
+non-counter update or leaf, cross-state-coupled or non-affine break-side
+updates, a mutated or counter-dependent policy, unaligned boolean formulas,
+and dynamically selected completion remain unsupported. This is a closed-form
+affine rule, not a general loop fixed point.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

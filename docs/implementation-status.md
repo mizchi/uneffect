@@ -140,10 +140,13 @@ same property is proved for arbitrary TypeScript.
   mandatory `finally` may advance the ranking counter once when its delta
   exactly matches the ordinary iteration. A second invariant policy may choose
   continue instead; both completion paths share the mandatory ranking update,
-  and the continuing path contributes its affine recurrence. Different counter
-  deltas, a ninth update, cross-state coupling, non-affine updates,
-  counter-dependent or mutated policies, and dynamic completion selection
-  remain unsupported. Within the
+  and the continuing path contributes its affine recurrence. Disjunctive
+  invariant stop policies are retained as aligned conditional update trees;
+  false disjunctions are specialized only on the repeating path, where every
+  constituent is known false. The break-side tree is limited to eight leaves.
+  Different counter deltas, a ninth update or leaf, cross-state coupling,
+  non-affine updates, unaligned boolean formulas, counter-dependent or mutated
+  policies, and dynamic completion selection remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also

@@ -3033,6 +3033,88 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("bounds path-wise affine updates for a disjunctive invariant break", async () => {
+    const fixture = (count: number): string => {
+      const flags = Array.from({ length: count }, (_, index) => `stop${index}`);
+      const stopCondition = flags.join(" || ");
+      const stoppedDelta = flags.reduceRight(
+        (otherwise, flag, index) => `${flag} ? ${index + 1} * pending : (${otherwise})`,
+        "0",
+      );
+      const flagStates = flags.map((flag) => `state ${flag}: bool`).join("\n      ");
+      const flagInits = flags.map((flag) => `init ${flag} = false`).join("\n      ");
+      const flagFields = flags.map((flag) => `${flag}: boolean`).join("; ");
+      const branches = flags.map((flag, index) => `
+          if (runtime.${flag}) {
+            runtime.stoppedWeight += ${index + 1} * runtime.pending
+            break
+          }`).join("");
+      return `/* uneffect:
+      state pending: int
+      state processed: int
+      state stoppedWeight: int
+      ${flagStates}
+      init pending = 0
+      init processed = 0
+      init stoppedWeight = 0
+      ${flagInits}
+      action drain: pending' = pending > 0 ? (${stopCondition} ? pending : 0) : pending, processed' = processed + (pending > 0 ? (${stopCondition} ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (${stoppedDelta}) : 0)
+    */
+      interface Runtime { pending: number; processed: number; stoppedWeight: number; ${flagFields} }
+      /* uneffect: refinement disjunctiveBudget@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement disjunctiveBudget@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement disjunctiveBudget@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {${branches}
+          runtime.pending--
+          runtime.processed += runtime.pending
+        }
+      }
+    `;
+    };
+
+    const twoPaths = fixture(2);
+    const temporal = parseSpec("two-disjunctive-breaks.ts", twoPaths).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "two-disjunctive-breaks.ts", twoPaths, "disjunctiveBudget", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["disjunctive-break-coupled.ts", twoPaths.replace(
+        "runtime.stoppedWeight += 1 * runtime.pending",
+        "runtime.stoppedWeight += runtime.processed",
+      )],
+      ["disjunctive-break-nonlinear.ts", twoPaths.replace(
+        "runtime.stoppedWeight += 1 * runtime.pending",
+        "runtime.stoppedWeight *= runtime.pending",
+      )],
+      ["disjunctive-break-different-counter.ts", twoPaths.replace(
+        "runtime.stoppedWeight += 1 * runtime.pending\n            break",
+        "runtime.stoppedWeight += 1 * runtime.pending\n            runtime.pending--\n            break",
+      )],
+      ["disjunctive-break-mutated-policy.ts", twoPaths.replace(
+        "runtime.stoppedWeight += 1 * runtime.pending\n            break",
+        "runtime.stoppedWeight += 1 * runtime.pending\n            runtime.stop0 = false\n            break",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "disjunctiveBudget", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
+
+    const eightPaths = fixture(8);
+    await expect(validateRefinementActionBodiesWithZ3(
+      "eight-disjunctive-breaks.ts", eightPaths, "disjunctiveBudget",
+      parseSpec("eight-disjunctive-breaks.ts", eightPaths).temporal,
+    )).resolves.toEqual([]);
+
+    const ninePaths = fixture(9);
+    expect(validateRefinementActionBodies(
+      "nine-disjunctive-breaks.ts", ninePaths, "disjunctiveBudget",
+      parseSpec("nine-disjunctive-breaks.ts", ninePaths).temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

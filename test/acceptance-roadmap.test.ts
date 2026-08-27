@@ -862,6 +862,48 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions("caught-policy.ts", source, "caughtPolicy", temporal)).resolves.toEqual([]);
   });
 
+  it("keeps disjunctive stop-policy updates path-wise affine", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * state stoppedWeight: int
+       * state fatal: bool
+       * state circuitOpen: bool
+       * init pending = 0
+       * init processed = 0
+       * init stoppedWeight = 0
+       * init fatal = false
+       * init circuitOpen = false
+       * action drain: pending' = pending > 0 ? (fatal || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? (fatal || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (fatal ? pending : (circuitOpen ? 2 * pending : 0)) : 0)
+       */
+      interface Runtime { pending: number; processed: number; stoppedWeight: number; fatal: boolean; circuitOpen: boolean }
+      /* uneffect: refinement disjunctiveStop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement disjunctiveStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement disjunctiveStop@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.fatal) {
+            runtime.stoppedWeight += runtime.pending
+            break
+          }
+          if (runtime.circuitOpen) {
+            runtime.stoppedWeight += 2 * runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.processed += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("disjunctive-stop.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "disjunctive-stop.ts", source, "disjunctiveStop", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

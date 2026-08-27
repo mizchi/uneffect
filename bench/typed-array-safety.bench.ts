@@ -147,6 +147,9 @@ const pausedTelemetrySpec = parseSpec(pausedTelemetryFile, pausedTelemetrySource
 const failingTelemetryFile = "examples/dogfood/failing-telemetry-drain.ts";
 const failingTelemetrySource = readFileSync(failingTelemetryFile, "utf8");
 const failingTelemetrySpec = parseSpec(failingTelemetryFile, failingTelemetrySource).temporal;
+const circuitBreakerTelemetryFile = "examples/dogfood/circuit-breaker-telemetry-drain.ts";
+const circuitBreakerTelemetrySource = readFileSync(circuitBreakerTelemetryFile, "utf8");
+const circuitBreakerTelemetrySpec = parseSpec(circuitBreakerTelemetryFile, circuitBreakerTelemetrySource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1121,6 +1124,15 @@ describe("typed-array static verification", () => {
       failingTelemetrySource,
       "failingTelemetry",
       failingTelemetrySpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("compose disjunctive invariant stop accounting path-wise", () => {
+    validateRefinementActionBodies(
+      circuitBreakerTelemetryFile,
+      circuitBreakerTelemetrySource,
+      "circuitBreakerTelemetry",
+      circuitBreakerTelemetrySpec,
     );
   }, { time: 500, iterations: 20 });
 

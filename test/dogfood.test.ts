@@ -164,6 +164,27 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves path-wise accounting for fatal and circuit-open telemetry stops", async () => {
+    const fileName = "examples/dogfood/circuit-breaker-telemetry-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "circuitBreakerTelemetry", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "circuitBreakerTelemetry", temporal)).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "circuitBreakerTelemetry", temporal,
+    )).resolves.toEqual([]);
+
+    const coupledStopAccounting = source.replace(
+      "runtime.stoppedWeight += runtime.pending;",
+      "runtime.stoppedWeight += runtime.processed;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, coupledStopAccounting, "circuitBreakerTelemetry", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("proves pairwise worker-pool scale-up including target overshoot", async () => {
     const fileName = "examples/dogfood/worker-pool-scale-up.ts";
     const source = readFileSync(fileName, "utf8");
