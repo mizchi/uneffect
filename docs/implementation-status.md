@@ -114,15 +114,18 @@ same property is proved for arbitrary TypeScript.
   separate symbolic affine fragment, `while (counter > L)`, `>= L`, `< U`, and
   `<= U` are summarized for signed safe-integer constant bounds without
   expansion when the counter changes toward the bound by a positive
-  safe-integer constant magnitude, all other state writes have safe-integer constant
-  per-iteration deltas, and the body has no abrupt completion. Non-unit steps
+  safe-integer constant magnitude and the body has no abrupt completion. Other
+  state writes may have safe-integer constant per-iteration deltas. A unit
+  countdown additionally admits deltas affine in the ranking counter and
+  derives exact triangular totals. Non-unit steps
   derive a ceiling quotient from a guarded nonnegative distance and divide only
   the remainder-subtracted, exactly divisible numerator, keeping JavaScript,
   Quint, and Z3 results aligned while preserving final counter overshoot.
   Supported symbolic state updates before the loop are
   snapshotted and substituted into its guard, trip count, and closed-form
   results before the lexical suffix is composed. Dynamic or unsafe bounds or
-  steps, direction mismatches, other guards, coupled recurrences, opaque entry updates, and abrupt
+  steps, direction mismatches, other guards, mutually coupled or self-amplifying
+  recurrences, opaque entry updates, and abrupt
   exits remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the

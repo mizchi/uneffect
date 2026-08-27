@@ -121,6 +121,23 @@ const telemetryBacklogSpec = parseSpec(telemetryBacklogFile, telemetryBacklogSou
 const workerPoolFile = "examples/dogfood/worker-pool-scale-up.ts";
 const workerPoolSource = readFileSync(workerPoolFile, "utf8");
 const workerPoolSpec = parseSpec(workerPoolFile, workerPoolSource).temporal;
+const triangularDrainFile = "bench/triangular-backlog-drain.ts";
+const triangularDrainSource = `/* uneffect:
+  state pending: int
+  state weighted: int
+  init pending = 0
+  init weighted = 0
+  action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0)
+*/
+interface Runtime { pending: number; weighted: number }
+/* uneffect: refinement triangularDrain@1 action drain */
+export function drain(runtime: Runtime) {
+  while (runtime.pending > 0) {
+    runtime.pending--
+    runtime.weighted += runtime.pending
+  }
+}`;
+const triangularDrainSpec = parseSpec(triangularDrainFile, triangularDrainSource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
 const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
 const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
@@ -1023,6 +1040,15 @@ describe("typed-array static verification", () => {
       workerPoolSource,
       "workerPool",
       workerPoolSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("summarize a triangular loop-carried backlog recurrence", () => {
+    validateRefinementActionBodies(
+      triangularDrainFile,
+      triangularDrainSource,
+      "triangularDrain",
+      triangularDrainSpec,
     );
   }, { time: 500, iterations: 20 });
 

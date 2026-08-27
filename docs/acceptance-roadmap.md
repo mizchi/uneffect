@@ -271,11 +271,14 @@ before entering the ordinary lexical continuation. The telemetry-backlog
 dogfood first accounts for the sample that triggered a batching pass, processes
 two entries per iteration while retaining the final one or two, then checks a
 step-sensitive final backlog, exact accounting, a
-double-accounting mismatch, and a nonterminating increment control. Dynamic or
-unsafe bounds or steps, other guard shapes, coupled recurrences, opaque entry
-updates, break/continue, throw/return, and general loop invariants remain
-fail-closed. This is one affine fixed-point rule, not a general TypeScript CFG
-proof.
+double-accounting mismatch, and a nonterminating increment control. A separate
+acceptance case derives a triangular total when a unit countdown updates a
+second field by an affine function of the post-decrement ranking counter; an
+update-order change and a self-amplifying recurrence are negative controls.
+Dynamic or unsafe bounds or steps, other guard shapes, mutually coupled
+recurrences, opaque entry updates, break/continue, throw/return, and general
+loop invariants remain fail-closed. These are closed-form affine rules, not a
+general TypeScript CFG proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

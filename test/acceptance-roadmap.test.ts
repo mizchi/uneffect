@@ -496,6 +496,45 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
   });
 
+  it("summarizes a triangular loop-carried recurrence without finite expansion", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * init pending = 0
+       * init weighted = 0
+       * action drainWeighted: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0)
+       */
+      interface Runtime { pending: number; weighted: number }
+      /* uneffect: refinement triangularDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement triangularDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement triangularDrain@1 action drainWeighted */
+      export function drainWeighted(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("triangular-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("triangular-drain.ts", source, "triangularDrain", temporal)).resolves.toEqual([]);
+
+    const changedOrder = source.replace(
+      "runtime.pending--\n          runtime.weighted += runtime.pending",
+      "runtime.weighted += runtime.pending\n          runtime.pending--",
+    );
+    await expect(validateActions("triangular-drain-order.ts", changedOrder, "triangularDrain", temporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "drainWeighted", target: "weighted" }),
+    );
+
+    const nonlinear = source.replace("runtime.weighted += runtime.pending", "runtime.weighted += runtime.weighted");
+    await expect(validateActions("triangular-drain-nonlinear.ts", nonlinear, "triangularDrain", temporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "drainWeighted" }),
+    );
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

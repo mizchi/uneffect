@@ -2491,7 +2491,10 @@ describe("annotated refinement bindings", () => {
       ["countdown-unsafe-step.ts", source.replace("pending--", "pending -= 9007199254740992")],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "countdown", temporal)).toContainEqual(
-        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+        expect.objectContaining({
+          code: fileName === "countdown-coupled.ts" ? "action-update-mismatch" : "unsupported-action-body",
+          modelName: "drain",
+        }),
       );
     }
 
@@ -2534,6 +2537,49 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("summarizes loop-carried affine deltas over the ranking counter", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state weighted: int
+      init pending = 0
+      init weighted = 0
+      action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? pending * (pending - 1) / 2 : 0)
+    */
+      interface Runtime { pending: number; weighted: number }
+      /* uneffect: refinement triangular@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement triangular@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement triangular@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = parseSpec("triangular.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3("triangular.ts", source, "triangular", temporal)).resolves.toEqual([]);
+
+    const scaled = source
+      .replace("pending * (pending - 1) / 2", "pending * (pending + 2)")
+      .replace("runtime.weighted += runtime.pending", "runtime.weighted += 2 * runtime.pending + 3");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "triangular-scaled.ts", scaled, "triangular", parseSpec("triangular-scaled.ts", scaled).temporal,
+    )).resolves.toEqual([]);
+
+    const wrongOrder = source.replace(
+      "runtime.pending--\n          runtime.weighted += runtime.pending",
+      "runtime.weighted += runtime.pending\n          runtime.pending--",
+    );
+    await expect(validateRefinementActionBodiesWithZ3("triangular-order.ts", wrongOrder, "triangular", temporal)).resolves.toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "drain", target: "weighted" }),
+    );
+
+    const selfAmplifying = source.replace("runtime.weighted += runtime.pending", "runtime.weighted += runtime.weighted");
+    expect(validateRefinementActionBodies("triangular-self.ts", selfAmplifying, "triangular", temporal)).toContainEqual(
+      expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+    );
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int
@@ -2564,7 +2610,10 @@ describe("annotated refinement bindings", () => {
       ["scale-up-coupled.ts", source.replace("pool.starts++", "pool.starts += pool.active")],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "scaleUp", temporal)).toContainEqual(
-        expect.objectContaining({ code: "unsupported-action-body", modelName: "scale" }),
+        expect.objectContaining({
+          code: fileName === "scale-up-coupled.ts" ? "action-update-mismatch" : "unsupported-action-body",
+          modelName: "scale",
+        }),
       );
     }
   });

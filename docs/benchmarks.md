@@ -1365,3 +1365,11 @@ increasing-direction guard, exact ceiling quotient, overshoot, and lexical
 suffix construction. Its high margin of error makes it an observation rather
 than a comparative claim or regression budget; it does not establish general
 loop fixed-point performance.
+
+The same benchmark suite now retains a warm triangular-recurrence workload: a
+unit countdown adds the post-decrement ranking-counter value to a second state
+field on every iteration. A filtered Vitest Bench run completed on 2026-08-27,
+but the singleton summary emitted by the current runner did not include sample
+statistics, so no timing or regression claim is recorded. The workload covers
+affine decomposition and triangular closed-form construction; it excludes
+parsing, Z3 equivalence, mutually coupled recurrences, and general CFG joins.

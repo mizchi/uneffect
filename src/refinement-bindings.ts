@@ -256,6 +256,57 @@ function sameRefinementExpression(left: TemporalExpression, right: TemporalExpre
   return refinementExpressionKey(left) === refinementExpressionKey(right);
 }
 
+interface AffineStateExpression {
+  constant: number;
+  coefficients: ReadonlyMap<string, number>;
+}
+
+/** Extracts an exact safe-integer affine form without guessing unsupported operations. */
+function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
+  const safe = (value: number): number | undefined => Number.isSafeInteger(value) ? value : undefined;
+  const combine = (left: AffineStateExpression, right: AffineStateExpression, sign: 1 | -1): AffineStateExpression | undefined => {
+    const constant = safe(left.constant + sign * right.constant);
+    if (constant === undefined) return undefined;
+    const coefficients = new Map(left.coefficients);
+    for (const [name, coefficient] of right.coefficients) {
+      const combined = safe((coefficients.get(name) ?? 0) + sign * coefficient);
+      if (combined === undefined) return undefined;
+      if (combined === 0) coefficients.delete(name); else coefficients.set(name, combined);
+    }
+    return { constant, coefficients };
+  };
+  const scale = (form: AffineStateExpression, coefficient: number): AffineStateExpression | undefined => {
+    const constant = safe(form.constant * coefficient);
+    if (constant === undefined) return undefined;
+    const coefficients = new Map<string, number>();
+    for (const [name, value] of form.coefficients) {
+      const scaled = safe(value * coefficient);
+      if (scaled === undefined) return undefined;
+      if (scaled !== 0) coefficients.set(name, scaled);
+    }
+    return { constant, coefficients };
+  };
+  if (expression.kind === "integer") {
+    const constant = Number(expression.value);
+    return Number.isSafeInteger(constant) ? { constant, coefficients: new Map() } : undefined;
+  }
+  if (expression.kind === "name") return { constant: 0, coefficients: new Map([[expression.name, 1]]) };
+  if (expression.kind === "unary" && expression.operator === "negate") {
+    const operand = decomposeAffineStateExpression(expression.operand);
+    return operand ? scale(operand, -1) : undefined;
+  }
+  if (expression.kind !== "binary") return undefined;
+  const left = decomposeAffineStateExpression(expression.left);
+  const right = decomposeAffineStateExpression(expression.right);
+  if (!left || !right) return undefined;
+  if (expression.operator === "add") return combine(left, right, 1);
+  if (expression.operator === "subtract") return combine(left, right, -1);
+  if (expression.operator !== "multiply") return undefined;
+  if (left.coefficients.size === 0) return scale(right, left.constant);
+  if (right.coefficients.size === 0) return scale(left, right.constant);
+  return undefined;
+}
+
 function builtinCollectionKind(checker: ts.TypeChecker | undefined, node: ts.Expression): "Set" | "Map" | undefined {
   if (!checker) return undefined;
   const visit = (type: ts.Type, seen: ReadonlySet<ts.Type> = new Set()): "Set" | "Map" | undefined => {
@@ -1580,32 +1631,21 @@ function validateRefinementActionBodiesInSource(
           undefined, undefined, activeBreakLabels, activeContinueLabels,
         );
         if (loopCompletion !== "normal") return undefined;
-        const deltaFor = (name: string, expression: TemporalExpression): number | undefined => {
-          const safeInteger = (value: string): number | undefined => {
-            const parsed = Number(value);
-            return Number.isSafeInteger(parsed) ? parsed : undefined;
-          };
-          if (expression.kind === "name" && expression.name === name) return 0;
-          if (expression.kind !== "binary") return undefined;
-          if (expression.operator === "add") {
-            if (expression.left.kind === "name" && expression.left.name === name && expression.right.kind === "integer") return safeInteger(expression.right.value);
-            if (expression.right.kind === "name" && expression.right.name === name && expression.left.kind === "integer") return safeInteger(expression.left.value);
-          }
-          if (expression.operator === "subtract" && expression.left.kind === "name"
-            && expression.left.name === name && expression.right.kind === "integer") {
-            const value = safeInteger(expression.right.value);
-            return value === undefined ? undefined : -value;
-          }
-          return undefined;
-        };
-        const deltas = new Map<string, number>();
-        for (const name of stateNames) {
-          const delta = deltaFor(name, loopUpdates.get(name) ?? { kind: "name", name });
-          if (delta === undefined) return undefined;
-          deltas.set(name, delta);
-        }
-        const counterDelta = deltas.get(counterName);
+        const counterForm = decomposeAffineStateExpression(loopUpdates.get(counterName) ?? { kind: "name", name: counterName });
+        const counterDelta = counterForm?.constant;
+        if (!counterForm || counterForm.coefficients.size !== 1 || counterForm.coefficients.get(counterName) !== 1) return undefined;
         if (counterDelta === undefined || (descending ? counterDelta >= 0 : counterDelta <= 0)) return undefined;
+        const deltas = new Map<string, { constant: number; counterCoefficient: number }>();
+        for (const name of stateNames) {
+          if (name === counterName) {
+            deltas.set(name, { constant: counterDelta, counterCoefficient: 0 });
+            continue;
+          }
+          const form = decomposeAffineStateExpression(loopUpdates.get(name) ?? { kind: "name", name });
+          if (!form || form.coefficients.get(name) !== 1) return undefined;
+          if ([...form.coefficients].some(([symbol, coefficient]) => coefficient !== 0 && symbol !== name && symbol !== counterName)) return undefined;
+          deltas.set(name, { constant: form.constant, counterCoefficient: form.coefficients.get(counterName) ?? 0 });
+        }
         const stepValue = Math.abs(counterDelta);
         if (!Number.isSafeInteger(stepValue) || stepValue <= 0) return undefined;
         const zero: TemporalExpression = { kind: "integer", value: "0" };
@@ -1637,6 +1677,29 @@ function validateRefinementActionBodiesInSource(
           kind: "conditional", condition: entryGuard,
           whenTrue: loopIterations, whenFalse: zero,
         };
+        const multiplyByInteger = (expression: TemporalExpression, coefficient: number): TemporalExpression => {
+          if (coefficient === 0) return zero;
+          if (coefficient === 1) return expression;
+          if (coefficient === -1) return { kind: "unary", operator: "negate", operand: expression };
+          return { kind: "binary", operator: "multiply", left: integerExpression(coefficient), right: expression };
+        };
+        const addInteger = (expression: TemporalExpression, value: number): TemporalExpression => value === 0 ? expression : {
+          kind: "binary", operator: value > 0 ? "add" : "subtract",
+          left: expression, right: integerExpression(Math.abs(value)),
+        };
+        const triangularLoopIterations: TemporalExpression = {
+          kind: "binary", operator: "divide",
+          left: {
+            kind: "binary", operator: "multiply", left: loopIterations,
+            right: { kind: "binary", operator: "subtract", left: loopIterations, right: one },
+          },
+          right: integerExpression(2),
+        };
+        const loopCounterSeries: TemporalExpression = {
+          kind: "binary", operator: "add",
+          left: { kind: "binary", operator: "multiply", left: loopIterations, right: entryCounter },
+          right: multiplyByInteger(triangularLoopIterations, counterDelta),
+        };
         for (const [name, delta] of deltas) {
           const entryValue = entryValues.get(name)!;
           if (name === counterName) {
@@ -1652,12 +1715,36 @@ function validateRefinementActionBodiesInSource(
             });
             continue;
           }
-          if (delta === 0) continue;
-          const coefficient: TemporalExpression = delta >= 0
-            ? { kind: "integer", value: String(delta) }
-            : { kind: "unary", operator: "negate", operand: { kind: "integer", value: String(-delta) } };
-          const totalDelta: TemporalExpression = delta === 1 ? iterations : {
-            kind: "binary", operator: "multiply", left: coefficient, right: iterations,
+          if (delta.constant === 0 && delta.counterCoefficient === 0) continue;
+          const canonicalUnitCountdown = counterDelta === -1
+            && sameRefinementExpression(loopIterations, entryCounter)
+            && delta.counterCoefficient !== 0;
+          const unguardedTotal: TemporalExpression = canonicalUnitCountdown ? (() => {
+            const reducibleByTwo = delta.counterCoefficient % 2 === 0
+              && (delta.counterCoefficient + 2 * delta.constant) % 2 === 0;
+            const linearCoefficient = reducibleByTwo ? delta.counterCoefficient / 2 : delta.counterCoefficient;
+            const linearConstant = reducibleByTwo
+              ? (delta.counterCoefficient + 2 * delta.constant) / 2
+              : delta.counterCoefficient + 2 * delta.constant;
+            const numerator: TemporalExpression = {
+              kind: "binary", operator: "multiply", left: entryCounter,
+              right: addInteger(
+                multiplyByInteger(entryCounter, linearCoefficient),
+                linearConstant,
+              ),
+            };
+            return reducibleByTwo ? numerator : {
+              kind: "binary", operator: "divide", left: numerator, right: integerExpression(2),
+            };
+          })() : (() => {
+            const constantTotal = multiplyByInteger(loopIterations, delta.constant);
+            const counterTotal = multiplyByInteger(loopCounterSeries, delta.counterCoefficient);
+            return delta.constant === 0 ? counterTotal
+              : delta.counterCoefficient === 0 ? constantTotal
+              : { kind: "binary", operator: "add", left: constantTotal, right: counterTotal };
+          })();
+          const totalDelta: TemporalExpression = {
+            kind: "conditional", condition: entryGuard, whenTrue: unguardedTotal, whenFalse: zero,
           };
           updates.set(name, {
             kind: "binary", operator: "add", left: entryValue, right: totalDelta,
