@@ -202,7 +202,7 @@ describe("Uneffect dogfood", () => {
       code: "action-update-mismatch", modelName: "record",
     }));
 
-    const underbilledFailure = source.replace("units + failedUnits", "units + 1");
+    const underbilledFailure = source.replace("units += failedUnits", "units += 1");
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, underbilledFailure, "adaptiveBatchAccounting", temporal,
     )).resolves.toContainEqual(expect.objectContaining({

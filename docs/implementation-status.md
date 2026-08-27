@@ -179,8 +179,12 @@ same property is proved for arbitrary TypeScript.
   exception slice records the mutable-scalar environment on a supported typed
   scalar throw edge, starts `catch` from that edge-owned snapshot, and preserves
   the distinct normally completing `try` snapshot. Two conditional throwing
-  arms use the shared phi contract. Opaque payloads, catch-side local mutation,
-  and rethrow remain non-proofs. A mandatory-`finally` extension records direct
+  arms use the shared phi contract. A following narrow extension lets a
+  normally completing catch update outer-visible mutable scalars, projects out
+  its catch binding, and joins the caught result with the normal try snapshot
+  before the common continuation. Catch mutation followed by return, rethrow,
+  or another abrupt completion remains a non-proof. Opaque payloads and
+  mutable-local rethrow also remain non-proofs. A mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.

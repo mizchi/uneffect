@@ -1501,6 +1501,15 @@ changed and the sample count is small, so this is an observation rather than a
 regression claim or CI budget; it excludes loops, opaque/dynamic cases, nested
 case blocks, and Z3.
 
+After making the typed-failure catch update the mutable charge and normally
+continue through mandatory `finally` and common billing, the filtered workload
+measured 1.5293 ms mean (653.87 operations/second over 327 samples, 10.29%
+relative margin of error) on 2026-08-27. It measures throw-edge local recovery,
+normal/caught phi construction, switch flow, finally observation, and the
+shared continuation. The changed workload and high variance preclude a
+comparative claim; this is not a CI budget and excludes Z3, abrupt catch-side
+mutation, finally-side mutation, and general exception-aware CFG joins.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink

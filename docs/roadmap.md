@@ -49,8 +49,10 @@ release date commitment.
    only outer-visible local snapshots through normal and abrupt exits.
    Statically owned labeled blocks and bounded `for`/literal-`for...of` owner
    labels now preserve and consume their own mutable-local transfer snapshots.
-   The next step is catch/finally-side mutable-local ownership before the
-   general CFG fixed point.
+   A normally completing catch can now mutate outer-visible scalars and join
+   them with the normal try predecessor before the common continuation. The
+   next step is finally-side mutable-local ownership before the general CFG
+   fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

@@ -2433,7 +2433,9 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isTryStatement(statement)) {
         let residualCompletion: ActionCompletion = "normal";
+        let postCatchLocals: ReadonlyMap<string, TemporalExpression> | undefined;
         if (statement.catchClause) {
+          const catchVisibleNames = [...localValues.keys()];
           const tryLocals = new Map(localValues);
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
@@ -2469,8 +2471,26 @@ function validateRefinementActionBodiesInSource(
               allowMutableLoopWrites,
             );
             if (!catchCompletion) return undefined;
+            const hasMutableCatchLocals = catchVisibleNames.some((name) => name.startsWith("\u0000mutable:"));
+            const projectedCatchLocals = hasMutableCatchLocals
+              ? projectLocalSnapshot(catchLocals, catchVisibleNames)
+              : undefined;
+            const projectedThrowLocals = hasMutableCatchLocals && throwLocals
+              ? projectLocalSnapshot(throwLocals, catchVisibleNames)
+              : undefined;
+            if (hasMutableCatchLocals && (!projectedCatchLocals || !projectedThrowLocals)) return undefined;
+            const catchMutatesVisibleLocal = hasMutableCatchLocals && catchVisibleNames.some((name) =>
+              !name.startsWith("\u0000mutable:")
+              && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
+            if (catchCompletion !== "normal" && catchMutatesVisibleLocal) return undefined;
             if (!isBooleanCompletionPredicate(completionPredicate(catchCompletion, "throw"), false)
               && [...catchLocals.keys()].some((name) => name.startsWith("\u0000mutable:"))) return undefined;
+            if (catchCompletion === "normal" && projectedCatchLocals) {
+              postCatchLocals = isBooleanCompletionPredicate(throwWhen, true)
+                ? projectedCatchLocals
+                : joinVisibleLocalSnapshots(throwWhen, projectedCatchLocals, tryLocals, catchVisibleNames);
+              if (!postCatchLocals) return undefined;
+            }
             if (isBooleanCompletionPredicate(throwWhen, true)) {
               updates.clear();
               for (const [name, value] of caughtUpdates) updates.set(name, value);
@@ -2518,7 +2538,7 @@ function validateRefinementActionBodiesInSource(
             );
           }
           localValues.clear();
-          for (const [name, value] of tryLocals) localValues.set(name, value);
+          for (const [name, value] of postCatchLocals ?? tryLocals) localValues.set(name, value);
         } else {
           const tryLocals = new Map(localValues);
           const tryCompletion = collect(
@@ -3056,8 +3076,7 @@ function validateRefinementActionBodiesInSource(
           const finiteExpansionNode = allowMutableLoopWrites;
           let owner: ts.Node | undefined = ownershipNode.parent;
           while (owner && !ts.isFunctionLike(owner)) {
-            if (ts.isBlock(owner) && (ts.isCatchClause(owner.parent)
-              || (ts.isTryStatement(owner.parent) && owner.parent.finallyBlock === owner)
+            if (ts.isBlock(owner) && ((ts.isTryStatement(owner.parent) && owner.parent.finallyBlock === owner)
               || ts.isCaseClause(owner.parent))) return undefined;
             if ((!finiteExpansionNode && ts.isIterationStatement(owner, false))
               || (ts.isLabeledStatement(owner) && owner.label.text !== ownedBreakLabel)) return undefined;

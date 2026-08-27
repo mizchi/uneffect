@@ -411,6 +411,17 @@ the selected local value in its audit continuation. Dynamic loops,
 cross/nested label ownership, catch/finally-side local mutation, alias escape,
 and general CFG joins remain open.
 
+A twentieth case starts a normally completing catch from the mutable-local
+snapshot owned by a typed integer throw. The catch adds the payload to that
+local, projects away its binding, and joins the recovered value with the normal
+try predecessor before a common state update. The failed path contributes four
+units and the normal path two; a wrong recovery is rejected by Z3. Mutation
+followed by rethrow remains an explicit non-proof. Adaptive billing now uses
+the caught failure amount to update its local charge, passes the result through
+mandatory `finally` audit, and performs common billing afterward. Opaque
+payloads, abrupt catch-side mutation, finally-side mutation, alias escape, and
+general exception-aware CFG joins remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation
