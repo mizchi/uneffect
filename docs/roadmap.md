@@ -29,14 +29,17 @@ release date commitment.
    implemented. One finite switch with a nested Boolean preferred choice and a
    default backup is also implemented. Two independent finite resource
    decisions may now reconverge sequentially with an explicit
-   dispose-before-next-acquire invariant. Non-uniform completion joins and
-   arbitrary CFG work remain, without weakening floating-error checks.
+   dispose-before-next-acquire invariant. Non-uniform resource-completion joins
+   remain here without weakening floating-error checks; general scalar CFG
+   fixed points and dynamic alias evidence are separately owned by #23 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
    build-artifact validation are implemented; general cross-project refinement
-   and non-identical declaration-transform validation remain.
+   and non-identical declaration-transform validation remain. It consumes the
+   completed #3 summary contract and does not technically depend on completion
+   of #9; its `next` status is execution ordering only.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.

@@ -47,13 +47,15 @@ CFG fixed points and dynamic-value evidence are owned by #23 and #24.
 
 ## Immediate execution queue
 
-Only the first row is active. `Next` rows are ordered consumers of the CFG and
-summary work; they are not parallel implementation promises.
+Only the first row is active. `Next` rows record promotion order, not a claim
+that every later row depends on completion of every earlier row. In particular,
+#20 consumes the shared #3 summary contract and does not depend on finishing
+#9's resource-specific lowering.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Join mutually exclusive branch-local async resources through cleanup and catch while preserving their correlated acquisition paths. |
-| 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Preserve non-uniform return versus normal completion across branch-local async cleanup, mandatory `finally`, and a later resource decision. |
+| 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Promote after #9's current bounded slice; independently consume #3's provenance-preserving summaries across project references. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 After these Phase 1 handoffs, select work from the phase-ordered issue index
@@ -82,7 +84,7 @@ historical evidence and must not retain an execution-status label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Non-uniform completion joins, then arbitrary-join CFG fixed point without weakening floating-rejection diagnostics |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Non-uniform resource-completion joins and Promise/resource-specific outer-loop lowering without weakening floating-rejection diagnostics |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -734,7 +736,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Route disposal throw/rejection through catch and the async function's returned Promise in the shared IR.
   - [x] Preserve concrete catch/finally statement sequencing in the unified graph.
   - [x] Lower the single-function unified graph into one Quint transition module.
-  - [ ] Generalize unified lowering to multiple awaited chains, nested scopes, and arbitrary control-flow joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
+  - [ ] Generalize unified lowering to the remaining Promise/resource-specific awaited chains, nested cleanup scopes, and completion joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
     - [x] Give sequential awaited chains distinct wait/resume states and preserve their source order before cleanup.
     - [x] Dispose resources from a straight-line nested scope before a following outer await, while retaining idempotent final cleanup on failure paths.
     - [x] Dispose a resource whose complete nested scope precedes the first modeled await before entering that await.
@@ -815,20 +817,21 @@ must not be read as a claim that arbitrary source rewriting is implemented.
       - [x] Join exhaustive finite-literal/default `switch` catch-entry paths, including empty-label fallthrough groups, when every possible entry must observe before risk; reject unobserved cases and throw-capable discriminants or labels.
       - [x] Compose nested `try`/`catch`/`finally` into an outer catch-entry proof when the inner try must observe first and its handlers do not replace the tracked generation; reject replacement-before-later-throw paths.
       - [x] Treat every TypeScript assignment operator, including logical assignment, as a tracked Promise generation replacement in the ownership fixed point.
-      - [ ] Compute general loop data fixed points and joins for irreducible, exception-heavy, and dynamically dispatched control flow. ([#9](https://github.com/mizchi/uneffect/issues/9))
+      - [ ] Compute general CFG and loop data fixed points for exception-heavy scalar ownership state; keep Promise/resource generation lowering in #9. ([#23](https://github.com/mizchi/uneffect/issues/23))
+      - [ ] Track Promise/resource generations through escaping aliases and dynamically dispatched ownership transfers. ([#24](https://github.com/mizchi/uneffect/issues/24))
 - [x] Extend floating-Promise analysis from expression statements to initialized/deferred local binding ownership, aliases, reassignment loss, and path-sensitive observation.
   - [x] Track declarations, direct aliases, aggregate storage, argument transfer, return, and eventual observation within a function.
   - [x] Make explicit `void` abandonment policy configurable separately from proven rejection handling.
   - [x] Add restricted path-sensitive must-observe analysis for `if` branches, Promise reassignment, zero-iteration `while`/`for` paths, and at-least-once `do` loops.
   - [x] Cover finite exhaustive `switch` entry/fallthrough and conservative `try`/`catch` alternatives with mandatory `finally` execution.
-  - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins, irreducible loops, and dynamically resolved control flow. ([#9](https://github.com/mizchi/uneffect/issues/9))
+  - [ ] Replace the restricted path walker with a general CFG fixed point covering arbitrary `switch`/`try`/`finally` joins and irreducible loops. ([#23](https://github.com/mizchi/uneffect/issues/23))
     - [x] Compute a finite abstract-state loop closure and propagate unlabeled/labeled `break` and `continue` without executing skipped statements.
     - [x] Route explicit `throw` completions into the nearest structured `catch` with their Promise ownership state, while retaining a conservative catch entry for expression-level synchronous throws.
     - [x] Treat a direct expression-statement call as a guaranteed catch edge only when TypeScript proves `never` return and the resolved declaration explicitly carries `Throw<E>`; keep unannotated `never` termination/divergence distinct.
     - [x] Preserve guaranteed `never` + `Throw<E>` completion through return, transparent wrappers, a single initializer, comma-tail evaluation, and all-throw ternary joins; keep partial ternaries and unresolved compounds conservative.
     - [x] Preserve guaranteed throw completion through `&&`/`||` when the left throws or finite literal/immutable-const truthiness proves the throwing right side is evaluated; retain unknown short-circuit paths conservatively.
     - [x] Preserve guaranteed throw completion through `??` when the left throws or a statically nullish literal, `void`, global `undefined`, or immutable alias proves the throwing right side is evaluated; retain nullable unions and shadowed identifiers conservatively.
-    - [ ] Build a general exception-aware CFG fixed point for complex/irreducible loop joins beyond the bounded, statically owned nested-label fragment. ([#9](https://github.com/mizchi/uneffect/issues/9))
+    - [ ] Build a general exception-aware CFG fixed point for complex loop joins beyond the bounded, statically owned nested-label fragment. ([#23](https://github.com/mizchi/uneffect/issues/23))
   - [x] Define `consumes_rejection` callee contracts for explicit Promise rejection-responsibility transfer by parameter index.
   - [x] Validate malformed/out-of-range ownership contract indices and infer direct wrapper propagation.
   - [x] Add `consumes_callback_rejection` for Promise-returning callback ownership and diagnose unsafe async callbacks such as `forEach(async ...)`.

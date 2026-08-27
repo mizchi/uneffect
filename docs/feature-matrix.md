@@ -1,6 +1,6 @@
 # Feature matrix
 
-This is the release-boundary view of Uneffect as of 2026-08-27. It condenses
+This is the release-boundary view of Uneffect as of 2026-08-28. It condenses
 the historical checklist in `TODO.md` into user-visible capability areas.
 
 Status has a deliberately narrow meaning:

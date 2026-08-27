@@ -46,6 +46,19 @@ describe("TODO hierarchy consistency", () => {
     }
   });
 
+  it("keeps general CFG and dynamic-alias work out of the async-resource issue", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const unfinished = todo.split("\n").filter((line) => /^\s*- \[ \]/.test(line));
+    const issue9 = unfinished.filter((line) => line.includes("issues/9"));
+
+    expect(issue9.length).toBeGreaterThan(0);
+    for (const line of issue9) {
+      expect(line).not.toMatch(/general (?:exception-aware )?CFG fixed point|irreducible|dynamically dispatched/);
+    }
+    expect(unfinished.some((line) => line.includes("general CFG") && line.includes("issues/23"))).toBe(true);
+    expect(unfinished.some((line) => line.includes("escaping aliases") && line.includes("issues/24"))).toBe(true);
+  });
+
   it("tracks deferred optimizer implementation in the issue roadmap", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
