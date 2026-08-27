@@ -29,8 +29,10 @@ release date commitment.
    implemented. One finite switch with a nested Boolean preferred choice and a
    default backup is also implemented. Two independent finite resource
    decisions may now reconverge sequentially with an explicit
-   dispose-before-next-acquire invariant. Non-uniform resource-completion joins
-   remain here without weakening floating-error checks; general scalar CFG
+   dispose-before-next-acquire invariant. One bounded early-return-versus-normal
+   decision now retains cleanup and mandatory `finally` while excluding later
+   normal work. Throw-versus-normal resource joins remain here without
+   weakening floating-error checks; general scalar CFG
    fixed points and dynamic alias evidence are separately owned by #23 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI

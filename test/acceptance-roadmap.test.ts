@@ -3251,7 +3251,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toBeLessThan(quint.indexOf("action catch_statement_0"));
     expect(quint.indexOf("action catch_statement_0"))
       .toBeLessThan(quint.indexOf("action finally_statement_0"));
-    expect(quint).toMatch(/action finally_statement_0 = all \{[\s\S]*?pc' = if \(completion == 0\) \d+ else \d+/);
+    expect(quint).toMatch(/action finally_statement_0 = all \{[\s\S]*?pc' = if \(completion == 0\) \d+ else if \(completion == 4\) \d+ else \d+/);
   });
 
   it("completes two failing inner disposals before handling suppression", () => {
@@ -3439,6 +3439,31 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toContain("val sequentialResourceJoinSafe");
     expect(quint).toMatch(/not\(acquired_3\) or not\(acquired_1\) or \(disposed_1 and disposed_generation_1 == generation_1\)/);
     expect(quint).toMatch(/not\(acquired_4\) or not\(acquired_2\) or \(disposed_2 and disposed_generation_2 == generation_2\)/);
+  });
+
+  it("preserves early return through branch-local cleanup and mandatory finally", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/nonuniform-return-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; controlPaths: Array<Array<{ id: string; expected: boolean }>> }>;
+      promises: Array<{ source: string; controlPaths: Array<Array<{ id: string; expected: boolean }>> }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    const resources = Object.fromEntries(result.resources.map((resource) => [resource.binding, resource]));
+    expect(resources.primary?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([true]);
+    expect(resources.secondary?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false]);
+    expect(resources.archive?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false, true]);
+    expect(resources.mirror?.controlPaths[0]?.map(({ expected }) => expected)).toEqual([false, false]);
+    const outerFlush = result.promises.find(({ source }) => source.includes("audit.flush"));
+    // A rejection before the return may recover through catch and reach this
+    // await, so source-condition narrowing alone must not mark it `false`.
+    expect(outerFlush?.controlPaths).toEqual([[]]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("nonuniform_return_cleanup", result, "deliverNonUniform") as string;
+    expect(quint).toContain("val returnCompletionSafe");
+    expect(quint).toContain("completion == 4");
   });
 
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {

@@ -43,6 +43,7 @@ const switchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/
 const nestedBranchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/nested-branch-correlated-cleanup.ts", import.meta.url), "utf8");
 const mixedDecisionCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/mixed-decision-correlated-cleanup.ts", import.meta.url), "utf8");
 const sequentialDecisionCleanupSource = readFileSync(new URL("../examples/dogfood/sequential-decision-cleanup.ts", import.meta.url), "utf8");
+const nonUniformReturnCleanupSource = readFileSync(new URL("../examples/dogfood/nonuniform-return-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -496,6 +497,11 @@ describe("typed-array static verification", () => {
   bench("lower sequential decision cleanup through an intermediate join", () => {
     const result = analyzeAsyncSafety("sequential-decision-cleanup.ts", sequentialDecisionCleanupSource);
     generateUnifiedAsyncQuint("sequential_decision_cleanup", result, "deliverSequential");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower non-uniform return through cleanup and mandatory finally", () => {
+    const result = analyzeAsyncSafety("nonuniform-return-cleanup.ts", nonUniformReturnCleanupSource);
+    generateUnifiedAsyncQuint("nonuniform_return_cleanup", result, "deliverNonUniform");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

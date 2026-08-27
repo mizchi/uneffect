@@ -1734,6 +1734,89 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 150_000);
 
+  it("routes an early return through branch cleanup and mandatory finally", () => {
+    const fileName = "examples/dogfood/nonuniform-return-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const returns = result.returnCompletions.filter(({ owner }) => owner === "deliverNonUniform");
+    expect(returns).toHaveLength(1);
+    expect(returns[0]?.controlPaths[0]).toContainEqual(expect.objectContaining({ expected: true }));
+
+    const quint = generateUnifiedAsyncQuint("nonuniform_return_cleanup", result, "deliverNonUniform");
+    expect(quint).toContain("val returnCompletionSafe");
+    expect(quint).toContain("completion == 4");
+    const positive = run(quint, 60);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["fallthrough_after_return", { fallthroughAfterReturn: true }],
+      ["return_before_cleanup", { returnBeforeCleanup: true }],
+      ["normal_continuation_skipped", { skipNormalContinuation: true }],
+      ["wrong_resource_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `nonuniform_return_cleanup_${name}`,
+        result,
+        "deliverNonUniform",
+        options,
+      ), 60);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const fallthrough = generateUnifiedAsyncQuint(
+      "nonuniform_return_cleanup_load_bearing",
+      result,
+      "deliverNonUniform",
+      { fallthroughAfterReturn: true },
+    );
+    const weakened = run(fallthrough.replace(
+      /val returnCompletionSafe = .*$/m,
+      "val returnCompletionSafe = true",
+    ), 60);
+    expect(weakened.status, weakened.stdout + weakened.stderr).toBe(0);
+
+    const skippedNormal = generateUnifiedAsyncQuint(
+      "nonuniform_return_cleanup_normal_load_bearing",
+      result,
+      "deliverNonUniform",
+      { skipNormalContinuation: true },
+    );
+    const weakenedNormal = run(skippedNormal.replace(
+      /val normalContinuationSafe = .*$/m,
+      "val normalContinuationSafe = true",
+    ), 60);
+    expect(weakenedNormal.status, weakenedNormal.stdout + weakenedNormal.stderr).toBe(0);
+
+    const incomplete = analyzeAsyncSafety("nonuniform-return-incomplete.ts", source.replace(
+      `    } else {
+      await using secondary = openSecondary();
+      await secondary.send().then(() => undefined);
+    }`,
+      "    }",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nonuniform_return_incomplete", incomplete, "deliverNonUniform"))
+      .toThrow(/resource decision .* incomplete leaf coverage/);
+
+    const overlapping = analyzeAsyncSafety("nonuniform-return-overlap.ts", source.replace(
+      "      await using primary = openPrimary();",
+      "      await using primary = openPrimary();\n      await using duplicate = openSecondary();",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nonuniform_return_overlap", overlapping, "deliverNonUniform"))
+      .toThrow(/overlapping acquisition paths/);
+
+    const floating = analyzeAsyncSafety("nonuniform-return-floating.ts", source.replace(
+      "await mirror.send().then(() => undefined);",
+      "mirror.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverNonUniform",
+      kind: "floating-promise",
+    }));
+  }, 120_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

@@ -36,7 +36,10 @@ acquires exactly one branch-local async resource before a shared
 cleanup/handler join, including one three-leaf nested Boolean tree, one finite
 switch whose preferred case contains a nested Boolean choice, and two
 independent sequential resource decisions separated by a verified cleanup
-join. The next Red/Green slice adds a non-uniform completion path without
+join. A non-uniform Boolean decision may now dispose an async resource before
+an early `return`, preserve that completion through mandatory `finally`, and
+prevent both the later resource decision and normal outer continuation. The
+next Red/Green slice adds the bounded throw-versus-normal counterpart without
 claiming an arbitrary CFG fixed point prematurely.
 
 This summary deliberately does not restate the full proof boundary. Use
@@ -54,7 +57,7 @@ that every later row depends on completion of every earlier row. In particular,
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Preserve non-uniform return versus normal completion across branch-local async cleanup, mandatory `finally`, and a later resource decision. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Preserve bounded throw versus normal completion across branch-local async cleanup, catch/finally, and a later resource decision. |
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Promote after #9's current bounded slice; independently consume #3's provenance-preserving summaries across project references. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
@@ -84,7 +87,7 @@ historical evidence and must not retain an execution-status label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Non-uniform resource-completion joins and Promise/resource-specific outer-loop lowering without weakening floating-rejection diagnostics |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Throw-versus-normal resource joins and Promise/resource-specific outer-loop lowering without weakening floating-rejection diagnostics |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -757,6 +760,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Preserve one three-leaf nested Boolean resource decision through branch-local async cleanup and a shared catch/finally join; require Boolean-identifier provenance, complete/non-overlapping leaf coverage, pairwise acquisition exclusion, and an eight-condition proof budget, while rejecting expression predicates, incomplete/overlapping leaves, over-budget trees, multiple acquisition, wrong-leaf cleanup, skipped cleanup, premature handler entry, and floating rejection.
     - [x] Preserve one finite string-literal switch whose preferred case contains a Boolean resource choice and whose explicit default owns a backup resource; validate both provenance kinds, combined complete/non-overlapping leaf coverage, and one shared eight-condition budget while retaining cleanup, handler, acquisition, and floating-Promise negative controls.
     - [x] Preserve two independent finite resource decisions across an intermediate join; validate both stages and a combined eight-condition budget, keep exclusion local to each stage, require first-stage disposal before second-stage acquisition, and reject delayed/skipped/wrong cleanup, wrong-stage acquisition, incomplete/overlapping stages, disposed alias use, premature handler entry, and floating rejection.
+    - [x] Preserve one non-uniform Boolean return-versus-normal resource decision: distinguish fallthrough guards from acquisition-decision conditions, dispose the return arm before completion, retain return through mandatory `finally`, and prevent later acquisition or outer continuation; keep await rejection routed through catch and retain return-fallthrough, normal-skip, cleanup-before-return, wrong/skipped cleanup, premature-handler, incomplete/overlapping, and floating-Promise controls.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

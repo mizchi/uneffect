@@ -1750,3 +1750,18 @@ stage cleanup, wrong-stage acquisition, wrong-resource cleanup, incomplete or
 overlapping stages, an escaped disposed alias, a ninth combined condition,
 premature handler entry, and floating rejection. The timing is not a CI budget
 or evidence for non-uniform completion joins, loops, or arbitrary CFGs.
+
+The nonuniform-return-cleanup workload selects one of two first-stage async
+resources. Its return arm disposes before preserving return through mandatory
+`finally`; its normal arm continues into a finite switch decision. Analysis
+distinguishes the first decision's fallthrough condition from later acquisition
+conditions, then generates `returnCompletionSafe` and
+`normalContinuationSafe`. A filtered run on 2026-08-28 measured 134.06 ms mean
+(7.4591 operations/second over 20 fixed iterations, 2.39% relative margin of
+error). This includes cold TypeScript parsing/type checking and Quint source
+generation but excludes Quint execution. Separate tests run the positive model,
+prove both completion invariants load-bearing, and reject return fallthrough,
+return-before-cleanup, skipped normal continuation, wrong/skipped cleanup,
+premature handler entry, incomplete/overlapping paths, and floating rejection.
+The timing is not a CI budget or evidence for throw-versus-normal joins,
+additional sequential stages, or arbitrary CFGs.
