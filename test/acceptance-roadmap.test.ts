@@ -1835,9 +1835,81 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       code: "action-update-mismatch", modelName: "record",
     }));
 
-    const catchContinue = source.replace("if (runtime.stop) break", "if (runtime.stop) continue");
+    const unknownLabeledBreak = source.replace("if (runtime.stop) break", "if (runtime.stop) break outer");
     expect(validateActionsStatically(
-      "conditional-catch-continue.ts", catchContinue, "catchBreakLocal", temporal,
+      "conditional-catch-unknown-break.ts", unknownLabeledBreak, "catchBreakLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
+  it("carries a conditional catch continue snapshot through finally into the next bounded iteration", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state retry: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init retry = false
+       * action record: billed' = billed + (failed ? (retry ? 7 : 13) : 5), audited' = audited + (failed ? (retry ? 11 : 18) : 6)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; retry: boolean }
+      /* uneffect: refinement catchContinueLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement catchContinueLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement catchContinueLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } catch (reason) {
+            units += reason
+            if (runtime.retry) continue
+            units += 2
+          } finally {
+            runtime.audited += units
+          }
+          units += 1
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-catch-continue.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-catch-continue.ts", source, "catchContinueLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongRetrySnapshot = source.replace("units += reason", "units += reason + 1");
+    await expect(validateActions(
+      "conditional-catch-continue-wrong.ts", wrongRetrySnapshot, "catchContinueLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const ownedLabeledContinue = source
+      .replace("for (let attempt", "attempts: for (let attempt")
+      .replace("if (runtime.retry) continue", "if (runtime.retry) continue attempts");
+    await expect(validateActions(
+      "conditional-catch-owned-continue.ts", ownedLabeledContinue, "catchContinueLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const unknownLabeledContinue = source.replace(
+      "if (runtime.retry) continue", "if (runtime.retry) continue outer",
+    );
+    expect(validateActionsStatically(
+      "conditional-catch-unknown-continue.ts", unknownLabeledContinue, "catchContinueLocal", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));

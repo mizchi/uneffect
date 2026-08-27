@@ -1578,3 +1578,12 @@ a warm static-analysis observation that excludes parsing and Z3, not a CI
 budget or regression claim. Catch-owned continue/labels, dynamic loops, abrupt
 finally overrides, aliases, and the general CFG fixed point remain outside the
 measured fragment.
+
+The retry batch-accounting workload carries a conditional catch-owned continue
+snapshot through mandatory `finally` into the next of two bounded attempts. A
+filtered run on 2026-08-27 measured 1.1530 ms mean (867.29 operations/second
+over 434 samples, 8.94% relative margin of error). This warm static-analysis
+observation excludes parsing and Z3 and is neither a CI budget nor a comparison
+with the one-iteration break workload. Cross/nested labels, dynamic loops,
+abrupt finally overrides, aliases, and the general CFG fixed point remain
+outside the measured fragment.

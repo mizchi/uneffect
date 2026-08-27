@@ -64,7 +64,9 @@ release date commitment.
    before it survives to an outer finally or continuation. A catch-owned break
    now retains its projected snapshot through mandatory finally and is consumed
    by its owning bounded loop before the post-loop join. Catch-owned continue
-   and label transfers are next before the general CFG fixed point.
+   likewise advances the next bounded iteration from its own snapshot, including
+   a statically resolved owning-loop label. Conditional/abrupt finally override
+   ownership is next before the general CFG fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

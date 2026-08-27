@@ -164,6 +164,9 @@ const circuitBreakerBatchAccountingSource = readFileSync(circuitBreakerBatchAcco
 const circuitBreakerBatchAccountingSpec = parseSpec(
   circuitBreakerBatchAccountingFile, circuitBreakerBatchAccountingSource,
 ).temporal;
+const retryBatchAccountingFile = "examples/dogfood/retry-batch-accounting.ts";
+const retryBatchAccountingSource = readFileSync(retryBatchAccountingFile, "utf8");
+const retryBatchAccountingSpec = parseSpec(retryBatchAccountingFile, retryBatchAccountingSource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1183,6 +1186,15 @@ describe("typed-array static verification", () => {
       circuitBreakerBatchAccountingSource,
       "circuitBreakerBatchAccounting",
       circuitBreakerBatchAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("carry a catch-owned continue snapshot into the next bounded iteration", () => {
+    validateRefinementActionBodies(
+      retryBatchAccountingFile,
+      retryBatchAccountingSource,
+      "retryBatchAccounting",
+      retryBatchAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

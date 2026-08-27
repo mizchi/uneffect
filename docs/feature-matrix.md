@@ -139,6 +139,11 @@ outer-visible scalar retains a separate break snapshot. Mandatory `finally`
 observes that snapshot before the loop consumes break and joins it into the
 post-loop local environment; only normal catch completion reaches the loop
 suffix.
+A catch that conditionally continues its owning bounded loop after mutation
+retains a separate continue snapshot. Mandatory `finally` observes it before
+the loop advances the next bounded iteration from that snapshot; the current
+iteration suffix runs only after normal catch completion. A statically resolved
+owning-loop label is accepted with the same semantics.
 A normally completing mandatory `finally` may mutate outer-visible scalars.
 The checker evaluates state updates over the joined incoming environment and
 replays the local transformation over each normal/return/throw/break/continue
@@ -147,7 +152,8 @@ The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
-by continue/label transfer or an opaque rethrow payload, mutable-local mutation combined
+by an unknown/cross/nested label transfer or an opaque rethrow payload,
+mutable-local mutation combined
 with conditional/abrupt finally completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain

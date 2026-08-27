@@ -386,6 +386,31 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves bounded retry billing from a catch-owned continue snapshot", async () => {
+    const fileName = "examples/dogfood/retry-batch-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "retryBatchAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "retryBatchAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "retryBatchAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const extraRetryCharge = source.replace(
+      "if (runtime.retryImmediately) continue;",
+      "if (runtime.retryImmediately) { units += 1; continue; }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, extraRetryCharge, "retryBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recordBatch", target: "billedUnits",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

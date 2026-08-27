@@ -196,8 +196,12 @@ same property is proved for arbitrary TypeScript.
   and an outer catch preserve that pairing. A conditional catch-owned break now
   retains its projected mutation through mandatory `finally`, is consumed by
   its owning bounded loop, and joins the post-loop local environment while the
-  normal catch snapshot alone reaches the loop suffix. Catch-owned continue,
-  labels, and opaque rethrow payloads remain non-proofs. A mandatory-`finally` extension records direct
+  normal catch snapshot alone reaches the loop suffix. Catch-owned continue
+  now has the corresponding projected edge: mandatory `finally` observes it,
+  the owning bounded loop advances the next iteration from it, and the current
+  suffix is skipped. The statically resolved owning-loop label is accepted;
+  unknown/cross/nested labels and opaque rethrow payloads remain non-proofs. A
+  mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.

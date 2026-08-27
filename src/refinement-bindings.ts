@@ -2484,8 +2484,8 @@ function validateRefinementActionBodiesInSource(
               && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
             const catchThrowWhen = completionPredicate(catchCompletion, "throw");
             const catchHasUnsupportedMutableAbrupt = !isBooleanCompletionPredicate(
-              completionPredicate(catchCompletion, "continue"), false,
-            ) || !isBooleanCompletionPredicate(labeledCompletionPredicate(catchCompletion), false);
+              labeledCompletionPredicate(catchCompletion), false,
+            );
             if (catchMutatesVisibleLocal && catchHasUnsupportedMutableAbrupt) return undefined;
             const rawCatchThrowLocals = completionThrowLocals(catchCompletion);
             const catchThrowLocals = hasMutableCatchLocals && rawCatchThrowLocals
@@ -2537,6 +2537,16 @@ function validateRefinementActionBodiesInSource(
             if (hasMutableCatchLocals
               && !isBooleanCompletionPredicate(catchBreakWhen, false)
               && !catchBreakLocals) return undefined;
+            const tryContinueWhen = completionPredicate(tryCompletion, "continue");
+            const catchContinueWhen = completionPredicate(catchCompletion, "continue");
+            const tryContinueLocals = completionContinueLocals(tryCompletion);
+            const rawCatchContinueLocals = completionContinueLocals(catchCompletion);
+            const catchContinueLocals = hasMutableCatchLocals && rawCatchContinueLocals
+              ? projectLocalSnapshot(rawCatchContinueLocals, catchVisibleNames)
+              : rawCatchContinueLocals;
+            if (hasMutableCatchLocals
+              && !isBooleanCompletionPredicate(catchContinueWhen, false)
+              && !catchContinueLocals) return undefined;
             const residualReturnLocals = isBooleanCompletionPredicate(tryReturnWhen, false)
               ? catchReturnLocals
               : isBooleanCompletionPredicate(catchReturnWhen, false)
@@ -2550,6 +2560,15 @@ function validateRefinementActionBodiesInSource(
                 ? tryBreakLocals
                 : tryBreakLocals && catchBreakLocals
                   ? joinVisibleLocalSnapshots(tryBreakWhen, tryBreakLocals, catchBreakLocals, localValues.keys())
+                  : undefined;
+            const residualContinueLocals = isBooleanCompletionPredicate(tryContinueWhen, false)
+              ? catchContinueLocals
+              : isBooleanCompletionPredicate(catchContinueWhen, false)
+                ? tryContinueLocals
+                : tryContinueLocals && catchContinueLocals
+                  ? joinVisibleLocalSnapshots(
+                    tryContinueWhen, tryContinueLocals, catchContinueLocals, localValues.keys(),
+                  )
                   : undefined;
             residualCompletion = makeCompletion(
               orCompletionPredicates(
@@ -2579,7 +2598,7 @@ function validateRefinementActionBodiesInSource(
               catchThrowLocals,
               residualReturnLocals,
               residualBreakLocals,
-              joinEdgeLocals(throwWhen, "continue", catchCompletion, tryCompletion),
+              residualContinueLocals,
             );
           }
           localValues.clear();

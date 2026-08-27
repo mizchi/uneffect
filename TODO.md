@@ -32,10 +32,10 @@ return, supported scalar throw/catch, and normally completing mandatory
 `finally` paths. Catch-side direct/conditional return and supported scalar
 rethrow keep abrupt snapshots separate from normal catch completion.
 
-The next Red/Green slice is catch-side conditional `continue` through its owning
-bounded loop and a mandatory `finally`. Catch-side labels,
-conditional or abrupt `finally` override, dynamic loops, aliases, opaque throw
-payloads, and dynamic dispatch remain explicit non-proofs. The detailed tested
+The next Red/Green slice is conditional or abrupt `finally` completion override
+with explicit predecessor ownership. Cross/nested catch-side labels, dynamic
+loops, aliases, opaque throw payloads, and dynamic dispatch remain explicit
+non-proofs. The detailed tested
 fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
 controls live in Issue #3.
 
@@ -385,7 +385,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Project a catch-side mutable-scalar update and normalized scalar payload onto a direct rethrow edge, carry both through mandatory `finally`, and bind them in an outer catch; reject conditional and opaque rethrows.
         - [x] Preserve distinct catch-side mutable-scalar snapshots for conditional direct return and normal catch completion, joining only the latter with the normal try predecessor before the suffix; reject conditional rethrow and catch-owned transfers.
         - [x] Preserve distinct catch-side mutable-scalar snapshots and a normalized payload for conditional rethrow versus normal catch completion, carrying the throw edge through mandatory `finally` into an outer catch; reject opaque payloads and catch-owned transfers.
-        - [x] Project a conditional catch-owned `break` snapshot to outer-visible mutable scalars, carry it through mandatory `finally`, consume it at the owning bounded-loop boundary, and join it into the loop exit; retain catch-owned continue/labels as explicit non-proofs.
+        - [x] Project a conditional catch-owned `break` snapshot to outer-visible mutable scalars, carry it through mandatory `finally`, consume it at the owning bounded-loop boundary, and join it into the loop exit; retain unknown/cross label ownership as an explicit non-proof.
+        - [x] Project a conditional catch-owned `continue` snapshot through mandatory `finally` into the next bounded iteration, skipping only the current suffix; accept the statically resolved owning-loop label and reject unknown/cross/nested label ownership.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
