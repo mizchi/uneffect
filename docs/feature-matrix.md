@@ -58,14 +58,14 @@ updates, and break/return/throw exits remain unsupported. An unlabeled
 `continue` is consumed only when symbolic merging proves that every continuing
 path has already taken the affine ranking step; a skipped step is rejected as a
 possible nontermination path. Mandatory `finally` updates remain part of that
-merged iteration. One loop-invariant early `break` may select a path with at
-most one non-counter affine state update before stopping; its condition and
-update inputs are read from loop-entry state. This includes the zero-update
-case and a single affine `finally` update when the model accounts for it.
-Counter updates, multiple or non-affine break-side updates, a mutated or
-counter-dependent break condition, post-update break checks, and break/continue
-mixtures remain unsupported. This is a closed-form affine rule, not a general
-loop fixed point.
+merged iteration. One loop-invariant early `break` may select a path with up to
+eight independent non-counter affine state updates before stopping; its
+condition and update inputs are read from loop-entry state. This includes the
+zero-update case and affine `finally` updates when the model accounts for them.
+Counter updates, a ninth update, cross-state-coupled or non-affine break-side
+updates, a mutated or counter-dependent break condition, post-update break
+checks, and break/continue mixtures remain unsupported. This is a closed-form
+affine rule, not a general loop fixed point.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

@@ -729,15 +729,51 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const temporal = (parseSpecification("deferred-drain.ts", source) as { temporal: unknown }).temporal;
     await expect(validateActions("deferred-drain.ts", source, "deferredDrain", temporal)).resolves.toEqual([]);
 
-    const twoBreakUpdates = source.replace(
+    const coupledBreakUpdate = source.replace(
       "runtime.deferred += runtime.pending\n            break",
-      "runtime.deferred += runtime.pending\n            runtime.weighted++\n            break",
+      "runtime.deferred += runtime.weighted\n            break",
     );
     await expect(validateActions(
-      "deferred-drain-two-updates.ts", twoBreakUpdates, "deferredDrain", temporal,
+      "deferred-drain-coupled-update.ts", coupledBreakUpdate, "deferredDrain", temporal,
     )).resolves.toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "drain",
     }));
+  });
+
+  it("composes a bounded set of independent affine early-break updates", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state deferred: int
+       * state deferredWeight: int
+       * state paused: bool
+       * init pending = 0
+       * init deferred = 0
+       * init deferredWeight = 0
+       * init paused = false
+       * action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0), deferredWeight' = deferredWeight + (pending > 0 ? (paused ? 2 * pending : 0) : 0)
+       */
+      interface Runtime { pending: number; deferred: number; deferredWeight: number; paused: boolean }
+      /* uneffect: refinement boundedBreakUpdates@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement boundedBreakUpdates@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement boundedBreakUpdates@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.paused) {
+            runtime.deferred += runtime.pending
+            runtime.deferredWeight += 2 * runtime.pending
+            break
+          }
+          runtime.pending--
+        }
+      }
+    `;
+    const temporal = (parseSpecification("bounded-break-updates.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "bounded-break-updates.ts", source, "boundedBreakUpdates", temporal,
+    )).resolves.toEqual([]);
   });
 
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {

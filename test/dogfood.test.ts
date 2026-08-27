@@ -133,8 +133,8 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "pausedTelemetry", temporal)).toEqual([]);
 
     const latePauseCheck = source.replace(
-      "if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      break;\n    }\n    runtime.queued--;",
-      "runtime.queued--;\n    if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      break;\n    }",
+      "if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      runtime.deferredWeight += 2 * runtime.queued;\n      break;\n    }\n    runtime.queued--;",
+      "runtime.queued--;\n    if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      runtime.deferredWeight += 2 * runtime.queued;\n      break;\n    }",
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, latePauseCheck, "pausedTelemetry", temporal,

@@ -276,6 +276,7 @@ type PiecewiseAffineLoopDelta =
   };
 
 const MAX_AFFINE_LOOP_BRANCH_LEAVES = 8;
+const MAX_AFFINE_LOOP_BREAK_UPDATES = 8;
 
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
@@ -1792,7 +1793,7 @@ function validateRefinementActionBodiesInSource(
             // at most once, so it is not part of the recurrence.
             if (name === counterName || !affineDelta(name, breakUpdateExpression)) return undefined;
             const breakUpdate = atLoopEntry(breakUpdateExpression);
-            if (!breakUpdate || ++stateChangingBreakUpdates > 1) return undefined;
+            if (!breakUpdate || ++stateChangingBreakUpdates > MAX_AFFINE_LOOP_BREAK_UPDATES) return undefined;
             breakUpdates.set(name, breakUpdate);
           }
           if (name === counterName) {

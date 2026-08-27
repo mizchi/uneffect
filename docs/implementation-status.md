@@ -134,11 +134,11 @@ same property is proved for arbitrary TypeScript.
   already took the ranking step; mandatory `finally` work is included in that
   iteration. A continue that can skip the step remains unsupported. Within the
   same symbolic fragment, one loop-invariant early `break` can choose a path
-  with at most one non-counter affine state update before stopping. Supported
-  state updates before the loop are substituted into its condition and update.
-  Counter updates, multiple/non-affine break updates, post-update break checks,
-  counter-dependent or mutated conditions, and break/continue mixtures remain
-  unsupported. Within the
+  with up to eight independent non-counter affine state updates before
+  stopping. Supported state updates before the loop are substituted into its
+  condition and updates. Counter updates, a ninth update, cross-state coupling,
+  non-affine break updates, post-update break checks, counter-dependent or
+  mutated conditions, and break/continue mixtures remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also

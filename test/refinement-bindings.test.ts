@@ -2825,7 +2825,7 @@ describe("annotated refinement bindings", () => {
       "state-changing-break-finally.ts", finallySource, "stateChangingBreak", finallyTemporal,
     )).resolves.toEqual([]);
 
-    for (const [fileName, changed] of [
+    for (const [fileName, changed, code = "unsupported-action-body"] of [
       ["state-changing-break-counter.ts", source.replace(
         "runtime.deferred += runtime.pending\n            break",
         "runtime.deferred += runtime.pending\n            runtime.pending--\n            break",
@@ -2833,7 +2833,7 @@ describe("annotated refinement bindings", () => {
       ["state-changing-break-two-updates.ts", source.replace(
         "runtime.deferred += runtime.pending\n            break",
         "runtime.deferred += runtime.pending\n            runtime.weighted++\n            break",
-      )],
+      ), "action-update-mismatch"],
       ["state-changing-break-coupled.ts", source.replace(
         "runtime.deferred += runtime.pending",
         "runtime.deferred += runtime.weighted",
@@ -2844,9 +2844,57 @@ describe("annotated refinement bindings", () => {
       )],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "stateChangingBreak", temporal)).toContainEqual(
-        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+        expect.objectContaining({ code, modelName: "drain" }),
       );
     }
+  });
+
+  it("bounds independent affine early-break updates at eight state fields", async () => {
+    const fixture = (count: number): string => {
+      const names = Array.from({ length: count }, (_, index) => `metric${index}`);
+      const states = names.map((name) => `state ${name}: int`).join("\n      ");
+      const inits = names.map((name) => `init ${name} = 0`).join("\n      ");
+      const actionUpdates = names.map((name, index) => (
+        `${name}' = ${name} + (pending > 0 ? (paused ? ${index + 1} * pending : 0) : 0)`
+      )).join(", ");
+      const fields = names.map((name) => `${name}: number`).join("; ");
+      const updates = names.map((name, index) => (
+        `runtime.${name} += ${index + 1} * runtime.pending`
+      )).join("\n            ");
+      return `/* uneffect:
+      state pending: int
+      state paused: bool
+      ${states}
+      init pending = 0
+      init paused = false
+      ${inits}
+      action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, ${actionUpdates}
+    */
+      interface Runtime { pending: number; paused: boolean; ${fields} }
+      /* uneffect: refinement breakBudget@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement breakBudget@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement breakBudget@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.paused) {
+            ${updates}
+            break
+          }
+          runtime.pending--
+        }
+      }
+    `;
+    };
+
+    const eightUpdates = fixture(8);
+    await expect(validateRefinementActionBodiesWithZ3(
+      "eight-break-updates.ts", eightUpdates, "breakBudget", parseSpec("eight-break-updates.ts", eightUpdates).temporal,
+    )).resolves.toEqual([]);
+
+    const nineUpdates = fixture(9);
+    expect(validateRefinementActionBodies(
+      "nine-break-updates.ts", nineUpdates, "breakBudget", parseSpec("nine-break-updates.ts", nineUpdates).temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
   });
 
   it("summarizes only terminating constant-delta state scale-up loops", async () => {

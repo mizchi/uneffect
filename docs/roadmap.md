@@ -20,9 +20,9 @@ release date commitment.
    remain. An unlabeled `continue` is consumed only after merged loop state
    proves that every path took the ranking step, including mandatory `finally`.
    A separate rule splits one loop-invariant early `break` from the repeating
-   path and permits one non-counter affine update on the stopping path;
-   counter-changing, multi-update, non-affine, and dynamically selected breaks
-   remain open.
+   path and permits up to eight independent non-counter affine updates on the
+   stopping path; counter-changing, cross-state-coupled, non-affine,
+   over-budget, and dynamically selected breaks remain open.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

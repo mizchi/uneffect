@@ -285,9 +285,11 @@ fail-closed. A fifth case consumes an unlabeled `continue` after a guaranteed
 ranking update, including mandatory `finally` accounting, and rejects the same
 continue before that update. A sixth zero-update early-break case lets a
 loop-entry pause flag select untouched state instead of the recurrence. A
-seventh case performs one non-counter affine update on that stopping path, as
-when paused telemetry records the untouched backlog exactly once. Counter
-updates, multiple/non-affine break updates, counter-dependent or post-update
+seventh case performs non-counter affine updates on that stopping path, as when
+paused telemetry records both the untouched backlog and its estimated weight
+exactly once. The update set is capped at eight fields, with an eight-update
+acceptance and nine-update rejection control. Counter updates,
+cross-state-coupled/non-affine break updates, counter-dependent or post-update
 break checks, mixed break/continue flow, throw, and return remain fail-closed.
 These are closed-form affine rules, not a general TypeScript CFG proof.
 

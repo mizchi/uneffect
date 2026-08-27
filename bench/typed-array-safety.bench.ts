@@ -1103,7 +1103,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("compose a single-update invariant break with an affine recurrence", () => {
+  bench("compose a bounded invariant break update set with an affine recurrence", () => {
     validateRefinementActionBodies(
       pausedTelemetryFile,
       pausedTelemetrySource,

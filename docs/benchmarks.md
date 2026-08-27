@@ -1408,3 +1408,11 @@ break-path affine decomposition, loop-entry substitution, and the explicit
 single-update budget. The margin of error is too high for a comparative speed
 claim; this remains an observation and executable complexity guard, not a CI
 regression threshold.
+
+After adding a second independent stopping-path metric and bounding the general
+update set at eight fields, the same filtered workload measured 0.3025 ms mean
+(3,305.96 operations/second over 1,653 samples, 8.81% relative margin of error)
+on 2026-08-27. The eight-update acceptance and nine-update rejection are unit
+tests rather than part of this two-update dogfood timing. The margin of error
+again precludes a comparative claim; the measurement records analyzer scale
+only.
