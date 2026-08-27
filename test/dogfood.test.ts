@@ -210,8 +210,8 @@ describe("Uneffect dogfood", () => {
     }));
 
     const billedFailure = source.replace(
-      "return; // failed batches are audited in finally but never billed",
-      "runtime.billedUnits += units;\n    return; // incorrectly bill the failed batch",
+      "if (runtime.deferFailedBilling) return; // audit now, bill only recovered failures",
+      "if (runtime.deferFailedBilling) { runtime.billedUnits += units; return; } // incorrectly bill a deferred failure",
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, billedFailure, "adaptiveBatchAccounting", temporal,

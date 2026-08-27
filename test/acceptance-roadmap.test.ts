@@ -1649,6 +1649,69 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("keeps conditional catch-return and normal snapshots distinct", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state stop: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init stop = false
+       * action record: billed' = failed && stop ? billed : billed + (failed ? 6 : 2), audited' = audited + (failed ? (stop ? 4 : 6) : 2)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
+      /* uneffect: refinement conditionalCatchReturn@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalCatchReturn@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalCatchReturn@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.failed) {
+            units += 2
+            throw 1
+          }
+          units += 1
+        } catch (reason) {
+          units += reason
+          if (runtime.stop) return
+          units += 2
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-catch-return.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-catch-return.ts", source, "conditionalCatchReturn", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongNormalSnapshot = source.replace("units += 2\n        } finally", "units += 3\n        } finally");
+    await expect(validateActions(
+      "conditional-catch-return-wrong.ts", wrongNormalSnapshot, "conditionalCatchReturn", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const conditionalRethrow = source.replace(
+      "if (runtime.stop) return",
+      "if (runtime.stop) throw units",
+    );
+    expect(validateActionsStatically(
+      "conditional-catch-rethrow.ts", conditionalRethrow, "conditionalCatchReturn", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

@@ -1539,6 +1539,15 @@ an observation rather than a CI budget or comparison. Conditional or opaque
 rethrows, abrupt finally mutation, aliases, and general CFG fixed points remain
 outside the measured fragment.
 
+After making failed-batch billing conditional inside catch, the adaptive batch
+accounting benchmark measured 3.7310 ms mean (268.03 operations/second over 135
+samples, 13.23% relative margin of error) on 2026-08-27. It constructs separate
+catch return and normal snapshots, joins the latter with the normal try path,
+and carries both through mandatory `finally`. The workload changed and variance
+is high, so this is an observation rather than a comparison or CI budget. It
+excludes Z3, conditional rethrow, abrupt finally mutation, aliases, and general
+CFG fixed points.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink

@@ -54,12 +54,14 @@ release date commitment.
    that returns directly after such a mutation carries its projected snapshot
    through an enclosing mandatory finally without executing the suffix. A
    direct scalar rethrow also carries its transformed snapshot and payload
-   through mandatory finally into an outer catch. A
+   through mandatory finally into an outer catch. Conditional catch return now
+   retains separate return and normal snapshots; only the normal catch result
+   joins the normal try predecessor and reaches the suffix. A
    normally completing mandatory finally can now mutate the joined local map;
    the same transformation is replayed over each incoming completion snapshot
    before it survives to an outer finally or continuation. The next step is a
-   conditional catch return or rethrow, followed by catch-owned transfers,
-   before the general CFG fixed point.
+   conditional catch rethrow is next, followed by catch-owned transfers before
+   the general CFG fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

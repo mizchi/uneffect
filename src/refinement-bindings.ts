@@ -2498,7 +2498,20 @@ function validateRefinementActionBodiesInSource(
             if (hasMutableCatchLocals
               && !isBooleanCompletionPredicate(catchThrowWhen, false)
               && !catchThrowLocals) return undefined;
-            if (catchCompletion === "normal" && projectedCatchLocals) {
+            const catchAbruptWhen = orCompletionPredicates(
+              orCompletionPredicates(
+                orCompletionPredicates(
+                  completionPredicate(catchCompletion, "return"), catchThrowWhen,
+                ),
+                completionPredicate(catchCompletion, "break"),
+              ),
+              orCompletionPredicates(
+                completionPredicate(catchCompletion, "continue"),
+                labeledCompletionPredicate(catchCompletion),
+              ),
+            );
+            const catchNormalWhen = notCompletionPredicate(catchAbruptWhen);
+            if (!isBooleanCompletionPredicate(catchNormalWhen, false) && projectedCatchLocals) {
               postCatchLocals = isBooleanCompletionPredicate(throwWhen, true)
                 ? projectedCatchLocals
                 : joinVisibleLocalSnapshots(throwWhen, projectedCatchLocals, tryLocals, catchVisibleNames);
