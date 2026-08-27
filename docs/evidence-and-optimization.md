@@ -53,6 +53,10 @@ may cross at most two TypeChecker-resolved, write-screened local function
 helpers whose bodies are exactly the next call. The evidence link retains its
 complete `callPath`, explicit `helperDepthBudget: 2`, and any child guard. A
 third helper and helper-local control flow remain unsupported.
+When both adapters declare `runtime adapter@version = globalThis`, the same
+link may carry `runtimeIdentity: { kind: "ambient", root: "globalThis",
+identity: "ecmascript:realm.globalThis" }`. Only the TypeChecker-resolved
+builtin symbol is accepted; host aliases and other Realms remain non-proofs.
 It does not link solver obligations, cross-project invariants, ownership, or
 temporal evidence. Supported parameter, exported
 closure/module, same-realm global, and bounded iterator Effect substitutions are

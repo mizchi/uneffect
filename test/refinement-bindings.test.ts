@@ -52,6 +52,30 @@ describe("annotated refinement bindings", () => {
     );
   });
 
+  it("records an explicit same-realm globalThis runtime identity", () => {
+    const source = `
+      /* uneffect: runtime counter@1 = globalThis */
+      /* uneffect: refinement counter@1 create */ export function createCounter(initial: typeof globalThis) { return initial }
+      /* uneffect: refinement counter@1 observe */ export function observeCounter(runtime: typeof globalThis) { return runtime }
+      /* uneffect: refinement counter@1 action increment */ export function incrementCounter(runtime: typeof globalThis) { runtime }
+    `;
+    expect(buildRefinementBindingManifest("counter.ts", source, "counter")).toMatchObject({
+      runtimeIdentity: {
+        kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis",
+      },
+    });
+    expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
+      "runtime counter@1 = globalThis", "runtime counter@2 = globalThis",
+    ), "counter")).toThrow(/version 2, expected 1/);
+    expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
+      "runtime counter@1 = globalThis", "runtime counter@1 = globalThis.counter",
+    ), "counter")).toThrow(/only same-realm globalThis is supported/);
+    expect(() => buildRefinementBindingManifest("counter.ts", source.replace(
+      "/* uneffect: runtime counter@1 = globalThis */",
+      "/* uneffect: runtime counter@1 = globalThis */\n/* uneffect: runtime counter@1 = globalThis */",
+    ), "counter")).toThrow(/duplicate refinement runtime identity/);
+  });
+
   it("rejects non-exported, incomplete, and duplicate bindings", () => {
     expect(() => buildRefinementBindingManifest("private.ts", `
       /* uneffect: refinement counter@1 create */ function createCounter(initial: unknown) {}

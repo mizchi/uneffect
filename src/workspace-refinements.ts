@@ -12,6 +12,7 @@ import { parseSpec } from "./spec-ir.js";
 import type { TemporalExpression } from "./temporal-expressions.js";
 import type { TypeScriptProject, TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { DeclarationOutputIntegrity } from "./workspace-effects.js";
+import type { RefinementRuntimeIdentity } from "./runtime-identities.js";
 
 /** Maximum number of source-local function helpers admitted on a proof-grade refinement link. */
 export const WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET = 2;
@@ -37,6 +38,7 @@ export interface WorkspaceRefinementLink {
   /** Annotated parent action, bounded local helpers, then the child export. */
   callPath: string[];
   helperDepthBudget: number;
+  runtimeIdentity?: RefinementRuntimeIdentity;
   guard?: string;
   evidence: "verified" | "unknown";
   declarationFile: string;
@@ -181,7 +183,8 @@ export function composeWorkspaceRefinements(
                   }
                   contract = summary ? {
                     adapterName: summary.adapterName, version: summary.version, modelName: summary.modelName,
-                    exportName: summary.exportName, guard: summary.guard, assignments: summary.assignments,
+                    exportName: summary.exportName, runtimeIdentity: summary.runtimeIdentity,
+                    guard: summary.guard, assignments: summary.assignments,
                     evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
                   } : {
                     adapterName: "<ambiguous>", version: "<unknown>", modelName: callee,
@@ -194,6 +197,7 @@ export function composeWorkspaceRefinements(
                     version: contract.version, modelName: contract.modelName,
                     callPath: [...callPath, callee],
                     helperDepthBudget: WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET,
+                    ...(contract.runtimeIdentity ? { runtimeIdentity: contract.runtimeIdentity } : {}),
                     ...(contract.guard ? { guard: formatRefinementExpression(contract.guard) } : {}),
                     evidence: contract.evidence,
                     declarationFile: declarationSource.fileName, declarationIntegrity,
@@ -340,6 +344,7 @@ export function analyzeProjectRefinements(
           if (!exportName) continue;
           summaries.push({
             adapterName, version: manifest.version, modelName: action.name, exportName,
+            ...(manifest.runtimeIdentity ? { runtimeIdentity: manifest.runtimeIdentity } : {}),
             ...(action.guard ? { guard: action.guard.expressionAst as TemporalExpression } : {}),
             assignments: action.assignments.map(({ target, expressionAst }) => ({ target, expressionAst: expressionAst as TemporalExpression })),
             evidence: "verified", sourceFile: source.fileName,

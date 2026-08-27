@@ -16,6 +16,7 @@ import { analyzePromiseChains } from "../src/promise-chains.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
 import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject } from "../src/workspace-refinements.js";
 import type { TypeScriptProject } from "../src/typescript-project.js";
+import { SAME_REALM_GLOBAL_THIS_IDENTITY } from "../src/runtime-identities.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -265,6 +266,7 @@ const indirectRefinementParentName = "/bench/indirect-parent.ts";
 const indirectRefinementDeclarationName = "/bench/indirect-child.d.ts";
 const indirectRefinementParentText = `
   import { increment as incrementChild, type Runtime } from "indirect-child"
+  declare global { var armed: boolean; var count: number }
   /* uneffect:
     state armed: bool
     state count: int
@@ -273,11 +275,12 @@ const indirectRefinementParentText = `
     action increment: count' = count + 1
     action_when increment: armed
   */
+  /* uneffect: runtime counter@1 = globalThis */
   /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
   /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
   function bounce(runtime: Runtime) { incrementChild(runtime) }
   function apply(runtime: Runtime) { bounce(runtime) }
-  /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { apply(runtime) }
+  /* uneffect: refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(globalThis) }
 `;
 const indirectRefinementDeclarationText = `declare module "indirect-child" {
   export interface Runtime { armed: boolean; count: number }
@@ -315,6 +318,7 @@ const indirectRefinementCompleted: CompletedRefinementProject = {
   },
   summaries: [{
     adapterName: "counter", version: "1", modelName: "increment", exportName: "increment",
+    runtimeIdentity: SAME_REALM_GLOBAL_THIS_IDENTITY,
     guard: { kind: "name", name: "armed" },
     assignments: [{ target: "count", expressionAst: { kind: "binary", operator: "add", left: { kind: "name", name: "count" }, right: { kind: "integer", value: 1n } } }],
     evidence: "verified", sourceFile: "/bench/child.ts",
@@ -390,12 +394,13 @@ describe("refinement receiver identity", () => {
     analyzeProjectRefinements(leaseAuthorityProgram, project, new Map());
   }, { time: 500, iterations: 20 });
 
-  bench("compose two write-screened indirect project refinement helpers", () => {
+  bench("compose two same-realm project refinement helpers", () => {
     const result = composeWorkspaceRefinements(
       indirectRefinementProgram, indirectRefinementCurrent, [indirectRefinementCompleted],
     );
     if (result.links[0]?.callPath.length !== 4 || result.links[0]?.guard !== "armed"
       || result.links[0]?.helperDepthBudget !== 2
+      || result.links[0]?.runtimeIdentity?.identity !== "ecmascript:realm.globalThis"
       || result.blockers.length > 0) {
       throw new Error("indirect refinement benchmark fixture did not compose");
     }

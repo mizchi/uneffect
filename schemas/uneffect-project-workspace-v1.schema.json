@@ -58,6 +58,7 @@
             "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
             "callPath": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
             "helperDepthBudget": { "type": "integer", "const": 2 },
+            "runtimeIdentity": { "$ref": "#/$defs/sameRealmGlobalThisIdentity" },
             "guard": { "type": "string" },
             "declarationFile": { "type": "string" },
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
@@ -84,11 +85,12 @@
             "kind": { "const": "export" }, "root": { "type": "string" }, "exportName": { "type": "string" }, "identity": { "type": "string" }, "declarationKey": { "type": "string" }
           }
         },
-        {
-          "type": "object", "additionalProperties": false, "required": ["kind", "root", "identity"],
-          "properties": { "kind": { "const": "ambient" }, "root": { "const": "globalThis" }, "identity": { "const": "ecmascript:realm.globalThis" } }
-        }
+        { "$ref": "#/$defs/sameRealmGlobalThisIdentity" }
       ]
+    },
+    "sameRealmGlobalThisIdentity": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "root", "identity"],
+      "properties": { "kind": { "const": "ambient" }, "root": { "const": "globalThis" }, "identity": { "const": "ecmascript:realm.globalThis" } }
     },
     "declarationIntegrity": {
       "type": "object", "additionalProperties": false, "required": ["status", "fileName"],

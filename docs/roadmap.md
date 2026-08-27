@@ -50,9 +50,11 @@ commitment.
    composes only through a sole direct wrapper call and records its inherited
    guard. One edge may cross at most two TypeChecker-resolved, write-screened
    source-local sole-call helpers while retaining its call path, explicit depth
-   budget, and child guard. A third helper, helper-local control flow,
-   collection edges, guarded wrappers with extra work,
-   realms, and non-identical
+   budget, and child guard. An opt-in version-matched runtime annotation also
+   preserves the TypeChecker-resolved same-realm `globalThis` identity without
+   equating host aliases or other Realms. A third helper, helper-local control
+   flow, collection edges, guarded wrappers with extra work, broader runtime
+   identities, and non-identical
    declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
    of #9; it is now the active Phase 1 Issue.

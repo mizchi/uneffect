@@ -8,6 +8,7 @@ import { buildProgramCallGraph, type CallGraphEdge, type ExternalIteratorEffectC
 import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
+import type { SameRealmGlobalThisIdentity } from "./runtime-identities.js";
 
 export interface EffectDiagnostic {
   fileName: string;
@@ -55,11 +56,7 @@ export interface ExternalExportedMutationRoot {
   /** TypeChecker declaration identity in the declaration file consumed by the parent. */
   declarationKey: string;
 }
-export interface ExternalAmbientMutationRoot {
-  kind: "ambient";
-  root: "globalThis";
-  identity: "ecmascript:realm.globalThis";
-}
+export type ExternalAmbientMutationRoot = SameRealmGlobalThisIdentity;
 export type ExternalMutationRoot = ExternalExportedMutationRoot | ExternalAmbientMutationRoot;
 export interface ExternalFunctionEffectContract {
   effects: readonly Effect[];

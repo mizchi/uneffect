@@ -62,7 +62,8 @@ describe("evidence and optimizer obligations", () => {
           required: expect.arrayContaining(["callPath", "helperDepthBudget"]),
           properties: {
             callPath: { type: "array", items: { type: "string" }, minItems: 2 },
-            helperDepthBudget: { type: "integer", const: 2 }, guard: { type: "string" },
+            helperDepthBudget: { type: "integer", const: 2 },
+            runtimeIdentity: { $ref: "#/$defs/sameRealmGlobalThisIdentity" }, guard: { type: "string" },
           },
         } } } } },
       });

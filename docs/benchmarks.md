@@ -1811,9 +1811,10 @@ The adjacent indirect-composition benchmark starts from a warm parent Program
 and a prevalidated guarded child scalar summary, follows two
 TypeChecker-resolved local function helpers, applies both write screens, and
 verifies the four-declaration `callPath`, explicit `helperDepthBudget: 2`, and
-retained guard. A filtered run on 2026-08-28 measured 0.0533 ms mean (18,765.13
-operations/second over 9,383 samples, 2.74% relative margin of error). This
+retained guard plus the shared `ecmascript:realm.globalThis` runtime identity.
+A filtered run on 2026-08-28 measured 0.0618 ms mean (16,181.96
+operations/second over 8,091 samples, 0.33% relative margin of error). This
 excludes Program construction, child validation, filesystem declaration
 comparison, and parent action revalidation. It is a traversal regression
-baseline, not evidence for helper-local guards/control flow, reassigned, cyclic,
-or three-level helpers.
+baseline, not evidence for helper-local guards/control flow, reassigned,
+cyclic, three-level, host-alias, descendant-property, or cross-realm identities.

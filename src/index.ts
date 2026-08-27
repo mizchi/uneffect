@@ -252,6 +252,8 @@ export { verifyUneffectProject } from "./project-verification.js";
 export type { ProjectVerificationObligation, ProjectWorkspaceAssurance, ProjectWorkspaceVerificationBlocker, ProjectWorkspaceVerificationDomain, VerifyUneffectProjectBaseOptions, VerifyUneffectProjectOptions, VerifyUneffectProjectResult, VerifyUneffectWorkspaceOptions, VerifyUneffectWorkspaceResult } from "./project-verification.js";
 export { WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET } from "./workspace-refinements.js";
 export type { WorkspaceRefinementCompositionBlocker, WorkspaceRefinementLink } from "./workspace-refinements.js";
+export { SAME_REALM_GLOBAL_THIS_IDENTITY } from "./runtime-identities.js";
+export type { RefinementRuntimeIdentity, SameRealmGlobalThisIdentity } from "./runtime-identities.js";
 export { composeWorkspaceEffects } from "./workspace-effects.js";
 export type { CompletedEffectProject, DeclarationOutputIntegrity, WorkspaceEffectComposition, WorkspaceEffectCompositionBlocker, WorkspaceEffectLink } from "./workspace-effects.js";
 export { inspectBuildOutputs, mergeBuildOutputIntegrity } from "./build-output-integrity.js";

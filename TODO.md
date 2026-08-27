@@ -28,32 +28,20 @@ Remaining volume and estimate assumptions are maintained in
 ## Current implementation snapshot
 
 [#20](https://github.com/mizchi/uneffect/issues/20) is the sole active issue.
-The Promise/resource fragment completed by
-[#9](https://github.com/mizchi/uneffect/issues/9) composes caught awaited
-rejection, mandatory `finally`,
-reverse sync/async disposal, bounded owned loop transfers, one restricted
-nested-scope conditional join, one rejecting inner async disposal routed through
-its handler, a two-resource inner disposal stack that finishes before catch
-while retaining a finite `0 | single | suppressed` completion abstraction, and
-one Boolean `if`/`else` or exhaustive finite string-literal `switch` that
-acquires exactly one branch-local async resource before a shared
-cleanup/handler join, including one three-leaf nested Boolean tree, one finite
-switch whose preferred case contains a nested Boolean choice, and two
-independent sequential resource decisions separated by a verified cleanup
-join. A non-uniform Boolean decision may now dispose an async resource before
-an early `return` or typed `throw`. Return remains distinct through mandatory
-`finally`; throw remains distinct until branch cleanup enters catch, where the
-supported handler either recovers it or rethrows before mandatory `finally`.
-Neither abrupt arm may enter the later resource decision. One supported
-two-iteration outer loop now preserves Boolean-selected async-resource
-generation identity across cleanup and owned `continue`/`break`. General CFG
-and escaping-alias fixed points remain outside #9 and are owned by #23 and #24.
+Its supported cross-project scalar-refinement fragment now includes direct
+calls, guarded wrappers, at most two write-screened sole-call helpers, exact
+compiler/config/declaration provenance, and one version-matched builtin
+`globalThis` runtime identity. The next slice is realistic monorepo dogfood; it
+must record unsupported graphs as blockers rather than widening the proof claim.
 
-This summary deliberately does not restate the full proof boundary. Use
-`docs/feature-matrix.md` for supported and unsupported user-visible behavior,
-closed Issue #9 for its acceptance history and negative controls, and
-`docs/implementation-status.md` for completed implementation detail. General
-CFG fixed points and dynamic-value evidence are owned by #23 and #24.
+There are 13 open implementation Issues: two proof-boundary Issues in Phase 1,
+five specification-expressiveness Issues in Phase 2, five production-integration
+Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
+is estimated at 51–100 engineer-weeks, while the Phase 1 critical path is 4–8
+engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
+uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
+user-visible boundary. Completed detail, including the closed Promise/resource
+work in #9, remains in the historical ledger and `docs/implementation-status.md`.
 
 ## Immediate execution queue
 
@@ -62,7 +50,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Define and test opt-in runtime/realm identity for one same-realm global alias. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Apply the exact supported reference graph to a second realistic monorepo and record blockers. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research
@@ -667,6 +655,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Compose one unguarded child scalar action through one TypeChecker-resolved, write-screened source-local function helper; retain the full call path and reject reassignment, extra updates, recursion, and deeper helper chains.
     - [x] Preserve a guarded child scalar action through that sole-call helper, binding the helper declaration to the exact child contract and rejecting helper-local guards, extra work, or conditional invocation.
     - [x] Generalize the sole-call chain to two write-screened local helpers, publish `helperDepthBudget: 2`, preserve the complete guarded call path, and reject a third helper.
+    - [x] Add the version-matched `runtime adapter@version = globalThis` contract, share its identity with Effect composition, preserve it through two local helpers, and reject unannotated, shadowed, host-alias, Worker, iframe, descendant, duplicate, and version-mismatched forms.
     - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
     - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.

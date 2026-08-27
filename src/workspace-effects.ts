@@ -5,6 +5,7 @@ import type { EffectSummary, ExternalFunctionEffectContract, ExternalModuleEffec
 import type { IteratorEffectParameter } from "./call-graph.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypeScriptProject } from "./typescript-project.js";
+import { SAME_REALM_GLOBAL_THIS_IDENTITY } from "./runtime-identities.js";
 
 export interface WorkspaceEffectLink {
   kind: "function" | "module";
@@ -145,7 +146,7 @@ function stableMutationRoots(
   const stable: ExternalMutationRoot[] = [];
   for (const root of roots) {
     if (root === "globalThis") {
-      stable.push({ kind: "ambient", root, identity: "ecmascript:realm.globalThis" });
+      stable.push(SAME_REALM_GLOBAL_THIS_IDENTITY);
       continue;
     }
     const exported = exports.find((item) => {

@@ -139,6 +139,23 @@ Build tooling can either resolve the manifest against already-loaded exports or
 emit a reviewable module containing direct namespace references. Normal
 TypeScript checking remains responsible for the concrete state/runtime types.
 
+An adapter may opt into the one proof-grade ambient runtime identity currently
+supported by Uneffect:
+
+```ts
+/* uneffect: runtime lease@1 = globalThis */
+```
+
+This states that the adapter's runtime parameter denotes the ECMAScript global
+object in the current Realm. The adapter name and version must match its
+refinement bindings. Cross-project composition then accepts the builtin
+`globalThis` symbol and records
+`{ kind: "ambient", root: "globalThis", identity:
+"ecmascript:realm.globalThis" }`. A locally shadowed `globalThis`, a property
+below it, `window`, Node `global`, Worker globals, iframe values, other host
+aliases, duplicate declarations, and version mismatches are rejected. This is
+not a claim that distinct Realms share a global object.
+
 An implementation may use a different top-level field name from the temporal
 model by declaring an explicit, version-matched abstraction relation:
 

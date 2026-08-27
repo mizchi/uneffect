@@ -143,6 +143,13 @@ is exactly the next call; `callPath` records all declarations, the link exposes
 reassigned, or cyclic helper,
 wrappers with additional work that try to inherit a guard, collection-valued updates,
 abstraction transforms, and non-exact declarations remain explicit non-proofs.
+An adapter can explicitly bind its runtime parameter to the current Realm's
+builtin global object with
+`/* uneffect: runtime counter@1 = globalThis */`. Both producer and consumer
+must declare the same adapter/version identity, and the call must resolve to the
+builtin `globalThis` symbol. The link records `ecmascript:realm.globalThis`;
+shadowed names, `window`, Node `global`, Worker/iframe values, properties below
+`globalThis`, and unannotated aliases remain non-proofs.
 It does not compose the other proof domains. A ledger with no accepted link and
 no blocker reports `not-applicable`, never `verified`; an empty composition is
 not evidence that a cross-project property was checked.

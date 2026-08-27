@@ -12,6 +12,10 @@ import {
   type AbruptCompletion,
   type CompletionSummary,
 } from "./completion-flow.js";
+import {
+  SAME_REALM_GLOBAL_THIS_IDENTITY,
+  type RefinementRuntimeIdentity,
+} from "./runtime-identities.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
 
@@ -29,6 +33,7 @@ export interface RefinementBindingManifest {
   fileName: string;
   adapterName: string;
   version: string;
+  runtimeIdentity?: RefinementRuntimeIdentity;
   create: string;
   observe: string;
   abstractions: Record<string, string>;
@@ -72,6 +77,7 @@ export interface ExternalRefinementActionContract {
   version: string;
   modelName: string;
   exportName: string;
+  runtimeIdentity?: RefinementRuntimeIdentity;
   /** Guard proved by the producer action body. The consumer may inherit it only through an exact sole direct call. */
   guard?: TemporalExpression;
   assignments: readonly { target: string; expressionAst: TemporalExpression }[];
@@ -161,8 +167,22 @@ export function buildRefinementBindingManifest(fileName: string, text: string, a
     if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new Error(`refinement adapter ${adapterName} has duplicate ${role} bindings`);
     return Object.fromEntries(entries);
   };
+  const runtimeIdentities = extractAnnotations(text, "runtime").flatMap((value) => {
+    const match = /^([A-Za-z_$][\w$]*)@([^\s@]+)\s*=\s*(\S+)$/.exec(value);
+    if (!match) throw new Error(`invalid refinement runtime identity: ${value}`);
+    if (match[1] !== adapterName) return [];
+    if (match[2] !== bindings[0]!.version) {
+      throw new Error(`refinement runtime identity ${match[1]} has version ${match[2]}, expected ${bindings[0]!.version}`);
+    }
+    if (match[3] !== "globalThis") {
+      throw new Error(`unsupported refinement runtime identity: ${match[3]}; only same-realm globalThis is supported`);
+    }
+    return [SAME_REALM_GLOBAL_THIS_IDENTITY];
+  });
+  if (runtimeIdentities.length > 1) throw new Error(`duplicate refinement runtime identity for ${adapterName}`);
   return {
     schema: "uneffect-refinement-bindings/v1", fileName, adapterName, version: bindings[0]!.version,
+    ...(runtimeIdentities[0] ? { runtimeIdentity: runtimeIdentities[0] } : {}),
     create: singleton("create"), observe: singleton("observe"),
     abstractions: Object.fromEntries(parseAbstractionRelations(text, adapterName, bindings[0]!.version)),
     actions: named("action"), invariants: named("invariant"),
@@ -922,6 +942,23 @@ function validateRefinementActionBodiesInSource(
   };
 
   const unwrap = (node: ts.Expression): ts.Expression => ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
+  const isSameRealmGlobalThis = (node: ts.Expression): boolean => {
+    const value = unwrap(node);
+    if (!checker || !ts.isIdentifier(value) || value.text !== "globalThis") return false;
+    const symbol = checker.getSymbolAtLocation(value);
+    if (!symbol) return false;
+    return !(symbol.declarations ?? []).some((declaration) => {
+      const named = declaration as ts.NamedDeclaration;
+      return !declaration.getSourceFile().isDeclarationFile
+        && !!named.name && ts.isIdentifier(named.name) && named.name.text === "globalThis";
+    });
+  };
+  const sameRuntimeIdentity = (
+    external: ExternalRefinementActionContract,
+    argument: ts.Expression,
+  ): boolean => manifest.runtimeIdentity?.identity === "ecmascript:realm.globalThis"
+    && external.runtimeIdentity?.identity === manifest.runtimeIdentity.identity
+    && isSameRealmGlobalThis(argument);
   const earlyReturnGuard = (body: ts.Block, receiver: string): { guard?: TemporalExpression; updates: ts.Block } => {
     const first = body.statements[0];
     if (!first || !ts.isIfStatement(first) || first.elseStatement) return { updates: body };
@@ -952,7 +989,8 @@ function validateRefinementActionBodiesInSource(
     if (!external || external.evidence !== "verified" || external.adapterName !== adapterName
       || external.version !== manifest.version) return undefined;
     const argument = expression.arguments[0]!;
-    if (!ts.isIdentifier(argument) || argument.text !== receiver) return undefined;
+    if ((!ts.isIdentifier(argument) || argument.text !== receiver)
+      && !sameRuntimeIdentity(external, argument)) return undefined;
     return external;
   };
 
@@ -3150,7 +3188,8 @@ function validateRefinementActionBodiesInSource(
           const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
             || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
               || (substitutedReceiver !== undefined && ts.isIdentifier(substitutedReceiver) && substitutedReceiver.text === receiver));
-          if (!receiverMatches || external.assignments.some(({ target }) => !stateNames.has(target))) return undefined;
+          if ((!receiverMatches && !sameRuntimeIdentity(external, receiverArgument))
+            || external.assignments.some(({ target }) => !stateNames.has(target))) return undefined;
           const resolved = external.assignments.map(({ target, expressionAst }) => [
             target, expandLocalSnapshots(resolveCurrentState(expressionAst)),
           ] as const);
@@ -3165,7 +3204,7 @@ function validateRefinementActionBodiesInSource(
         const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
           || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
             || (substitutedReceiver !== undefined && ts.isIdentifier(substitutedReceiver) && substitutedReceiver.text === receiver));
-        if (!receiverMatches) return undefined;
+        if (!receiverMatches && !(external && sameRuntimeIdentity(external, receiverArgument))) return undefined;
         const helperLocals = new Map<string, TemporalExpression>();
         for (let index = 1; index < helper.parameters.length; index++) {
           const argument = normalizeRefinementExpression(node.arguments[index]!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);

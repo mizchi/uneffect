@@ -123,6 +123,19 @@ a body consisting only of the next call. The report emits the complete
 Helper-local guards, extra/conditional work, reassignment, recursion, and a
 third helper level remain `unknown`.
 
+For an adapter whose runtime is the ECMAScript global object in the current
+Realm, both projects may opt in explicitly:
+
+```ts
+/* uneffect: runtime counter@1 = globalThis */
+```
+
+Only the TypeChecker-resolved builtin `globalThis` symbol is accepted at the
+composed call. The evidence link records
+`identity: "ecmascript:realm.globalThis"`. Uneffect does not equate this with a
+shadowed binding, `window`, Node `global`, Worker globals, iframe values, or a
+property below the global object.
+
 If downstream projects rely on checked-in or cached composite outputs, add
 `--require-build-artifacts`. This rejects missing/stale `.d.ts` and buildinfo
 according to TypeScript SolutionBuilder. If the deployment executes the exact

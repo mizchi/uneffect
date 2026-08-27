@@ -430,6 +430,126 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
+  it("composes an explicitly annotated same-realm globalThis refinement runtime", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-realm-refinement-"));
+    const root = join(directory, "tsconfig.json");
+    const child = join(directory, "packages", "child");
+    const parent = join(directory, "packages", "parent");
+    try {
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      mkdirSync(join(child, "src"), { recursive: true });
+      mkdirSync(join(parent, "src"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({
+        name: "typescript", version: ts.version, main: "index.js",
+      }));
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      const model = `/* uneffect:
+        state count: int
+        init count = 0
+        action increment: count' = count + 1
+      */`;
+      writeFileSync(join(child, "src", "counter.ts"), `${model}
+        export interface Runtime { count: number }
+        /* uneffect: runtime counter@1 = globalThis */
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
+      `);
+      const parentSource = `import { increment as incrementChild } from "../../child/src/counter.js"
+        import type { Runtime } from "../../child/src/counter.js"
+        declare global { var count: number }
+        ${model}
+        /* uneffect: runtime counter@1 = globalThis */
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        function bounce(runtime: Runtime) { incrementChild(runtime) }
+        function apply(runtime: Runtime) { bounce(runtime) }
+        /* uneffect: effect Mutate<typeof globalThis.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(_runtime: Runtime) { apply(globalThis) }
+      `;
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: {
+          composite: true, declaration: true, emitDeclarationOnly: true,
+          rootDir: "src", outDir: "dist", strict: true,
+          module: "NodeNext", moduleResolution: "NodeNext", types: [],
+        },
+        include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify(config([{ path: "../child" }])));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const result = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; links: unknown[]; blockers: unknown[] };
+        assurance: { passed: boolean };
+      };
+      expect(result.refinementComposition).toMatchObject({
+        status: "verified",
+        links: [expect.objectContaining({
+          runtimeIdentity: { kind: "ambient", root: "globalThis", identity: "ecmascript:realm.globalThis" },
+          helperDepthBudget: 2, callPath: ["increment", "apply", "bounce", "increment"], evidence: "verified",
+        })],
+        blockers: [],
+      });
+      expect(result.assurance.passed).toBe(true);
+
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
+        "/* uneffect: runtime counter@1 = globalThis */", "",
+      ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const unannotated = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(unannotated.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "violation", subject: "counter:increment",
+          message: expect.stringContaining("outside the supported scalar refinement fragment"),
+        })]),
+      });
+
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource
+        .replace("declare global { var count: number }", "const globalThis: Runtime = { count: 0 }")
+      );
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const shadowed = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(shadowed.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "violation", subject: "counter:increment",
+          message: expect.stringContaining("outside the supported scalar refinement fragment"),
+        })]),
+      });
+
+      for (const alias of ["window", "global", "workerGlobal", "iframeGlobal"]) {
+        writeFileSync(join(parent, "src", "counter.ts"), parentSource
+          .replace("declare global { var count: number }", `const ${alias}: Runtime = { count: 0 }`)
+          .replace("Mutate<typeof globalThis.count>", `Mutate<typeof ${alias}.count>`)
+          .replace("apply(globalThis)", `apply(${alias})`)
+        );
+        expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+        const hostAlias = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+          refinementComposition: { status: string; blockers: unknown[] };
+        };
+        expect(hostAlias.refinementComposition).toMatchObject({
+          status: "unknown",
+          blockers: expect.arrayContaining([expect.objectContaining({
+            classification: "violation", subject: "counter:increment",
+            message: expect.stringContaining("outside the supported scalar refinement fragment"),
+          })]),
+        });
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("composes a verified scalar refinement action across a direct project reference", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-refinement-"));

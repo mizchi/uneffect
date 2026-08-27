@@ -80,6 +80,11 @@ same property is proved for arbitrary TypeScript.
   declaration is bound to the exact child contract, so guard identity reaches
   parent revalidation; helper-local guards, extra work, and conditional
   invocation remain rejected.
+- A version-matched `runtime adapter@version = globalThis` annotation binds the
+  refinement runtime to the builtin global object in the current Realm. Direct
+  and two-helper links retain `ecmascript:realm.globalThis`; unannotated,
+  shadowed, host-alias, descendant-property, Worker, and iframe identities fail
+  closed.
 - The linter detects syntactic and solver-level constant properties,
   contradictory initial constraints, globally impossible guards, duplicate or
   subsumed properties, bounded unreachability, and several inductively proved

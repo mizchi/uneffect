@@ -152,6 +152,14 @@ third helper level, collection updates,
 abstraction transforms, and non-TypeScript declaration transforms remain
 unsupported.
 
+An exact `runtime adapter@version = globalThis` annotation may bind both sides
+of a refinement link to the ECMAScript global object in the current Realm. The
+adapter/version must match and the argument must resolve to the builtin
+`globalThis` symbol. The link records `ecmascript:realm.globalThis`. Missing or
+duplicate annotations, locally shadowed names, properties below `globalThis`,
+`window`, Node `global`, Worker/iframe values, and cross-realm flows remain
+non-proofs.
+
 Success still excludes cross-project invariants, contracts, ownership, and
 temporal composition. Every `.d.ts` consumed by an Effect or refinement link
 must exactly match a same-compiler in-memory declaration re-emission; missing or
