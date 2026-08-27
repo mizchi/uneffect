@@ -1708,6 +1708,74 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActionsStatically(
       "conditional-catch-rethrow.ts", conditionalRethrow, "conditionalCatchReturn", temporal,
     )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+  });
+
+  it("keeps conditional catch-rethrow payload and normal snapshots distinct", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state recovered: int
+       * state audited: int
+       * state failed: bool
+       * state escalate: bool
+       * init recovered = 0
+       * init audited = 0
+       * init failed = false
+       * init escalate = false
+       * action record: recovered' = recovered + (failed ? (escalate ? 8 : 6) : 2), audited' = audited + (failed ? (escalate ? 4 : 6) : 2)
+       */
+      interface Runtime { recovered: number; audited: number; failed: boolean; escalate: boolean }
+      /* uneffect: refinement conditionalCatchRethrow@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalCatchRethrow@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalCatchRethrow@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } catch (reason) {
+            units += reason
+            if (runtime.escalate) throw units
+            units += 2
+          } finally {
+            runtime.audited += units
+          }
+        } catch (amount) {
+          runtime.recovered += units + amount
+          return
+        }
+        runtime.recovered += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-catch-rethrow.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-catch-rethrow.ts", source, "conditionalCatchRethrow", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongNormalSnapshot = source.replace("units += 2\n          } finally", "units += 3\n          } finally");
+    await expect(validateActions(
+      "conditional-catch-rethrow-wrong.ts", wrongNormalSnapshot, "conditionalCatchRethrow", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const opaqueRethrow = source.replace(
+      "if (runtime.escalate) throw units",
+      "if (runtime.escalate) throw new Error('escalated')",
+    );
+    expect(validateActionsStatically(
+      "conditional-catch-rethrow-opaque.ts", opaqueRethrow, "conditionalCatchRethrow", temporal,
+    )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));
   });

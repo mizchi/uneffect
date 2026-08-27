@@ -130,6 +130,10 @@ A catch that conditionally returns after mutation retains a return-edge
 snapshot at the branch and a separate normally completing snapshot after the
 branch. Only the normal catch snapshot joins the normal try predecessor and
 reaches the post-try continuation.
+A catch that conditionally rethrows a supported normalized scalar retains the
+branch snapshot and payload on its throw edge and a separate normally
+completing snapshot after the branch. Mandatory `finally` and an outer catch
+consume the matching throw evidence.
 A normally completing mandatory `finally` may mutate outer-visible scalars.
 The checker evaluates state updates over the joined incoming environment and
 replays the local transformation over each normal/return/throw/break/continue
@@ -138,7 +142,7 @@ The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
-by conditional rethrow, break/continue/label transfer, or an opaque
+by break/continue/label transfer or an opaque
 rethrow payload, mutable-local mutation combined
 with conditional/abrupt finally completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,

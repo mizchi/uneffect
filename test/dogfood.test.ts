@@ -268,7 +268,20 @@ describe("Uneffect dogfood", () => {
       code: "action-update-mismatch", modelName: "record",
     }));
 
-    const opaqueRethrow = source.replace("throw units;\n    } finally", "throw new Error('invalid batch');\n    } finally");
+    const wrongRecoveredContinuation = source.replace(
+      "if (runtime.escalate) throw units;\n      units += 2;",
+      "if (runtime.escalate) throw units;\n      units += 3;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, wrongRecoveredContinuation, "rethrowBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const opaqueRethrow = source.replace(
+      "if (runtime.escalate) throw units;",
+      "if (runtime.escalate) throw new Error('invalid batch');",
+    );
     expect(validateRefinementActionBodies(
       fileName, opaqueRethrow, "rethrowBatchAccounting", temporal,
     )).toContainEqual(expect.objectContaining({

@@ -2483,9 +2483,7 @@ function validateRefinementActionBodiesInSource(
               !name.startsWith("\u0000mutable:")
               && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
             const catchThrowWhen = completionPredicate(catchCompletion, "throw");
-            const catchHasConditionalRethrow = !isBooleanCompletionPredicate(catchThrowWhen, false)
-              && !isBooleanCompletionPredicate(catchThrowWhen, true);
-            const catchHasUnsupportedMutableAbrupt = catchHasConditionalRethrow || !isBooleanCompletionPredicate(
+            const catchHasUnsupportedMutableAbrupt = !isBooleanCompletionPredicate(
               completionPredicate(catchCompletion, "break"), false,
             ) || !isBooleanCompletionPredicate(
               completionPredicate(catchCompletion, "continue"), false,

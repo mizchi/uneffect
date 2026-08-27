@@ -190,8 +190,10 @@ same property is proved for arbitrary TypeScript.
   through mandatory `finally`, so an outer catch starts from matching evidence.
   A conditional catch return now retains the pre-return snapshot on its return
   edge and the post-branch snapshot on normal completion; only the latter joins
-  the normal try predecessor before the suffix. Conditional rethrow,
-  break/continue/label transfer, and opaque rethrow
+  the normal try predecessor before the suffix. A conditional supported scalar
+  rethrow similarly retains its branch snapshot and payload on the throw edge,
+  while a later normal catch mutation reaches the suffix; mandatory `finally`
+  and an outer catch preserve that pairing. Break/continue/label transfer and opaque rethrow
   payloads remain non-proofs. A mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported

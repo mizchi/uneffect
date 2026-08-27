@@ -47,8 +47,9 @@ mutated snapshot for an enclosing mandatory `finally`. A direct supported
 scalar rethrow likewise retains the transformed snapshot and payload for an
 outer catch. A conditional catch return keeps its return snapshot separate
 from the normally completing catch snapshot, which joins the normal try
-predecessor. Conditional rethrow, break/continue/label transfer,
-conditional/abrupt finally mutation, and dispatch
+predecessor. A conditional scalar rethrow likewise keeps its payload-bearing
+throw snapshot separate from its normally completing catch snapshot.
+Break/continue/label transfer, conditional/abrupt finally mutation, and dispatch
 boundaries remain explicitly unsupported. A normally completing mandatory
 `finally` may mutate outer-visible scalars; its transformation is replayed on
 each normal/return/throw/break/continue predecessor snapshot.
@@ -386,6 +387,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Project a catch-side mutable-scalar update onto its direct-return edge and carry that snapshot through an enclosing mandatory `finally`; retain mutable-local rethrow, break/continue/label transfer, and conditional catch return as explicit non-proofs.
         - [x] Project a catch-side mutable-scalar update and normalized scalar payload onto a direct rethrow edge, carry both through mandatory `finally`, and bind them in an outer catch; reject conditional and opaque rethrows.
         - [x] Preserve distinct catch-side mutable-scalar snapshots for conditional direct return and normal catch completion, joining only the latter with the normal try predecessor before the suffix; reject conditional rethrow and catch-owned transfers.
+        - [x] Preserve distinct catch-side mutable-scalar snapshots and a normalized payload for conditional rethrow versus normal catch completion, carrying the throw edge through mandatory `finally` into an outer catch; reject opaque payloads and catch-owned transfers.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.

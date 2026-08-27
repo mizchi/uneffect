@@ -2,16 +2,19 @@
  * state recoveredUnits: int
  * state auditedUnits: int
  * state failed: bool
+ * state escalate: bool
  * init recoveredUnits = 0
  * init auditedUnits = 0
  * init failed = false
- * action record: recoveredUnits' = recoveredUnits + (failed ? 8 : 2), auditedUnits' = auditedUnits + (failed ? 4 : 2)
+ * init escalate = false
+ * action record: recoveredUnits' = recoveredUnits + (failed ? (escalate ? 8 : 6) : 2), auditedUnits' = auditedUnits + (failed ? (escalate ? 4 : 6) : 2)
  */
 
 export interface RethrowBatchAccounting {
   recoveredUnits: number;
   auditedUnits: number;
   failed: boolean;
+  escalate: boolean;
 }
 
 /* uneffect: refinement rethrowBatchAccounting@1 create */
@@ -39,7 +42,8 @@ export function recordRethrowBatch(runtime: RethrowBatchAccounting): void {
       // batch recovery boundary. The rethrow carries both this payload and the
       // mutated local snapshot through the audit finally block.
       units += validationUnits;
-      throw units;
+      if (runtime.escalate) throw units;
+      units += 2;
     } finally {
       runtime.auditedUnits += units;
     }

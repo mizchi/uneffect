@@ -462,12 +462,25 @@ A twenty-fourth case mutates a scalar in catch, conditionally returns with the
 four-unit snapshot, and otherwise continues to a six-unit recovered snapshot.
 The normal try predecessor remains two units. Mandatory `finally` audits the
 selected value, while billing excludes only the return path. A wrong recovered
-increment is rejected by Z3 and a conditional rethrow remains unsupported.
+increment is rejected by Z3. Replacing return with a conditional scalar rethrow
+is now analyzed and produces a model mismatch; the nested positive form appears
+in the next case.
 Adaptive billing now uses the same shape to defer failed-batch billing while
 auditing it immediately; recovered failures continue to billing, and an
 injected deferred-failure billing write is rejected. Conditional rethrow,
 catch-owned break/continue/labels, abrupt finally mutation, aliases, and the
 general CFG fixed point remain open.
+
+A twenty-fifth case mutates a scalar in an inner catch, conditionally rethrows
+the four-unit value, and otherwise completes catch with six units. Mandatory
+`finally` audits the selected snapshot. The outer catch consumes both the
+four-unit local and payload to recover eight, while normal failed recovery adds
+six and the normal try path adds two. A wrong continuation is rejected by Z3;
+an opaque conditional `Error` rethrow remains unsupported. The rethrow batch
+accounting dogfood now selects escalation versus local recovery with the same
+shape and rejects wrong normalization, wrong recovered continuation, and an
+opaque payload. Catch-owned break/continue/labels, abrupt finally mutation,
+aliases, and the general CFG fixed point remain open.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

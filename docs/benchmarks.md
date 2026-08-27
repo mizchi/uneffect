@@ -1548,6 +1548,16 @@ is high, so this is an observation rather than a comparison or CI budget. It
 excludes Z3, conditional rethrow, abrupt finally mutation, aliases, and general
 CFG fixed points.
 
+After splitting normalized batch failure into conditional escalation and local
+recovery, the nested rethrow benchmark measured 1.6144 ms mean (619.41
+operations/second over 310 samples, 5.91% relative margin of error) on
+2026-08-27. It retains separate payload-bearing throw and normally completing
+catch snapshots, carries the throw path through mandatory `finally`, and joins
+only the normal catch result into the suffix. The workload changed, so this is
+an observation rather than a comparison or CI budget. It excludes Z3, opaque
+payloads, catch-owned transfers, abrupt finally mutation, aliases, and the
+general CFG fixed point.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink
