@@ -48,6 +48,42 @@ There are three useful planning numbers:
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
+## Scope cuts and decision points
+
+The estimates should be used as successive investment decisions, not as one
+commitment to implement every row:
+
+| Decision point | Include | Exclude for this cut | Estimate | Exit decision |
+| --- | --- | --- | ---: | --- |
+| A — proof-boundary MVP | Finish #20; implement one exact #18 ESM/TLA fragment | General CFG, aliases, broad host/framework semantics | 4–8 weeks total | Dogfood on a solution-style Node application and decide whether project/module evidence is useful enough to continue. |
+| B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 10–19 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
+| C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 12–27 weeks after Phase 1 when required core work is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
+| C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 7–14 weeks for #4/#6's lower bounds; roughly 12–27 weeks after Phase 1 when required core work is included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
+| D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 17–33 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
+| E — proof consumer | #13 | Any rewrite not authorized by replayable evidence | 6–12 weeks | Ship or reject one fail-closed stable-read transformation before considering general compression/mangling. |
+
+C1 and C2 are alternatives unless both product outcomes are required. D is not
+a single release: #10 and #16 are separate host/framework product bets. The
+51–100 week total remains additive and intentionally ignores speculative
+parallel speed-up.
+
+## Dependency-critical order
+
+1. #20 is active. Its next slice is guarded direct scalar refinement
+   composition; indirect, collection-valued, realm, and transformed-declaration
+   cases remain non-proofs.
+2. #18 stays blocked until #20's project-boundary evidence is sufficient for
+   module-order consumers.
+3. #23 precedes CFG-sensitive portions of #6, #24, and #13.
+4. #24 and #8 provide alias/frontend evidence required before #13 can authorize
+   transformations.
+5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
+   than being treated as one mandatory serial queue.
+
+No Phase 3 or Phase 4 Issue should pre-empt #20 merely because it has an
+attractive isolated demo. New work that exposes a soundness dependency should
+be added to the owning Issue and reflected here before implementation begins.
+
 ## Issue-level remaining volume
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
@@ -58,7 +94,7 @@ There are three useful planning numbers:
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
 | 6 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
-| 7 | #6 typed arrays/SHA-256 | L–XL | 4–9 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
+| 7 | #6 typed arrays/SHA-256 | XL | 4–9 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
 | 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | One non-escaping mutable alias through a local helper | Region identity, higher-order flow, and closed-world dispatch |
 | 9 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
 | 10 | #10 event-loop ownership | L–XL | 5–10 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
@@ -88,6 +124,9 @@ There are three useful planning numbers:
 - Split any `XL` Issue into an executable child Issue before setting it active.
 - Record actual benchmark and implementation effort when a slice closes; use it
   to narrow the next estimate.
+- At every delivery decision point, compare estimated and actual elapsed
+  engineering effort, record scope added or removed, and replace the remaining
+  range rather than preserving a stale baseline.
 - A proof result that depends on an unimplemented boundary remains `unknown`;
   schedule pressure does not reduce the acceptance criteria.
 

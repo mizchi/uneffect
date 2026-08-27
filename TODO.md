@@ -65,6 +65,21 @@ required project-boundary evidence.
 | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Generalize the exact cross-project refinement fragment beyond one unguarded scalar direct call without flattening compiler domains. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
+The current planning cut is intentionally narrower than the complete research
+backlog:
+
+| Delivery cut | Included Issues | Remaining estimate | What it establishes |
+| --- | --- | ---: | --- |
+| Proof-boundary MVP | #20, then the first exact slice of #18 | 4–8 engineer-weeks | Local evidence survives supported project and module boundaries. |
+| General analysis foundation | #23, the first executable slices of #24 and #8 | 10–19 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 12–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
+| Entire open research backlog | All 13 open Issues | 51–100 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+
+These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
+#6, #10, #13, #16, and #24 must be split into bounded child Issues before they
+become active. See `docs/remaining-work-estimate.md` for assumptions and scope
+cuts.
+
 After these Phase 1 handoffs, select work from the phase-ordered issue index
 below. Do not promote a queued Issue merely because a historical checkbox is
 nearby in this file. A promotion must update the Issue status label, its next
