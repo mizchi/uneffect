@@ -816,6 +816,52 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions("caught-break.ts", source, "caughtBreak", temporal)).resolves.toEqual([]);
   });
 
+  it("joins caught break and continue outcomes behind invariant policy", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state delivered: int
+       * state failed: int
+       * state retried: int
+       * state attempts: int
+       * state fatal: bool
+       * state stopOnFailure: bool
+       * init pending = 0
+       * init delivered = 0
+       * init failed = 0
+       * init retried = 0
+       * init attempts = 0
+       * init fatal = false
+       * init stopOnFailure = false
+       * action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0)
+       */
+      interface Runtime { pending: number; delivered: number; failed: number; retried: number; attempts: number; fatal: boolean; stopOnFailure: boolean }
+      /* uneffect: refinement caughtPolicy@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtPolicy@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtPolicy@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          try {
+            if (runtime.fatal) throw runtime.pending
+            runtime.delivered += runtime.pending
+          } catch (amount) {
+            runtime.failed += amount
+            if (runtime.stopOnFailure) break
+            runtime.retried += amount
+            continue
+          } finally {
+            runtime.pending--
+            runtime.attempts++
+          }
+        }
+      }
+    `;
+    const temporal = (parseSpecification("caught-policy.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("caught-policy.ts", source, "caughtPolicy", temporal)).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

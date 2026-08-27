@@ -1652,7 +1652,6 @@ function validateRefinementActionBodiesInSource(
         const hasInvariantEarlyBreak = !isBooleanCompletionPredicate(breakWhen, false);
         const hasOnlyConsumedLoopTransfer = isBooleanCompletionPredicate(completionPredicate(loopCompletion, "return"), false)
           && isBooleanCompletionPredicate(completionPredicate(loopCompletion, "throw"), false)
-          && (!hasInvariantEarlyBreak || isBooleanCompletionPredicate(completionPredicate(loopCompletion, "continue"), false))
           && isBooleanCompletionPredicate(labeledCompletionPredicate(loopCompletion), false);
         if (loopCompletion !== "normal" && !hasOnlyConsumedLoopTransfer) return undefined;
         const specializeCondition = (
@@ -1684,9 +1683,21 @@ function validateRefinementActionBodiesInSource(
         };
         const specializedStateUpdate = (name: string, value: boolean): TemporalExpression => {
           const expression = loopUpdates.get(name) ?? { kind: "name", name } as TemporalExpression;
-          return sameRefinementExpression(expression, { kind: "name", name })
-            ? expression
-            : specializeCondition(expression, breakWhen, value);
+          if (sameRefinementExpression(expression, { kind: "name", name })) return expression;
+          const specializeTrueConjunction = (
+            current: TemporalExpression,
+            condition: TemporalExpression,
+          ): TemporalExpression => {
+            let specialized = specializeCondition(current, condition, true);
+            if (condition.kind === "binary" && condition.operator === "and") {
+              specialized = specializeTrueConjunction(specialized, condition.left);
+              specialized = specializeTrueConjunction(specialized, condition.right);
+            }
+            return specialized;
+          };
+          return value
+            ? specializeTrueConjunction(expression, breakWhen)
+            : specializeCondition(expression, breakWhen, false);
         };
         const iterationUpdates = hasInvariantEarlyBreak
           ? new Map([...stateNames].map((name) => [name, specializedStateUpdate(name, false)]))

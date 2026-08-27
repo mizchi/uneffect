@@ -138,10 +138,11 @@ same property is proved for arbitrary TypeScript.
   stopping. Supported state updates before the loop are substituted into its
   condition and updates. A caught scalar throw may select the break path, and a
   mandatory `finally` may advance the ranking counter once when its delta
-  exactly matches the ordinary iteration. Different counter deltas, a ninth
-  update, cross-state coupling, non-affine break updates, post-update break
-  checks with a different counter delta, counter-dependent or mutated
-  conditions, and break/continue mixtures
+  exactly matches the ordinary iteration. A second invariant policy may choose
+  continue instead; both completion paths share the mandatory ranking update,
+  and the continuing path contributes its affine recurrence. Different counter
+  deltas, a ninth update, cross-state coupling, non-affine updates,
+  counter-dependent or mutated policies, and dynamic completion selection
   remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the

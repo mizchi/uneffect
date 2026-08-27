@@ -143,7 +143,7 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
-  it("proves that a caught fatal telemetry attempt advances and audits once", async () => {
+  it("proves caught telemetry retry/stop policy with one common attempt cleanup", async () => {
     const fileName = "examples/dogfood/failing-telemetry-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;

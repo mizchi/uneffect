@@ -23,8 +23,9 @@ release date commitment.
    path and permits up to eight independent non-counter affine updates on the
    stopping path. A caught scalar failure can break after mandatory `finally`
    advances the ranking counter by the ordinary iteration delta;
-   differently-counter-changing, cross-state-coupled, non-affine, over-budget,
-   and dynamically selected breaks remain open.
+   an invariant retry/stop policy can instead select continue while sharing the
+   same ranking `finally`. Differently-counter-changing, cross-state-coupled,
+   non-affine, over-budget, and dynamically selected outcomes remain open.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

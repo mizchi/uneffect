@@ -1424,3 +1424,11 @@ operations/second over 1,533 samples, 9.53% relative margin of error) on
 2026-08-27. The high variance prevents a comparative performance claim; this
 records the cost of constructing the exception-aware closed form and remains
 outside a CI regression budget.
+
+After adding invariant retry/stop selection to that catch, the filtered
+workload measured 0.5794 ms mean (1,725.90 operations/second over 863 samples,
+0.95% relative margin of error) on 2026-08-27. The workload now constructs both
+the single-attempt break result and the continuing affine retry recurrence,
+including conjunction specialization and mandatory-finally ranking evidence.
+Because the workload changed, this is not compared as a regression against the
+earlier caught-break number.

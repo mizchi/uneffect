@@ -65,12 +65,15 @@ condition and update inputs are read from loop-entry state. This includes the
 zero-update case and affine `finally` updates when the model accounts for them.
 The break path may advance the ranking counter by exactly the same delta as an
 ordinary iteration; this admits a caught scalar failure whose `finally` block
-advances and audits once before the catch-side break is consumed. A different
+advances and audits once before the catch-side break is consumed. The same
+caught failure may choose an invariant break or continue policy; the common
+`finally` must prove the ordinary ranking delta on both paths. True
+conjunctions in the break condition are specialized into their invariant
+constituents, while false conjunctions are not unsafely decomposed. A different
 counter delta, a ninth non-counter update, cross-state-coupled or non-affine
-break-side updates, a mutated or counter-dependent break condition, post-update
-break checks whose counter delta differs from the ordinary path, and
-break/continue mixtures remain unsupported. This is a
-closed-form affine rule, not a general loop fixed point.
+break-side updates, a mutated or counter-dependent policy, and dynamically
+selected completion remain unsupported. This is a closed-form affine rule, not
+a general loop fixed point.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

@@ -297,8 +297,17 @@ An eighth exception-aware case throws the current ranking value, binds it in
 mandatory `finally` that advances the ranking counter and audit exactly once.
 The counter delta must equal the ordinary iteration delta; a different step,
 rethrow, mutated condition, or catch update coupled to another state is
-rejected. These are closed-form affine rules, not a general TypeScript CFG
-proof.
+rejected.
+
+A ninth case extends the caught failure with an invariant retry/stop policy:
+stop consumes the break after one failed attempt, while retry consumes
+`continue` and accumulates the affine failure/retry totals for every remaining
+attempt. Both paths execute one common ranking/audit `finally`. A continue path
+that can skip the ranking step, a counter-dependent or mutated policy, rethrow,
+or cross-state-coupled catch update remains unsupported. The break condition's
+true conjunction is specialized into its constituent facts; its false case is
+kept intact because `!(a && b)` does not establish either individual negation.
+These are closed-form affine rules, not a general TypeScript CFG proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

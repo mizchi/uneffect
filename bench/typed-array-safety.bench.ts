@@ -1115,7 +1115,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("join a caught failure through ranking finally into an affine break", () => {
+  bench("join caught retry and stop policy through ranking finally", () => {
     validateRefinementActionBodies(
       failingTelemetryFile,
       failingTelemetrySource,

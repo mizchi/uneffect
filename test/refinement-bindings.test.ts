@@ -2961,6 +2961,78 @@ describe("annotated refinement bindings", () => {
     }
   });
 
+  it("joins caught break and continue completions after one common ranking finally", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state delivered: int
+      state failed: int
+      state retried: int
+      state attempts: int
+      state fatal: bool
+      state stopOnFailure: bool
+      init pending = 0
+      init delivered = 0
+      init failed = 0
+      init retried = 0
+      init attempts = 0
+      init fatal = false
+      init stopOnFailure = false
+      action drain: pending' = pending > 0 ? (fatal && stopOnFailure ? pending - 1 : 0) : pending, delivered' = delivered + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? (stopOnFailure ? pending : pending * (pending + 1) / 2) : 0) : 0), retried' = retried + (pending > 0 ? (fatal && !stopOnFailure ? pending * (pending + 1) / 2 : 0) : 0), attempts' = attempts + (pending > 0 ? (fatal && stopOnFailure ? 1 : pending) : 0)
+    */
+      interface Runtime { pending: number; delivered: number; failed: number; retried: number; attempts: number; fatal: boolean; stopOnFailure: boolean }
+      /* uneffect: refinement caughtPolicyJoin@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtPolicyJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtPolicyJoin@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          try {
+            if (runtime.fatal) throw runtime.pending
+            runtime.delivered += runtime.pending
+          } catch (amount) {
+            runtime.failed += amount
+            if (runtime.stopOnFailure) break
+            runtime.retried += amount
+            continue
+          } finally {
+            runtime.pending--
+            runtime.attempts++
+          }
+        }
+      }
+    `;
+    const temporal = parseSpec("caught-policy-join.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "caught-policy-join.ts", source, "caughtPolicyJoin", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["caught-policy-skipped-continue-step.ts", source.replace(
+        "runtime.pending--\n            runtime.attempts++",
+        "if (runtime.stopOnFailure) runtime.pending--\n            runtime.attempts++",
+      )],
+      ["caught-policy-dynamic-break.ts", source.replace(
+        "if (runtime.stopOnFailure) break",
+        "if (runtime.pending === 1) break",
+      )],
+      ["caught-policy-mutated-policy.ts", source.replace(
+        "runtime.attempts++",
+        "runtime.attempts++\n            runtime.stopOnFailure = false",
+      )],
+      ["caught-policy-rethrow.ts", source.replace(
+        "runtime.retried += amount\n            continue",
+        "runtime.retried += amount\n            throw amount",
+      )],
+      ["caught-policy-coupled.ts", source.replace(
+        "runtime.failed += amount",
+        "runtime.failed += runtime.delivered",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "caughtPolicyJoin", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int
