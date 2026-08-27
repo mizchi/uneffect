@@ -433,6 +433,28 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves normalized finalization escalation with matching local evidence", async () => {
+    const fileName = "examples/dogfood/finally-escalation-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "finallyEscalationAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "finallyEscalationAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "finallyEscalationAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongEscalation = source.replace("units += 1;\n      // The normalized", "units += 2;\n      // The normalized");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, wrongEscalation, "finallyEscalationAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recoverDelivery", target: "recoveredUnits",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

@@ -1519,12 +1519,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "nested-finally-local-mutation.ts", nestedSource, "nestedFinallyMutation", nestedTemporal,
     )).resolves.toEqual([]);
 
-    const abruptFinallyThrow = source.replace(
+    const opaqueFinallyThrow = source.replace(
       "runtime.audited += units",
-      "runtime.audited += units\n          if (runtime.mode === 2) throw units",
+      "runtime.audited += units\n          if (runtime.mode === 2) throw new Error('failed')",
     );
     expect(validateActionsStatically(
-      "finally-local-abrupt.ts", abruptFinallyThrow, "finallyMutation", temporal,
+      "finally-local-abrupt.ts", opaqueFinallyThrow, "finallyMutation", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));
@@ -1968,11 +1968,74 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       code: "action-update-mismatch", modelName: "record", target: "audited",
     }));
 
-    const conditionalFinallyThrow = source.replace(
-      "if (runtime.stop) return", "if (runtime.stop) throw units",
+    const opaqueFinallyThrow = source.replace(
+      "if (runtime.stop) return", "if (runtime.stop) throw new Error('stopped')",
     );
     expect(validateActionsStatically(
-      "conditional-finally-throw.ts", conditionalFinallyThrow, "conditionalFinallyReturn", temporal,
+      "conditional-finally-throw.ts", opaqueFinallyThrow, "conditionalFinallyReturn", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
+  it("carries a conditional finally-throw payload with its overriding mutable-local snapshot", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state recovered: int
+       * state failed: bool
+       * state escalate: bool
+       * init recovered = 0
+       * init failed = false
+       * init escalate = false
+       * action record: recovered' = recovered + (failed ? (escalate ? 8 : 5) : (escalate ? 6 : 3))
+       */
+      interface Runtime { recovered: number; failed: boolean; escalate: boolean }
+      /* uneffect: refinement conditionalFinallyThrow@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalFinallyThrow@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalFinallyThrow@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } finally {
+            units += 1
+            if (runtime.escalate) throw units
+          }
+        } catch (amount) {
+          runtime.recovered += units + amount
+          return
+        }
+        runtime.recovered += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-finally-throw.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-finally-throw.ts", source, "conditionalFinallyThrow", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongFinallySnapshot = source.replace("units += 1\n            if", "units += 2\n            if");
+    await expect(validateActions(
+      "conditional-finally-throw-wrong.ts", wrongFinallySnapshot, "conditionalFinallyThrow", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "recovered",
+    }));
+
+    const opaqueFinallyThrow = source.replace(
+      "if (runtime.escalate) throw units",
+      "if (runtime.escalate) throw new Error('escalated')",
+    );
+    expect(validateActionsStatically(
+      "conditional-finally-throw-opaque.ts", opaqueFinallyThrow, "conditionalFinallyThrow", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));

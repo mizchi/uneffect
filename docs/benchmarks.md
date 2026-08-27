@@ -1596,3 +1596,12 @@ lets an outer finally observe the selected snapshot. A filtered run on
 observation excludes parsing and Z3 and is not a CI budget or regression claim.
 Finally-owned throw/break/continue/labels, aliases, and the general CFG fixed
 point remain outside the measured fragment.
+
+The finalization-escalation accounting workload conditionally throws a
+normalized scalar from mutable-local mandatory `finally`, overriding a normal
+or pending throw and pairing the payload with the snapshot consumed by an outer
+catch. A filtered run on 2026-08-27 measured 0.7873 ms mean (1,270.12
+operations/second over 636 samples, 9.47% relative margin of error). This warm
+static-analysis observation excludes parsing and Z3 and is not a CI budget or
+regression claim. Opaque payloads, finally-owned break/continue/labels, aliases,
+and the general CFG fixed point remain outside the measured fragment.

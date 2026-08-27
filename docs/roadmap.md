@@ -66,9 +66,10 @@ release date commitment.
    by its owning bounded loop before the post-loop join. Catch-owned continue
    likewise advances the next bounded iteration from its own snapshot, including
    a statically resolved owning-loop label. A mutable-local finally may now
-   conditionally return, overriding prior completion while retaining its own
-   snapshot for an outer finally. Supported scalar finally-throw ownership is
-   next before break/continue overrides and the general CFG fixed point.
+   conditionally return or throw, overriding prior completion while retaining
+   its own snapshot and normalized throw payload for an outer finally/catch.
+   Finally-owned break/continue target ownership is next before the general CFG
+   fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

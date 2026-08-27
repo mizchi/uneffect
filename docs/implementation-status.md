@@ -215,8 +215,10 @@ same property is proved for arbitrary TypeScript.
   override previously remained fail-closed. A narrow extension now permits a
   conditional direct return: the finally transformation is replayed over each
   predecessor, its return snapshot overrides normal or abrupt completion, and
-  an outer finally observes the selected transformed snapshot. Finally-owned
-  throw/break/continue/labels remain fail-closed.
+  an outer finally observes the selected transformed snapshot. The same narrow
+  rule now accepts a supported normalized scalar throw, preserving its payload
+  with the finally-owned snapshot for an outer catch. Opaque payloads and
+  finally-owned break/continue/labels remain fail-closed.
   A scalar-switch extension assigns a separate local map to every expanded case
   entry/fallthrough path, merges normal values by case selection, and carries
   selected return/throw maps into the existing completion lattice. Default-free

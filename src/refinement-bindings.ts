@@ -2645,13 +2645,13 @@ function validateRefinementActionBodiesInSource(
             const finallyThrow = completionPredicate(finallyCompletion, "throw");
             const finallyBreak = completionPredicate(finallyCompletion, "break");
             const finallyContinue = completionPredicate(finallyCompletion, "continue");
-            // First support only return overrides. Throw/break/continue and
-            // labeled overrides need payload/target-specific edge ownership.
-            if (!isBooleanCompletionPredicate(finallyThrow, false)
-              || !isBooleanCompletionPredicate(finallyBreak, false)
+            // Return and supported normalized throw overrides carry explicit
+            // snapshots. Break/continue and labeled overrides still need
+            // target-specific edge ownership.
+            if (!isBooleanCompletionPredicate(finallyBreak, false)
               || !isBooleanCompletionPredicate(finallyContinue, false)
               || !isBooleanCompletionPredicate(labeledCompletionPredicate(finallyCompletion), false)) return undefined;
-            const finallyNormal = notCompletionPredicate(finallyReturn);
+            const finallyNormal = notCompletionPredicate(orCompletionPredicates(finallyReturn, finallyThrow));
             const replayFinally = (
               incoming: ReadonlyMap<string, TemporalExpression>,
             ): { completion: ActionCompletion; normalLocals: Map<string, TemporalExpression> } | undefined => {
@@ -2667,7 +2667,6 @@ function validateRefinementActionBodiesInSource(
                 allowMutableLoopWrites,
               );
               if (!replayCompletion
-                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "throw"), false)
                 || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "break"), false)
                 || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "continue"), false)
                 || !isBooleanCompletionPredicate(labeledCompletionPredicate(replayCompletion), false)) return undefined;
@@ -2705,7 +2704,7 @@ function validateRefinementActionBodiesInSource(
             );
             residualCompletion = makeCompletion(
               orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
-              andCompletionPredicates(finallyNormal, priorThrow),
+              orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
               sequenceThrowValue(finallyCompletion, transformedPrior),
               andCompletionPredicates(finallyNormal, priorBreak),
               andCompletionPredicates(finallyNormal, priorContinue),

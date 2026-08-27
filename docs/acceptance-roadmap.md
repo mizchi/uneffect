@@ -512,12 +512,23 @@ and conditionally returns. That return overrides either normal completion or a
 pending supported scalar throw, but its three/four-unit snapshot still reaches
 an outer mandatory `finally` for auditing. When the inner finally completes
 normally, the pending throw survives and the normal predecessor alone reaches
-billing. Z3 rejects a wrong finally increment. Replacing return with a
-conditional finally throw remains unsupported. The shutdown-accounting
+billing. Z3 rejects a wrong finally increment. A conditional finally throw is
+now modeled by the following case. The shutdown-accounting
 dogfood documents that suppressing a pending failure is an explicit policy, not
 a recommended use of return-from-finally, and rejects an over-audited shutdown.
-Finally-owned throw/break/continue/labels, opaque payloads, aliases, and the
+Finally-owned break/continue/labels, opaque payloads, aliases, and the
 general CFG fixed point remain open.
+
+A twenty-ninth case mutates an outer scalar in mandatory `finally` and
+conditionally throws that normalized scalar. The finally-owned throw overrides
+either normal completion or the prior scalar throw, and an outer catch observes
+the matching three/four-unit local snapshot and payload. If finally completes
+normally, the transformed predecessor survives: normal completion adds three,
+while the original failure payload combines with four units to add five. Z3
+rejects a wrong finalization increment, and an opaque `Error` payload remains
+unsupported. The finalization-escalation dogfood applies the same shape to
+reviewed scalar failure data and rejects incorrect normalization. Finally-owned
+break/continue/labels, aliases, and the general CFG fixed point remain open.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

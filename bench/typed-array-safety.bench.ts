@@ -172,6 +172,11 @@ const finallyOverrideAccountingSource = readFileSync(finallyOverrideAccountingFi
 const finallyOverrideAccountingSpec = parseSpec(
   finallyOverrideAccountingFile, finallyOverrideAccountingSource,
 ).temporal;
+const finallyEscalationAccountingFile = "examples/dogfood/finally-escalation-accounting.ts";
+const finallyEscalationAccountingSource = readFileSync(finallyEscalationAccountingFile, "utf8");
+const finallyEscalationAccountingSpec = parseSpec(
+  finallyEscalationAccountingFile, finallyEscalationAccountingSource,
+).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1209,6 +1214,15 @@ describe("typed-array static verification", () => {
       finallyOverrideAccountingSource,
       "finallyOverrideAccounting",
       finallyOverrideAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("override predecessor completion with a scalar finally throw", () => {
+    validateRefinementActionBodies(
+      finallyEscalationAccountingFile,
+      finallyEscalationAccountingSource,
+      "finallyEscalationAccounting",
+      finallyEscalationAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 
