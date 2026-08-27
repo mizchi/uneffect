@@ -139,6 +139,27 @@ describe("Uneffect dogfood", () => {
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, latePauseCheck, "pausedTelemetry", temporal,
     )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "drain",
+    }));
+  });
+
+  it("proves that a caught fatal telemetry attempt advances and audits once", async () => {
+    const fileName = "examples/dogfood/failing-telemetry-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "failingTelemetry", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "failingTelemetry", temporal)).toEqual([]);
+    expect(await validateRefinementActionBodiesWithZ3(
+      fileName, source, "failingTelemetry", temporal,
+    )).toEqual([]);
+
+    const inconsistentFatalStep = source.replace(
+      "runtime.pending--;\n      runtime.attempts++;",
+      "runtime.pending -= runtime.fatal ? 2 : 1;\n      runtime.attempts++;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, inconsistentFatalStep, "failingTelemetry", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "drain",
     }));
   });

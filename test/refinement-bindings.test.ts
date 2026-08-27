@@ -2703,13 +2703,15 @@ describe("annotated refinement bindings", () => {
       "continue-finally-skipped-step.ts", skippedStep, "continueFinally", temporal,
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
 
-    for (const [fileName, changed] of [
+    for (const [fileName, changed, code = "unsupported-action-body"] of [
       ["continue-finally-return.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) return")],
       ["continue-finally-throw.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) throw false")],
-      ["continue-finally-break.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) break")],
+      ["continue-finally-break.ts", source.replace(
+        "if (!runtime.priority) continue", "if (!runtime.priority) break",
+      ), "action-update-mismatch"],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "continueFinally", temporal)).toContainEqual(
-        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+        expect.objectContaining({ code, modelName: "drain" }),
       );
     }
   });
@@ -2748,7 +2750,7 @@ describe("annotated refinement bindings", () => {
       ["early-break-after-update.ts", source.replace(
         "if (runtime.paused) break\n          runtime.pending--",
         "runtime.pending--\n          if (runtime.paused) break",
-      )],
+      ), "action-update-mismatch"],
       ["early-break-mutated-condition.ts", source.replace(
         "runtime.weighted += runtime.pending",
         "runtime.weighted += runtime.pending\n          runtime.paused = true",
@@ -2829,7 +2831,7 @@ describe("annotated refinement bindings", () => {
       ["state-changing-break-counter.ts", source.replace(
         "runtime.deferred += runtime.pending\n            break",
         "runtime.deferred += runtime.pending\n            runtime.pending--\n            break",
-      )],
+      ), "action-update-mismatch"],
       ["state-changing-break-two-updates.ts", source.replace(
         "runtime.deferred += runtime.pending\n            break",
         "runtime.deferred += runtime.pending\n            runtime.weighted++\n            break",
@@ -2895,6 +2897,68 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies(
       "nine-break-updates.ts", nineUpdates, "breakBudget", parseSpec("nine-break-updates.ts", nineUpdates).temporal,
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+  });
+
+  it("joins a caught scalar failure through ranking finally into an affine break", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state processed: int
+      state failed: int
+      state audited: int
+      state fatal: bool
+      init pending = 0
+      init processed = 0
+      init failed = 0
+      init audited = 0
+      init fatal = false
+      action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0)
+    */
+      interface Runtime { pending: number; processed: number; failed: number; audited: number; fatal: boolean }
+      /* uneffect: refinement caughtRankingBreak@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtRankingBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtRankingBreak@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          try {
+            if (runtime.fatal) throw runtime.pending
+            runtime.processed += runtime.pending
+          } catch (amount) {
+            runtime.failed += amount
+            break
+          } finally {
+            runtime.pending--
+            runtime.audited++
+          }
+        }
+      }
+    `;
+    const temporal = parseSpec("caught-ranking-break.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "caught-ranking-break.ts", source, "caughtRankingBreak", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["caught-ranking-break-different-step.ts", source.replace(
+        "runtime.pending--\n            runtime.audited++",
+        "runtime.pending -= runtime.fatal ? 2 : 1\n            runtime.audited++",
+      )],
+      ["caught-ranking-break-coupled.ts", source.replace(
+        "runtime.failed += amount",
+        "runtime.failed += runtime.processed",
+      )],
+      ["caught-ranking-break-rethrow.ts", source.replace(
+        "runtime.failed += amount\n            break",
+        "runtime.failed += amount\n            throw amount",
+      )],
+      ["caught-ranking-break-mutated-condition.ts", source.replace(
+        "runtime.audited++",
+        "runtime.audited++\n            runtime.fatal = false",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "caughtRankingBreak", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
   });
 
   it("summarizes only terminating constant-delta state scale-up loops", async () => {

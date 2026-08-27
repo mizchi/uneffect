@@ -776,6 +776,46 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("joins a caught failure into a ranking finally before breaking the loop", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * state failed: int
+       * state audited: int
+       * state fatal: bool
+       * init pending = 0
+       * init processed = 0
+       * init failed = 0
+       * init audited = 0
+       * init fatal = false
+       * action drain: pending' = pending > 0 ? (fatal ? pending - 1 : 0) : pending, processed' = processed + (pending > 0 ? (fatal ? 0 : pending * (pending + 1) / 2) : 0), failed' = failed + (pending > 0 ? (fatal ? pending : 0) : 0), audited' = audited + (pending > 0 ? (fatal ? 1 : pending) : 0)
+       */
+      interface Runtime { pending: number; processed: number; failed: number; audited: number; fatal: boolean }
+      /* uneffect: refinement caughtBreak@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtBreak@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          try {
+            if (runtime.fatal) throw runtime.pending
+            runtime.processed += runtime.pending
+          } catch (amount) {
+            runtime.failed += amount
+            break
+          } finally {
+            runtime.pending--
+            runtime.audited++
+          }
+        }
+      }
+    `;
+    const temporal = (parseSpecification("caught-break.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("caught-break.ts", source, "caughtBreak", temporal)).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

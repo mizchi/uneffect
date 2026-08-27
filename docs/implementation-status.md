@@ -136,9 +136,13 @@ same property is proved for arbitrary TypeScript.
   same symbolic fragment, one loop-invariant early `break` can choose a path
   with up to eight independent non-counter affine state updates before
   stopping. Supported state updates before the loop are substituted into its
-  condition and updates. Counter updates, a ninth update, cross-state coupling,
-  non-affine break updates, post-update break checks, counter-dependent or
-  mutated conditions, and break/continue mixtures remain unsupported. Within the
+  condition and updates. A caught scalar throw may select the break path, and a
+  mandatory `finally` may advance the ranking counter once when its delta
+  exactly matches the ordinary iteration. Different counter deltas, a ninth
+  update, cross-state coupling, non-affine break updates, post-update break
+  checks with a different counter delta, counter-dependent or mutated
+  conditions, and break/continue mixtures
+  remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also

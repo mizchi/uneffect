@@ -288,10 +288,17 @@ loop-entry pause flag select untouched state instead of the recurrence. A
 seventh case performs non-counter affine updates on that stopping path, as when
 paused telemetry records both the untouched backlog and its estimated weight
 exactly once. The update set is capped at eight fields, with an eight-update
-acceptance and nine-update rejection control. Counter updates,
-cross-state-coupled/non-affine break updates, counter-dependent or post-update
-break checks, mixed break/continue flow, throw, and return remain fail-closed.
-These are closed-form affine rules, not a general TypeScript CFG proof.
+acceptance and nine-update rejection control. Cross-state-coupled/non-affine
+break updates, counter-dependent conditions, post-update break checks with a
+different ranking delta, mixed break/continue flow, uncaught throw, and return
+remain fail-closed.
+An eighth exception-aware case throws the current ranking value, binds it in
+`catch`, records the fatal attempt, consumes the catch-side break, and runs a
+mandatory `finally` that advances the ranking counter and audit exactly once.
+The counter delta must equal the ordinary iteration delta; a different step,
+rethrow, mutated condition, or catch update coupled to another state is
+rejected. These are closed-form affine rules, not a general TypeScript CFG
+proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

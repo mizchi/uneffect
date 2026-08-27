@@ -1416,3 +1416,11 @@ on 2026-08-27. The eight-update acceptance and nine-update rejection are unit
 tests rather than part of this two-update dogfood timing. The margin of error
 again precludes a comparative claim; the measurement records analyzer scale
 only.
+
+The caught-failure telemetry workload, which binds a scalar throw in `catch`,
+updates failure accounting, consumes a break, and advances the ranking counter
+and audit in mandatory `finally`, measured 0.3262 ms mean (3,065.86
+operations/second over 1,533 samples, 9.53% relative margin of error) on
+2026-08-27. The high variance prevents a comparative performance claim; this
+records the cost of constructing the exception-aware closed form and remains
+outside a CI regression budget.

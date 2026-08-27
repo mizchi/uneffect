@@ -144,6 +144,9 @@ const priorityTelemetrySpec = parseSpec(priorityTelemetryFile, priorityTelemetry
 const pausedTelemetryFile = "examples/dogfood/paused-telemetry-drain.ts";
 const pausedTelemetrySource = readFileSync(pausedTelemetryFile, "utf8");
 const pausedTelemetrySpec = parseSpec(pausedTelemetryFile, pausedTelemetrySource).temporal;
+const failingTelemetryFile = "examples/dogfood/failing-telemetry-drain.ts";
+const failingTelemetrySource = readFileSync(failingTelemetryFile, "utf8");
+const failingTelemetrySpec = parseSpec(failingTelemetryFile, failingTelemetrySource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1109,6 +1112,15 @@ describe("typed-array static verification", () => {
       pausedTelemetrySource,
       "pausedTelemetry",
       pausedTelemetrySpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("join a caught failure through ranking finally into an affine break", () => {
+    validateRefinementActionBodies(
+      failingTelemetryFile,
+      failingTelemetrySource,
+      "failingTelemetry",
+      failingTelemetrySpec,
     );
   }, { time: 500, iterations: 20 });
 

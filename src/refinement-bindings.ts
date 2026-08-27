@@ -1787,13 +1787,23 @@ function validateRefinementActionBodiesInSource(
             breakUpdateExpression,
             { kind: "name", name },
           )) {
-            // The initial state-changing break slice permits one non-counter
-            // affine update before the break. Evaluate it from the loop-entry
-            // snapshot: the invariant break condition makes this path execute
-            // at most once, so it is not part of the recurrence.
-            if (name === counterName || !affineDelta(name, breakUpdateExpression)) return undefined;
+            // Break-side updates are evaluated from the loop-entry snapshot:
+            // the invariant condition makes this path execute at most once, so
+            // they are not part of the recurrence. The ranking counter may
+            // change only by the exact ordinary iteration delta, as happens
+            // when a mandatory finally block advances it before consuming the
+            // break. Other state fields share the explicit update budget.
+            if (name === counterName) {
+              const breakCounterForm = decomposeAffineStateExpression(breakUpdateExpression);
+              if (!breakCounterForm || breakCounterForm.constant !== counterDelta
+                || breakCounterForm.coefficients.size !== 1
+                || breakCounterForm.coefficients.get(counterName) !== 1) return undefined;
+            } else {
+              if (!affineDelta(name, breakUpdateExpression)
+                || ++stateChangingBreakUpdates > MAX_AFFINE_LOOP_BREAK_UPDATES) return undefined;
+            }
             const breakUpdate = atLoopEntry(breakUpdateExpression);
-            if (!breakUpdate || ++stateChangingBreakUpdates > MAX_AFFINE_LOOP_BREAK_UPDATES) return undefined;
+            if (!breakUpdate) return undefined;
             breakUpdates.set(name, breakUpdate);
           }
           if (name === counterName) {
@@ -1900,6 +1910,7 @@ function validateRefinementActionBodiesInSource(
         for (const [name, piecewise] of deltas) {
           const entryValue = entryValues.get(name)!;
           if (name === counterName) {
+            const breakCounter = breakUpdates.get(name) ?? entryCounter;
             const totalDecrease: TemporalExpression = stepValue === 1 ? loopIterations : {
               kind: "binary", operator: "multiply", left: step, right: loopIterations,
             };
@@ -1907,7 +1918,7 @@ function validateRefinementActionBodiesInSource(
               kind: "conditional", condition: entryGuard,
               whenTrue: hasInvariantEarlyBreak ? {
                 kind: "conditional", condition: breakCondition!,
-                whenTrue: entryCounter,
+                whenTrue: breakCounter,
                 whenFalse: stepValue === 1 ? stop : {
                   kind: "binary", operator: descending ? "subtract" : "add", left: entryCounter, right: totalDecrease,
                 },
