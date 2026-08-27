@@ -3202,6 +3202,65 @@ describe("annotated refinement bindings", () => {
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
   });
 
+  it("joins initialized mutable scalar locals only across normal if diamonds", async () => {
+    const source = `/* uneffect:
+      state total: int
+      state audited: int
+      state urgent: bool
+      state sampled: bool
+      init total = 0
+      init audited = 0
+      init urgent = false
+      init sampled = false
+      action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1
+    */
+      interface Runtime { total: number; audited: number; urgent: boolean; sampled: boolean }
+      /* uneffect: refinement localJoin@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement localJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement localJoin@1 action record */
+      export function record(runtime: Runtime) {
+        let weight = 1
+        if (runtime.urgent) weight = 2
+        if (runtime.sampled) weight += 3
+        runtime.total += weight
+        runtime.audited++
+      }
+    `;
+    const temporal = parseSpec("local-join.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "local-join.ts", source, "localJoin", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["local-join-const-write.ts", source.replace("let weight = 1", "const weight = 1")],
+      ["local-join-uninitialized.ts", source.replace("let weight = 1", "let weight: number")],
+      ["local-join-opaque.ts", source.replace("weight = 2", "weight = Number.parseInt('2')")],
+      ["local-join-abrupt.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "if (runtime.urgent) { weight = 2; return }",
+      )],
+      ["local-join-loop.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "while (runtime.urgent) { weight = 2; break }",
+      )],
+      ["local-join-try.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "try { weight = 2 } finally { runtime.audited += 0 }",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "localJoin", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+    }
+
+    const mismatchedModel = source.replace("weight += 3", "weight += 4");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "local-join-model-mismatch.ts", mismatchedModel, "localJoin", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

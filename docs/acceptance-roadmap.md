@@ -328,6 +328,15 @@ different ranking steps, model-misaligned updates, more than 16 predicate atoms,
 and a ninth affine update leaf remain non-proofs. The circuit-breaker telemetry
 dogfood now exercises this nested policy.
 
+A twelfth case carries an initialized mutable scalar local through two
+sequential normally completing `if` diamonds and then consumes the resulting
+phi value in a state update. State and local bindings share one flow-join
+contract, while branch-local declarations remain scoped. The adaptive billing
+dogfood verifies priority and retry charges and retains an underbilling model
+mismatch. Uninitialized locals, `var`, writes to `const`, opaque assignments,
+and local joins through abrupt completion, `try`, `switch`, loops, or labels
+remain unsupported.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

@@ -950,6 +950,39 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("carries a mutable local through sequential control-flow joins", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state total: int
+       * state audited: int
+       * state urgent: bool
+       * state sampled: bool
+       * init total = 0
+       * init audited = 0
+       * init urgent = false
+       * init sampled = false
+       * action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1
+       */
+      interface Runtime { total: number; audited: number; urgent: boolean; sampled: boolean }
+      /* uneffect: refinement localJoin@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement localJoin@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement localJoin@1 action record */
+      export function record(runtime: Runtime) {
+        let weight = 1
+        if (runtime.urgent) weight = 2
+        if (runtime.sampled) weight += 3
+        runtime.total += weight
+        runtime.audited++
+      }
+    `;
+    const temporal = (parseSpecification("local-join.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "local-join.ts", source, "localJoin", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

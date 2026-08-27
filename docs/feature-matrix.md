@@ -83,6 +83,15 @@ updates, a mutated or counter-dependent policy, unaligned completion/update tree
 and dynamically selected completion remain unsupported. This is a closed-form
 affine rule, not a general loop fixed point.
 
+Outside loops, initialized scalar `let` bindings may be assigned with `=`,
+`+=`, or `-=` and joined through sequential normally completing `if` diamonds.
+The state and local environments use the same explicit phi-value contract;
+branch-local declarations do not escape their lexical arm, and equal values do
+not create redundant conditionals. Uninitialized locals, `var`, writes to
+`const`, opaque right-hand sides, or mutable-local joins crossing abrupt
+completion, `try`, `switch`, loops, or labeled blocks remain unsupported rather
+than being approximated.
+
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks
 reached through transitive `const` aliases. Program analysis also accepts

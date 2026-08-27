@@ -150,6 +150,9 @@ const failingTelemetrySpec = parseSpec(failingTelemetryFile, failingTelemetrySou
 const circuitBreakerTelemetryFile = "examples/dogfood/circuit-breaker-telemetry-drain.ts";
 const circuitBreakerTelemetrySource = readFileSync(circuitBreakerTelemetryFile, "utf8");
 const circuitBreakerTelemetrySpec = parseSpec(circuitBreakerTelemetryFile, circuitBreakerTelemetrySource).temporal;
+const adaptiveBatchAccountingFile = "examples/dogfood/adaptive-batch-accounting.ts";
+const adaptiveBatchAccountingSource = readFileSync(adaptiveBatchAccountingFile, "utf8");
+const adaptiveBatchAccountingSpec = parseSpec(adaptiveBatchAccountingFile, adaptiveBatchAccountingSource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1133,6 +1136,15 @@ describe("typed-array static verification", () => {
       circuitBreakerTelemetrySource,
       "circuitBreakerTelemetry",
       circuitBreakerTelemetrySpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("join sequential mutable-local billing decisions", () => {
+    validateRefinementActionBodies(
+      adaptiveBatchAccountingFile,
+      adaptiveBatchAccountingSource,
+      "adaptiveBatchAccounting",
+      adaptiveBatchAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

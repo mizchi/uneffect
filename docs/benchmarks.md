@@ -1450,3 +1450,11 @@ This warm static-analysis benchmark includes bounded propositional entailment
 and aligned conditional-tree retention but excludes parsing and Z3. The result
 is an observation, not a CI budget or a regression claim against the earlier,
 simpler disjunction workload.
+
+The adaptive batch accounting workload joins one initialized mutable scalar
+local across two sequential billing decisions before applying it to model
+state. A filtered run on 2026-08-27 measured 0.1385 ms mean (7,221.29
+operations/second over 3,611 samples, 10.16% relative margin of error). This
+warm static-analysis measurement excludes parsing and Z3 and is recorded as an
+observation, not a CI budget. It does not cover the still-unsupported abrupt,
+exception, switch, or loop local-environment joins.

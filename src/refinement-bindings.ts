@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { joinFlowValues } from "./refinement-flow.js";
 import { extractAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -1298,21 +1299,51 @@ function validateRefinementActionBodiesInSource(
       target: Map<string, TemporalExpression> = updates,
     ): void => {
       target.clear();
-      for (const name of stateNames) {
-        const initial = { kind: "name", name } as TemporalExpression;
-        const original = before.get(name) ?? initial;
-        const trueValue = whenTrue.get(name) ?? original;
-        const falseValue = whenFalse.get(name) ?? original;
-        const merged: TemporalExpression = isBooleanCompletionPredicate(condition, true)
+      const joined = joinFlowValues<string, TemporalExpression, TemporalExpression>({
+        keys: stateNames,
+        condition,
+        original: (name) => before.get(name) ?? { kind: "name", name } as TemporalExpression,
+        whenTrue: (name) => whenTrue.get(name),
+        whenFalse: (name) => whenFalse.get(name),
+        equivalent: sameRefinementExpression,
+        phi: (selected, trueValue, falseValue) => isBooleanCompletionPredicate(selected, true)
           ? trueValue
-          : isBooleanCompletionPredicate(condition, false)
+          : isBooleanCompletionPredicate(selected, false)
             ? falseValue
-            : sameRefinementExpression(trueValue, falseValue)
-          ? trueValue
-          : { kind: "conditional", condition, whenTrue: trueValue, whenFalse: falseValue };
-        if (!sameRefinementExpression(merged, initial)) target.set(name, merged);
+            : { kind: "conditional", condition: selected, whenTrue: trueValue, whenFalse: falseValue } as TemporalExpression,
+      });
+      for (const [name, merged] of joined) {
+        if (!sameRefinementExpression(merged, { kind: "name", name })) target.set(name, merged);
       }
     };
+    const mutableLocalMarker = (name: string): string => `\u0000mutable:${name}`;
+    const mergeConditionalLocalValues = (
+      condition: TemporalExpression,
+      whenTrue: ReadonlyMap<string, TemporalExpression>,
+      whenFalse: ReadonlyMap<string, TemporalExpression>,
+      before: ReadonlyMap<string, TemporalExpression>,
+    ): void => {
+      // Only bindings already visible before the branch may flow out. This is
+      // the local-variable counterpart of the state phi join above; lexical
+      // declarations created inside either branch remain scoped to that arm.
+      const joined = joinFlowValues<string, TemporalExpression, TemporalExpression>({
+        keys: [...before.keys()].filter((name) => !name.startsWith("\u0000mutable:")),
+        condition,
+        original: (name) => before.get(name)!,
+        whenTrue: (name) => whenTrue.get(name),
+        whenFalse: (name) => whenFalse.get(name),
+        equivalent: sameRefinementExpression,
+        phi: (selected, trueValue, falseValue): TemporalExpression => ({
+          kind: "conditional", condition: selected, whenTrue: trueValue, whenFalse: falseValue,
+        }),
+      });
+      for (const [name, value] of joined) localValues.set(name, value);
+    };
+    const mutableLocalsChanged = (
+      branch: ReadonlyMap<string, TemporalExpression>,
+      before: ReadonlyMap<string, TemporalExpression>,
+    ): boolean => [...before.keys()].some((name) => !name.startsWith("\u0000mutable:")
+      && !sameRefinementExpression(branch.get(name) ?? before.get(name)!, before.get(name)!));
     const applyContinuation = (
       completion: ActionCompletion,
       branchUpdates: Map<string, TemporalExpression>,
@@ -2303,10 +2334,15 @@ function validateRefinementActionBodiesInSource(
         const falseBlock = asBlock(statement.elseStatement);
         const trueUpdates = new Map(before);
         const falseUpdates = new Map(before);
-        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
-        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
+        const beforeLocals = new Map(localValues);
+        const trueLocals = new Map(localValues);
+        const falseLocals = new Map(localValues);
+        let whenTrue = collect(trueBlock, receiver, runtimeClass, substitutions, trueUpdates, trueLocals, activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
+        let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, falseLocals, activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
         if (!whenTrue || !whenFalse) return undefined;
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
+        if (hasAbruptBranch && (mutableLocalsChanged(trueLocals, beforeLocals)
+          || mutableLocalsChanged(falseLocals, beforeLocals))) return undefined;
         if (hasAbruptBranch) {
           const continuation = ts.factory.createBlock(body.statements.slice(statementIndex + 1), true);
           whenTrue = applyContinuation(whenTrue, trueUpdates, continuation);
@@ -2314,6 +2350,7 @@ function validateRefinementActionBodiesInSource(
           if (!whenTrue || !whenFalse) return undefined;
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
+        if (!hasAbruptBranch) mergeConditionalLocalValues(condition, trueLocals, falseLocals, beforeLocals);
         if (hasAbruptBranch) {
           return makeCompletion(
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "return"), completionPredicate(whenFalse, "return")),
@@ -2481,10 +2518,12 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isVariableStatement(statement)) {
-        if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
+        const mutable = (statement.declarationList.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)) === ts.NodeFlags.Let;
+        if (!mutable && (statement.declarationList.flags & ts.NodeFlags.Const) === 0) return undefined;
         for (const declaration of statement.declarationList.declarations) {
           if (!ts.isIdentifier(declaration.name) || !declaration.initializer
             || localValues.has(declaration.name.text) || substitutions.has(declaration.name.text)) return undefined;
+          const localName = declaration.name.text;
           const resolveReceiverAlias = (expression: ts.Expression, seen: ReadonlySet<string> = new Set()): ts.Expression | undefined => {
             const candidate = unwrap(expression);
             if (candidate.kind === ts.SyntaxKind.ThisKeyword) return receiver === "this" ? candidate : undefined;
@@ -2496,12 +2535,37 @@ function validateRefinementActionBodiesInSource(
           };
           const receiverAlias = resolveReceiverAlias(declaration.initializer);
           if (receiverAlias) {
-            substitutions.set(declaration.name.text, receiverAlias);
+            if (mutable) return undefined;
+            substitutions.set(localName, receiverAlias);
             continue;
+          }
+          if (mutable) {
+            const declarationSymbol = checker && ts.isIdentifier(declaration.name)
+              ? checker.getSymbolAtLocation(declaration.name) : undefined;
+            let owner: ts.Node | undefined = declaration.parent;
+            while (owner && !ts.isFunctionLike(owner)) owner = owner.parent;
+            let hasSupportedWrite = false;
+            const findWrite = (candidate: ts.Node): void => {
+              if (hasSupportedWrite || ts.isFunctionLike(candidate) && candidate !== owner) return;
+              if (ts.isBinaryExpression(candidate) && ts.isIdentifier(candidate.left)
+                && [ts.SyntaxKind.EqualsToken, ts.SyntaxKind.PlusEqualsToken, ts.SyntaxKind.MinusEqualsToken]
+                  .includes(candidate.operatorToken.kind)
+                && (declarationSymbol
+                  ? checker!.getSymbolAtLocation(candidate.left) === declarationSymbol
+                  : candidate.left.text === localName)) {
+                hasSupportedWrite = true;
+                return;
+              }
+              candidate.forEachChild(findWrite);
+            };
+            if (!owner) return undefined;
+            owner.forEachChild(findWrite);
+            if (!hasSupportedWrite) return undefined;
           }
           const value = normalizeRefinementExpression(declaration.initializer, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues);
           if (!value) return undefined;
-          localValues.set(declaration.name.text, expandLocalSnapshots(resolveCurrentState(value)));
+          localValues.set(localName, expandLocalSnapshots(resolveCurrentState(value)));
+          if (mutable) localValues.set(mutableLocalMarker(localName), { kind: "boolean", value: true });
         }
         continue;
       }
@@ -2636,6 +2700,32 @@ function validateRefinementActionBodiesInSource(
         continue;
       }
       if (ts.isBinaryExpression(node)) {
+        if (ts.isIdentifier(node.left) && localValues.has(mutableLocalMarker(node.left.text))) {
+          let owner: ts.Node | undefined = node.parent;
+          while (owner && !ts.isFunctionLike(owner)) {
+            if (ts.isIterationStatement(owner, false) || ts.isSwitchStatement(owner)
+              || ts.isTryStatement(owner) || ts.isLabeledStatement(owner)) return undefined;
+            owner = owner.parent;
+          }
+          const current = localValues.get(node.left.text);
+          const right = normalizeRefinementExpression(
+            node.right, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
+          );
+          if (!current || !right) return undefined;
+          const resolvedRight = expandLocalSnapshots(resolveCurrentState(right));
+          if (node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+            localValues.set(node.left.text, resolvedRight);
+          } else if (node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
+            || node.operatorToken.kind === ts.SyntaxKind.MinusEqualsToken) {
+            localValues.set(node.left.text, {
+              kind: "binary",
+              operator: node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken ? "add" : "subtract",
+              left: current,
+              right: resolvedRight,
+            });
+          } else return undefined;
+          continue;
+        }
         const rawLeftPath = refinementFieldPath(node.left, receiver, substitutions)?.join(".");
         const computedArrayRelation = rawLeftPath
           ? [...abstraction].find(([, value]) => {

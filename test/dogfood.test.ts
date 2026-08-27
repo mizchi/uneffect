@@ -185,6 +185,24 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves adaptive billing through sequential mutable-local joins", async () => {
+    const fileName = "examples/dogfood/adaptive-batch-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "adaptiveBatchAccounting", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "adaptiveBatchAccounting", temporal)).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "adaptiveBatchAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const underbilledRetry = source.replace("units += 3;", "units += 2;");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, underbilledRetry, "adaptiveBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+  });
+
   it("proves pairwise worker-pool scale-up including target overshoot", async () => {
     const fileName = "examples/dogfood/worker-pool-scale-up.ts";
     const source = readFileSync(fileName, "utf8");

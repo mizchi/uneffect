@@ -166,6 +166,13 @@ same property is proved for arbitrary TypeScript.
   consumed only at finite `for`, literal `for...of`, and one-shot `do` iteration
   boundaries where advancement is guaranteed. Canonical `while` rejects it
   because it can bypass the required terminal increment.
+
+- Initialized scalar `let` values now flow through sequential normally
+  completing `if` diamonds. A shared `joinFlowValues` contract constructs state
+  and local phi values over bindings visible at the common predecessor, so
+  branch-scoped declarations cannot leak. Assignment supports `=`, `+=`, and
+  `-=`. Abrupt, exception, switch, loop, and labeled-block local joins remain
+  explicit non-proofs pending the general CFG fixed point.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

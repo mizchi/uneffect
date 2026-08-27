@@ -24,11 +24,12 @@ traceability and map to those issues rather than forming a second active queue.
 ## Current focus
 
 [#3](https://github.com/mizchi/uneffect/issues/3) remains the active issue. The
-nested invariant Boolean stop-policy slice has acceptance, negative controls,
-circuit-breaker dogfood, a measured benchmark, and boundary documentation. The
-next slice should begin a reusable exception-aware CFG representation for a
-general join currently rejected by the syntax-fragment walker; dynamic policy,
-alias, and dispatch boundaries remain explicitly unsupported.
+first reusable flow-state seam now joins state and initialized mutable scalar
+locals through normally completing `if` diamonds, with acceptance, negative
+controls, adaptive-billing dogfood, a measured benchmark, and boundary
+documentation. The next slice should carry that local environment through an
+abrupt or exception edge; switch, loop, alias, and dispatch boundaries remain
+explicitly unsupported.
 
 ## Active issue index
 
@@ -355,6 +356,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Join invariant catch-side `break` and `continue` policies when one mandatory `finally` proves the ordinary ranking delta on both outcomes; specialize true conjunctions into their invariant atoms while retaining false conjunctions, and reject skipped continue steps, dynamic/counter-dependent policies, rethrows, and coupled updates.
         - [x] Retain an aligned path-wise affine update tree for disjunctive invariant stop policies without selecting an arbitrary true disjunct; safely specialize a false disjunction on the repeating path, cap stopping trees at eight leaves, and reject cross-state/non-affine/different-counter/mutated-policy and ninth-leaf controls.
         - [x] Generalize invariant stop policies to nested aligned Boolean completion/update trees over at most 16 invariant atoms, specializing only propositionally entailed facts while retaining unresolved choices; keep dynamic/mutated policies, different ranking steps, model-misaligned updates, and over-budget trees as explicit non-proofs.
+        - [x] Introduce a shared flow-value phi contract for state and initialized mutable scalar locals, and carry `=`, `+=`, and `-=` assignments through sequential normally completing `if` diamonds; reject uninitialized/`var`/`const` writes, opaque values, and abrupt/try/switch/loop/labeled local joins.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
