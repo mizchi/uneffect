@@ -1298,6 +1298,50 @@ describe("async error and explicit resource safety", () => {
       .toThrow(/break selected leaves the modeled handler CFG/);
   }, 30_000);
 
+  it("proves that rejecting inner disposal traverses its enclosing handler", () => {
+    const fileName = "examples/dogfood/caught-disposal-rejection.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.disposals.map(({ binding, catchesFailure }) => ({ binding, catchesFailure }))).toEqual([
+      { binding: "session", catchesFailure: true },
+      { binding: "audit", catchesFailure: false },
+    ]);
+
+    const positive = run(generateUnifiedAsyncQuint(
+      "caught_disposal_rejection",
+      result,
+      "deliverAfterDisposal",
+    ), 24);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    const bypassedHandler = run(generateUnifiedAsyncQuint(
+      "caught_disposal_rejection_bypassed_handler",
+      result,
+      "deliverAfterDisposal",
+      { skipDisposalHandler: true },
+    ), 24);
+    expect(bypassedHandler.status).not.toBe(0);
+    expect(bypassedHandler.stdout + bypassedHandler.stderr).toMatch(/violation|counterexample/i);
+
+    const skippedCleanup = run(generateUnifiedAsyncQuint(
+      "caught_disposal_rejection_skipped_cleanup",
+      result,
+      "deliverAfterDisposal",
+      { skipScopeCleanup: true },
+    ), 24);
+    expect(skippedCleanup.status).not.toBe(0);
+    expect(skippedCleanup.stdout + skippedCleanup.stderr).toMatch(/violation|counterexample/i);
+
+    const floating = analyzeAsyncSafety("caught-disposal-floating.ts", source.replace(
+      "await session.send().then(() => undefined);",
+      "session.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverAfterDisposal",
+      kind: "floating-promise",
+    }));
+  }, 30_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

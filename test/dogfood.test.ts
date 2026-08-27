@@ -96,6 +96,21 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("not(disposed_0) or not(acquired_1) or (disposed_1");
   });
 
+  it("keeps an inner disposal rejection pending until catch handles it", () => {
+    const fileName = "examples/dogfood/caught-disposal-rejection.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.controlEdges).toContainEqual(expect.objectContaining({
+      from: "dispose:session:rejected",
+      to: "catch",
+      kind: "disposal-reject-caught",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("caught_disposal_rejection", result, "deliverAfterDisposal");
+    expect(quint).toMatch(/action dispose_reject_session_scope_exit = all \{[\s\S]*?disposal_failure_pending' = true,/);
+    expect(quint).toMatch(/action catch_return = all \{[\s\S]*?disposal_failure_pending' = false,/);
+    expect(quint).toContain("val disposalHandlerSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

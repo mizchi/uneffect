@@ -2184,7 +2184,7 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; skipScopeCleanup?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
+export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; skipScopeCleanup?: boolean; skipDisposalHandler?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
@@ -2355,12 +2355,13 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (guards.length === 0) return undefined;
     return `not(${guards.join(" and ")})`;
   };
-  const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
+  const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool", "  var disposal_failure_pending: bool"];
   transferLayouts.forEach(({ transferOwner }) => lines.push(`  var loop_iteration_${safe(transferOwner.id)}: int`));
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`, `  var generation_${index}: int`, `  var disposed_generation_${index}: int`));
   aliases.forEach((_, index) => lines.push(`  var alias_generation_${index}: int`));
   lines.push("", "  action init = all {", "    pc' = 0,", "    completion' = 0,", "    broken' = false,");
+  lines.push("    disposal_failure_pending' = false,");
   transferLayouts.forEach(({ transferOwner }) => lines.push(`    loop_iteration_${safe(transferOwner.id)}' = 0,`));
   branchIds.forEach((_, index) => lines.push(`    branch_${index}' = -1,`));
   resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`, `    generation_${index}' = 0,`, `    disposed_generation_${index}' = -1,`));
@@ -2369,7 +2370,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const actions: string[] = [];
   const emit = (name: string, guards: string[], updates = new Map<string, string>()): void => {
     actions.push(name);
-    lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`);
+    lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`, `    disposal_failure_pending' = ${updates.get("disposal_failure_pending") ?? "disposal_failure_pending"},`);
     transferLayouts.forEach(({ transferOwner }) => {
       const variable = `loop_iteration_${safe(transferOwner.id)}`;
       lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
@@ -2385,7 +2386,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (resourceIndex < 0) throw new Error(`${owner} disposal ${disposal.binding} has no matching resource`);
     return resourceIndex;
   };
-  const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next): void => {
+  const emitDisposal = (disposalIndex: number, current: number, next: number, suffix = "", failureNext = next, failureEntersCatch = false, handlerBypassNext?: number): void => {
     const disposal = disposals[disposalIndex]!;
     const resourceIndex = resourceIndexForDisposal(disposalIndex);
     const label = `${labels[resourceIndex]!}${suffix}`;
@@ -2395,10 +2396,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (disposal.asynchronous) {
       emit(`dispose_start_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`, `not(disposing_${resourceIndex})`], new Map([[`disposing_${resourceIndex}`, "true"]]));
       emit(`dispose_resume_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(next)], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
-      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      emit(`dispose_reject_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], ...(failureEntersCatch ? [["disposal_failure_pending", "true"]] as const : []), [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      if (options.skipDisposalHandler && failureEntersCatch && handlerBypassNext !== undefined) emit(`dispose_reject_without_handler_${label}`, [`pc == ${current}`, `disposing_${resourceIndex}`], new Map([["pc", String(handlerBypassNext)], ["completion", "0"], ["disposal_failure_pending", "true"], [`disposing_${resourceIndex}`, "false"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     } else {
       emit(`dispose_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(next)], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
-      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], ...(failureEntersCatch ? [["disposal_failure_pending", "true"]] as const : []), [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
+      if (options.skipDisposalHandler && failureEntersCatch && handlerBypassNext !== undefined) emit(`dispose_throw_without_handler_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(handlerBypassNext)], ["completion", "0"], ["disposal_failure_pending", "true"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     }
   };
   transferLayouts.forEach(({ transferOwner, disposalIndexes, entryPc, cleanupPc: transferCleanupPc, decisionPc, breakCleanupPc, breakDecisionPc }) => {
@@ -2498,8 +2501,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       return;
     }
     if (event.kind === "dispose") {
-      const failureTarget = disposals[event.index]!.catchesFailure && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
-      emitDisposal(event.index, pc, next, "_scope_exit", failureTarget);
+      const failureEntersCatch = Boolean(disposals[event.index]!.catchesFailure && eventRegionLayout?.catchLayout.length);
+      const failureTarget = failureEntersCatch ? eventRegionLayout!.catchPc : cleanupPc;
+      const handlerBypassTarget = failureEntersCatch
+        ? eventRegionLayout!.finallyLayout.length ? eventRegionLayout!.finallyPc : continuationPc(eventRegion!.fullSpan.end)
+        : undefined;
+      emitDisposal(event.index, pc, next, "_scope_exit", failureTarget, failureEntersCatch, handlerBypassTarget);
       if (options.skipScopeCleanup) emit(`skip_scope_cleanup_${labels[resourceIndexForDisposal(event.index)]!}`, [
         `pc == ${pc}`,
       ], new Map([["pc", String(next)], ["broken", "true"]]));
@@ -2512,6 +2519,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const rejectionTarget = observation.catchesRejection && eventRegionLayout?.catchLayout.length ? eventRegionLayout.catchPc : cleanupPc;
     const rejectionUpdates = new Map<string, string>([["pc", String(rejectionTarget)]]);
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
+    if (!observation.catchesRejection) rejectionUpdates.set("disposal_failure_pending", "false");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
     const mismatch = conditionPathMismatch(observation.controlPaths);
     if (observation.conditional) emit(`skip_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
@@ -2525,7 +2533,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     const chain = observation.promiseChain!;
     const guards = [`pc == ${pc}`, ...conditionPathGuards(observation.controlPaths)];
     emit(`promise_${chain}_fulfill`, guards, new Map([["pc", String(pc + 1)]]));
-    emit(`promise_${chain}_reject_escapes`, guards, new Map([["pc", String(failureTarget)], ["completion", "1"]]));
+    emit(`promise_${chain}_reject_escapes`, guards, new Map([["pc", String(failureTarget)], ["completion", "1"], ["disposal_failure_pending", "false"]]));
     const resumeTarget = completion === "normal" ? next : failureTarget;
     const updates = new Map<string, string>([["pc", String(resumeTarget)]]);
     if (completion === "return" && region === "finally") updates.set("completion", "0");
@@ -2580,11 +2588,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
         const updates = new Map<string, string>([["pc", String(path.completion === "normal" ? next : finalEntry)]]);
         if (path.completion === "throw") updates.set("completion", "1");
+        if (path.completion !== "normal") updates.set("disposal_failure_pending", "false");
         emit(`catch_statement_${index}${regionSuffix}${pathSuffix ? `_path_${pathIndex}` : ""}`, [`pc == ${pc}`, ...conditionGuards(path.controlConditions)], updates);
       }
     });
     const catchTerminates = layout.catchLayout.some(({ statement }) => statement.completion !== "normal");
-    emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)]]));
+    emit(`catch_return${regionSuffix}`, [`pc == ${layout.afterCatchPc}`], new Map([["pc", String(catchTerminates ? finalEntry : layout.finallyLayout.length ? layout.finallyPc : afterRegion)], ["disposal_failure_pending", "false"]]));
     layout.finallyLayout.forEach(({ statement, pc, awaitIndexes, events, loopDecisionPc }, index) => {
       const following = layout.finallyLayout[index + 1]?.pc;
       const next = following ?? `if (completion == 0) ${afterRegion} else ${exceptionalTarget(layout.region)}`;
@@ -2651,6 +2660,6 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       ? [`(not(disposed_${earlierIndex}) or not(acquired_${laterIndex}) or (disposed_${laterIndex} and disposed_generation_${laterIndex} == generation_${laterIndex}))`]
       : [],
   )).join(" and ") || "true";
-  lines.push("", `  val cleanupOrderSafe = ${cleanupOrder}`, `  val resourceSafe = not(broken) and cleanupOrderSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  lines.push("", `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and cleanupOrderSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

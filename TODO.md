@@ -27,10 +27,11 @@ traceability and map to those issues rather than forming a second active queue.
 
 [#9](https://github.com/mizchi/uneffect/issues/9) is the sole active issue. The
 current tested fragment composes caught awaited rejection, mandatory `finally`,
-reverse sync/async disposal, bounded owned loop transfers, and one restricted
-nested-scope conditional join. The next Red/Green slice routes a rejecting inner
-async disposal through an enclosing catch/finally while preserving the active
-completion and completing remaining outer cleanup exactly once.
+reverse sync/async disposal, bounded owned loop transfers, one restricted
+nested-scope conditional join, and one rejecting inner async disposal routed
+through its enclosing catch/finally before remaining outer cleanup. The next
+Red/Green slice composes two failing disposals in one inner scope before entering
+the handler, retaining a finite `SuppressedError` completion abstraction.
 
 This summary deliberately does not restate the full proof boundary. Use
 `docs/feature-matrix.md` for supported and unsupported user-visible behavior,
@@ -45,7 +46,7 @@ summary work; they are not parallel implementation promises.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Route rejecting inner async disposal through enclosing `catch`/`finally`, preserve the active completion, and complete remaining outer cleanup exactly once. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Complete all reverse-order inner disposals before handler entry and retain the finite `SuppressedError` completion when more than one disposal fails. |
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
@@ -731,6 +732,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Lower the matching labeled `break` through a distinct reverse-order cleanup path to the first post-loop await, while ordinary completion still advances the bounded loop; retain non-canonical bounds and non-loop label owners as explicit non-proofs and reject a cleanup-skip fault in Quint.
     - [x] Route one caught awaited rejection through concrete catch/finally statements and two function-scoped sync/async resources, prove reverse acquisition order with an explicit Quint invariant, and reject reordered cleanup, skipped cleanup, and a floating Promise control.
     - [x] Join two independently rejecting awaits through a conditional catch recover/rethrow and mandatory finally, dispose an inner async scope before an outer awaited continuation, extend cleanup precedence across containing scopes, and retain reorder/skip/floating/unresolved-label controls.
+    - [x] Keep one caught inner async-disposal rejection pending until the enclosing conditional catch recovers or rethrows it, traverse mandatory outer finally, finish remaining outer cleanup exactly once, and reject a handler-bypass fault in Quint.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

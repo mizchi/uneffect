@@ -1663,3 +1663,14 @@ parsing/type checking and Quint source generation but excludes Quint execution.
 Separate tests prove the bounded model and reject reordered containing-scope
 cleanup, skipped scope cleanup, floating rejection, and unresolved-label
 controls. The timing is not a CI budget or evidence for arbitrary CFG joins.
+
+The caught-disposal-rejection workload declares the async session inside a
+protected try, keeps a rejecting disposal pending through conditional catch
+recovery/rethrow, traverses mandatory finally, and generates remaining outer
+cleanup. A filtered run on 2026-08-27 measured 142.92 ms mean (6.9969
+operations/second over 20 fixed iterations, 5.82% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model and reject
+handler bypass, skipped scope cleanup, and a floating-Promise source control.
+The timing is not a CI budget or evidence for concrete error payloads,
+multi-disposal `SuppressedError` composition, or arbitrary CFG joins.

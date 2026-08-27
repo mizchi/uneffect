@@ -3223,6 +3223,37 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toBeLessThan(quint.indexOf("action promise_2_fulfill"));
   });
 
+  it("routes rejecting inner disposal through the enclosing handler", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/caught-disposal-rejection.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      promises: Array<{ promiseChain?: number; observation: string; catchesRejection: boolean }>;
+      disposals: Array<{ binding: string; catchesFailure: boolean; scopeDepth: number }>;
+      controlEdges: Array<{ from: string; to: string; kind: string }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.disposals.map(({ binding, catchesFailure, scopeDepth }) => ({ binding, catchesFailure, scopeDepth }))).toEqual([
+      { binding: "session", catchesFailure: true, scopeDepth: 1 },
+      { binding: "audit", catchesFailure: false, scopeDepth: 0 },
+    ]);
+    expect(result.controlEdges).toContainEqual(expect.objectContaining({
+      from: "dispose:session:rejected",
+      to: "catch",
+      kind: "disposal-reject-caught",
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("caught_disposal_rejection", result, "deliverAfterDisposal") as string;
+    expect(quint).toContain("action dispose_reject_session_scope_exit");
+    expect(quint).toContain("val disposalHandlerSafe");
+    expect(quint.indexOf("action dispose_reject_session_scope_exit"))
+      .toBeLessThan(quint.indexOf("action catch_statement_0"));
+    expect(quint.indexOf("action catch_statement_0"))
+      .toBeLessThan(quint.indexOf("action finally_statement_0"));
+    expect(quint).toMatch(/action finally_statement_0 = all \{[\s\S]*?pc' = if \(completion == 0\) \d+ else \d+/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

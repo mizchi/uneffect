@@ -586,8 +586,15 @@ disposed while an acquired inner resource generation remains live. Quint
 rejects outer-before-inner cleanup and a scope-exit-cleanup skip. A branch that
 drops the second `await` is still `floating-promise`, and a handler transfer to
 an unresolved enclosing label remains `unsupported-control-transfer`.
-Disposal rejection entering a general enclosing handler and arbitrary or
-irreducible joins remain outside this fragment.
+The next restricted fragment places the inner async resource directly inside a
+protected `try`. Its disposal rejection sets `disposal_failure_pending` before
+entering the enclosing catch. Normal recovery and explicit rethrow both consume
+that pending handler obligation, then traverse mandatory finally and remaining
+outer cleanup. Generated Quint exposes `disposalHandlerSafe`; a fault transition
+that bypasses catch while retaining the pending failure reaches a counterexample.
+This is a finite handled/pending abstraction and does not retain the concrete
+error payload. Multiple failing disposals in one scope, their `SuppressedError`
+composition, and arbitrary or irreducible joins remain outside this fragment.
 
 `controlRegions` gives every `try` statement a stable source-derived identity
 and retains its protected, catch, finally, and complete source spans.

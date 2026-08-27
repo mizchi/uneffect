@@ -36,6 +36,7 @@ const targetAwareRetryCleanupSource = readFileSync(new URL("../examples/dogfood/
 const targetAwareBreakCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-break-cleanup.ts", import.meta.url), "utf8");
 const rejectedAwaitMultipleDisposalSource = readFileSync(new URL("../examples/dogfood/rejected-await-multiple-disposal.ts", import.meta.url), "utf8");
 const nestedRejectionCleanupSource = readFileSync(new URL("../examples/dogfood/nested-rejection-cleanup.ts", import.meta.url), "utf8");
+const caughtDisposalRejectionSource = readFileSync(new URL("../examples/dogfood/caught-disposal-rejection.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -454,6 +455,11 @@ describe("typed-array static verification", () => {
   bench("lower nested caught awaits through scoped cleanup", () => {
     const result = analyzeAsyncSafety("nested-rejection-cleanup.ts", nestedRejectionCleanupSource);
     generateUnifiedAsyncQuint("nested_rejection_cleanup", result, "deliverNested");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower caught inner disposal rejection through handler", () => {
+    const result = analyzeAsyncSafety("caught-disposal-rejection.ts", caughtDisposalRejectionSource);
+    generateUnifiedAsyncQuint("caught_disposal_rejection", result, "deliverAfterDisposal");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

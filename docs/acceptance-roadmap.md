@@ -704,7 +704,12 @@ flush; rethrow enters terminal inner-then-outer cleanup. Quint checks
 containing-scope precedence and rejects both outer-before-inner terminal cleanup
 and skipped normal scope cleanup. A conditionally floating second operation and
 a transfer to an unresolved enclosing label remain diagnostics/non-proofs.
-General nested disposal-failure routing and arbitrary CFG joins remain open.
+A second nested path declares the async session inside the protected try, so
+its disposal rejection enters the enclosing conditional catch. Quint retains a
+pending handler obligation until recovery or rethrow and rejects a handler
+bypass before mandatory finally and remaining outer cleanup. Multiple failing
+disposals and their `SuppressedError` composition, plus arbitrary CFG joins,
+remain open.
 
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding

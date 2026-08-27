@@ -313,6 +313,12 @@ same property is proved for arbitrary TypeScript.
   invariant includes containing-scope precedence; reordered terminal cleanup,
   skipped normal scope cleanup, floating rejection, and unresolved outer-label
   transfer are negative controls.
+- A caught-disposal acceptance model declares one async resource inside a
+  protected inner scope. Disposal rejection remains pending until the enclosing
+  conditional catch recovers or rethrows it; mandatory finally and remaining
+  outer cleanup still run. Quint rejects a transition that bypasses the handler.
+  The model records handled/pending state, not a concrete rejection payload or
+  multi-disposal `SuppressedError` tree.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`
