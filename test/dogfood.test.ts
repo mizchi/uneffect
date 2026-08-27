@@ -309,6 +309,11 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, invertedBreak, "labeledDelivery", temporal)).toContainEqual(
       expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "delivered" }),
     );
+
+    const overchargedDelivery = source.replace("units += 2;\n        delivery.delivered++;", "units += 3;\n        delivery.delivered++;");
+    expect(await validateRefinementActionBodiesWithZ3(fileName, overchargedDelivery, "labeledDelivery", temporal)).toContainEqual(
+      expect.objectContaining({ code: "action-update-mismatch", modelName: "deliver", target: "charged" }),
+    );
   });
 
   it("accepts grouped resource-release cases and catches an uncleared exit", () => {

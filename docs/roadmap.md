@@ -45,10 +45,12 @@ release date commitment.
    including default-free unmatched input. Bounded finite-loop expansion now
    carries that map between iterations, keeps break/continue/return/throw edge
    snapshots distinct through mandatory finally, and consumes loop-owned
-   transfers at their boundary. Ordinary standalone lexical blocks now project
-   only outer-visible local snapshots through normal and abrupt exits. The next
-   step is mutable-local ownership for unambiguous labels before the general
-   CFG fixed point.
+   transfers at their boundary. Ordinary standalone lexical blocks project
+   only outer-visible local snapshots through normal and abrupt exits.
+   Statically owned labeled blocks and bounded `for`/literal-`for...of` owner
+   labels now preserve and consume their own mutable-local transfer snapshots.
+   The next step is catch/finally-side mutable-local ownership before the
+   general CFG fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

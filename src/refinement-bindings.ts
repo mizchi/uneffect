@@ -1449,6 +1449,20 @@ function validateRefinementActionBodiesInSource(
         Array.from({ length: end - start }, (_, offset) => ts.factory.createNumericLiteral(start + offset)),
       );
     };
+    const boundedForOfIterations = (statement: ts.ForOfStatement): readonly ts.Block[] | undefined => {
+      const declaration = ts.isVariableDeclarationList(statement.initializer)
+        && (statement.initializer.flags & ts.NodeFlags.Const) !== 0
+        && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
+      const loopName = declaration && ts.isIdentifier(declaration.name) && !declaration.initializer
+        ? declaration.name.text : undefined;
+      const iterable = ts.isAsExpression(statement.expression) ? statement.expression.expression : statement.expression;
+      const values = ts.isArrayLiteralExpression(iterable) && iterable.elements.length <= 64
+        && iterable.elements.every((element): element is ts.Expression => !ts.isSpreadElement(element)
+          && (ts.isNumericLiteral(element) || element.kind === ts.SyntaxKind.TrueKeyword || element.kind === ts.SyntaxKind.FalseKeyword))
+        ? [...iterable.elements] : undefined;
+      if (statement.awaitModifier || !loopName || !values) return undefined;
+      return expandFiniteLoopIterations(statement.statement, loopName, values);
+    };
     const isUntrackedPrimitiveThrownValue = (expression: ts.Expression): boolean => {
       const value = unwrap(expression);
       return ts.isStringLiteral(value) || value.kind === ts.SyntaxKind.NullKeyword;
@@ -1675,11 +1689,10 @@ function validateRefinementActionBodiesInSource(
       );
       return applyContinuation(escaping, branchUpdates, continuation, branchLocals);
     };
-    const rewriteLabeledBreaks = (statement: ts.LabeledStatement): ts.Block | undefined => {
-      if (!ts.isBlock(statement.statement)) return undefined;
+    const isOwnedLabeledBlock = (statement: ts.LabeledStatement): statement is ts.LabeledStatement & { statement: ts.Block } => {
+      if (!ts.isBlock(statement.statement)) return false;
       let invalid = false;
-      const blockStart = statement.statement.getStart(source);
-      const replacements: Array<{ start: number; end: number }> = [];
+      let foundOwnedBreak = false;
       const pending: ts.Node[] = [...statement.statement.getChildren(source)];
       while (pending.length > 0) {
         const node = pending.pop()!;
@@ -1691,22 +1704,12 @@ function validateRefinementActionBodiesInSource(
         }
         if (ts.isBreakStatement(node) && node.label) {
           if (node.label.text !== statement.label.text) invalid = true;
-          else replacements.push({ start: node.getStart(source) - blockStart, end: node.getEnd() - blockStart });
+          else foundOwnedBreak = true;
           continue;
         }
         pending.push(...node.getChildren(source));
       }
-      if (invalid || replacements.length === 0) return undefined;
-      let rewritten = statement.statement.getText(source);
-      replacements.sort((left, right) => right.start - left.start);
-      for (const replacement of replacements) {
-        // The existing return completion implements exactly the local abrupt
-        // path. The enclosing labeled-statement handler consumes it instead
-        // of propagating it as a function return.
-        rewritten = `${rewritten.slice(0, replacement.start)}return;${rewritten.slice(replacement.end)}`;
-      }
-      const parsed = ts.createSourceFile("__uneffect_labeled_block.ts", rewritten, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-      return parsed.statements.length === 1 && ts.isBlock(parsed.statements[0]) ? parsed.statements[0] : undefined;
+      return !invalid && foundOwnedBreak;
     };
     for (let statementIndex = 0; statementIndex < body.statements.length; statementIndex++) {
       const statement = body.statements[statementIndex]!;
@@ -1764,6 +1767,7 @@ function validateRefinementActionBodiesInSource(
         return "throw";
       }
       if (ts.isBreakStatement(statement)) {
+        const ownedLabeledBreak = !!statement.label && statement.label.text === ownedBreakLabel;
         if (statement.label && statement.label.text !== ownedBreakLabel) {
           if (!activeBreakLabels.has(statement.label.text)) return undefined;
           return makeCompletion(
@@ -1775,7 +1779,7 @@ function validateRefinementActionBodiesInSource(
             new Map([[statement.label.text, { kind: "boolean", value: true }]]),
           );
         }
-        if (!allowBreak) return undefined;
+        if (!ownedLabeledBreak && !allowBreak) return undefined;
         return makeCompletion(
           { kind: "boolean", value: false },
           { kind: "boolean", value: false },
@@ -1841,43 +1845,47 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isLabeledStatement(statement)) {
-        if (ts.isForStatement(statement.statement)) {
-          const iterations = boundedForIterations(statement.statement);
+        if (ts.isForStatement(statement.statement) || ts.isForOfStatement(statement.statement)) {
+          const iterations = ts.isForStatement(statement.statement)
+            ? boundedForIterations(statement.statement)
+            : boundedForOfIterations(statement.statement);
           if (!iterations) return undefined;
           const completion = collectFiniteLoopIterations(iterations, 0, updates, localValues, statement.label.text);
           return completion ? consumeLoopTransfers(
             completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
           ) : undefined;
         }
-        const labeledBlock = rewriteLabeledBreaks(statement);
-        if (!labeledBlock) return undefined;
+        if (!isOwnedLabeledBlock(statement)) return undefined;
+        const labeledLocals = new Map(localValues);
         const completion = collect(
-          labeledBlock, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls, true, allowTerminalThrow,
-          allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+          statement.statement, receiver, runtimeClass, substitutions,
+          updates, labeledLocals, activeCalls, allowTerminalReturn, allowTerminalThrow,
+          allowBreak, allowContinue, statement.label.text, ownedContinueLabel,
           activeBreakLabels, activeContinueLabels,
           allowMutableLoopWrites,
         );
         if (!completion) return undefined;
-        // A return here is the rewritten break and is consumed by this label.
-        // Throws remain abrupt and only the non-throw paths execute the outer
-        // continuation.
+        const afterBreak = joinConsumedCompletionLocals(completion, "break", labeledLocals);
+        if (!afterBreak) return undefined;
+        localValues.clear();
+        for (const [name, value] of afterBreak) localValues.set(name, value);
         const escapingCompletion = makeCompletion(
-          { kind: "boolean", value: false },
+          completionPredicate(completion, "return"),
           completionPredicate(completion, "throw"),
           completionThrowValue(completion),
-          completionPredicate(completion, "break"),
+          { kind: "boolean", value: false },
           completionPredicate(completion, "continue"),
           completionLabels(completion, "break"),
           completionLabels(completion, "continue"),
           completionThrowLocals(completion),
           completionReturnLocals(completion),
-          completionBreakLocals(completion),
+          undefined,
           completionContinueLocals(completion),
         );
         if (escapingCompletion === "normal") continue;
         return applyContinuation(
           escapingCompletion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+          localValues,
         );
       }
       if (ts.isVariableStatement(statement) && statementIndex + 1 < body.statements.length) {
@@ -2416,18 +2424,7 @@ function validateRefinementActionBodiesInSource(
         ) : undefined;
       }
       if (ts.isForOfStatement(statement)) {
-        const declaration = ts.isVariableDeclarationList(statement.initializer)
-          && (statement.initializer.flags & ts.NodeFlags.Const) !== 0
-          && statement.initializer.declarations.length === 1 ? statement.initializer.declarations[0] : undefined;
-        const loopName = declaration && ts.isIdentifier(declaration.name) && !declaration.initializer
-          ? declaration.name.text : undefined;
-        const iterable = ts.isAsExpression(statement.expression) ? statement.expression.expression : statement.expression;
-        const values = ts.isArrayLiteralExpression(iterable) && iterable.elements.length <= 64
-          && iterable.elements.every((element): element is ts.Expression => !ts.isSpreadElement(element)
-            && (ts.isNumericLiteral(element) || element.kind === ts.SyntaxKind.TrueKeyword || element.kind === ts.SyntaxKind.FalseKeyword))
-          ? [...iterable.elements] : undefined;
-        if (statement.awaitModifier || !loopName || !values) return undefined;
-        const iterations = expandFiniteLoopIterations(statement.statement, loopName, values);
+        const iterations = boundedForOfIterations(statement);
         if (!iterations) return undefined;
         const completion = collectFiniteLoopIterations(iterations, 0, updates, localValues);
         return completion ? consumeLoopTransfers(
@@ -3062,7 +3059,8 @@ function validateRefinementActionBodiesInSource(
             if (ts.isBlock(owner) && (ts.isCatchClause(owner.parent)
               || (ts.isTryStatement(owner.parent) && owner.parent.finallyBlock === owner)
               || ts.isCaseClause(owner.parent))) return undefined;
-            if ((!finiteExpansionNode && ts.isIterationStatement(owner, false)) || ts.isLabeledStatement(owner)) return undefined;
+            if ((!finiteExpansionNode && ts.isIterationStatement(owner, false))
+              || (ts.isLabeledStatement(owner) && owner.label.text !== ownedBreakLabel)) return undefined;
             owner = owner.parent;
           }
           const current = localValues.get(node.left.text);

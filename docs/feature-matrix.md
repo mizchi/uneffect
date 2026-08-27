@@ -111,12 +111,16 @@ owned by every completion path before the transfer is consumed or propagated.
 An ordinary standalone lexical block evaluates with a nested local map, then
 projects normal and abrupt snapshots back to bindings visible at block entry;
 block-local constants cannot escape.
+A statically owned non-loop label consumes its own labeled-block `break` and
+joins that edge's outer-visible local snapshot with normal completion. Bounded
+ascending `for` and finite literal `for...of` owner labels likewise retain
+their own break/continue snapshots through expansion and mandatory `finally`.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch- or finally-side
-mutable-local writes, rethrows, mutable-local flow through dynamic or
-over-budget loops or labeled blocks, shadowing or escaped block locals, opaque switch discriminants,
+mutable-local writes, mutable-local rethrows, mutable-local flow through dynamic or
+over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain
 unsupported rather than being approximated.
 

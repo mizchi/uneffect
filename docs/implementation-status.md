@@ -201,7 +201,15 @@ same property is proved for arbitrary TypeScript.
   every normal/return/throw/break/continue snapshot back to names visible at
   block entry. Block-local constants remain usable inside the block but cannot
   escape; shadowing, catch/finally-side mutation, nested switch-case mutation,
-  and labeled mutable-local ownership remain non-proofs.
+  and labeled mutable-local ownership initially remained non-proofs.
+  A following owner-label slice removed the synthetic return rewrite for
+  non-loop labeled blocks. The original TypeScript AST now records an owned
+  `break` edge with its local snapshot, joins it with normal completion, and
+  evaluates the outer continuation once. Bounded ascending `for` and literal
+  `for...of` labels use the same edge ownership for their own break/continue
+  transfers. Unknown targets, nested labels, cross-label mutable-local
+  capture, and real returns inside the non-loop label fragment remain
+  fail-closed.
   Finite loops are expanded into the same completion sequence as straight-line
   code, so an early return suppresses later iterations while a surrounding
   `finally` still runs. The
@@ -212,9 +220,9 @@ same property is proved for arbitrary TypeScript.
   cannot satisfy a temporal action. Bare lexical blocks propagate the same
   normal/return/throw completion state into the enclosing sequence, but their
   local constants and receiver aliases do not escape the block.
-  Non-loop labeled blocks still support only their own `break`; labeled
-  `continue`, nested block labels, and real returns inside that block-rewrite
-  fragment remain unsupported. The action-control subset
+  Non-loop labeled blocks support only their own `break`; labeled `continue`,
+  nested block labels, and real returns inside that fragment remain
+  unsupported. The action-control subset
   keeps return and throw completion predicates distinct,
   lets catch discharge only the throw paths, and runs a common finally block at
   their shared boundary. If the supported refinement fragment proves that the

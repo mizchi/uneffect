@@ -356,6 +356,13 @@ Both measurements are retained as regression signals. They cover the
 syntax-only refinement comparison and exclude Z3, labeled loops, nested labels,
 and `continue`.
 
+On 2026-08-27, after replacing the labeled-block synthetic-return rewrite with
+owned completion edges and adding mutable-local charging across `break` and
+normal paths, the same benchmark measured 0.9414 ms mean over 532 samples
+(4.04% RME). It includes parsing, local-snapshot joins, mandatory `finally`,
+and the outer continuation. It excludes Z3 and does not claim support for
+dynamic loops, cross/nested label capture, or general CFG fixed points.
+
 On 2026-08-26, parsing and validating the generated-migration fixture's exact
 zero-shot `while (false)` and one-shot `do...while (false)` shells measured
 0.1584 ms mean over 3,156 samples (2.33% RME). This includes source parsing,

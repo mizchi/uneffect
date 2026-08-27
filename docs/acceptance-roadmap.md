@@ -381,11 +381,11 @@ statically expanded `for...of` iterations. It keeps normal, consumed-continue,
 consumed-break, direct-return, and typed throw/catch-return snapshots distinct;
 the mandatory per-iteration `finally` audits the value owned by each edge. A
 wrong accumulation is rejected by Z3, while dynamic iteration, a 65-element
-literal beyond the per-loop budget, and a labeled mutable-local transfer remain
-explicit non-proofs. A nested lexical block is accepted by the following flow
-projection slice. The
+literal beyond the per-loop budget remain explicit non-proofs. A nested lexical
+block and an owned loop label are accepted by the following flow-projection
+slices. The
 bounded batch billing dogfood applies the same control flow to four configured
-telemetry sinks. Dynamic/general loops, labels, standalone blocks,
+telemetry sinks. Dynamic/general loops, cross-label capture,
 catch/finally-side local mutation, alias escape, and rethrow were still open in
 that slice.
 
@@ -396,7 +396,19 @@ bills five units while the returning path suppresses the suffix. A wrong suffix
 is rejected by Z3; shadowing and a block-local value escaping into the outer
 suffix remain explicit non-proofs. The bounded batch billing dogfood now scopes
 its per-sink overhead constant in such a block inside each expanded iteration.
-Catch/finally-side mutation, nested switch-case mutation, labels, alias escape,
+Catch/finally-side mutation, nested switch-case mutation, label ownership,
+alias escape, and general CFG joins remained open in that slice.
+
+A nineteenth case carries an initialized mutable scalar through a statically
+owned labeled block. Normal completion contributes five units and `break
+attempt` contributes three; the edge-local snapshots join before the outer
+state update. A wrong suffix is rejected by Z3, while an unknown target, a
+nested label capture, and a real function return remain explicit non-proofs.
+The same owner contract now accepts bounded ascending `for` and finite literal
+`for...of` labels with their own `break`/`continue` transfers. The labeled
+telemetry dogfood runs the local exit through mandatory `finally`, then charges
+the selected local value in its audit continuation. Dynamic loops,
+cross/nested label ownership, catch/finally-side local mutation, alias escape,
 and general CFG joins remain open.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in

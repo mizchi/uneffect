@@ -3239,10 +3239,6 @@ describe("annotated refinement bindings", () => {
         "if (runtime.urgent) weight = 2",
         "while (runtime.urgent) { weight = 2; break }",
       )],
-      ["local-join-labeled.ts", source.replace(
-        "if (runtime.urgent) weight = 2",
-        "selected: { weight = 2; break selected }",
-      )],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "localJoin", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
@@ -3255,6 +3251,16 @@ describe("annotated refinement bindings", () => {
     );
     await expect(validateRefinementActionBodiesWithZ3(
       "local-join-bare-block.ts", bareBlock, "localJoin", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const ownedLabel = source.replace(
+      "if (runtime.urgent) weight = 2",
+      "selected: { weight = 2; break selected }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      "local-join-labeled.ts", ownedLabel, "localJoin", temporal,
     )).resolves.toContainEqual(expect.objectContaining({
       code: "action-update-mismatch", modelName: "record",
     }));

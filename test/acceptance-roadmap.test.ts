@@ -1211,9 +1211,6 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         "for (const step of [1, 2, 3, 4] as const)",
         "for (const step of runtime.steps)",
       ).replace("mode: number }", "mode: number; steps: number[] }")],
-      ["finite-loop-local-labeled.ts", source
-        .replace("for (const step of", "outer: for (const step of")
-        .replace("continue\n", "continue outer\n")],
       ["finite-loop-local-over-budget.ts", source.replace(
         "[1, 2, 3, 4] as const",
         `[${Array.from({ length: 65 }, (_, index) => index + 1).join(", ")}] as const`,
@@ -1230,6 +1227,23 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const nestedBlock = source.replace("units += step", "{ units += step }");
     await expect(validateActions(
       "finite-loop-local-nested-block.ts", nestedBlock, "finiteLoopLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const ownedLoopLabel = source
+      .replace("for (const step of", "outer: for (const step of")
+      .replace("continue\n", "continue outer\n");
+    await expect(validateActions(
+      "finite-loop-local-labeled.ts", ownedLoopLabel, "finiteLoopLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const ownedAscendingLabel = source
+      .replace(
+        "for (const step of [1, 2, 3, 4] as const)",
+        "outer: for (let step = 1; step < 5; step++)",
+      )
+      .replace("continue\n", "continue outer\n");
+    await expect(validateActions(
+      "finite-loop-local-ascending-label.ts", ownedAscendingLabel, "finiteLoopLocal", temporal,
     )).resolves.toEqual([]);
 
     const canonicalWhile = `
@@ -1305,6 +1319,60 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     ] as const) {
       expect(validateActionsStatically(
         fileName, changed, "lexicalLocal", temporal,
+      ), fileName).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "record",
+      }));
+    }
+  });
+
+  it("carries outer mutable locals through an owned labeled-block exit", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state total: int
+       * state stopped: bool
+       * init total = 0
+       * init stopped = false
+       * action record: total' = stopped ? total + 3 : total + 5
+       */
+      interface Runtime { total: number; stopped: boolean }
+      /* uneffect: refinement labeledLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement labeledLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement labeledLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        attempt: {
+          units += 2
+          if (runtime.stopped) break attempt
+          units += 2
+        }
+        runtime.total += units
+      }
+    `;
+    const temporal = (parseSpecification("labeled-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "labeled-local.ts", source, "labeledLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongSuffix = source.replace("units += 2\n        }", "units += 3\n        }");
+    await expect(validateActions(
+      "labeled-local-wrong-suffix.ts", wrongSuffix, "labeledLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    for (const [fileName, changed] of [
+      ["labeled-local-nested-capture.ts", source.replace(
+        "if (runtime.stopped) break attempt",
+        "nested: { if (runtime.stopped) break attempt }",
+      )],
+      ["labeled-local-unknown-target.ts", source.replace("break attempt", "break missing")],
+      ["labeled-local-real-return.ts", source.replace("break attempt", "return")],
+    ] as const) {
+      expect(validateActionsStatically(
+        fileName, changed, "labeledLocal", temporal,
       ), fileName).toContainEqual(expect.objectContaining({
         code: "unsupported-action-body", modelName: "record",
       }));
