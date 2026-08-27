@@ -1486,6 +1486,76 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 75_000);
 
+  it("keeps a nested Boolean resource decision correlated through cleanup and catch", () => {
+    const fileName = "examples/dogfood/nested-branch-correlated-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const quint = generateUnifiedAsyncQuint("nested_branch_correlated_cleanup", result, "deliverNestedChoice");
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_1 and acquired_3\) and not\(acquired_2 and acquired_3\)/);
+    const positive = run(quint, 45);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["multiple_leaves_acquired", { acquireBothBranches: true }],
+      ["wrong_leaf_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `nested_branch_correlated_cleanup_${name}`,
+        result,
+        "deliverNestedChoice",
+        options,
+      ), 45);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const incomplete = analyzeAsyncSafety("nested-branch-incomplete.ts", source.replace(
+      '      } else {\n        await using secondary = openSecondary();\n        await secondary.send().then(() => undefined);\n',
+      "",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nested_branch_incomplete", incomplete, "deliverNestedChoice"))
+      .toThrow(/incomplete leaf coverage/);
+
+    const overlapping = analyzeAsyncSafety("nested-branch-overlap.ts", source.replace(
+      "        await using primary = openPrimary();",
+      "        await using primary = openPrimary();\n        await using duplicate = openSecondary();",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nested_branch_overlap", overlapping, "deliverNestedChoice"))
+      .toThrow(/overlapping acquisition paths/);
+
+    const dynamicPredicate = analyzeAsyncSafety("nested-branch-dynamic.ts", `declare function choosePreferred(): boolean\n${source}`.replace(
+      "if (usePreferred)",
+      "if (choosePreferred())",
+    ));
+    expect(() => generateUnifiedAsyncQuint("nested_branch_dynamic", dynamicPredicate, "deliverNestedChoice"))
+      .toThrow(/requires a Boolean identifier predicate/);
+
+    const conditions = Array.from({ length: 9 }, (_, index) => `b${index}: boolean`).join(", ");
+    const decision = Array.from({ length: 9 }, (_, index) => `${index === 0 ? "if" : "else if"} (b${index}) { await using r${index} = open(); await r${index}.send() }`).join(" ");
+    const overBudget = analyzeAsyncSafety("nested-branch-over-budget.ts", `
+      interface R extends AsyncDisposable { send(): Promise<void> }
+      declare function open(): R
+      async function overBudget(${conditions}) {
+        try { ${decision} else { await using r9 = open(); await r9.send() } }
+        catch {}
+        await Promise.resolve(1).then(value => value)
+      }
+    `);
+    expect(() => generateUnifiedAsyncQuint("nested_branch_over_budget", overBudget, "overBudget"))
+      .toThrow(/exceeds the eight-condition proof budget/);
+
+    const floating = analyzeAsyncSafety("nested-branch-floating.ts", source.replace(
+      "await secondary.send().then(() => undefined);",
+      "secondary.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverNestedChoice",
+      kind: "floating-promise",
+    }));
+  }, 90_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

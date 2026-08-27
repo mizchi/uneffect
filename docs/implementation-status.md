@@ -345,6 +345,14 @@ same property is proved for arbitrary TypeScript.
   cleanup, skipped cleanup, premature handler entry, and floating rejection are
   load-bearing controls. This is not support for arbitrary switch expressions
   or CFG joins.
+- A nested-Boolean extension accepts one complete three-leaf tree formed by an
+  outer Boolean identifier and one nested Boolean identifier. Analysis records
+  predicate provenance; generation enumerates at most eight Boolean conditions
+  to prove complete, pairwise non-overlapping leaf coverage before Quint checks
+  pairwise acquisition exclusion. Expression predicates, incomplete leaves,
+  multiple resources on one leaf, and deeper over-budget trees are explicit
+  non-proofs. Multiple acquisition, wrong-leaf cleanup, skipped cleanup,
+  premature handler entry, and floating rejection remain load-bearing controls.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

@@ -40,6 +40,7 @@ const caughtDisposalRejectionSource = readFileSync(new URL("../examples/dogfood/
 const suppressedDisposalRejectionsSource = readFileSync(new URL("../examples/dogfood/suppressed-disposal-rejections.ts", import.meta.url), "utf8");
 const branchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/branch-correlated-cleanup.ts", import.meta.url), "utf8");
 const switchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/switch-correlated-cleanup.ts", import.meta.url), "utf8");
+const nestedBranchCorrelatedCleanupSource = readFileSync(new URL("../examples/dogfood/nested-branch-correlated-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -478,6 +479,11 @@ describe("typed-array static verification", () => {
   bench("lower exhaustive switch cleanup through shared handler", () => {
     const result = analyzeAsyncSafety("switch-correlated-cleanup.ts", switchCorrelatedCleanupSource);
     generateUnifiedAsyncQuint("switch_correlated_cleanup", result, "deliverByRoute");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower nested Boolean cleanup through shared handler", () => {
+    const result = analyzeAsyncSafety("nested-branch-correlated-cleanup.ts", nestedBranchCorrelatedCleanupSource);
+    generateUnifiedAsyncQuint("nested_branch_correlated_cleanup", result, "deliverNestedChoice");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

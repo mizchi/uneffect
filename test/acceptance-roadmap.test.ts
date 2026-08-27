@@ -3341,6 +3341,37 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toMatch(/not\(acquired_3\) or \(branch_\d+ == 0 and branch_\d+ == 0\)/);
   });
 
+  it("preserves a nested Boolean resource decision through catch join", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/nested-branch-correlated-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; controlConditions: Array<{ id: string; expected: boolean }> }>;
+      resourceIfs: Array<{ predicate: string }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true, true] },
+      { binding: "secondary", polarity: [true, false] },
+      { binding: "backup", polarity: [false] },
+    ]);
+    const [primary, secondary, backup] = result.resources.slice(1);
+    expect(primary?.controlConditions[0]?.id).toBe(secondary?.controlConditions[0]?.id);
+    expect(primary?.controlConditions[0]?.id).toBe(backup?.controlConditions[0]?.id);
+    expect(primary?.controlConditions[1]?.id).toBe(secondary?.controlConditions[1]?.id);
+    expect(result.resourceIfs.filter(({ predicate }) => predicate === "boolean-identifier")).toHaveLength(3);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("nested_branch_correlated_cleanup", result, "deliverNestedChoice") as string;
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_1 and acquired_3\) and not\(acquired_2 and acquired_3\)/);
+    expect(quint).toMatch(/not\(acquired_1\) or \(branch_\d+ == 1 and branch_\d+ == 1\)/);
+    expect(quint).toMatch(/not\(acquired_2\) or \(branch_\d+ == 1 and branch_\d+ == 0\)/);
+    expect(quint).toMatch(/not\(acquired_3\) or \(branch_\d+ == 0\)/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

@@ -161,6 +161,25 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val disposalAcquisitionSafe");
   });
 
+  it("preserves a nested Boolean resource decision through shared recovery", () => {
+    const fileName = "examples/dogfood/nested-branch-correlated-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true, true] },
+      { binding: "secondary", polarity: [true, false] },
+      { binding: "backup", polarity: [false] },
+    ]);
+    expect(result.resourceIfs.filter(({ predicate }) => predicate === "boolean-identifier")).toHaveLength(3);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("nested_branch_correlated_cleanup", result, "deliverNestedChoice");
+    expect(quint).toContain("val branchResourceSafe");
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\)/);
+    expect(quint).toContain("val disposalAcquisitionSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

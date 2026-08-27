@@ -121,6 +121,7 @@ export interface AsyncSafetyResult {
   controlStatements: AsyncControlStatement[];
   controlTransferOwners: AsyncControlTransferOwner[];
   resourceSwitches: ResourceSwitchDecision[];
+  resourceIfs: ResourceIfDecision[];
   ownershipObligations: OwnershipGuardObligation[];
   diagnostics: AsyncSafetyDiagnostic[];
 }
@@ -130,6 +131,12 @@ export interface ResourceSwitchDecision {
   discriminant: "finite-string-identifier" | "unsupported";
   hasDefault: boolean;
   caseCount: number;
+  span: { start: number; end: number };
+}
+export interface ResourceIfDecision {
+  id: string;
+  owner: string;
+  predicate: "boolean-identifier" | "unsupported";
   span: { start: number; end: number };
 }
 export interface AsyncControlRegion {
@@ -596,7 +603,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
   const resourceRetentionCache = new Map<ts.SignatureDeclaration, ReadonlySet<number>>();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], resourceSwitches: ResourceSwitchDecision[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], controlTransferOwners: AsyncControlTransferOwner[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], resourceSwitches: ResourceSwitchDecision[] = [], resourceIfs: ResourceIfDecision[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], controlTransferOwners: AsyncControlTransferOwner[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "an ownership directive that does not resolve against this declaration transfers nothing, so callers keep the rejection responsibility" }] });
@@ -2074,7 +2081,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     ts.forEachChild(node, visit);
   };
   visit(source);
-  const collectResourceSwitches = (node: ts.Node): void => {
+  const collectResourceDecisions = (node: ts.Node): void => {
     if (ts.isSwitchStatement(node)) {
       const discriminantType = checker.getTypeAtLocation(node.expression);
       const constituents = discriminantType.isUnion() ? discriminantType.types : [discriminantType];
@@ -2092,9 +2099,20 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         span: { start: node.getStart(source), end: node.getEnd() },
       });
     }
-    ts.forEachChild(node, collectResourceSwitches);
+    if (ts.isIfStatement(node)) {
+      const predicateType = checker.getTypeAtLocation(node.expression);
+      resourceIfs.push({
+        id: `${enclosingFunctionName(node)}@if:${node.getStart(source)}`,
+        owner: enclosingFunctionName(node),
+        predicate: ts.isIdentifier(node.expression) && Boolean(predicateType.flags & ts.TypeFlags.BooleanLike)
+          ? "boolean-identifier"
+          : "unsupported",
+        span: { start: node.getStart(source), end: node.getEnd() },
+      });
+    }
+    ts.forEachChild(node, collectResourceDecisions);
   };
-  collectResourceSwitches(source);
+  collectResourceDecisions(source);
   const disposals: ResourceDisposal[] = [];
   const byScope = new Map<string, ResourceBinding[]>();
   for (const resource of resources) byScope.set(resource.scopeId, [...(byScope.get(resource.scopeId) ?? []), resource]);
@@ -2118,7 +2136,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, controlTransferOwners, resourceSwitches, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, controlTransferOwners, resourceSwitches, resourceIfs, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
@@ -2420,8 +2438,12 @@ export function generateUnifiedAsyncQuint(
     const match = /^(.*@switch:\d+):case:\d+$/.exec(condition.id);
     return match?.[1];
   };
-  const switchResourceGroups = [...resources.reduce((groups, resource, resourceIndex) => {
-    const groupIds = new Set(resource.controlPaths.flat().flatMap((condition) => switchGroupId(condition) ?? []));
+  const ifGroupId = (condition: AsyncControlCondition): string | undefined => /@if:\d+$/.test(condition.id) ? condition.id : undefined;
+  const resourceDecisionGroups = [...resources.reduce((groups, resource, resourceIndex) => {
+    const groupIds = new Set(resource.controlPaths.flatMap((path) => {
+      const root = path.find((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined);
+      return root ? [switchGroupId(root) ?? ifGroupId(root)!] : [];
+    }));
     for (const groupId of groupIds) {
       const indexes = groups.get(groupId) ?? [];
       indexes.push(resourceIndex);
@@ -2429,6 +2451,7 @@ export function generateUnifiedAsyncQuint(
     }
     return groups;
   }, new Map<string, number[]>()).entries()].filter(([, resourceIndexes]) => resourceIndexes.length >= 2);
+  const switchResourceGroups = resourceDecisionGroups.filter(([groupId]) => groupId.includes("@switch:"));
   for (const [groupId, resourceIndexes] of switchResourceGroups) {
     const decision = result.resourceSwitches.find((candidate) => candidate.owner === owner && candidate.id === groupId);
     if (!decision || decision.discriminant !== "finite-string-identifier") {
@@ -2457,6 +2480,36 @@ export function generateUnifiedAsyncQuint(
     }));
     if (!Array.from({ length: 1 << conditionIds.length }, (_, selection) => selection).every(coversSelection)) {
       throw new Error(`${owner} switch resource join ${groupId} is not exhaustive; add an explicit default resource path`);
+    }
+  }
+  const ifResourceGroups = resourceDecisionGroups.filter(([groupId]) => groupId.includes("@if:"));
+  for (const [groupId, resourceIndexes] of ifResourceGroups) {
+    const conditionIds = [...new Set(resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.flat()
+      .filter((condition) => ifGroupId(condition) !== undefined)
+      .map((condition) => condition.id)))];
+    const unsupportedPredicate = conditionIds.find((conditionId) => !result.resourceIfs.some((decision) =>
+      decision.owner === owner && decision.id === conditionId && decision.predicate === "boolean-identifier",
+    ));
+    if (unsupportedPredicate) {
+      throw new Error(`${owner} Boolean resource decision ${unsupportedPredicate} requires a Boolean identifier predicate`);
+    }
+    if (conditionIds.length > 8) throw new Error(`${owner} Boolean resource decision ${groupId} exceeds the eight-condition proof budget`);
+    for (let left = 0; left < resourceIndexes.length; left++) for (let right = left + 1; right < resourceIndexes.length; right++) {
+      const leftResource = resources[resourceIndexes[left]!]!;
+      const rightResource = resources[resourceIndexes[right]!]!;
+      if (conditionPathsOverlap(leftResource.controlPaths, rightResource.controlPaths)) {
+        throw new Error(`${owner} Boolean resource decision ${groupId} has overlapping acquisition paths`);
+      }
+    }
+    const groupPaths = resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.map((path) =>
+      path.filter((condition) => ifGroupId(condition) !== undefined),
+    ));
+    const coversSelection = (selection: number): boolean => groupPaths.some((path) => path.every((condition) => {
+      const index = conditionIds.indexOf(condition.id);
+      return index >= 0 && Boolean(selection & (1 << index)) === condition.expected;
+    }));
+    if (!Array.from({ length: 1 << conditionIds.length }, (_, selection) => selection).every(coversSelection)) {
+      throw new Error(`${owner} Boolean resource decision ${groupId} has incomplete leaf coverage`);
     }
   }
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool", "  var disposal_failure_pending: bool", "  var disposal_failure_count: int", "  var disposal_failure_events: int", "  var handled_disposal_failure_kind: int", "  var handled_cleanup_failure: bool"];
@@ -2883,7 +2936,7 @@ export function generateUnifiedAsyncQuint(
     return guards.length === 0 ? "true" : `(not(acquired_${resourceIndex}) or (${guards.join(" and ")}))`;
   }).join(" and ") || "true";
   const disposalAcquisitionSafety = resources.map((_, resourceIndex) => `(not(disposed_${resourceIndex}) or acquired_${resourceIndex})`).join(" and ") || "true";
-  const branchResourceExclusivity = switchResourceGroups.flatMap(([, resourceIndexes]) => resourceIndexes.flatMap((left, leftIndex) =>
+  const branchResourceExclusivity = resourceDecisionGroups.flatMap(([, resourceIndexes]) => resourceIndexes.flatMap((left, leftIndex) =>
     resourceIndexes.slice(leftIndex + 1).map((right) => `not(acquired_${left} and acquired_${right})`),
   )).join(" and ") || "true";
   lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");

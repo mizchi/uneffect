@@ -1708,3 +1708,16 @@ Separate tests run the positive model and reject missing default, fallthrough,
 an open discriminant, multiple acquisition, wrong-case cleanup, skipped cleanup,
 premature handler entry, and floating rejection. The timing is not a CI budget
 or evidence for nested decisions or arbitrary CFGs.
+
+The nested-branch-correlated-cleanup workload selects one of three differently
+named async resources through an outer and nested Boolean identifier. It records
+predicate provenance and validates complete, non-overlapping leaf coverage
+before generating shared cleanup/handler invariants. A filtered run on
+2026-08-28 measured 200.21 ms mean (4.9947 operations/second over 20 fixed
+iterations, 7.05% relative margin of error). This includes cold TypeScript
+parsing/type checking and Quint source generation but excludes Quint execution.
+Separate tests run the positive model and reject expression predicates,
+incomplete or overlapping leaves, a ninth condition, multiple acquisition,
+wrong-leaf cleanup, skipped cleanup, premature handler entry, and floating
+rejection. The timing is not a CI budget or evidence for mixed decision kinds or
+arbitrary CFGs.

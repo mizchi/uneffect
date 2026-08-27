@@ -731,6 +731,17 @@ entry, and floating rejection are negative controls. The bound is eight case
 conditions and does not cover arbitrary expressions, nested decisions, or
 general CFG joins.
 
+A nested-Boolean sibling accepts one complete three-leaf resource tree formed
+by an outer Boolean identifier and one nested Boolean identifier. Analysis
+records predicate provenance; generation enumerates a bounded condition space
+to reject incomplete or overlapping leaves before Quint checks pairwise
+acquisition exclusion, branch implication, and disposal only after acquisition.
+Expression predicates, missing leaves, multiple resources on one leaf, and a
+ninth condition are explicit non-proofs. Multiple acquisition, wrong-leaf
+cleanup, skipped cleanup, premature handler entry, and floating rejection are
+negative controls. Mixed switch/Boolean trees and arbitrary CFG joins remain
+open.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with
