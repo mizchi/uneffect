@@ -710,10 +710,15 @@ pending handler obligation until recovery or rethrow and rejects a handler
 bypass before mandatory finally and remaining outer cleanup. Multiple failing
 disposals in one protected scope now continue in reverse order before catch and
 retain a finite single/suppressed failure kind. Protected body rejection and a
-later acquisition failure enter that same cleanup chain. The checked bound is
-two resources in one scope; larger stacks, multiple nested cleanup scopes,
-branch-correlated ownership, concrete error payloads in Quint, and arbitrary CFG
-joins remain open.
+later acquisition failure enter that same cleanup chain. A sibling acceptance
+case preserves one Boolean `if`/`else` choice between differently named async
+resources through branch-local cleanup and a shared catch/finally join. Its
+Quint invariants reject both resources being acquired, disposal of the
+unselected resource, skipped cleanup, and premature handler entry. The checked
+bounds are two resources in one common stack or exactly one resource per arm of
+one Boolean branch; larger stacks, nested/general branch trees, multiple nested
+cleanup scopes, concrete error payloads in Quint, and arbitrary CFG joins remain
+open.
 
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding

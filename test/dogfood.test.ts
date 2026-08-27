@@ -127,6 +127,22 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val handlerAfterCleanupSafe");
   });
 
+  it("preserves branch-local resource ownership through shared recovery", () => {
+    const fileName = "examples/dogfood/branch-correlated-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.resources.slice(1).map(({ binding, conditional }) => ({ binding, conditional }))).toEqual([
+      { binding: "primary", conditional: true },
+      { binding: "secondary", conditional: true },
+    ]);
+    expect(result.resources[1]?.controlConditions[0]?.id).toBe(result.resources[2]?.controlConditions[0]?.id);
+    expect(result.resources[1]?.controlConditions[0]?.expected).toBe(true);
+    expect(result.resources[2]?.controlConditions[0]?.expected).toBe(false);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("branch_correlated_cleanup", result, "deliverSelected");
+    expect(quint).toContain("val branchResourceSafe");
+    expect(quint).toContain("val disposalAcquisitionSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

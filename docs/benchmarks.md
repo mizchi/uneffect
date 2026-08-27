@@ -1685,3 +1685,14 @@ Separate tests run the positive model and reject premature handler entry, lost
 suppression, skipped scope cleanup, reordered cleanup, and floating rejection.
 The timing is not a CI budget or evidence for larger stacks, multiple nested
 cleanup scopes, branch-correlated ownership, or arbitrary CFG joins.
+
+The branch-correlated-cleanup workload chooses exactly one of two differently
+named async resources, lowers its branch-local disposal into one shared
+catch/finally join, and emits acquisition-path plus dispose-after-acquire
+invariants. A filtered run on 2026-08-27 measured 217.22 ms mean (4.6037
+operations/second over 20 fixed iterations, 15.66% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model and reject
+both-branch acquisition, wrong-branch cleanup, skipped cleanup, premature
+handler entry, and floating rejection. The timing is noisy and is neither a CI
+budget nor evidence for nested branch trees, dynamic joins, or arbitrary CFGs.

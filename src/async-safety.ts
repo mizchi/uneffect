@@ -2184,7 +2184,25 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
   return lines.join("\n");
 }
 
-export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; skipScopeCleanup?: boolean; skipDisposalHandler?: boolean; prematureDisposalHandler?: boolean; dropDisposalSuppression?: boolean; reuseStaleDisposal?: boolean; skipTransferCleanup?: boolean; reorderCleanup?: boolean } = {}): string {
+interface UnifiedAsyncQuintOptions {
+  skipCleanup?: boolean;
+  skipScopeCleanup?: boolean;
+  skipDisposalHandler?: boolean;
+  prematureDisposalHandler?: boolean;
+  dropDisposalSuppression?: boolean;
+  reuseStaleDisposal?: boolean;
+  skipTransferCleanup?: boolean;
+  reorderCleanup?: boolean;
+  acquireBothBranches?: boolean;
+  wrongBranchCleanup?: boolean;
+}
+
+export function generateUnifiedAsyncQuint(
+  moduleName: string,
+  result: AsyncSafetyResult,
+  owner: string,
+  options: UnifiedAsyncQuintOptions = {},
+): string {
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
@@ -2355,6 +2373,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (guards.length === 0) return undefined;
     return `not(${guards.join(" and ")})`;
   };
+  const conditionPathsOverlap = (
+    leftPaths: readonly (readonly AsyncControlCondition[])[],
+    rightPaths: readonly (readonly AsyncControlCondition[])[],
+  ): boolean => leftPaths.some((left) => rightPaths.some((right) => !left.some((leftCondition) =>
+    right.some((rightCondition) => rightCondition.id === leftCondition.id && rightCondition.expected !== leftCondition.expected),
+  )));
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool", "  var disposal_failure_pending: bool", "  var disposal_failure_count: int", "  var disposal_failure_events: int", "  var handled_disposal_failure_kind: int", "  var handled_cleanup_failure: bool"];
   transferLayouts.forEach(({ transferOwner }) => lines.push(`  var loop_iteration_${safe(transferOwner.id)}: int`));
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
@@ -2533,7 +2557,16 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       }
       emit(`acquire_fail_${labels[event.index]}`, guards, acquisitionFailureUpdates);
       const mismatch = conditionPathMismatch(resource.controlPaths);
-      if (resource.conditional) emit(`skip_acquire_${labels[event.index]}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
+      if (resource.conditional) {
+        const mismatchGuards = mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`];
+        emit(`skip_acquire_${labels[event.index]}`, mismatchGuards, new Map([["pc", String(next)]]));
+        if (options.acquireBothBranches) emit(`acquire_unselected_${labels[event.index]}`, mismatchGuards, new Map([
+          ["pc", String(next)],
+          [`acquired_${event.index}`, "true"],
+          [`disposed_${event.index}`, "false"],
+          [`generation_${event.index}`, `generation_${event.index} + 1`],
+        ]));
+      }
       return;
     }
     if (event.kind === "dispose") {
@@ -2555,6 +2588,21 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
         handlerBypassNext: handlerBypassTarget,
         prematureHandlerNext: failureEntersCatch && nextIsSameScopeDisposal ? eventRegionLayout!.catchPc : undefined,
       });
+      if (options.wrongBranchCleanup) {
+        const resourceIndex = resourceIndexForDisposal(event.index);
+        const resource = resources[resourceIndex]!;
+        const wrongResourceIndex = resources.findIndex((candidate, candidateIndex) => candidateIndex !== resourceIndex
+          && candidate.conditional
+          && !conditionPathsOverlap(resource.controlPaths, candidate.controlPaths));
+        if (wrongResourceIndex >= 0) emit(`dispose_wrong_branch_${labels[wrongResourceIndex]!}_for_${labels[resourceIndex]!}`, [
+          `pc == ${pc}`,
+          `acquired_${resourceIndex}`,
+          `not(disposed_${resourceIndex})`,
+        ], new Map([
+          [`disposed_${wrongResourceIndex}`, "true"],
+          [`disposed_generation_${wrongResourceIndex}`, `generation_${wrongResourceIndex}`],
+        ]));
+      }
       if (options.reorderCleanup && nextIsSameScopeDisposal) {
         const wrongDisposalIndex = nextEvent!.event.kind === "dispose" ? nextEvent!.event.index : -1;
         const wrongResourceIndex = resourceIndexForDisposal(wrongDisposalIndex);
@@ -2592,6 +2640,17 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     if (!observation.catchesRejection) rejectionUpdates.set("disposal_failure_pending", "false");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
+    if (options.prematureDisposalHandler && protectedCleanup && eventRegionLayout?.catchLayout.length) emit(
+      `promise_${chain}_reject_premature_handler`,
+      guards,
+      new Map([
+        ["pc", String(eventRegionLayout.catchPc)],
+        ["completion", "0"],
+        ["disposal_failure_pending", "true"],
+        ["disposal_failure_count", "1"],
+        ["disposal_failure_events", "1"],
+      ]),
+    );
     const mismatch = conditionPathMismatch(observation.controlPaths);
     if (observation.conditional) emit(`skip_await_${chain}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
     const isLast = eventIndex === normalLayout.length - 1;
@@ -2739,6 +2798,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     .filter((resourceIndex, index, all) => all.indexOf(resourceIndex) === index)
     .map((resourceIndex) => `(not(acquired_${resourceIndex}) or (disposed_${resourceIndex} and disposed_generation_${resourceIndex} == generation_${resourceIndex}))`)
     .join(" and ") || "true";
-  lines.push("", `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  const branchResourceSafety = resources.map((resource, resourceIndex) => {
+    const guards = conditionPathGuards(resource.controlPaths);
+    return guards.length === 0 ? "true" : `(not(acquired_${resourceIndex}) or (${guards.join(" and ")}))`;
+  }).join(" and ") || "true";
+  const disposalAcquisitionSafety = resources.map((_, resourceIndex) => `(not(disposed_${resourceIndex}) or acquired_${resourceIndex})`).join(" and ") || "true";
+  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

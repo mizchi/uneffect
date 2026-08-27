@@ -326,6 +326,15 @@ same property is proved for arbitrary TypeScript.
   skipped scope cleanup, reordered cleanup, and floating rejection are
   load-bearing controls. Exact nested error payloads remain in the analysis IR,
   not in this finite Quint state.
+- A branch-correlated protected-scope model accepts one finite Boolean
+  `if`/`else` where exactly one of two differently named async resources is
+  acquired. The generated Quint model retains the shared condition polarity,
+  requires every acquisition to imply its source branch, and forbids disposal
+  of an unacquired resource before entering the shared catch/finally join.
+  Both-branch acquisition, wrong-branch cleanup, skipped cleanup, premature
+  handler entry, and floating rejection are load-bearing controls. Nested
+  branch trees, dynamic discriminants, multiple branch-local resources, and
+  arbitrary joins remain unsupported.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

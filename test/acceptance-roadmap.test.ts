@@ -3279,6 +3279,34 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toContain("val handlerAfterCleanupSafe");
   });
 
+  it("preserves mutually exclusive resource ownership through catch join", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/branch-correlated-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; conditional: boolean; controlConditions: Array<{ id: string; expected: boolean }> }>;
+      disposals: Array<{ binding: string; catchesFailure: boolean }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.slice(1).map(({ binding, conditional, controlConditions }) => ({ binding, conditional, controlConditions }))).toEqual([
+      { binding: "primary", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] },
+      { binding: "secondary", conditional: true, controlConditions: [expect.objectContaining({ expected: false })] },
+    ]);
+    expect(result.resources[1]?.controlConditions[0]?.id).toBe(result.resources[2]?.controlConditions[0]?.id);
+    expect(result.disposals.map(({ binding, catchesFailure }) => ({ binding, catchesFailure }))).toEqual([
+      { binding: "primary", catchesFailure: true },
+      { binding: "secondary", catchesFailure: true },
+      { binding: "audit", catchesFailure: false },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("branch_correlated_cleanup", result, "deliverSelected") as string;
+    expect(quint).toContain("val branchResourceSafe");
+    expect(quint).toContain("val disposalAcquisitionSafe");
+    expect(quint).toMatch(/not\(acquired_1\) or \(branch_\d+ == 1\)/);
+    expect(quint).toMatch(/not\(acquired_2\) or \(branch_\d+ == 0\)/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

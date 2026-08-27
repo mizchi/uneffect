@@ -29,10 +29,11 @@ traceability and map to those issues rather than forming a second active queue.
 current tested fragment composes caught awaited rejection, mandatory `finally`,
 reverse sync/async disposal, bounded owned loop transfers, one restricted
 nested-scope conditional join, one rejecting inner async disposal routed through
-its handler, and a two-resource inner disposal stack that finishes before catch
-while retaining a finite `0 | single | suppressed` completion abstraction. The
-next Red/Green slice correlates mutually exclusive branch-local resources at
-their cleanup/handler join without flattening them into simultaneous ownership.
+its handler, a two-resource inner disposal stack that finishes before catch
+while retaining a finite `0 | single | suppressed` completion abstraction, and
+one Boolean `if`/`else` that acquires exactly one branch-local async resource
+before a shared cleanup/handler join. The next Red/Green slice generalizes that
+correlation without claiming an arbitrary CFG fixed point.
 
 This summary deliberately does not restate the full proof boundary. Use
 `docs/feature-matrix.md` for supported and unsupported user-visible behavior,
@@ -51,6 +52,11 @@ summary work; they are not parallel implementation promises.
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
+After these Phase 1 handoffs, select work from the phase-ordered issue index
+below. Do not promote a queued Issue merely because a historical checkbox is
+nearby in this file. A promotion must update the Issue status label, its next
+executable Red/Green slice, and this queue in the same change.
+
 ## Active issue index
 
 GitHub Issues and their priority labels are the active queue. The table is
@@ -65,9 +71,14 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
+As of 2026-08-27 there are 14 open implementation Issues: one `active`, one
+`next`, one `blocked`, and eleven `queued`. Every open Issue has exactly one
+priority label, one status label, and one Phase milestone. Closed Issues are
+historical evidence and must not retain an execution-status label.
+
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Nested disposal-failure catch composition, then arbitrary-join CFG fixed point |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Branch-correlated resource ownership through cleanup/handler joins, then arbitrary-join CFG fixed point |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -735,6 +746,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Join two independently rejecting awaits through a conditional catch recover/rethrow and mandatory finally, dispose an inner async scope before an outer awaited continuation, extend cleanup precedence across containing scopes, and retain reorder/skip/floating/unresolved-label controls.
     - [x] Keep one caught inner async-disposal rejection pending until the enclosing conditional catch recovers or rethrows it, traverse mandatory outer finally, finish remaining outer cleanup exactly once, and reject a handler-bypass fault in Quint.
     - [x] Complete a two-resource inner async disposal stack in reverse order before catch, retain a finite single-versus-suppressed failure kind, route protected body/acquisition failures through the same cleanup chain, and reject premature-handler, lost-suppression, skipped, and reordered controls.
+    - [x] Preserve one finite Boolean `if`/`else` resource choice through branch-local async cleanup and a shared catch/finally join; require acquisition-path and dispose-after-acquire invariants and reject both-branch acquisition, wrong-branch cleanup, skipped cleanup, premature handler entry, and floating rejection.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

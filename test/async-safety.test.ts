@@ -1395,6 +1395,43 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 45_000);
 
+  it("keeps mutually exclusive branch resources correlated through cleanup and catch", () => {
+    const fileName = "examples/dogfood/branch-correlated-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const positive = run(generateUnifiedAsyncQuint(
+      "branch_correlated_cleanup",
+      result,
+      "deliverSelected",
+    ), 30);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["both_branches_acquired", { acquireBothBranches: true }],
+      ["wrong_branch_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `branch_correlated_cleanup_${name}`,
+        result,
+        "deliverSelected",
+        options,
+      ), 30);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const floating = analyzeAsyncSafety("branch-correlated-floating.ts", source.replace(
+      "await primary.send().then(() => undefined);",
+      "primary.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverSelected",
+      kind: "floating-promise",
+    }));
+  }, 60_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void
