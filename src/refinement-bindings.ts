@@ -278,6 +278,7 @@ type PiecewiseAffineLoopDelta =
 const MAX_AFFINE_LOOP_BRANCH_LEAVES = 8;
 const MAX_AFFINE_LOOP_BREAK_UPDATES = 8;
 const MAX_AFFINE_LOOP_BREAK_LEAVES = 8;
+const MAX_AFFINE_LOOP_BOOLEAN_ATOMS = 16;
 
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
@@ -1682,6 +1683,100 @@ function validateRefinementActionBodiesInSource(
           }
           return expression;
         };
+        const predicateAtoms = (expression: TemporalExpression, atoms: TemporalExpression[]): boolean => {
+          if (expression.kind === "boolean") return true;
+          if (expression.kind === "unary" && expression.operator === "not") {
+            return predicateAtoms(expression.operand, atoms);
+          }
+          if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) {
+            return predicateAtoms(expression.left, atoms) && predicateAtoms(expression.right, atoms);
+          }
+          if (expression.kind === "conditional") {
+            return predicateAtoms(expression.condition, atoms)
+              && predicateAtoms(expression.whenTrue, atoms)
+              && predicateAtoms(expression.whenFalse, atoms);
+          }
+          if (!atoms.some((atom) => sameRefinementExpression(atom, expression))) atoms.push(expression);
+          return atoms.length <= MAX_AFFINE_LOOP_BOOLEAN_ATOMS;
+        };
+        const evaluatePredicate = (
+          expression: TemporalExpression,
+          atoms: readonly TemporalExpression[],
+          values: readonly boolean[],
+        ): boolean | undefined => {
+          if (expression.kind === "boolean") return expression.value;
+          if (expression.kind === "unary" && expression.operator === "not") {
+            const operand = evaluatePredicate(expression.operand, atoms, values);
+            return operand === undefined ? undefined : !operand;
+          }
+          if (expression.kind === "binary" && (expression.operator === "and" || expression.operator === "or")) {
+            const left = evaluatePredicate(expression.left, atoms, values);
+            const right = evaluatePredicate(expression.right, atoms, values);
+            if (left === undefined || right === undefined) return undefined;
+            return expression.operator === "and" ? left && right : left || right;
+          }
+          if (expression.kind === "conditional") {
+            const condition = evaluatePredicate(expression.condition, atoms, values);
+            return condition === undefined
+              ? undefined
+              : evaluatePredicate(condition ? expression.whenTrue : expression.whenFalse, atoms, values);
+          }
+          const index = atoms.findIndex((atom) => sameRefinementExpression(atom, expression));
+          return index < 0 ? undefined : values[index];
+        };
+        const predicateEntails = (
+          assumptions: readonly { expression: TemporalExpression; value: boolean }[],
+          goal: TemporalExpression,
+          expected: boolean,
+        ): boolean => {
+          const atoms: TemporalExpression[] = [];
+          if (![...assumptions.map(({ expression }) => expression), goal]
+            .every((expression) => predicateAtoms(expression, atoms))) return false;
+          let sawModel = false;
+          for (let bits = 0; bits < 2 ** atoms.length; bits++) {
+            const values = atoms.map((_, index) => Boolean(bits & (1 << index)));
+            if (!assumptions.every(({ expression, value }) => evaluatePredicate(expression, atoms, values) === value)) continue;
+            sawModel = true;
+            if (evaluatePredicate(goal, atoms, values) !== expected) return false;
+          }
+          return sawModel;
+        };
+        const specializeEntailedConditions = (
+          expression: TemporalExpression,
+          assumptions: readonly { expression: TemporalExpression; value: boolean }[],
+        ): TemporalExpression => {
+          if (expression.kind === "unary") return {
+            ...expression,
+            operand: specializeEntailedConditions(expression.operand, assumptions),
+          };
+          if (expression.kind === "binary") return {
+            ...expression,
+            left: specializeEntailedConditions(expression.left, assumptions),
+            right: specializeEntailedConditions(expression.right, assumptions),
+          };
+          if (expression.kind === "conditional") {
+            if (predicateEntails(assumptions, expression.condition, true)) {
+              return specializeEntailedConditions(expression.whenTrue, [
+                ...assumptions, { expression: expression.condition, value: true },
+              ]);
+            }
+            if (predicateEntails(assumptions, expression.condition, false)) {
+              return specializeEntailedConditions(expression.whenFalse, [
+                ...assumptions, { expression: expression.condition, value: false },
+              ]);
+            }
+            const whenTrue = specializeEntailedConditions(expression.whenTrue, [
+              ...assumptions, { expression: expression.condition, value: true },
+            ]);
+            const whenFalse = specializeEntailedConditions(expression.whenFalse, [
+              ...assumptions, { expression: expression.condition, value: false },
+            ]);
+            return sameRefinementExpression(whenTrue, whenFalse)
+              ? whenTrue
+              : { ...expression, whenTrue, whenFalse };
+          }
+          return expression;
+        };
         const specializedStateUpdate = (name: string, value: boolean): TemporalExpression => {
           const expression = loopUpdates.get(name) ?? { kind: "name", name } as TemporalExpression;
           if (sameRefinementExpression(expression, { kind: "name", name })) return expression;
@@ -1731,9 +1826,10 @@ function validateRefinementActionBodiesInSource(
             }
             return specialized;
           };
-          return value
+          const structurallySpecialized = value
             ? specializeTrueConjunction(expression, breakWhen)
             : specializeFalseDisjunction(expression, breakWhen);
+          return specializeEntailedConditions(structurallySpecialized, [{ expression: breakWhen, value }]);
         };
         const iterationUpdates = hasInvariantEarlyBreak
           ? new Map([...stateNames].map((name) => [name, specializedStateUpdate(name, false)]))

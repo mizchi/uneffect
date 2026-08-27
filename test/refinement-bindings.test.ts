@@ -3115,6 +3115,93 @@ describe("annotated refinement bindings", () => {
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
   });
 
+  it("specializes only entailed facts in a nested Boolean stop tree", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state processed: int
+      state stoppedWeight: int
+      state urgent: bool
+      state sampled: bool
+      state circuitOpen: bool
+      init pending = 0
+      init processed = 0
+      init stoppedWeight = 0
+      init urgent = false
+      init sampled = false
+      init circuitOpen = false
+      action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0)
+    */
+      interface Runtime { pending: number; processed: number; stoppedWeight: number; urgent: boolean; sampled: boolean; circuitOpen: boolean }
+      /* uneffect: refinement nestedStop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement nestedStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement nestedStop@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.urgent) {
+            if (runtime.sampled) {
+              runtime.stoppedWeight += runtime.pending
+              break
+            }
+          }
+          if (runtime.circuitOpen) {
+            runtime.stoppedWeight += 2 * runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.processed += runtime.pending
+        }
+      }
+    `;
+    const temporal = parseSpec("nested-stop.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "nested-stop.ts", source, "nestedStop", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["nested-stop-dynamic-policy.ts", source.replace(
+        "while (runtime.pending > 0) {",
+        "while (runtime.pending > 0) {\n          runtime.urgent = !runtime.urgent",
+      )],
+      ["nested-stop-different-ranking.ts", source.replace(
+        "runtime.stoppedWeight += runtime.pending\n              break",
+        "runtime.stoppedWeight += runtime.pending\n              runtime.pending -= 2\n              break",
+      )],
+      ["nested-stop-unaligned-update.ts", source.replace(
+        "runtime.stoppedWeight += runtime.pending\n              break",
+        "runtime.stoppedWeight += 3 * runtime.pending\n              break",
+      )],
+    ] as const) {
+      const diagnostics = await validateRefinementActionBodiesWithZ3(
+        fileName, changed, "nestedStop", temporal,
+      );
+      expect(diagnostics).not.toEqual([]);
+    }
+
+    const nestedUpdateFixture = (count: number): string => {
+      const flags = Array.from({ length: count - 1 }, (_, index) => `route${index}`);
+      const fields = flags.map((flag) => `${flag}: boolean`).join("; ");
+      const states = flags.map((flag) => `state ${flag}: bool\n      init ${flag} = false`).join("\n      ");
+      const branches = [
+        ...flags.map((flag, index) => `${index === 0 ? "if" : "else if"} (runtime.${flag}) runtime.stoppedWeight += ${index + 1} * runtime.pending`),
+        `else runtime.stoppedWeight += ${count} * runtime.pending`,
+      ].join("\n              ");
+      return source
+        .replace("state circuitOpen: bool", `state circuitOpen: bool\n      ${states}`)
+        .replace("circuitOpen: boolean }", `circuitOpen: boolean; ${fields} }`)
+        .replace("runtime.stoppedWeight += runtime.pending", `{\n              ${branches}\n              }`);
+    };
+    const withinBudget = nestedUpdateFixture(3);
+    expect(validateRefinementActionBodies(
+      "nested-stop-within-budget.ts", withinBudget, "nestedStop",
+      parseSpec("nested-stop-within-budget.ts", withinBudget).temporal,
+    )).not.toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+    const overBudget = nestedUpdateFixture(9);
+    expect(validateRefinementActionBodies(
+      "nested-stop-over-budget.ts", overBudget, "nestedStop",
+      parseSpec("nested-stop-over-budget.ts", overBudget).temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

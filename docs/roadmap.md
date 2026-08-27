@@ -26,7 +26,10 @@ release date commitment.
    an invariant retry/stop policy can instead select continue while sharing the
    same ranking `finally`. A disjunctive invariant stop policy may retain an
    aligned path-wise affine update tree of at most eight leaves; it does not
-   select an arbitrary true disjunct. Differently-counter-changing,
+   select an arbitrary true disjunct. Nested aligned Boolean policies are now
+   handled by bounded propositional entailment over at most 16 invariant atoms,
+   preserving choices that the selected completion path does not determine.
+   Differently-counter-changing,
    cross-state-coupled, non-affine, over-budget, unaligned, and dynamically
    selected outcomes remain open.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)

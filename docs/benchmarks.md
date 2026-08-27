@@ -1442,3 +1442,11 @@ specialization, aligned true-path conditional retention, piecewise affine
 decomposition, and leaf-budget enforcement. Its high variance prevents a
 comparative claim; the eight-leaf acceptance and nine-leaf rejection remain
 unit-test obligations rather than a timing threshold.
+
+After extending that workload to the nested `(urgent && sampled) ||
+circuitOpen` stop policy, a filtered run on 2026-08-27 measured 3.4915 ms mean
+(286.41 operations/second over 144 samples, 6.21% relative margin of error).
+This warm static-analysis benchmark includes bounded propositional entailment
+and aligned conditional-tree retention but excludes parsing and Z3. The result
+is an observation, not a CI budget or a regression claim against the earlier,
+simpler disjunction workload.

@@ -319,6 +319,15 @@ a different ranking-counter delta, cross-state coupling, or a nonlinear stop
 update remains unsupported. The circuit-breaker telemetry dogfood preserves
 these boundaries with a cross-state-coupled negative control.
 
+An eleventh case nests a sampled urgent-stop conjunction under an independent
+circuit-open disjunction. The checker evaluates the bounded Boolean completion
+tree propositionally and specializes only facts entailed by the stop or repeat
+path. It therefore keeps the sampled, urgent, and circuit accounting branches
+correlated instead of selecting one satisfying atom. Dynamic policy writes,
+different ranking steps, model-misaligned updates, more than 16 predicate atoms,
+and a ninth affine update leaf remain non-proofs. The circuit-breaker telemetry
+dogfood now exercises this nested policy.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

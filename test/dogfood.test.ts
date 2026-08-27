@@ -164,7 +164,7 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
-  it("proves path-wise accounting for fatal and circuit-open telemetry stops", async () => {
+  it("proves path-wise accounting for nested sampled-urgent and circuit-open telemetry stops", async () => {
     const fileName = "examples/dogfood/circuit-breaker-telemetry-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;

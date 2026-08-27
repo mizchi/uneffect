@@ -73,9 +73,13 @@ constituents, while false conjunctions are not unsafely decomposed. A
 disjunctive invariant stop condition retains its aligned path-wise affine
 update tree instead of selecting an arbitrary true atom; on the repeating path,
 the false disjunction is safely specialized into false constituent atoms. The
-stopping tree is capped at eight leaves. A different counter delta, a ninth
+same rule accepts nested aligned Boolean completion/update trees over at most
+16 invariant predicate atoms. It enumerates the bounded propositional model and
+specializes only facts entailed by the selected stop or repeat path; unresolved
+choices remain explicit conditional updates. The stopping tree is capped at
+eight affine leaves. A different counter delta, a ninth
 non-counter update or leaf, cross-state-coupled or non-affine break-side
-updates, a mutated or counter-dependent policy, unaligned boolean formulas,
+updates, a mutated or counter-dependent policy, unaligned completion/update trees,
 and dynamically selected completion remain unsupported. This is a closed-form
 affine rule, not a general loop fixed point.
 

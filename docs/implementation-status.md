@@ -143,7 +143,11 @@ same property is proved for arbitrary TypeScript.
   and the continuing path contributes its affine recurrence. Disjunctive
   invariant stop policies are retained as aligned conditional update trees;
   false disjunctions are specialized only on the repeating path, where every
-  constituent is known false. The break-side tree is limited to eight leaves.
+  constituent is known false. Nested Boolean stop policies are also retained
+  when their completion and update trees stay aligned: a bounded propositional
+  check over at most 16 invariant atoms removes only logically entailed choices
+  and preserves every unresolved branch. The break-side tree is limited to
+  eight affine leaves.
   Different counter deltas, a ninth update or leaf, cross-state coupling,
   non-affine updates, unaligned boolean formulas, counter-dependent or mutated
   policies, and dynamic completion selection remain unsupported. Within the

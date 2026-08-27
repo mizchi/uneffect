@@ -904,6 +904,52 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("keeps nested Boolean stop-policy updates aligned with their completion tree", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state processed: int
+       * state stoppedWeight: int
+       * state urgent: bool
+       * state sampled: bool
+       * state circuitOpen: bool
+       * init pending = 0
+       * init processed = 0
+       * init stoppedWeight = 0
+       * init urgent = false
+       * init sampled = false
+       * init circuitOpen = false
+       * action drain: pending' = pending > 0 ? ((urgent && sampled) || circuitOpen ? pending : 0) : pending, processed' = processed + (pending > 0 ? ((urgent && sampled) || circuitOpen ? 0 : pending * (pending - 1) / 2) : 0), stoppedWeight' = stoppedWeight + (pending > 0 ? (urgent ? (sampled ? pending : (circuitOpen ? 2 * pending : 0)) : (circuitOpen ? 2 * pending : 0)) : 0)
+       */
+      interface Runtime { pending: number; processed: number; stoppedWeight: number; urgent: boolean; sampled: boolean; circuitOpen: boolean }
+      /* uneffect: refinement nestedStop@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement nestedStop@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement nestedStop@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.urgent) {
+            if (runtime.sampled) {
+              runtime.stoppedWeight += runtime.pending
+              break
+            }
+          }
+          if (runtime.circuitOpen) {
+            runtime.stoppedWeight += 2 * runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.processed += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("nested-stop.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "nested-stop.ts", source, "nestedStop", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

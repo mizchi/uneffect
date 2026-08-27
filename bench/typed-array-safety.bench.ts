@@ -1127,7 +1127,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("compose disjunctive invariant stop accounting path-wise", () => {
+  bench("compose nested Boolean invariant stop accounting path-wise", () => {
     validateRefinementActionBodies(
       circuitBreakerTelemetryFile,
       circuitBreakerTelemetrySource,
