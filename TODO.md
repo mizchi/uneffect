@@ -39,38 +39,33 @@ Unchecked entries later in this file are historical detail mapped to these
 issues; do not create a second work queue from them. Issue bodies own acceptance
 criteria and the current supported/unsupported boundary.
 
-| Phase | Issue | Area | Depends on | Remaining boundary |
-| --- | --- | --- | --- | --- |
-| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | — | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | #3 CFG representation | One general Promise/exception/disposal CFG fixed point |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
-| 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #3, #20 | Exact ESM/TLA/external/dynamic initialization semantics |
-| 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
-| 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
-| 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
-| 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #3 alias/CFG work | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
-| 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
-| 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
-| 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
-| 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #3, #9, #10 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #3, #7, #8 | Evidence-gated transformations; general optimization remains unimplemented |
+`Status` is execution state, while `priority:P*` is assurance impact. A queued
+P1 item therefore does not outrank the active P0 proof-boundary slice. Only one
+issue should be `active`; `next` means it is ready to follow that work,
+`blocked` names a concrete dependency, and `queued` is intentionally deferred
+by the phase ordering.
 
-## Current execution order
+| Status | Phase | Issue | Area | Depends on | Remaining boundary |
+| --- | --- | --- | --- | --- | --- |
+| Active | 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | — | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
+| Next | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | #3 CFG representation | One general Promise/exception/disposal CFG fixed point |
+| Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
+| Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #3, #20 | Exact ESM/TLA/external/dynamic initialization semantics |
+| Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
+| Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
+| Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
+| Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #3 alias/CFG work | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
+| Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
+| Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
+| Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #3, #9, #10 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
+| Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #3, #7, #8 | Evidence-gated transformations; general optimization remains unimplemented |
 
-1. [#3](https://github.com/mizchi/uneffect/issues/3): widen the
-   TypeScript-to-model refinement fragment one Red/Green acceptance slice at a
-   time. The next slice must retain an adjacent unsupported negative control
-   and a benchmark.
-2. [#9](https://github.com/mizchi/uneffect/issues/9): reuse the resulting
-   completion/CFG representation to unify Promise rejection, exceptions, and
-   disposal.
-3. [#20](https://github.com/mizchi/uneffect/issues/20) and
-   [#18](https://github.com/mizchi/uneffect/issues/18): carry trustworthy
-   refinement evidence across project and module-initialization boundaries.
-
-Phase 2 and later issues remain intentionally queued behind these proof-boundary
-items. Priority labels express assurance risk, not a promise that every P0 item
-is worked in parallel.
+The active issue is widened one Red/Green acceptance slice at a time. Each slice
+must retain an adjacent unsupported negative control and add a benchmark when
+it expands solver or analysis work. When #3 supplies a reusable completion/CFG
+representation, #9 and #20 are the next independent consumers. Phase 2 and
+later issues remain intentionally queued behind these proof-boundary items.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
