@@ -342,8 +342,17 @@ proves that only the normal predecessor executes the suffix with its own local
 snapshot. The suppressed-batch path in adaptive billing now returns before
 billing and audit state changes, while the normal path retains priority/retry
 accounting. Mutable locals crossing typed throws, `try`/`catch`, switches,
-loops, labels, or standalone nested blocks remain unsupported rather than
-reusing an enclosing snapshot.
+loops, labels, or standalone nested blocks remained unsupported rather than
+reusing an enclosing snapshot in that slice.
+
+A fourteenth case carries an initialized mutable scalar snapshot on a supported
+typed scalar throw into `catch`, while the normally completing predecessor
+continues with its independently updated snapshot. The catch binds the tracked
+throw amount, bills from the throwing snapshot, and returns; the normal path
+bills from its own snapshot. A second positive control joins two throwing arms,
+and an underbilled failure path is rejected. Opaque `Error` payloads,
+catch-side local mutation, rethrow, mutable-local `finally`, switch, loop,
+label, and standalone-block flow remain explicit non-proofs.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

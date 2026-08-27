@@ -174,8 +174,14 @@ same property is proved for arbitrary TypeScript.
   `-=`. For one returning arm, `applyContinuation` now evaluates the normal arm
   with that predecessor's local snapshot instead of the enclosing snapshot;
   the returned arm does not execute the suffix. Throw/exception, switch, loop,
-  labeled-block, and standalone nested-block local joins remain explicit
-  non-proofs pending the general CFG fixed point.
+  labeled-block, and standalone nested-block local joins initially remained
+  explicit non-proofs pending the general CFG fixed point. A subsequent narrow
+  exception slice records the mutable-scalar environment on a supported typed
+  scalar throw edge, starts `catch` from that edge-owned snapshot, and preserves
+  the distinct normally completing `try` snapshot. Two conditional throwing
+  arms use the shared phi contract. Opaque payloads, catch-side local mutation,
+  rethrow, mutable-local `finally`, switch, loop, label, and standalone-block
+  flow remain non-proofs.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

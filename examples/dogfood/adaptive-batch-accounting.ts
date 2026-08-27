@@ -4,12 +4,14 @@
  * state priority: bool
  * state retried: bool
  * state suppressed: bool
+ * state failed: bool
  * init billedUnits = 0
  * init auditRecords = 0
  * init priority = false
  * init retried = false
  * init suppressed = false
- * action record: billedUnits' = suppressed ? billedUnits : billedUnits + (retried ? (priority ? 5 : 4) : (priority ? 2 : 1)), auditRecords' = suppressed ? auditRecords : auditRecords + 1
+ * init failed = false
+ * action record: billedUnits' = suppressed ? billedUnits : billedUnits + (failed ? 4 : (retried ? (priority ? 5 : 4) : (priority ? 2 : 1))), auditRecords' = suppressed ? auditRecords : auditRecords + 1
  */
 
 export interface AdaptiveBatchAccounting {
@@ -18,6 +20,7 @@ export interface AdaptiveBatchAccounting {
   priority: boolean;
   retried: boolean;
   suppressed: boolean;
+  failed: boolean;
 }
 
 /* uneffect: refinement adaptiveBatchAccounting@1 create */
@@ -41,8 +44,18 @@ export function recordAdaptiveBatch(runtime: AdaptiveBatchAccounting): void {
     units = 0;
     return;
   }
-  if (runtime.priority) units = 2;
-  if (runtime.retried) units += 3;
+  try {
+    if (runtime.failed) {
+      units = 2;
+      throw units;
+    }
+    if (runtime.priority) units = 2;
+    if (runtime.retried) units += 3;
+  } catch (failedUnits) {
+    runtime.billedUnits += units + failedUnits;
+    runtime.auditRecords++;
+    return;
+  }
   runtime.billedUnits += units;
   runtime.auditRecords++;
 }

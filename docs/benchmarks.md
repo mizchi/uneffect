@@ -1465,3 +1465,12 @@ relative margin of error) on 2026-08-27. The workload now constructs separate
 return and normal continuation paths and passes only the latter's local
 snapshot into billing. Because the workload changed and variance is high, this
 is an observation rather than a regression claim or CI budget.
+
+After adding a typed scalar failure path whose catch bills from the throwing
+edge's mutable-local snapshot, the filtered workload measured 0.4372 ms mean
+(2,287.04 operations/second over 1,144 samples, 9.08% relative margin of error)
+on 2026-08-27. It now measures distinct normal/throw local environments, catch
+binding, catch return, and the existing suppressed early return. The workload
+changed and excludes Z3, opaque exceptions, rethrows, catch mutation, and
+general exception-aware CFG joins, so this is an observation rather than a
+comparative claim or CI budget.

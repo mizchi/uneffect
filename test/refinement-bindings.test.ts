@@ -3280,6 +3280,78 @@ describe("annotated refinement bindings", () => {
     }));
   });
 
+  it("owns mutable-local snapshots on typed throw and catch edges", async () => {
+    const source = `/* uneffect:
+      state billed: int
+      state audited: int
+      state failed: bool
+      init billed = 0
+      init audited = 0
+      init failed = false
+      action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1
+    */
+      interface Runtime { billed: number; audited: number; failed: boolean }
+      /* uneffect: refinement caughtLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.failed) {
+            units = 2
+            throw units
+          }
+          units = 3
+        } catch (amount) {
+          runtime.billed += units + amount
+          runtime.audited++
+          return
+        }
+        runtime.billed += units
+        runtime.audited++
+      }
+    `;
+    const temporal = parseSpec("caught-local.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "caught-local.ts", source, "caughtLocal", temporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["caught-local-opaque-payload.ts", source.replace("throw units", "throw new Error('failed')")],
+      ["caught-local-catch-write.ts", source.replace(
+        "runtime.billed += units + amount",
+        "units = 5\n          runtime.billed += units + amount",
+      )],
+      ["caught-local-rethrow.ts", source.replace(
+        "runtime.audited++\n          return",
+        "runtime.audited++\n          throw amount",
+      )],
+      ["caught-local-finally-write.ts", source.replace(
+        "          return\n        }\n        runtime.billed",
+        "          return\n        } finally {\n          units = 5\n        }\n        runtime.billed",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "caughtLocal", temporal), fileName).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+    }
+
+    const bothThrow = source
+      .replace(
+        "action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1",
+        "action record: billed' = billed + (failed ? 4 : 6), audited' = audited + 1",
+      )
+      .replace(
+        "          units = 3\n        } catch",
+        "          units = 3\n          throw units\n        } catch",
+      )
+      .replace("        runtime.billed += units\n        runtime.audited++", "");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "caught-local-both-throw.ts", bothThrow, "caughtLocal",
+      parseSpec("caught-local-both-throw.ts", bothThrow).temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

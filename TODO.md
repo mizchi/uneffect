@@ -25,11 +25,12 @@ traceability and map to those issues rather than forming a second active queue.
 
 [#3](https://github.com/mizchi/uneffect/issues/3) remains the active issue. The
 first reusable flow-state seam now joins state and initialized mutable scalar
-locals through normal `if` diamonds and a one-arm early return, with acceptance,
-negative controls, adaptive-billing dogfood, measured benchmarks, and boundary
-documentation. The next slice should carry local environments through a typed
-throw/catch edge; switch, loop, alias, and dispatch boundaries remain explicitly
-unsupported.
+locals through normal `if` diamonds, a one-arm early return, and a supported
+typed scalar throw/catch edge. Throw and normal predecessors retain distinct
+local snapshots, with acceptance, negative controls, adaptive-billing dogfood,
+measured benchmarks, and boundary documentation. The next slice should carry
+edge-owned local environments through mandatory `finally`; switch, loop, alias,
+catch mutation/rethrow, and dispatch boundaries remain explicitly unsupported.
 
 ## Active issue index
 
@@ -353,6 +354,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Generalize invariant stop policies to nested aligned Boolean completion/update trees over at most 16 invariant atoms, specializing only propositionally entailed facts while retaining unresolved choices; keep dynamic/mutated policies, different ranking steps, model-misaligned updates, and over-budget trees as explicit non-proofs.
         - [x] Introduce a shared flow-value phi contract for state and initialized mutable scalar locals, and carry `=`, `+=`, and `-=` assignments through sequential normally completing `if` diamonds; reject uninitialized/`var`/`const` writes, opaque values, and throw/try/switch/loop/labeled local joins.
         - [x] Carry each `if` predecessor's mutable-local snapshot into its own continuation, allowing one arm to return without executing the suffix while the normal arm uses its path-specific local values; retain throw/try/switch/loop/labeled/standalone-block joins as non-proofs.
+        - [x] Carry initialized mutable-scalar snapshots on supported typed scalar throw edges into `catch` while preserving the distinct normally completing `try` snapshot; join two conditional throwing snapshots with the shared phi contract and reject opaque payloads, catch-side local mutation, rethrow, and missing edge evidence.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.

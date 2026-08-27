@@ -1017,6 +1017,46 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("carries distinct mutable-local snapshots through typed throw and normal edges", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * action record: billed' = billed + (failed ? 4 : 3), audited' = audited + 1
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean }
+      /* uneffect: refinement caughtLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement caughtLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement caughtLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.failed) {
+            units = 2
+            throw units
+          }
+          units = 3
+        } catch (amount) {
+          runtime.billed += units + amount
+          runtime.audited++
+          return
+        }
+        runtime.billed += units
+        runtime.audited++
+      }
+    `;
+    const temporal = (parseSpecification("caught-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "caught-local.ts", source, "caughtLocal", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
