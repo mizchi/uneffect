@@ -32,6 +32,7 @@ const boundedDataViewWrites = Array.from({ length: 64 }, (_, index) =>
 const dnsCodecSource = readFileSync(new URL("../examples/dogfood/binary-codec.ts", import.meta.url), "utf8");
 const workerCodecTransferSource = readFileSync(new URL("../examples/dogfood/worker-codec-transfer.ts", import.meta.url), "utf8");
 const telemetryDeliverySource = readFileSync(new URL("../examples/dogfood/telemetry-delivery.ts", import.meta.url), "utf8");
+const targetAwareRetryCleanupSource = readFileSync(new URL("../examples/dogfood/target-aware-retry-cleanup.ts", import.meta.url), "utf8");
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -431,6 +432,10 @@ describe("typed-array static verification", () => {
       },
     });
   }, { time: 500, iterations: 5 });
+
+  bench("retain target-aware retry cleanup completion", () => {
+    analyzeAsyncSafety("target-aware-retry-cleanup.ts", targetAwareRetryCleanupSource);
+  }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {
     const temporal = parseSpec("lease.ts", `/* uneffect:

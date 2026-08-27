@@ -25,21 +25,24 @@ traceability and map to those issues rather than forming a second active queue.
 
 ## Current focus
 
-[#3](https://github.com/mizchi/uneffect/issues/3) remains the sole active issue.
+[#9](https://github.com/mizchi/uneffect/issues/9) is the sole active issue.
 The checked fragment now carries initialized mutable-scalar snapshots through
 the documented branch, switch, bounded-loop, lexical-block, owned-label,
 return, supported scalar throw/catch, and normally completing mandatory
 `finally` paths. Catch-side direct/conditional return and supported scalar
 rethrow keep abrupt snapshots separate from normal catch completion.
 
-The next Red/Green slice is extracting the exception-aware completion summary
-now shared by bounded loops and `try`/`catch`/`finally`, so Issues #9 and #20 can
-consume one explicit CFG contract instead of duplicating control-flow rules.
+The shared completion contract now carries normal/return/throw/break/continue,
+target identity, predicates, payloads, and edge snapshots. Refinement and
+Promise/resource analysis use the same owner test. The next Red/Green slice is
+teaching unified async lowering to consume a statically owned outer-loop
+transfer after cleanup instead of stopping at the new explicit non-proof.
 Cross/nested labels, dynamic
 loops, aliases, opaque throw payloads, and dynamic dispatch remain explicit
 non-proofs. The detailed tested
 fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
-controls live in Issue #3.
+controls live in Issue #9. The completed refinement handoff remains in Issue
+#3; general CFG and dynamic-value successors are #23 and #24.
 
 ## Immediate execution queue
 
@@ -48,10 +51,9 @@ summary work; they are not parallel implementation promises.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Catch-owned transfer slices land, then the reusable exception-aware CFG boundary is documented or remaining gaps are split into independently executable issues. |
-| 2 | [#9](https://github.com/mizchi/uneffect/issues/9) | Promise/rejection/disposal paths consume the shared completion representation without suppressing floating errors. |
-| 3 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
-| 4 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #3 and #20 establish the required control-flow and project-boundary evidence. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Promise/rejection/disposal paths lower statically owned outer-loop transfers from the shared completion representation without suppressing floating errors. |
+| 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
+| 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 ## Active issue index
 
@@ -69,19 +71,20 @@ by the phase ordering.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#3](https://github.com/mizchi/uneffect/issues/3) | Refinement | — | General exception-aware CFGs, abstraction relations, and dynamic dispatch |
-| Next | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | #3 CFG representation | One general Promise/exception/disposal CFG fixed point |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Statically owned outer-loop transfers, then one general Promise/exception/disposal CFG fixed point |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
-| Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #3, #20 | Exact ESM/TLA/external/dynamic initialization semantics |
+| Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
+| Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
-| Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #3 alias/CFG work | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | #23, #24 | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
+| Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Shared completion contract | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
-| Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #3, #9, #10 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
-| Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #3, #7, #8 | Evidence-gated transformations; general optimization remains unimplemented |
+| Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
+| Queued | 4 | [#13](https://github.com/mizchi/uneffect/issues/13) | Optimization | #7, #8, #23, #24 | Evidence-gated transformations; general optimization remains unimplemented |
 
 The active issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
@@ -350,7 +353,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
       - [x] Require Program-backed create/observe parameter and return types to match temporal scalar/nested-record state; reject `any`, `unknown`, optional/missing fields, and scalar-kind mismatches.
       - [x] Match temporal Set/Map state to exact builtin TypeScript collection symbols and compatible element/key/value types; accept transparent aliases while rejecting readonly variants, subclasses, and lookalikes.
       - [x] Canonicalize complete nested-record reconstruction at create/observe boundaries from temporal field types; reject missing, extra, or redirected nested fields.
-      - [ ] Generalize refinement mapping from the currently proven TypeScript fragments to arbitrary adjacent implementation updates and temporal model actions; current dogfood verifies the supported fragments rather than the whole language. ([#3](https://github.com/mizchi/uneffect/issues/3))
+      - [ ] Generalize refinement control flow from the currently proven TypeScript fragments to arbitrary adjacent implementation updates and temporal model actions; current dogfood verifies the supported fragments rather than the whole language. ([#23](https://github.com/mizchi/uneffect/issues/23))
         - [x] Track whole-runtime receiver updates and reads through lexical, non-escaping `const` alias chains; reject `let`, unknown escapes, cycles, member/destructuring aliases, and aliases outside their block.
         - [x] Specialize reviewed local runtime-class method calls through the same whole-runtime `const` alias chains while retaining mutable-alias and recursive-method rejection.
         - [x] Resolve imported runtime classes through Program TypeChecker symbol identity before specializing identifier-named methods; keep syntax-only imports and structural interface lookalikes unsupported.
@@ -393,8 +396,10 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Carry a conditional supported scalar throw and its mutable-local snapshot from mandatory `finally`, overriding prior normal/abrupt completion on the selected path and preserving the payload for an outer catch; reject opaque payloads and finally-owned break/continue/labels.
         - [x] Carry a conditional mutable-local `break` from mandatory `finally`, overriding prior normal/throw completion, consuming its snapshot at the owning bounded-loop boundary, and rejecting finally-owned continue/labels.
         - [x] Carry a conditional mutable-local `continue` from mandatory `finally`, overriding prior normal/throw completion and advancing the owning bounded loop from its snapshot; accept the statically resolved owner label and reject unknown/cross/nested label ownership.
-        - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
-        - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
+        - [x] Extract a shared target-aware completion contract for refinement and Promise/resource flow; retain unresolved handler `break`/`continue` targets, diagnose them, and make unified async lowering fail closed instead of normalizing them to fallthrough.
+        - [ ] Extend action-body refinement beyond bounded finite loops and documented affine summaries to general loop fixed points, arbitrary joins, and explicit proof-budget obligations. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#23](https://github.com/mizchi/uneffect/issues/23))
+        - [ ] Extend action-body refinement from acyclic TypeChecker-resolved helpers to mutable/interprocedural aliases, higher-order values, computed/polymorphic methods, dynamic dispatch, and general abstraction relations. ([#24](https://github.com/mizchi/uneffect/issues/24))
+        - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#24](https://github.com/mizchi/uneffect/issues/24))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
           - [x] Normalize native `Set.has(value)` and `Set.size` predicates to temporal `contains` and `size`, while retaining mismatched members as refinement diagnostics.
           - [x] Normalize TypeChecker-identified builtin `Map.has(key)` to temporal `map.keys().contains(key)` and verify it in the collection-backed lease acceptance adapter.
@@ -409,8 +414,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Resolve immutable local/imported function-declaration predicate values passed to builtin array `every`/`some`, normalize their single-return bodies to collection quantifiers, and reject mutable aliases.
           - [x] Extend quantified predicate-value resolution to immutable exported/local arrow functions and function expressions through `const` alias chains, without widening action/helper dispatch resolution.
           - [x] Resolve function-valued predicate properties from a direct builtin `Object.freeze({...})` registry by TypeChecker identity; reject unfrozen registries and same-named `freeze` lookalikes.
-          - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target. ([#3](https://github.com/mizchi/uneffect/issues/3))
-        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch. ([#3](https://github.com/mizchi/uneffect/issues/3))
+          - [ ] Normalize collection-producing helpers, higher-order predicate values, and polymorphic/dynamic calls without assuming an implementation target. ([#24](https://github.com/mizchi/uneffect/issues/24))
+        - [ ] Extend create/observe refinement beyond identity and complete nested-record projections plus acyclic TypeChecker-resolved wrappers to explicit abstraction relations, non-identity nested collection projections, and dynamic dispatch. ([#24](https://github.com/mizchi/uneffect/issues/24))
           - [x] Add versioned one-to-one top-level field abstraction relations and apply them consistently to create/observe types, action updates, invariant reads, manifests, and builtin Set dogfood.
           - [x] Extend one-to-one abstraction relations to non-overlapping dotted concrete property paths, including nested create reconstruction and Program-backed type traversal.
           - [x] Add a proof-directed `Set(arrayPath)` computed abstraction with builtin `Array.from`/`new Set` boundaries and `push`/`includes` action/invariant refinement.
@@ -424,7 +429,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
           - [x] Refine entry-array value-only `every`/`some` predicates to Map value quantifiers and compare lambda bodies alpha-equivalently.
           - [x] Simplify a same-key entry-array filter-then-push upsert sequence to temporal `Map.put` while retaining different-key removals.
           - [x] Refine exact builtin entry-array `find(entry => entry[0] === key)![1]` reads to guarded temporal `Map.get(key)` without treating `!` as proof evidence.
-          - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters. ([#3](https://github.com/mizchi/uneffect/issues/3))
+          - [ ] Define composable abstraction relations for non-identity nested collections and dynamically dispatched create/observe adapters. ([#24](https://github.com/mizchi/uneffect/issues/24))
   - [x] Detect vacuity, deadlock, and invariants preserved only because the model cannot progress for the documented bounded, finite-state, inductive, and reachable-lasso fragments.
     - [x] Prove that no action is enabled at init, or that enabled initial transitions cannot change temporal state.
     - [x] Find the shortest later reachable deadlock within an explicit Z3 unrolling bound.

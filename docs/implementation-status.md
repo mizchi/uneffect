@@ -291,6 +291,13 @@ same property is proved for arbitrary TypeScript.
 
 ## Async, resources, and event loops
 
+- `completion-flow.ts` defines the shared completion kinds, loop-target identity,
+  concrete conditioned paths, and predicate-joined payload/snapshot summary used
+  by refinement and async safety. Handler-local loops consume only their own
+  break/continue. A transfer to an outer loop remains visible in
+  `completionPaths`, emits `unsupported-control-transfer`, and makes unified
+  Quint lowering refuse the model. The outer-loop transition itself is not yet
+  modeled; this is fail-closed evidence, not a cleanup proof.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

@@ -1623,3 +1623,12 @@ over 333 samples, 10.53% relative margin of error). This high-variance warm
 static-analysis observation excludes parsing and Z3 and is not a CI budget or
 regression claim. Cross/nested labels, dynamic loops, aliases, and the general
 CFG fixed point remain outside the measured fragment.
+
+The target-aware retry-cleanup workload parses a two-attempt async delivery with
+`await using` and retains a finally-owned `continue attempts` that leaves the
+currently modeled handler CFG. A filtered run on 2026-08-27 measured 178.83 ms
+mean (5.592 operations/second over 20 fixed iterations, 5.53% relative margin
+of error). This cold TypeScript-Program analysis includes parsing and type
+checking, but excludes Quint evaluation because lowering deliberately refuses
+the unresolved transfer. It is an observation, not a CI budget or proof of the
+outer retry loop.

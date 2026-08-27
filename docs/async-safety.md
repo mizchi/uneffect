@@ -612,6 +612,13 @@ Zero-iteration `while`, `for`, `for..in`, and `for..of` handler bodies share a
 stable loop-entry choice. The one-step abstraction retains a skipped path and
 normalizes body `break`/`continue` to normal loop completion; `while (true)`
 omits the skipped path and `do..while` executes once.
+Only the exact handler-local owner performs that normalization. A break or
+continue that leaves the modeled handler statement retains a shared
+`CompletionTarget` (`nearest-loop` or a label), emits
+`unsupported-control-transfer`, and causes unified lowering to fail closed.
+The target-aware retry-cleanup dogfood demonstrates this boundary: cleanup is
+not certified by pretending an outer retry is ordinary fallthrough. Modeling a
+statically owned outer loop after cleanup remains open.
 Awaited handler loops additionally receive explicit repeat and exit states, so
 the control graph covers arbitrary finite repetition of their awaited chains.
 Lexical `using` and `await using` declarations in those loops are handler

@@ -70,6 +70,7 @@ const hints: Readonly<Record<string, string>> = {
   "async/invalid-resource-contract": "fix the resource directive so its parameter indices and boolean guards match the declaration",
   "async/disposed-resource-use": "keep the use inside the disposal scope, or extend the scope to cover the alias",
   "async/disposed-resource-escape": "stop the resource from escaping its disposal scope, or hand the caller an owned resource instead",
+  "async/unsupported-control-transfer": "keep break/continue inside the modeled handler loop, or wait for a target-aware outer-loop CFG model",
   "react/render-effect": "move the operation into an event handler or an Effect setup, leaving render replay-safe",
   "react/non-idempotent-render": "derive the value from props/state/context, or read it outside render in an event or Effect",
   "react/immutable-input-mutation": "create a new value instead of mutating a props, state, or context render snapshot",

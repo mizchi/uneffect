@@ -57,7 +57,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 18, 20];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 9, 10, 13, 16, 18, 20, 23, 24];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -73,14 +73,15 @@ describe("TODO hierarchy consistency", () => {
     );
 
     expect(rows).toEqual([
-      ["Active", 1, 3],
-      ["Next", 1, 9],
+      ["Active", 1, 9],
       ["Next", 1, 20],
       ["Blocked", 1, 18],
+      ["Queued", 2, 23],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
+      ["Queued", 3, 24],
       ["Queued", 3, 8],
       ["Queued", 3, 10],
       ["Queued", 3, 7],
@@ -101,10 +102,9 @@ describe("TODO hierarchy consistency", () => {
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
     expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 3],
-      [2, 9],
-      [3, 20],
-      [4, 18],
+      [1, 9],
+      [2, 20],
+      [3, 18],
     ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");

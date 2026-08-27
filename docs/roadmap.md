@@ -9,8 +9,10 @@ release date commitment.
 ## Phase 1 — Make proof boundaries dependable
 
 1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
-   must replace the remaining syntax-fragment walkers with an exception-aware
-   control-flow fixed point. A first unbounded directional affine-loop rule now
+   completed its bounded exception-aware completion handoff. Remaining general
+   CFG fixed points moved to [#23](https://github.com/mizchi/uneffect/issues/23),
+   while alias/higher-order/dynamic abstraction work moved to
+   [#24](https://github.com/mizchi/uneffect/issues/24). A first unbounded directional affine-loop rule now
    derives a closed form from a symbolic loop-entry state and signed constant
    bound without finite expansion, including positive constant step magnitudes,
    exact overshoot in both directions, triangular totals for unit-countdown
@@ -71,10 +73,14 @@ release date commitment.
    Finally-owned break and continue now override their predecessors and are
    consumed at, or advance from, the owning bounded-loop boundary. The
    statically resolved owner label is accepted; cross/nested capture remains a
-   non-proof. Extracting this completion model as the reusable CFG handoff is
-   next before the general fixed point.
+   non-proof. A shared completion contract now carries these kinds, targets,
+   predicates, payloads, and snapshots into Promise/resource analysis. The next
+   handoff slice models a statically owned outer async-loop transfer after
+   cleanup; unresolved ownership already fails closed.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
-   must make rejection handling and disposal guarantees compositional.
+   is active. It must first lower a statically owned outer-loop transfer after
+   mandatory cleanup, then make rejection handling and disposal guarantees
+   compositional without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies

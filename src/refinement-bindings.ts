@@ -6,6 +6,12 @@ import type { TemporalSpec } from "./spec-ir.js";
 import type { TemporalBinaryOperator, TemporalExpression, TemporalValueType } from "./temporal-expressions.js";
 import { formatTemporalValueType, generateRuntimeAssertionExpression, parseTemporalExpression } from "./temporal-expressions.js";
 import { checkTemporalExpressionEquivalenceWithZ3 } from "./spec-lint.js";
+import {
+  isTransferOwnedByLoop,
+  loopTransferTarget,
+  type AbruptCompletion,
+  type CompletionSummary,
+} from "./completion-flow.js";
 
 export type RefinementBindingRole = "create" | "observe" | "action" | "invariant";
 
@@ -910,21 +916,11 @@ function validateRefinementActionBodiesInSource(
     return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
-  type AbruptCompletion = "return" | "throw" | "break" | "continue";
-  type ActionCompletion = "normal" | AbruptCompletion | {
-    kind: "mixed";
-    returnWhen?: TemporalExpression;
-    throwWhen?: TemporalExpression;
-    breakWhen?: TemporalExpression;
-    continueWhen?: TemporalExpression;
-    breakLabels?: ReadonlyMap<string, TemporalExpression>;
-    continueLabels?: ReadonlyMap<string, TemporalExpression>;
-    throwValue?: TemporalExpression;
-    throwLocals?: ReadonlyMap<string, TemporalExpression>;
-    returnLocals?: ReadonlyMap<string, TemporalExpression>;
-    breakLocals?: ReadonlyMap<string, TemporalExpression>;
-    continueLocals?: ReadonlyMap<string, TemporalExpression>;
-  };
+  type ActionCompletion = CompletionSummary<
+    TemporalExpression,
+    TemporalExpression,
+    ReadonlyMap<string, TemporalExpression>
+  >;
   const completionPredicate = (completion: ActionCompletion, abrupt: AbruptCompletion): TemporalExpression => completion === abrupt
     ? { kind: "boolean", value: true }
     : completion === "normal" || typeof completion === "string" ? { kind: "boolean", value: false }
@@ -1767,8 +1763,10 @@ function validateRefinementActionBodiesInSource(
         return "throw";
       }
       if (ts.isBreakStatement(statement)) {
-        const ownedLabeledBreak = !!statement.label && statement.label.text === ownedBreakLabel;
-        if (statement.label && statement.label.text !== ownedBreakLabel) {
+        const target = loopTransferTarget(statement.label?.text);
+        const ownedBreak = isTransferOwnedByLoop({ completion: "break", target }, ownedBreakLabel);
+        const ownedLabeledBreak = statement.label !== undefined && ownedBreak;
+        if (statement.label && !ownedBreak) {
           if (!activeBreakLabels.has(statement.label.text)) return undefined;
           return makeCompletion(
             { kind: "boolean", value: false },
@@ -1794,7 +1792,9 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isContinueStatement(statement)) {
-        if (statement.label && statement.label.text !== ownedContinueLabel) {
+        const target = loopTransferTarget(statement.label?.text);
+        const ownedContinue = isTransferOwnedByLoop({ completion: "continue", target }, ownedContinueLabel);
+        if (statement.label && !ownedContinue) {
           if (!activeContinueLabels.has(statement.label.text)) return undefined;
           return makeCompletion(
             { kind: "boolean", value: false },

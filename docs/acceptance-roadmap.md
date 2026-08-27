@@ -666,6 +666,14 @@ async disposal. Replacing the mandatory assignment with a one-branch clear
 retains `disposed-resource-use`; arbitrary loop-carried alias relations remain
 outside this finite must-clear summary.
 
+The shared completion-CFG acceptance path combines `await using`, awaited
+delivery, mandatory `finally`, and a labeled outer retry loop. Promise/resource
+analysis retains `continue attempts` with label identity, reports
+`unsupported-control-transfer`, and unified Quint lowering refuses to treat the
+edge as normal fallthrough. An adjacent handler-local awaited loop consumes its
+own unlabeled continue and remains lowerable. This establishes a reusable,
+fail-closed handoff; it does not yet model the outer retry transition.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with

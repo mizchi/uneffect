@@ -3061,6 +3061,67 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("keeps target-aware completion edges when Promise and resource flow leaves a handler", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const source = `
+      interface Session { [Symbol.asyncDispose](): Promise<void> }
+      declare function open(): Promise<Session>
+      declare function deliver(session: Session): Promise<void>
+      async function run(retry: boolean) {
+        attempts: for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            await using session = await open()
+            await deliver(session)
+          } finally {
+            if (retry) continue attempts
+          }
+        }
+      }
+    `;
+    const result = analyzeAsync("target-aware-completion.ts", source) as {
+      controlStatements: Array<{
+        completionPaths: Array<{
+          completion: string;
+          target?: { kind: string; label?: string };
+        }>;
+      }>;
+      diagnostics: Array<{ functionName: string; kind: string }>;
+    };
+    expect(result.controlStatements[0]?.completionPaths).toContainEqual(expect.objectContaining({
+      completion: "continue",
+      target: { kind: "label", label: "attempts" },
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "run",
+      kind: "unsupported-control-transfer",
+    }));
+    expect(() => generateUnified("target_aware_completion", result, "run")).toThrow(
+      /continue attempts leaves the modeled handler CFG/,
+    );
+
+    const ownedSource = `
+      async function run(retry: boolean) {
+        try {
+          await new Promise<string>((resolve) => resolve("try")).then(() => { throw new Error("retry") })
+        } finally {
+          while (retry) {
+            await Promise.resolve("tick").then(value => value)
+            continue
+          }
+        }
+      }
+    `;
+    const owned = analyzeAsync("owned-handler-completion.ts", ownedSource) as typeof result;
+    expect(owned.controlStatements[0]?.completionPaths).not.toContainEqual(expect.objectContaining({
+      completion: "continue",
+    }));
+    expect(owned.diagnostics).not.toContainEqual(expect.objectContaining({
+      kind: "unsupported-control-transfer",
+    }));
+    expect(() => generateUnified("owned_handler_completion", owned, "run")).not.toThrow();
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

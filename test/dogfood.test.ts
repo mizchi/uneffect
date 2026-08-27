@@ -24,6 +24,23 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("retains an outer retry target instead of certifying cleanup by fallthrough", () => {
+    const fileName = "examples/dogfood/target-aware-retry-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.controlStatements[0]?.completionPaths).toContainEqual(expect.objectContaining({
+      completion: "continue",
+      target: { kind: "label", label: "attempts" },
+    }));
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverWithRetry",
+      kind: "unsupported-control-transfer",
+      message: expect.stringContaining("continue attempts leaves the modeled handler CFG"),
+    }));
+    expect(() => generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry"))
+      .toThrow(/refuses to treat it as normal completion/);
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

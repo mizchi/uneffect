@@ -236,6 +236,8 @@ export { analyzePromiseChains, analyzePromiseChainsInProgram, generatePromiseCha
 export type { PromiseChainModel, PromiseChainPattern, PromiseExecutorEvent, PromiseExecutorPattern, PromiseExecutorSettlement, PromiseHandlerReturn, PromiseReactionKind, PromiseReactionPattern, PromiseThenablePattern } from "./promise-chains.js";
 export { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, composeResourceFailures, generateOwnershipObligationQuint, generateOwnershipObligationSmt, generateResourceSafetyQuint, generateUnifiedAsyncQuint } from "./async-safety.js";
 export type { AsyncControlCompletionPath, AsyncControlCondition, AsyncControlEdge, AsyncControlLoop, AsyncControlRegion, AsyncControlStatement, AsyncSafetyDiagnostic, AsyncSafetyOptions, AsyncSafetyResult, OwnershipGuardObligation, PromiseBinding, PromiseObservation, PromiseObservationKind, ResourceAliasEscape, ResourceBinding, ResourceDisposal, ResourceError, ResourceEscape, ResourceExit } from "./async-safety.js";
+export { formatTargetedCompletion, isLoopTransfer, isTransferOwnedByLoop, loopTransferTarget } from "./completion-flow.js";
+export type { AbruptCompletion, CompletionKind, CompletionPath, CompletionSummary, CompletionTarget, LoopTransferKind, PredicateCompletionSummary, TargetedCompletion } from "./completion-flow.js";
 export { resolveDisposalProtocol } from "./disposal-symbols.js";
 export type { ResolvedDisposalProtocol } from "./disposal-symbols.js";
 export { compareUneffectFrontends } from "./frontend-parity.js";

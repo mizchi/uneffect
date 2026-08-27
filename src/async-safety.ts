@@ -5,6 +5,15 @@ import { resolveDisposalProtocol } from "./disposal-symbols.js";
 import { logicToSmt, parseLogicExpression, proveBooleanImplication, type LogicExpression } from "./invariant-ir.js";
 import { analyzePromiseChainsInProgram, type PromiseChainModel } from "./promise-chains.js";
 import { evaluateStaticPrimitive } from "./static-evaluation.js";
+import {
+  formatTargetedCompletion,
+  isLoopTransfer,
+  isTransferOwnedByLoop,
+  loopTransferTarget,
+  type CompletionKind,
+  type CompletionPath,
+  type CompletionTarget,
+} from "./completion-flow.js";
 
 export type PromiseObservationKind = "await" | "return" | "catch" | "then-rejection" | "ignored" | "floating";
 export interface AsyncControlCondition {
@@ -92,7 +101,7 @@ export interface AsyncSafetyDiagnostic {
   fileName: string;
   functionName: string;
   line: number;
-  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "invalid-resource-contract" | "disposed-resource-use" | "disposed-resource-escape";
+  kind: "floating-promise" | "floating-callback-promise" | "invalid-disposable" | "invalid-ownership-contract" | "invalid-resource-contract" | "disposed-resource-use" | "disposed-resource-escape" | "unsupported-control-transfer";
   severity: "error";
   message: string;
   notes?: DiagnosticNote[];
@@ -125,7 +134,7 @@ export interface AsyncControlStatement {
   owner: string;
   region: "catch" | "finally";
   order: number;
-  completion: "normal" | "return" | "throw";
+  completion: CompletionKind;
   completionPaths: AsyncControlCompletionPath[];
   loop?: AsyncControlLoop;
   source: string;
@@ -136,9 +145,9 @@ export interface AsyncControlLoop {
   kind: "while" | "for" | "for-in" | "for-of" | "do-while";
   atLeastOnce: boolean;
 }
-export interface AsyncControlCompletionPath {
+export interface AsyncControlCompletionPath extends CompletionPath<AsyncControlCondition> {
   controlConditions: AsyncControlCondition[];
-  completion: "normal" | "return" | "throw";
+  target?: CompletionTarget;
 }
 export interface OwnershipGuardObligation {
   owner: string;
@@ -1864,7 +1873,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       });
       const completion = (statement: ts.Statement): AsyncControlStatement["completion"] => ts.isReturnStatement(statement) ? "return" : ts.isThrowStatement(statement) ? "throw" : "normal";
       const completionPaths = (statement: ts.Statement): AsyncControlCompletionPath[] => {
-        type InternalCompletionPath = Omit<AsyncControlCompletionPath, "completion"> & { completion: AsyncControlCompletionPath["completion"] | "break" | "continue"; label?: string };
+        type InternalCompletionPath = AsyncControlCompletionPath;
         const executeStatements = (statements: readonly ts.Statement[], initial: AsyncControlCondition[]): InternalCompletionPath[] => {
           let active: AsyncControlCondition[][] = [initial];
           const abrupt: InternalCompletionPath[] = [];
@@ -1881,11 +1890,13 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
         const execute = (current: ts.Statement, conditions: AsyncControlCondition[], attachedLabel?: string): InternalCompletionPath[] => {
           if (ts.isReturnStatement(current)) return [{ controlConditions: conditions, completion: "return" }];
           if (ts.isThrowStatement(current)) return [{ controlConditions: conditions, completion: "throw" }];
-          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break", label: current.label?.text }];
-          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue", label: current.label?.text }];
+          if (ts.isBreakStatement(current)) return [{ controlConditions: conditions, completion: "break", target: loopTransferTarget(current.label?.text) }];
+          if (ts.isContinueStatement(current)) return [{ controlConditions: conditions, completion: "continue", target: loopTransferTarget(current.label?.text) }];
           if (ts.isLabeledStatement(current)) {
             const paths = execute(current.statement, conditions, current.label.text);
-            return paths.map((path) => path.completion === "break" && path.label === current.label.text ? { controlConditions: path.controlConditions, completion: "normal" } : path);
+            return paths.map((path) => path.completion === "break" && isTransferOwnedByLoop(path, current.label.text)
+              ? { controlConditions: path.controlConditions, completion: "normal" }
+              : path);
           }
           if (ts.isBlock(current)) return executeStatements(current.statements, conditions);
           if (ts.isIfStatement(current)) {
@@ -1898,14 +1909,14 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           if (ts.isWhileStatement(current) || ts.isForStatement(current) || ts.isForInStatement(current) || ts.isForOfStatement(current)) {
             const condition = { id: `${owner}@loop:${current.getStart(source)}`, expected: true };
             const body = execute(current.statement, [...conditions, condition]).map((path): InternalCompletionPath => {
-              const consumed = (path.completion === "break" || path.completion === "continue") && (path.label === undefined || path.label === attachedLabel);
+              const consumed = isTransferOwnedByLoop(path, attachedLabel);
               return consumed ? { controlConditions: path.controlConditions, completion: "normal" } : path;
             });
             const definitelyEnters = ts.isWhileStatement(current) && current.expression.kind === ts.SyntaxKind.TrueKeyword;
             return definitelyEnters ? body : [...body, { controlConditions: [...conditions, { ...condition, expected: false }], completion: "normal" }];
           }
           if (ts.isDoStatement(current)) return execute(current.statement, conditions).map((path) => {
-            const consumed = (path.completion === "break" || path.completion === "continue") && (path.label === undefined || path.label === attachedLabel);
+            const consumed = isTransferOwnedByLoop(path, attachedLabel);
             return consumed ? { controlConditions: path.controlConditions, completion: "normal" } : path;
           });
           if (ts.isSwitchStatement(current)) {
@@ -1926,11 +1937,30 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
                 completion: "normal",
               });
             }
-            return selectedPaths.map((path) => path.completion === "break" && (path.label === undefined || path.label === attachedLabel) ? { controlConditions: path.controlConditions, completion: "normal" } : path);
+            return selectedPaths.map((path) => path.completion === "break" && isTransferOwnedByLoop(path, attachedLabel)
+              ? { controlConditions: path.controlConditions, completion: "normal" }
+              : path);
           }
           return [{ controlConditions: conditions, completion: "normal" }];
         };
-        return execute(statement, []).map((path) => ({ ...path, completion: path.completion === "break" || path.completion === "continue" ? "normal" : path.completion }));
+        const paths = execute(statement, []);
+        for (const path of paths) {
+          if (!isLoopTransfer(path.completion)) continue;
+          const formatted = formatTargetedCompletion(path);
+          diagnostics.push({
+            fileName: source.fileName,
+            functionName: owner,
+            line: lineAt(source, statement.getStart(source)),
+            kind: "unsupported-control-transfer",
+            severity: "error",
+            message: `${formatted} leaves the modeled handler CFG`,
+            notes: [{
+              label: "because",
+              detail: "Promise rejection and resource cleanup cannot treat an unresolved loop transfer as normal completion",
+            }],
+          });
+        }
+        return paths;
       };
       const loopOf = (statement: ts.Statement): AsyncControlLoop | undefined => {
         let current = statement;
@@ -2076,6 +2106,13 @@ export function generateResourceSafetyQuint(moduleName: string, result: AsyncSaf
 }
 
 export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafetyResult, owner: string, options: { skipCleanup?: boolean; reuseStaleDisposal?: boolean } = {}): string {
+  const unresolvedTransfer = result.controlStatements
+    .filter((statement) => statement.owner === owner)
+    .flatMap((statement) => statement.completionPaths)
+    .find((path) => isLoopTransfer(path.completion));
+  if (unresolvedTransfer) {
+    throw new Error(`${formatTargetedCompletion(unresolvedTransfer)} leaves the modeled handler CFG; unified async lowering refuses to treat it as normal completion`);
+  }
   const resources = result.resources.filter((item) => item.owner === owner);
   const disposals = result.disposals.filter((item) => item.owner === owner);
   const aliases = result.resourceAliases
