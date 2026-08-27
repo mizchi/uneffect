@@ -1519,12 +1519,12 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       "nested-finally-local-mutation.ts", nestedSource, "nestedFinallyMutation", nestedTemporal,
     )).resolves.toEqual([]);
 
-    const abruptFinally = source.replace(
+    const abruptFinallyThrow = source.replace(
       "runtime.audited += units",
-      "runtime.audited += units\n          if (runtime.mode === 2) return",
+      "runtime.audited += units\n          if (runtime.mode === 2) throw units",
     );
     expect(validateActionsStatically(
-      "finally-local-abrupt.ts", abruptFinally, "finallyMutation", temporal,
+      "finally-local-abrupt.ts", abruptFinallyThrow, "finallyMutation", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));
@@ -1910,6 +1910,69 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     );
     expect(validateActionsStatically(
       "conditional-catch-unknown-continue.ts", unknownLabeledContinue, "catchContinueLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
+  it("keeps a conditional finally-return snapshot separate while overriding prior completion", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state stop: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init stop = false
+       * action record: billed' = failed || stop ? billed : billed + 3, audited' = audited + (failed ? 4 : 3)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
+      /* uneffect: refinement conditionalFinallyReturn@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalFinallyReturn@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalFinallyReturn@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } finally {
+            units += 1
+            if (runtime.stop) return
+          }
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-finally-return.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-finally-return.ts", source, "conditionalFinallyReturn", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongFinallySnapshot = source.replace("units += 1\n            if", "units += 2\n            if");
+    await expect(validateActions(
+      "conditional-finally-return-wrong.ts", wrongFinallySnapshot, "conditionalFinallyReturn", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "audited",
+    }));
+
+    const conditionalFinallyThrow = source.replace(
+      "if (runtime.stop) return", "if (runtime.stop) throw units",
+    );
+    expect(validateActionsStatically(
+      "conditional-finally-throw.ts", conditionalFinallyThrow, "conditionalFinallyReturn", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));

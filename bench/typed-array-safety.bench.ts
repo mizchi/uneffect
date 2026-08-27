@@ -167,6 +167,11 @@ const circuitBreakerBatchAccountingSpec = parseSpec(
 const retryBatchAccountingFile = "examples/dogfood/retry-batch-accounting.ts";
 const retryBatchAccountingSource = readFileSync(retryBatchAccountingFile, "utf8");
 const retryBatchAccountingSpec = parseSpec(retryBatchAccountingFile, retryBatchAccountingSource).temporal;
+const finallyOverrideAccountingFile = "examples/dogfood/finally-override-accounting.ts";
+const finallyOverrideAccountingSource = readFileSync(finallyOverrideAccountingFile, "utf8");
+const finallyOverrideAccountingSpec = parseSpec(
+  finallyOverrideAccountingFile, finallyOverrideAccountingSource,
+).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1195,6 +1200,15 @@ describe("typed-array static verification", () => {
       retryBatchAccountingSource,
       "retryBatchAccounting",
       retryBatchAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("override predecessor completion with a conditional finally return", () => {
+    validateRefinementActionBodies(
+      finallyOverrideAccountingFile,
+      finallyOverrideAccountingSource,
+      "finallyOverrideAccounting",
+      finallyOverrideAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

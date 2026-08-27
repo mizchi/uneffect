@@ -411,6 +411,28 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves explicit shutdown return ownership through nested finally accounting", async () => {
+    const fileName = "examples/dogfood/finally-override-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "finallyOverrideAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "finallyOverrideAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "finallyOverrideAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const overAuditedShutdown = source.replace("units += 1;\n      // This explicitly", "units += 2;\n      // This explicitly");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, overAuditedShutdown, "finallyOverrideAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recordDelivery", target: "auditedUnits",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

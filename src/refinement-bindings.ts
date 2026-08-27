@@ -2641,10 +2641,20 @@ function validateRefinementActionBodiesInSource(
             !name.startsWith("\u0000mutable:")
             && !sameRefinementExpression(joinedBeforeFinallyLocals.get(name)!, finallyLocals.get(name)!));
           if (finallyMutatesVisibleLocal) {
-            if (finallyCompletion !== "normal") return undefined;
-            const replayFinallyLocals = (
+            const finallyReturn = completionPredicate(finallyCompletion, "return");
+            const finallyThrow = completionPredicate(finallyCompletion, "throw");
+            const finallyBreak = completionPredicate(finallyCompletion, "break");
+            const finallyContinue = completionPredicate(finallyCompletion, "continue");
+            // First support only return overrides. Throw/break/continue and
+            // labeled overrides need payload/target-specific edge ownership.
+            if (!isBooleanCompletionPredicate(finallyThrow, false)
+              || !isBooleanCompletionPredicate(finallyBreak, false)
+              || !isBooleanCompletionPredicate(finallyContinue, false)
+              || !isBooleanCompletionPredicate(labeledCompletionPredicate(finallyCompletion), false)) return undefined;
+            const finallyNormal = notCompletionPredicate(finallyReturn);
+            const replayFinally = (
               incoming: ReadonlyMap<string, TemporalExpression>,
-            ): Map<string, TemporalExpression> | undefined => {
+            ): { completion: ActionCompletion; normalLocals: Map<string, TemporalExpression> } | undefined => {
               const replayLocals = new Map(incoming);
               // The joined evaluation above owns state updates. Replays only
               // project the mandatory local transformation onto each incoming
@@ -2656,14 +2666,19 @@ function validateRefinementActionBodiesInSource(
                 activeBreakLabels, activeContinueLabels,
                 allowMutableLoopWrites,
               );
-              return replayCompletion === "normal" ? replayLocals : undefined;
+              if (!replayCompletion
+                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "throw"), false)
+                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "break"), false)
+                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "continue"), false)
+                || !isBooleanCompletionPredicate(labeledCompletionPredicate(replayCompletion), false)) return undefined;
+              return { completion: replayCompletion, normalLocals: replayLocals };
             };
-            const normalAfterFinallyLocals = replayFinallyLocals(normalBeforeFinallyLocals);
-            if (!normalAfterFinallyLocals) return undefined;
+            const normalReplay = replayFinally(normalBeforeFinallyLocals);
+            if (!normalReplay) return undefined;
             const replayEdge = (abrupt: AbruptCompletion): ReadonlyMap<string, TemporalExpression> | undefined => {
               if (isBooleanCompletionPredicate(completionPredicate(residualCompletion, abrupt), false)) return undefined;
               const incoming = completionEdgeLocals(residualCompletion, abrupt);
-              return incoming ? replayFinallyLocals(incoming) : undefined;
+              return incoming ? replayFinally(incoming)?.normalLocals : undefined;
             };
             const throwAfterFinallyLocals = replayEdge("throw");
             const returnAfterFinallyLocals = replayEdge("return");
@@ -2674,8 +2689,8 @@ function validateRefinementActionBodiesInSource(
               || (!isBooleanCompletionPredicate(priorBreak, false) && !breakAfterFinallyLocals)
               || (!isBooleanCompletionPredicate(priorContinue, false) && !continueAfterFinallyLocals)) return undefined;
             localValues.clear();
-            for (const [name, value] of normalAfterFinallyLocals) localValues.set(name, value);
-            residualCompletion = makeCompletion(
+            for (const [name, value] of normalReplay.normalLocals) localValues.set(name, value);
+            const transformedPrior = makeCompletion(
               priorReturn,
               priorThrow,
               completionThrowValue(residualCompletion),
@@ -2687,6 +2702,19 @@ function validateRefinementActionBodiesInSource(
               returnAfterFinallyLocals,
               breakAfterFinallyLocals,
               continueAfterFinallyLocals,
+            );
+            residualCompletion = makeCompletion(
+              orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
+              andCompletionPredicates(finallyNormal, priorThrow),
+              sequenceThrowValue(finallyCompletion, transformedPrior),
+              andCompletionPredicates(finallyNormal, priorBreak),
+              andCompletionPredicates(finallyNormal, priorContinue),
+              mergeCompletionLabels(new Map(), completionLabels(residualCompletion, "break"), finallyNormal),
+              mergeCompletionLabels(new Map(), completionLabels(residualCompletion, "continue"), finallyNormal),
+              sequenceEdgeLocals(finallyCompletion, transformedPrior, "throw"),
+              sequenceEdgeLocals(finallyCompletion, transformedPrior, "return"),
+              sequenceEdgeLocals(finallyCompletion, transformedPrior, "break"),
+              sequenceEdgeLocals(finallyCompletion, transformedPrior, "continue"),
             );
           } else {
             const finallyReturn = completionPredicate(finallyCompletion, "return");

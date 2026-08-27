@@ -1587,3 +1587,12 @@ observation excludes parsing and Z3 and is neither a CI budget nor a comparison
 with the one-iteration break workload. Cross/nested labels, dynamic loops,
 abrupt finally overrides, aliases, and the general CFG fixed point remain
 outside the measured fragment.
+
+The finally-override accounting workload mutates one scalar in an inner
+mandatory `finally`, conditionally returns over a normal or pending throw, and
+lets an outer finally observe the selected snapshot. A filtered run on
+2026-08-27 measured 0.8398 ms mean (1,190.82 operations/second over 596 samples,
+14.27% relative margin of error). This high-variance warm static-analysis
+observation excludes parsing and Z3 and is not a CI budget or regression claim.
+Finally-owned throw/break/continue/labels, aliases, and the general CFG fixed
+point remain outside the measured fragment.
