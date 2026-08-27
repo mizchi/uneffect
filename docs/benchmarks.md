@@ -1804,14 +1804,16 @@ samples, 0.95% relative margin of error). This excludes Program construction,
 filesystem declaration comparison, parent-project loading, and Z3. It is a
 regression baseline for local summary export, including verified action guards;
 it is not a latency claim for an entire solution workspace or evidence that
-guarded indirection, guarded-with-extra-work, collection-valued, or
+helper-local control flow, guarded-with-extra-work, collection-valued, or
 transformed-declaration composition is supported.
 
 The adjacent indirect-composition benchmark starts from a warm parent Program
-and a prevalidated child scalar summary, follows one TypeChecker-resolved local
-function helper, applies its write screen, and verifies the three-declaration
-`callPath`. A filtered run on 2026-08-28 measured 0.0328 ms mean (30,533.79
-operations/second over 15,267 samples, 3.10% relative margin of error). This
+and a prevalidated guarded child scalar summary, follows one TypeChecker-resolved
+local function helper, applies its write screen, and verifies both the
+three-declaration `callPath` and retained guard. A filtered run on 2026-08-28
+measured 0.0378 ms mean (26,435.35 operations/second over 13,218 samples, 6.45%
+relative margin of error). This
 excludes Program construction, child validation, filesystem declaration
 comparison, and parent action revalidation. It is a traversal regression
-baseline, not evidence for guarded, reassigned, cyclic, or deeper helpers.
+baseline, not evidence for helper-local guards/control flow, reassigned, cyclic,
+or deeper helpers.

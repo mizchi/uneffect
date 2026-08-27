@@ -266,9 +266,12 @@ const indirectRefinementDeclarationName = "/bench/indirect-child.d.ts";
 const indirectRefinementParentText = `
   import { increment as incrementChild, type Runtime } from "indirect-child"
   /* uneffect:
+    state armed: bool
     state count: int
+    init armed = true
     init count = 0
     action increment: count' = count + 1
+    action_when increment: armed
   */
   /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
   /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
@@ -276,7 +279,7 @@ const indirectRefinementParentText = `
   /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { apply(runtime) }
 `;
 const indirectRefinementDeclarationText = `declare module "indirect-child" {
-  export interface Runtime { count: number }
+  export interface Runtime { armed: boolean; count: number }
   export function increment(runtime: Runtime): void
 }`;
 const indirectRefinementHost = ts.createCompilerHost(compilerOptions);
@@ -311,6 +314,7 @@ const indirectRefinementCompleted: CompletedRefinementProject = {
   },
   summaries: [{
     adapterName: "counter", version: "1", modelName: "increment", exportName: "increment",
+    guard: { kind: "name", name: "armed" },
     assignments: [{ target: "count", expressionAst: { kind: "binary", operator: "add", left: { kind: "name", name: "count" }, right: { kind: "integer", value: 1n } } }],
     evidence: "verified", sourceFile: "/bench/child.ts",
   }],
@@ -389,7 +393,8 @@ describe("refinement receiver identity", () => {
     const result = composeWorkspaceRefinements(
       indirectRefinementProgram, indirectRefinementCurrent, [indirectRefinementCompleted],
     );
-    if (result.links[0]?.callPath?.length !== 3 || result.blockers.length > 0) {
+    if (result.links[0]?.callPath.length !== 3 || result.links[0]?.guard !== "armed"
+      || result.blockers.length > 0) {
       throw new Error("indirect refinement benchmark fixture did not compose");
     }
   }, { time: 500, iterations: 20 });

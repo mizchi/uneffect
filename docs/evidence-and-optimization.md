@@ -48,10 +48,11 @@ blocked link in `effectComposition`. A separate `refinementComposition` ledger
 links the documented direct scalar action fragment only after local child
 validation, exact declaration matching, and parent-action revalidation. A
 guarded action is accepted only through a sole direct wrapper call and records
-the inherited guard; extra wrapper work prevents guard inheritance. One
-unguarded call may cross one TypeChecker-resolved, write-screened local function
-helper, and the evidence link retains its complete `callPath`. Guarded or deeper
-indirection remains unsupported.
+the inherited guard; extra wrapper work prevents guard inheritance. One call
+may cross one TypeChecker-resolved, write-screened local function helper whose
+body is exactly that call. The evidence link retains its complete `callPath`
+and any child guard. Deeper indirection and helper-local control flow remain
+unsupported.
 It does not link solver obligations, cross-project invariants, ownership, or
 temporal evidence. Supported parameter, exported
 closure/module, same-realm global, and bounded iterator Effect substitutions are

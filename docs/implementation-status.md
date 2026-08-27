@@ -76,6 +76,10 @@ same property is proved for arbitrary TypeScript.
   write-screened source-local function helper. The link records the complete
   three-declaration `callPath`; reassignment, recursion, a second helper level,
   and semantically visible helper updates fail closed.
+- The same sole-call helper may carry a guarded child action. The helper
+  declaration is bound to the exact child contract, so guard identity reaches
+  parent revalidation; helper-local guards, extra work, and conditional
+  invocation remain rejected.
 - The linter detects syntactic and solver-level constant properties,
   contradictory initial constraints, globally impossible guards, duplicate or
   subsumed properties, bounded unreachability, and several inductively proved

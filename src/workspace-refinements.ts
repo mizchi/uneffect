@@ -137,8 +137,12 @@ export function composeWorkspaceRefinements(
     for (const statement of source.statements) {
       if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.body
         || !actionExports.has(statement.name.text)) continue;
-      const visit = (node: ts.Node, callPath: readonly string[], activeHelpers: ReadonlySet<string>): void => {
-        if (ts.isFunctionLike(node) && node !== statement) return;
+      const visit = (
+        node: ts.Node,
+        callPath: readonly string[],
+        activeHelpers: ReadonlySet<string>,
+      ): ExternalRefinementActionContract | undefined => {
+        if (ts.isFunctionLike(node) && node !== statement) return undefined;
         if (ts.isCallExpression(node)) {
           const declaration = callDeclaration(checker, node);
           if (declaration) {
@@ -146,6 +150,7 @@ export function composeWorkspaceRefinements(
             const owner = completed.find((candidate) => ownsDeclaration(candidate, declarationSource.fileName));
             if (owner) {
               const key = declarationKey(declaration);
+              let contract = contracts.get(key);
               if (!seen.has(key)) {
                 seen.add(key);
                 const declarationName = (declaration as ts.NamedDeclaration).name;
@@ -170,7 +175,7 @@ export function composeWorkspaceRefinements(
                   } else if (summary.evidence !== "verified") {
                     reason = summary.reason ?? `${callee} refinement evidence is unknown`;
                   }
-                  const contract: ExternalRefinementActionContract = summary ? {
+                  contract = summary ? {
                     adapterName: summary.adapterName, version: summary.version, modelName: summary.modelName,
                     exportName: summary.exportName, guard: summary.guard, assignments: summary.assignments,
                     evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
@@ -195,7 +200,7 @@ export function composeWorkspaceRefinements(
                   });
                 }
               }
-              return;
+              return contract;
             }
             if (ts.isFunctionDeclaration(declaration) && declaration.body
               && declarationSource === source && declaration.name) {
@@ -206,24 +211,33 @@ export function composeWorkspaceRefinements(
                   kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
                   subject: helperName, message: `local refinement helper ${helperName} is reassigned or cannot be write-screened`,
                 });
-                return;
+                return undefined;
               }
               if (activeHelpers.has(helperKey)) {
                 blockers.push({
                   kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
                   subject: helperName, message: `local refinement helper cycle reaches ${helperName}`,
                 });
-                return;
+                return undefined;
               }
               if (activeHelpers.size >= 2) {
                 blockers.push({
                   kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
                   subject: helperName, message: `local refinement helper depth exceeds the supported single-helper fragment at ${helperName}`,
                 });
-                return;
+                return undefined;
               }
-              visit(declaration.body, [...callPath, helperName], new Set([...activeHelpers, helperKey]));
-              return;
+              const contract = visit(
+                declaration.body,
+                [...callPath, helperName],
+                new Set([...activeHelpers, helperKey]),
+              );
+              if (contract && declaration.body.statements.length === 1
+                && (ts.isExpressionStatement(declaration.body.statements[0]!)
+                  || ts.isReturnStatement(declaration.body.statements[0]!))) {
+                contracts.set(helperKey, contract);
+              }
+              return contract;
             }
             if (declarationSource === source && ts.isVariableDeclaration(declaration)) {
               const helperName = ts.isIdentifier(declaration.name)
@@ -233,11 +247,19 @@ export function composeWorkspaceRefinements(
                 subject: helperName,
                 message: `local refinement helper ${helperName} is reassigned or cannot be write-screened as a function declaration`,
               });
-              return;
+              return undefined;
             }
           }
         }
-        ts.forEachChild(node, (child) => visit(child, callPath, activeHelpers));
+        let resolved: ExternalRefinementActionContract | undefined;
+        let ambiguous = false;
+        ts.forEachChild(node, (child) => {
+          const childContract = visit(child, callPath, activeHelpers);
+          if (!childContract) return;
+          if (resolved && resolved !== childContract) ambiguous = true;
+          else resolved = childContract;
+        });
+        return ambiguous ? undefined : resolved;
       };
       visit(statement.body, [statement.name.text], new Set([declarationKey(statement)]));
     }

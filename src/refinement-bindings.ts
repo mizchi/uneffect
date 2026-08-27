@@ -947,7 +947,7 @@ function validateRefinementActionBodiesInSource(
     if (!ts.isIdentifier(expression.expression) && !ts.isPropertyAccessExpression(expression.expression)) return undefined;
     const helper = resolveFunction(expression.expression);
     const helperSource = helper?.getSourceFile();
-    if (!helper || helper.body || !helperSource || helper.parameters.length !== 1) return undefined;
+    if (!helper || !helperSource || helper.parameters.length !== 1) return undefined;
     const external = options.externalActions?.get(`${helperSource.fileName}:${helper.getStart(helperSource)}`);
     if (!external || external.evidence !== "verified" || external.adapterName !== adapterName
       || external.version !== manifest.version) return undefined;

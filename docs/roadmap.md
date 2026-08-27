@@ -48,9 +48,9 @@ commitment.
    refinement action now composes across an exact declaration boundary with
    producer/consumer provenance and parent revalidation. A guarded child action
    composes only through a sole direct wrapper call and records its inherited
-   guard. One unguarded edge may cross one TypeChecker-resolved, write-screened
-   source-local function helper while retaining its call path. Guarded or
-   deeper indirection, collection edges, guarded wrappers with extra work,
+   guard. One edge may cross one TypeChecker-resolved, write-screened
+   source-local sole-call helper while retaining its call path and child guard.
+   Deeper indirection, helper-local control flow, collection edges, guarded wrappers with extra work,
    realms, and non-identical
    declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion

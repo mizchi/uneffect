@@ -136,9 +136,10 @@ from an annotated parent action and records compiler/config/declaration
 provenance in `refinementComposition`. An unguarded action may be a direct call;
 a guarded action is accepted only when the wrapper body is exactly that call,
 so the verified child guard is the wrapper guard. The child action and its
-create/observe projection must verify locally first. One unguarded call may pass
-through one write-screened source-local function helper; `callPath` records the
-three declarations. Guarded indirect calls, deeper/reassigned/cyclic helpers,
+create/observe projection must verify locally first. One call may pass through
+one write-screened source-local function helper when the helper body is exactly
+that call; `callPath` records the three declarations and a guarded child retains
+its `guard`. Deeper/reassigned/cyclic helpers,
 wrappers with additional work that try to inherit a guard, collection-valued updates,
 abstraction transforms, and non-exact declarations remain explicit non-proofs.
 It does not compose the other proof domains. A ledger with no accepted link and
