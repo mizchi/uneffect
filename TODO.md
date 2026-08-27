@@ -7,11 +7,13 @@ in `docs/implementation-status.md` and classified by confidence in
 `docs/feature-matrix.md`. Unfinished work is tracked in GitHub Issues and
 prioritized in `docs/roadmap.md`; unchecked entries below are retained for
 traceability and map to those issues rather than forming a second active queue.
+Remaining volume and estimate assumptions are maintained in
+`docs/remaining-work-estimate.md`.
 
 ## Status convention
 
-- GitHub Issues, milestones, and priority labels describe the state of `main`
-  and are the source of truth for unfinished work.
+- GitHub Issues, milestones, priority labels, status labels, and effort labels
+  describe the state of `main` and are the source of truth for unfinished work.
 - This file records completed implementation history and links every unchecked
   item to exactly one owning Issue. An unchecked item without an Issue link is
   a bookkeeping error.
@@ -82,8 +84,9 @@ by the phase ordering.
 
 As of 2026-08-28 there are 14 open implementation Issues: one `active`, one
 `next`, one `blocked`, and eleven `queued`. Every open Issue has exactly one
-priority label, one status label, and one Phase milestone. Closed Issues are
-historical evidence and must not retain an execution-status label.
+priority label, one status label, one effort label, and one Phase milestone.
+Closed Issues are historical evidence and must not retain an execution-status
+label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
