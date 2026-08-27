@@ -435,6 +435,17 @@ across cancellation, recovered failure, and every normal billing mode; removing
 it produces a model mismatch. Abrupt catch mutation, mutable-local rethrow,
 abrupt finally overrides, alias escape, and general CFG joins remain open.
 
+A twenty-second case starts `catch` from a typed throw's mutable-local snapshot,
+adds the caught scalar, and returns directly. The projected value remains owned
+by that return edge, so an enclosing mandatory `finally` audits four units on
+failure while the normal predecessor audits and bills two. A deliberately
+wrong catch increment is rejected by Z3, and replacing the return with a
+mutable-local rethrow remains an explicit non-proof. Adaptive batch accounting
+now audits failed batches through this edge without billing them; an injected
+failure-side billing write produces an action mismatch. Conditional catch
+return, break/continue/label transfer, alias escape, and mutable-local rethrow
+remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

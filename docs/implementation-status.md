@@ -182,8 +182,11 @@ same property is proved for arbitrary TypeScript.
   arms use the shared phi contract. A following narrow extension lets a
   normally completing catch update outer-visible mutable scalars, projects out
   its catch binding, and joins the caught result with the normal try snapshot
-  before the common continuation. Catch mutation followed by return, rethrow,
-  or another abrupt completion remains a non-proof. Opaque payloads and
+  before the common continuation. A direct catch return may now retain that
+  projected mutation on its return edge, including through an enclosing
+  mandatory `finally`; the normal try predecessor remains distinct and alone
+  reaches the suffix. Catch mutation followed by rethrow, break/continue/label
+  transfer, or conditional return remains a non-proof. Opaque payloads and
   mutable-local rethrow also remain non-proofs. A mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported

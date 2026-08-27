@@ -209,6 +209,16 @@ describe("Uneffect dogfood", () => {
       code: "action-update-mismatch", modelName: "record",
     }));
 
+    const billedFailure = source.replace(
+      "return; // failed batches are audited in finally but never billed",
+      "runtime.billedUnits += units;\n    return; // incorrectly bill the failed batch",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, billedFailure, "adaptiveBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "billedUnits",
+    }));
+
     const underAuditedFailure = source.replace("runtime.auditedUnits += units", "runtime.auditedUnits += 1");
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, underAuditedFailure, "adaptiveBatchAccounting", temporal,

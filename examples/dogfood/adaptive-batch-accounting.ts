@@ -11,7 +11,7 @@
  * init suppressed = false
  * init failed = false
  * init cancelled = false
- * action record: billedUnits' = suppressed || cancelled ? billedUnits : billedUnits + (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 2 : (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))))
+ * action record: billedUnits' = suppressed || cancelled || failed ? billedUnits : billedUnits + (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 2 : (failed ? 5 : (billingMode === 0 ? 2 : (billingMode === 1 ? 3 : (billingMode === 2 ? 6 : 5)))))
  */
 
 export interface AdaptiveBatchAccounting {
@@ -68,6 +68,7 @@ export function recordAdaptiveBatch(runtime: AdaptiveBatchAccounting): void {
     }
   } catch (failedUnits) {
     units += failedUnits;
+    return; // failed batches are audited in finally but never billed
   } finally {
     units += 1; // common per-attempt overhead on normal, return, and recovered throw paths
     runtime.auditedUnits += units;

@@ -50,12 +50,14 @@ release date commitment.
    Statically owned labeled blocks and bounded `for`/literal-`for...of` owner
    labels now preserve and consume their own mutable-local transfer snapshots.
    A normally completing catch can now mutate outer-visible scalars and join
-   them with the normal try predecessor before the common continuation. The
-   A normally completing mandatory finally can now mutate the joined local map;
+   them with the normal try predecessor before the common continuation. A catch
+   that returns directly after such a mutation carries its projected snapshot
+   through an enclosing mandatory finally without executing the suffix. A
+   normally completing mandatory finally can now mutate the joined local map;
    the same transformation is replayed over each incoming completion snapshot
-   before it survives to an outer finally or continuation. The next step is
-   abrupt catch-side mutation and mutable-local rethrow before the general CFG
-   fixed point.
+   before it survives to an outer finally or continuation. The next step is a
+   mutable-local rethrow, followed by conditional catch completion, before the
+   general CFG fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

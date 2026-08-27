@@ -1520,6 +1520,16 @@ this is an observation rather than a comparative claim or CI budget. It
 excludes Z3, abrupt finally overrides, mutable-local rethrow, and general CFG
 fixed points.
 
+After changing the typed-failure recovery to return directly after updating its
+mutable charge, the same filtered workload measured 1.5564 ms mean (642.51
+operations/second over 322 samples, 2.82% relative margin of error) on
+2026-08-27. The benchmark now projects the catch-owned local snapshot onto a
+return edge, observes it in mandatory `finally`, and excludes that path from
+the billing continuation. The workload changed, so this is an observation and
+not a regression claim or CI budget. It excludes Z3, mutable-local rethrow,
+conditional catch completion, abrupt finally overrides, and general CFG fixed
+points.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink

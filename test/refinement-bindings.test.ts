@@ -3320,12 +3320,18 @@ describe("annotated refinement bindings", () => {
       "caught-local.ts", source, "caughtLocal", temporal,
     )).resolves.toEqual([]);
 
+    const catchWrite = source.replace(
+      "runtime.billed += units + amount",
+      "units = 5\n          runtime.billed += units + amount",
+    );
+    expect(validateRefinementActionBodies(
+      "caught-local-catch-write.ts", catchWrite, "caughtLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
     for (const [fileName, changed] of [
       ["caught-local-opaque-payload.ts", source.replace("throw units", "throw new Error('failed')")],
-      ["caught-local-catch-write.ts", source.replace(
-        "runtime.billed += units + amount",
-        "units = 5\n          runtime.billed += units + amount",
-      )],
       ["caught-local-rethrow.ts", source.replace(
         "runtime.audited++\n          return",
         "runtime.audited++\n          throw amount",

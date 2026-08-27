@@ -2482,7 +2482,14 @@ function validateRefinementActionBodiesInSource(
             const catchMutatesVisibleLocal = hasMutableCatchLocals && catchVisibleNames.some((name) =>
               !name.startsWith("\u0000mutable:")
               && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
-            if (catchCompletion !== "normal" && catchMutatesVisibleLocal) return undefined;
+            const catchHasUnsupportedMutableAbrupt = !isBooleanCompletionPredicate(
+              completionPredicate(catchCompletion, "throw"), false,
+            ) || !isBooleanCompletionPredicate(
+              completionPredicate(catchCompletion, "break"), false,
+            ) || !isBooleanCompletionPredicate(
+              completionPredicate(catchCompletion, "continue"), false,
+            ) || !isBooleanCompletionPredicate(labeledCompletionPredicate(catchCompletion), false);
+            if (catchMutatesVisibleLocal && catchHasUnsupportedMutableAbrupt) return undefined;
             if (!isBooleanCompletionPredicate(completionPredicate(catchCompletion, "throw"), false)
               && [...catchLocals.keys()].some((name) => name.startsWith("\u0000mutable:"))) return undefined;
             if (catchCompletion === "normal" && projectedCatchLocals) {
@@ -2498,7 +2505,13 @@ function validateRefinementActionBodiesInSource(
             const tryReturnWhen = completionPredicate(tryCompletion, "return");
             const catchReturnWhen = completionPredicate(catchCompletion, "return");
             const tryReturnLocals = completionReturnLocals(tryCompletion);
-            const catchReturnLocals = completionReturnLocals(catchCompletion);
+            const rawCatchReturnLocals = completionReturnLocals(catchCompletion);
+            const catchReturnLocals = hasMutableCatchLocals && rawCatchReturnLocals
+              ? projectLocalSnapshot(rawCatchReturnLocals, catchVisibleNames)
+              : rawCatchReturnLocals;
+            if (hasMutableCatchLocals
+              && !isBooleanCompletionPredicate(catchReturnWhen, false)
+              && !catchReturnLocals) return undefined;
             const residualReturnLocals = isBooleanCompletionPredicate(tryReturnWhen, false)
               ? catchReturnLocals
               : isBooleanCompletionPredicate(catchReturnWhen, false)

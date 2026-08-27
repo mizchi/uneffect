@@ -1530,6 +1530,63 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("carries a catch-side mutable-local update onto a direct-return edge", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * action record: billed' = failed ? billed : billed + 2, audited' = audited + (failed ? 4 : 2)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean }
+      /* uneffect: refinement catchReturnLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement catchReturnLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement catchReturnLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.failed) {
+            units += 2
+            throw 1
+          }
+          units += 1
+        } catch (reason) {
+          units += reason
+          return
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "catch-return-local.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "catch-return-local.ts", source, "catchReturnLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongReturnSnapshot = source.replace("units += reason", "units += reason + 1");
+    await expect(validateActions(
+      "catch-return-local-wrong.ts", wrongReturnSnapshot, "catchReturnLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const rethrow = source.replace("return\n        } finally", "throw reason\n        } finally");
+    expect(validateActionsStatically(
+      "catch-return-local-rethrow.ts", rethrow, "catchReturnLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");
