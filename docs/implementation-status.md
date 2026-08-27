@@ -180,8 +180,13 @@ same property is proved for arbitrary TypeScript.
   scalar throw edge, starts `catch` from that edge-owned snapshot, and preserves
   the distinct normally completing `try` snapshot. Two conditional throwing
   arms use the shared phi contract. Opaque payloads, catch-side local mutation,
-  rethrow, mutable-local `finally`, switch, loop, label, and standalone-block
-  flow remain non-proofs.
+  and rethrow remain non-proofs. A mandatory-`finally` extension records direct
+  return snapshots as well, projects catch-local environments to bindings
+  visible outside the protected region, and joins normal, return, and supported
+  typed throw/catch-return predecessors before evaluating finally state writes.
+  `try/finally` without `catch` also preserves its normal local environment.
+  Finally-local mutation, switch, loop, label, and standalone-block flow remain
+  non-proofs.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

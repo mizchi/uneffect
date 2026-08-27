@@ -921,6 +921,7 @@ function validateRefinementActionBodiesInSource(
     continueLabels?: ReadonlyMap<string, TemporalExpression>;
     throwValue?: TemporalExpression;
     throwLocals?: ReadonlyMap<string, TemporalExpression>;
+    returnLocals?: ReadonlyMap<string, TemporalExpression>;
   };
   const completionPredicate = (completion: ActionCompletion, abrupt: AbruptCompletion): TemporalExpression => completion === abrupt
     ? { kind: "boolean", value: true }
@@ -933,6 +934,8 @@ function validateRefinementActionBodiesInSource(
     typeof completion === "object" ? completion.throwValue : undefined;
   const completionThrowLocals = (completion: ActionCompletion): ReadonlyMap<string, TemporalExpression> | undefined =>
     typeof completion === "object" ? completion.throwLocals : undefined;
+  const completionReturnLocals = (completion: ActionCompletion): ReadonlyMap<string, TemporalExpression> | undefined =>
+    typeof completion === "object" ? completion.returnLocals : undefined;
   const completionLabels = (
     completion: ActionCompletion,
     kind: "break" | "continue",
@@ -1006,6 +1009,7 @@ function validateRefinementActionBodiesInSource(
     breakLabels: ReadonlyMap<string, TemporalExpression> = new Map(),
     continueLabels: ReadonlyMap<string, TemporalExpression> = new Map(),
     throwLocals?: ReadonlyMap<string, TemporalExpression>,
+    returnLocals?: ReadonlyMap<string, TemporalExpression>,
   ): ActionCompletion => {
     const noReturn = isBooleanCompletionPredicate(returnWhen, false);
     const noThrow = isBooleanCompletionPredicate(throwWhen, false);
@@ -1014,7 +1018,7 @@ function validateRefinementActionBodiesInSource(
     const noBreakLabels = breakLabels.size === 0;
     const noContinueLabels = continueLabels.size === 0;
     if (noReturn && noThrow && noBreak && noContinue && noBreakLabels && noContinueLabels) return "normal";
-    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak && noContinue && noBreakLabels && noContinueLabels) return "return";
+    if (isBooleanCompletionPredicate(returnWhen, true) && noThrow && noBreak && noContinue && noBreakLabels && noContinueLabels && !returnLocals) return "return";
     if (isBooleanCompletionPredicate(throwWhen, true) && noReturn && noBreak && noContinue && noBreakLabels && noContinueLabels && !throwValue && !throwLocals) return "throw";
     if (isBooleanCompletionPredicate(breakWhen, true) && noReturn && noThrow && noContinue && noBreakLabels && noContinueLabels) return "break";
     if (isBooleanCompletionPredicate(continueWhen, true) && noReturn && noThrow && noBreak && noBreakLabels && noContinueLabels) return "continue";
@@ -1028,6 +1032,7 @@ function validateRefinementActionBodiesInSource(
       ...(noContinueLabels ? {} : { continueLabels }),
       ...(throwValue ? { throwValue } : {}),
       ...(throwLocals ? { throwLocals } : {}),
+      ...(returnLocals ? { returnLocals } : {}),
     };
   };
   const joinCompletionPredicate = (condition: TemporalExpression, whenTrue: TemporalExpression, whenFalse: TemporalExpression): TemporalExpression => {
@@ -1052,30 +1057,68 @@ function validateRefinementActionBodiesInSource(
       ? trueValue
       : joinCompletionPredicate(condition, trueValue, falseValue);
   };
-  const joinThrowLocals = (
+  const completionEdgeLocals = (
+    completion: ActionCompletion,
+    abrupt: "return" | "throw",
+  ): ReadonlyMap<string, TemporalExpression> | undefined => abrupt === "return"
+    ? completionReturnLocals(completion) : completionThrowLocals(completion);
+  const joinLocalSnapshots = (
     condition: TemporalExpression,
-    whenTrue: ActionCompletion,
-    whenFalse: ActionCompletion,
+    whenTrue: ReadonlyMap<string, TemporalExpression>,
+    whenFalse: ReadonlyMap<string, TemporalExpression>,
   ): ReadonlyMap<string, TemporalExpression> | undefined => {
-    const trueThrows = completionPredicate(whenTrue, "throw");
-    const falseThrows = completionPredicate(whenFalse, "throw");
-    if (isBooleanCompletionPredicate(trueThrows, false)) return completionThrowLocals(whenFalse);
-    if (isBooleanCompletionPredicate(falseThrows, false)) return completionThrowLocals(whenTrue);
-    const trueLocals = completionThrowLocals(whenTrue);
-    const falseLocals = completionThrowLocals(whenFalse);
-    if (!trueLocals || !falseLocals || trueLocals.size !== falseLocals.size
-      || [...trueLocals.keys()].some((name) => !falseLocals.has(name))) return undefined;
+    if (whenTrue.size !== whenFalse.size
+      || [...whenTrue.keys()].some((name) => !whenFalse.has(name))) return undefined;
     return joinFlowValues<string, TemporalExpression, TemporalExpression>({
-      keys: trueLocals.keys(),
+      keys: whenTrue.keys(),
       condition,
-      original: (name) => trueLocals.get(name)!,
-      whenTrue: (name) => trueLocals.get(name),
-      whenFalse: (name) => falseLocals.get(name),
+      original: (name) => whenTrue.get(name)!,
+      whenTrue: (name) => whenTrue.get(name),
+      whenFalse: (name) => whenFalse.get(name),
       equivalent: sameRefinementExpression,
       phi: (selected, trueValue, falseValue): TemporalExpression => ({
         kind: "conditional", condition: selected, whenTrue: trueValue, whenFalse: falseValue,
       }),
     });
+  };
+  const projectLocalSnapshot = (
+    snapshot: ReadonlyMap<string, TemporalExpression>,
+    visibleNames: Iterable<string>,
+  ): Map<string, TemporalExpression> | undefined => {
+    const projected = new Map<string, TemporalExpression>();
+    for (const name of visibleNames) {
+      const value = snapshot.get(name);
+      if (!value) return undefined;
+      projected.set(name, value);
+    }
+    return projected;
+  };
+  const joinVisibleLocalSnapshots = (
+    condition: TemporalExpression,
+    whenTrue: ReadonlyMap<string, TemporalExpression>,
+    whenFalse: ReadonlyMap<string, TemporalExpression>,
+    visibleNames: Iterable<string>,
+  ): ReadonlyMap<string, TemporalExpression> | undefined => {
+    const names = [...visibleNames];
+    const trueProjection = projectLocalSnapshot(whenTrue, names);
+    const falseProjection = projectLocalSnapshot(whenFalse, names);
+    return trueProjection && falseProjection
+      ? joinLocalSnapshots(condition, trueProjection, falseProjection)
+      : undefined;
+  };
+  const joinEdgeLocals = (
+    condition: TemporalExpression,
+    abrupt: "return" | "throw",
+    whenTrue: ActionCompletion,
+    whenFalse: ActionCompletion,
+  ): ReadonlyMap<string, TemporalExpression> | undefined => {
+    const trueAbrupt = completionPredicate(whenTrue, abrupt);
+    const falseAbrupt = completionPredicate(whenFalse, abrupt);
+    if (isBooleanCompletionPredicate(trueAbrupt, false)) return completionEdgeLocals(whenFalse, abrupt);
+    if (isBooleanCompletionPredicate(falseAbrupt, false)) return completionEdgeLocals(whenTrue, abrupt);
+    const trueLocals = completionEdgeLocals(whenTrue, abrupt);
+    const falseLocals = completionEdgeLocals(whenFalse, abrupt);
+    return trueLocals && falseLocals ? joinLocalSnapshots(condition, trueLocals, falseLocals) : undefined;
   };
   const sequenceThrowValue = (
     prior: ActionCompletion,
@@ -1093,16 +1136,46 @@ function validateRefinementActionBodiesInSource(
       ? priorValue
       : { kind: "conditional", condition: priorThrows, whenTrue: priorValue, whenFalse: continuedValue };
   };
-  const sequenceThrowLocals = (
+  const sequenceEdgeLocals = (
     prior: ActionCompletion,
     continued: ActionCompletion,
+    abrupt: "return" | "throw",
   ): ReadonlyMap<string, TemporalExpression> | undefined => {
-    const priorThrows = completionPredicate(prior, "throw");
-    const continuedThrows = completionPredicate(continued, "throw");
-    if (isBooleanCompletionPredicate(priorThrows, true)) return completionThrowLocals(prior);
-    if (isBooleanCompletionPredicate(priorThrows, false)) return completionThrowLocals(continued);
-    if (isBooleanCompletionPredicate(continuedThrows, false)) return completionThrowLocals(prior);
-    return undefined;
+    const priorAbrupt = completionPredicate(prior, abrupt);
+    const continuedAbrupt = completionPredicate(continued, abrupt);
+    if (isBooleanCompletionPredicate(priorAbrupt, true)) return completionEdgeLocals(prior, abrupt);
+    if (isBooleanCompletionPredicate(priorAbrupt, false)) return completionEdgeLocals(continued, abrupt);
+    if (isBooleanCompletionPredicate(continuedAbrupt, false)) return completionEdgeLocals(prior, abrupt);
+    const priorLocals = completionEdgeLocals(prior, abrupt);
+    const continuedLocals = completionEdgeLocals(continued, abrupt);
+    return priorLocals && continuedLocals
+      ? joinLocalSnapshots(priorAbrupt, priorLocals, continuedLocals)
+      : undefined;
+  };
+  const joinIncomingCompletionLocals = (
+    completion: ActionCompletion,
+    normalLocals: ReadonlyMap<string, TemporalExpression>,
+  ): Map<string, TemporalExpression> | undefined => {
+    const hasMutableLocals = [...normalLocals.keys()].some((name) => name.startsWith("\u0000mutable:"));
+    if (!hasMutableLocals) return new Map(normalLocals);
+    const unsupportedAbrupt = orCompletionPredicates(
+      orCompletionPredicates(completionPredicate(completion, "break"), completionPredicate(completion, "continue")),
+      labeledCompletionPredicate(completion),
+    );
+    if (!isBooleanCompletionPredicate(unsupportedAbrupt, false)) return undefined;
+    let joined = new Map(normalLocals);
+    for (const abrupt of ["return", "throw"] as const) {
+      const predicate = completionPredicate(completion, abrupt);
+      if (isBooleanCompletionPredicate(predicate, false)) continue;
+      const edgeLocals = completionEdgeLocals(completion, abrupt);
+      if (!edgeLocals) return undefined;
+      const projected = projectLocalSnapshot(edgeLocals, normalLocals.keys());
+      if (!projected) return undefined;
+      const next = joinLocalSnapshots(predicate, projected, joined);
+      if (!next) return undefined;
+      joined = new Map(next);
+    }
+    return joined;
   };
   const maxFiniteExpansionIterations = 256;
   let finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
@@ -1358,6 +1431,9 @@ function validateRefinementActionBodiesInSource(
       }
     };
     const mutableLocalMarker = (name: string): string => `\u0000mutable:${name}`;
+    const mutableLocalSnapshot = (): Map<string, TemporalExpression> | undefined =>
+      [...localValues.keys()].some((name) => name.startsWith("\u0000mutable:"))
+        ? new Map(localValues) : undefined;
     const mergeConditionalLocalValues = (
       condition: TemporalExpression,
       whenTrue: ReadonlyMap<string, TemporalExpression>,
@@ -1423,7 +1499,8 @@ function validateRefinementActionBodiesInSource(
         orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
         mergeCompletionLabels(completionLabels(completion, "break"), completionLabels(continued, "break"), normalWhen),
         mergeCompletionLabels(completionLabels(completion, "continue"), completionLabels(continued, "continue"), normalWhen),
-        sequenceThrowLocals(completion, continued),
+        sequenceEdgeLocals(completion, continued, "throw"),
+        sequenceEdgeLocals(completion, continued, "return"),
       );
     };
     const collectFiniteLoopIterations = (
@@ -1549,7 +1626,17 @@ function validateRefinementActionBodiesInSource(
       const statement = body.statements[statementIndex]!;
       const terminalReturn = ts.isReturnStatement(statement);
       if (terminalReturn && !allowTerminalReturn) return undefined;
-      if (terminalReturn && !statement.expression) return "return";
+      if (terminalReturn && !statement.expression) return makeCompletion(
+        { kind: "boolean", value: true },
+        { kind: "boolean", value: false },
+        undefined,
+        { kind: "boolean", value: false },
+        { kind: "boolean", value: false },
+        new Map(),
+        new Map(),
+        undefined,
+        mutableLocalSnapshot(),
+      );
       if (terminalReturn && !ts.isCallExpression(statement.expression!)) {
         const returned = normalizeRefinementExpression(
           statement.expression!, receiver, substitutions, expressionStateNames, new Map(), new Set(), localValues,
@@ -1558,7 +1645,17 @@ function validateRefinementActionBodiesInSource(
         // Action refinements compare state transitions, not function result values.
         // Still resolve the expression so unsupported/effectful results are not discarded.
         void expandLocalSnapshots(resolveCurrentState(returned));
-        return "return";
+        return makeCompletion(
+          { kind: "boolean", value: true },
+          { kind: "boolean", value: false },
+          undefined,
+          { kind: "boolean", value: false },
+          { kind: "boolean", value: false },
+          new Map(),
+          new Map(),
+          undefined,
+          mutableLocalSnapshot(),
+        );
       }
       if (ts.isThrowStatement(statement)) {
         if (!allowTerminalThrow) return undefined;
@@ -2260,6 +2357,17 @@ function validateRefinementActionBodiesInSource(
               updates.clear();
               for (const [name, value] of caughtUpdates) updates.set(name, value);
             } else mergeConditionalUpdates(throwWhen, caughtUpdates, beforeCatch, beforeCatch);
+            const tryReturnWhen = completionPredicate(tryCompletion, "return");
+            const catchReturnWhen = completionPredicate(catchCompletion, "return");
+            const tryReturnLocals = completionReturnLocals(tryCompletion);
+            const catchReturnLocals = completionReturnLocals(catchCompletion);
+            const residualReturnLocals = isBooleanCompletionPredicate(tryReturnWhen, false)
+              ? catchReturnLocals
+              : isBooleanCompletionPredicate(catchReturnWhen, false)
+                ? tryReturnLocals
+                : tryReturnLocals && catchReturnLocals
+                  ? joinVisibleLocalSnapshots(tryReturnWhen, tryReturnLocals, catchReturnLocals, localValues.keys())
+                  : undefined;
             residualCompletion = makeCompletion(
               orCompletionPredicates(
                 completionPredicate(tryCompletion, "return"),
@@ -2286,19 +2394,23 @@ function validateRefinementActionBodiesInSource(
                 throwWhen,
               ),
               completionThrowLocals(catchCompletion),
+              residualReturnLocals,
             );
           }
           localValues.clear();
           for (const [name, value] of tryLocals) localValues.set(name, value);
         } else {
+          const tryLocals = new Map(localValues);
           const tryCompletion = collect(
             statement.tryBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true,
+            updates, tryLocals, activeCalls, true, true,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
             activeBreakLabels, activeContinueLabels,
           );
           if (!tryCompletion) return undefined;
           residualCompletion = tryCompletion;
+          localValues.clear();
+          for (const [name, value] of tryLocals) localValues.set(name, value);
         }
         if (!statement.finallyBlock) {
           if (residualCompletion === "normal") continue;
@@ -2307,9 +2419,11 @@ function validateRefinementActionBodiesInSource(
           const priorThrow = completionPredicate(residualCompletion, "throw");
           const priorBreak = completionPredicate(residualCompletion, "break");
           const priorContinue = completionPredicate(residualCompletion, "continue");
+          const finallyLocals = joinIncomingCompletionLocals(residualCompletion, localValues);
+          if (!finallyLocals) return undefined;
           const finallyCompletion = collect(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
-            updates, new Map(localValues), activeCalls, true, true,
+            updates, finallyLocals, activeCalls, true, true,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
             activeBreakLabels, activeContinueLabels,
           );
@@ -2340,6 +2454,8 @@ function validateRefinementActionBodiesInSource(
               completionLabels(residualCompletion, "continue"),
               finallyNormal,
             ),
+            sequenceEdgeLocals(finallyCompletion, residualCompletion, "throw"),
+            sequenceEdgeLocals(finallyCompletion, residualCompletion, "return"),
           );
           if (residualCompletion === "normal") continue;
         }
@@ -2374,6 +2490,8 @@ function validateRefinementActionBodiesInSource(
           orCompletionPredicates(priorContinue, andCompletionPredicates(normalWhen, completionPredicate(continued, "continue"))),
           mergeCompletionLabels(completionLabels(residualCompletion, "break"), completionLabels(continued, "break"), normalWhen),
           mergeCompletionLabels(completionLabels(residualCompletion, "continue"), completionLabels(continued, "continue"), normalWhen),
+          sequenceEdgeLocals(residualCompletion, continued, "throw"),
+          sequenceEdgeLocals(residualCompletion, continued, "return"),
         );
       }
       if (ts.isIfStatement(statement)) {
@@ -2408,14 +2526,20 @@ function validateRefinementActionBodiesInSource(
           );
           const trueAbrupt = abruptWhen(whenTrue);
           const falseAbrupt = abruptWhen(whenFalse);
+          const trueNormal = notCompletionPredicate(trueAbrupt);
+          const falseNormal = notCompletionPredicate(falseAbrupt);
           const replaceLocals = (sourceLocals: ReadonlyMap<string, TemporalExpression>): void => {
             localValues.clear();
             for (const [name, value] of sourceLocals) localValues.set(name, value);
           };
-          if (isBooleanCompletionPredicate(trueAbrupt, true)
-            && isBooleanCompletionPredicate(falseAbrupt, false)) replaceLocals(falseLocals);
-          else if (isBooleanCompletionPredicate(falseAbrupt, true)
-            && isBooleanCompletionPredicate(trueAbrupt, false)) replaceLocals(trueLocals);
+          if (isBooleanCompletionPredicate(trueNormal, false)
+            && !isBooleanCompletionPredicate(falseNormal, false)) replaceLocals(falseLocals);
+          else if (isBooleanCompletionPredicate(falseNormal, false)
+            && !isBooleanCompletionPredicate(trueNormal, false)) replaceLocals(trueLocals);
+          else if (!isBooleanCompletionPredicate(trueNormal, false)
+            && !isBooleanCompletionPredicate(falseNormal, false)) {
+            mergeConditionalLocalValues(condition, trueLocals, falseLocals, beforeLocals);
+          }
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
         if (!hasAbruptBranch) mergeConditionalLocalValues(condition, trueLocals, falseLocals, beforeLocals);
@@ -2428,7 +2552,8 @@ function validateRefinementActionBodiesInSource(
             joinCompletionPredicate(condition, completionPredicate(whenTrue, "continue"), completionPredicate(whenFalse, "continue")),
             joinCompletionLabels(condition, completionLabels(whenTrue, "break"), completionLabels(whenFalse, "break")),
             joinCompletionLabels(condition, completionLabels(whenTrue, "continue"), completionLabels(whenFalse, "continue")),
-            joinThrowLocals(condition, whenTrue, whenFalse),
+            joinEdgeLocals(condition, "throw", whenTrue, whenFalse),
+            joinEdgeLocals(condition, "return", whenTrue, whenFalse),
           );
         }
         continue;
@@ -2774,7 +2899,8 @@ function validateRefinementActionBodiesInSource(
           let owner: ts.Node | undefined = node.parent;
           while (owner && !ts.isFunctionLike(owner)) {
             if (ts.isBlock(owner) && !ts.isFunctionLike(owner.parent) && !ts.isIfStatement(owner.parent)
-              && !(ts.isTryStatement(owner.parent) && owner.parent.tryBlock === owner && !!owner.parent.catchClause)) return undefined;
+              && !(ts.isTryStatement(owner.parent) && owner.parent.tryBlock === owner
+                && (!!owner.parent.catchClause || !!owner.parent.finallyBlock))) return undefined;
             if (ts.isIterationStatement(owner, false) || ts.isSwitchStatement(owner)
               || ts.isLabeledStatement(owner)) return undefined;
             owner = owner.parent;

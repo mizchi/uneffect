@@ -352,7 +352,18 @@ throw amount, bills from the throwing snapshot, and returns; the normal path
 bills from its own snapshot. A second positive control joins two throwing arms,
 and an underbilled failure path is rejected. Opaque `Error` payloads,
 catch-side local mutation, rethrow, mutable-local `finally`, switch, loop,
-label, and standalone-block flow remain explicit non-proofs.
+label, and standalone-block flow remained explicit non-proofs in that slice.
+
+A fifteenth case joins three outer-visible mutable-local snapshots before one
+mandatory `finally`: a normally completing `try`, a direct return, and a typed
+scalar throw whose catch returns. The finally audit update observes four, two,
+or three units respectively, while billing runs only on the normal and caught
+failure paths. A separate no-catch case preserves normal versus direct-return
+snapshots, an under-audit implementation is rejected, and finally-local
+mutation remains unsupported. The adaptive billing dogfood adds suppressed,
+cancelled, failed, and normal/retried paths with independent underbilling,
+under-audit, and cancelled-billing controls. Mutable-local switches, loops,
+labels, standalone blocks, catch/finally mutation, and rethrow remain non-proofs.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

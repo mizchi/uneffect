@@ -1474,3 +1474,12 @@ binding, catch return, and the existing suppressed early return. The workload
 changed and excludes Z3, opaque exceptions, rethrows, catch mutation, and
 general exception-aware CFG joins, so this is an observation rather than a
 comparative claim or CI budget.
+
+After adding a cancelled direct-return path and moving weighted audit accounting
+into mandatory `finally`, the same filtered workload measured 1.1567 ms mean
+(864.49 operations/second over 433 samples, 5.85% relative margin of error) on
+2026-08-27. It now constructs normal, direct-return, and typed
+throw/catch-return local snapshots, projects outer-visible bindings, and joins
+them for the mandatory finally update. The changed workload and small sample
+count preclude a regression claim; this remains an observation rather than a
+CI budget and excludes finally-local mutation, switches, loops, and Z3.

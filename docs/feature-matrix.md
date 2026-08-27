@@ -92,13 +92,18 @@ For a supported typed scalar throw, the throw edge owns its mutable-local
 snapshot and `catch` starts from that snapshot; the normally completing `try`
 predecessor retains its separate environment. Two conditional throwing arms
 may join their snapshots through the same phi contract.
+A mandatory `finally` projects every incoming edge to bindings visible outside
+the protected region, joins normal, direct-return, and supported typed
+throw/catch-return snapshots by their completion predicates, and evaluates its
+state updates over that joined environment. A `try/finally` without `catch`
+retains the normal predecessor explicitly.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
-`const`, opaque right-hand sides or throw payloads, catch-side mutable-local
-writes, rethrows, mutable-local flow through `finally`, `switch`, loops, labeled
-blocks, or standalone nested blocks remain unsupported rather than being
-approximated.
+`const`, opaque right-hand sides or throw payloads, catch- or finally-side
+mutable-local writes, rethrows, mutable-local flow through `switch`, loops,
+labeled blocks, or standalone nested blocks remain unsupported rather than
+being approximated.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

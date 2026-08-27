@@ -3239,10 +3239,6 @@ describe("annotated refinement bindings", () => {
         "if (runtime.urgent) weight = 2",
         "while (runtime.urgent) { weight = 2; break }",
       )],
-      ["local-join-try.ts", source.replace(
-        "if (runtime.urgent) weight = 2",
-        "try { weight = 2 } finally { runtime.audited += 0 }",
-      )],
       ["local-join-switch.ts", source.replace(
         "if (runtime.urgent) weight = 2",
         "switch (runtime.urgent) { case true: weight = 2; break; default: break }",
@@ -3350,6 +3346,55 @@ describe("annotated refinement bindings", () => {
       "caught-local-both-throw.ts", bothThrow, "caughtLocal",
       parseSpec("caught-local-both-throw.ts", bothThrow).temporal,
     )).resolves.toEqual([]);
+  });
+
+  it("owns mutable-local snapshots entering mandatory finally", async () => {
+    const source = `/* uneffect:
+      state billed: int
+      state audited: int
+      state stopped: bool
+      init billed = 0
+      init audited = 0
+      init stopped = false
+      action record: billed' = stopped ? billed : billed + 3, audited' = audited + (stopped ? 2 : 3)
+    */
+      interface Runtime { billed: number; audited: number; stopped: boolean }
+      /* uneffect: refinement finallyLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement finallyLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement finallyLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.stopped) {
+            units = 2
+            return
+          }
+          units = 3
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = parseSpec("finally-local.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "finally-local.ts", source, "finallyLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const underAudited = source.replace("runtime.audited += units", "runtime.audited += 1");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "finally-local-under-audited.ts", underAudited, "finallyLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "audited",
+    }));
+
+    const mutatedFinallyLocal = source.replace(
+      "runtime.audited += units",
+      "units += 1\n          runtime.audited += units",
+    );
+    expect(validateRefinementActionBodies(
+      "finally-local-mutation.ts", mutatedFinallyLocal, "finallyLocal", temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }));
   });
 
   it("summarizes only terminating constant-delta state scale-up loops", async () => {

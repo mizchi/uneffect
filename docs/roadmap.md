@@ -38,8 +38,10 @@ release date commitment.
    normal predecessor's local snapshot. Supported typed scalar throw edges now
    carry their own mutable-local snapshot into `catch`, while normal `try`
    completion retains its separate environment; two throwing arms share the
-   same phi contract. The next step is edge-owned local flow through mandatory
-   `finally` before extending it to switches and loops.
+   same phi contract. Mandatory `finally` now projects and joins the
+   outer-visible snapshots owned by normal, direct-return, and supported typed
+   throw/catch-return predecessors. The next step is to extend edge-owned local
+   flow through scalar switches before loops.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

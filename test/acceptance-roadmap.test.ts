@@ -1057,6 +1057,52 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("runs mandatory finally with the mutable-local snapshot owned by each completion edge", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state stopped: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init stopped = false
+       * action record: billed' = stopped ? billed : billed + (failed ? 6 : 4), audited' = audited + (stopped ? 2 : (failed ? 3 : 4))
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; stopped: boolean }
+      /* uneffect: refinement finallyLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement finallyLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement finallyLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.stopped) {
+            units = 2
+            return
+          }
+          if (runtime.failed) {
+            units = 3
+            throw units
+          }
+          units = 4
+        } catch (amount) {
+          runtime.billed += units + amount
+          return
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification("finally-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "finally-local.ts", source, "finallyLocal", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

@@ -208,6 +208,23 @@ describe("Uneffect dogfood", () => {
     )).resolves.toContainEqual(expect.objectContaining({
       code: "action-update-mismatch", modelName: "record",
     }));
+
+    const underAuditedFailure = source.replace("runtime.auditedUnits += units", "runtime.auditedUnits += 1");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, underAuditedFailure, "adaptiveBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "auditedUnits",
+    }));
+
+    const billedCancellation = source.replace(
+      "units = 1;\n      return;",
+      "units = 1;\n      runtime.billedUnits += units;\n      return;",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, billedCancellation, "adaptiveBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record", target: "billedUnits",
+    }));
   });
 
   it("proves pairwise worker-pool scale-up including target overshoot", async () => {
