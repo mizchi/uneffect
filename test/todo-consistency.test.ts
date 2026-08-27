@@ -46,17 +46,13 @@ describe("TODO hierarchy consistency", () => {
     }
   });
 
-  it("keeps general CFG and dynamic-alias work out of the async-resource issue", () => {
+  it("keeps completed async-resource work out of the unfinished ledger", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const unfinished = todo.split("\n").filter((line) => /^\s*- \[ \]/.test(line));
     const issue9 = unfinished.filter((line) => line.includes("issues/9"));
 
-    expect(issue9.length).toBeGreaterThan(0);
-    for (const line of issue9) {
-      expect(line).not.toMatch(/general (?:exception-aware )?CFG fixed point|irreducible|dynamically dispatched/);
-    }
-    expect(unfinished.some((line) => line.includes("general CFG") && line.includes("issues/23"))).toBe(true);
-    expect(unfinished.some((line) => line.includes("escaping aliases") && line.includes("issues/24"))).toBe(true);
+    expect(issue9).toEqual([]);
+    expect(todo).toMatch(/General\s+CFG\s+and escaping-alias fixed points remain outside #9 and are owned by #23 and #24\./);
   });
 
   it("tracks deferred optimizer implementation in the issue roadmap", () => {
@@ -70,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 9, 10, 13, 16, 18, 20, 23, 24];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 20, 23, 24];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -105,8 +101,7 @@ describe("TODO hierarchy consistency", () => {
     );
 
     expect(rows).toEqual([
-      ["Active", 1, 9],
-      ["Next", 1, 20],
+      ["Active", 1, 20],
       ["Blocked", 1, 18],
       ["Queued", 2, 23],
       ["Queued", 2, 2],
@@ -134,9 +129,8 @@ describe("TODO hierarchy consistency", () => {
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
     expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 9],
-      [2, 20],
-      [3, 18],
+      [1, 20],
+      [2, 18],
     ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
@@ -145,15 +139,19 @@ describe("TODO hierarchy consistency", () => {
 
   it("keeps closed issue history outside the active issue table", () => {
     const todo = readFileSync("TODO.md", "utf8");
-    const activeIndex = todo.split("Closed issue history", 1)[0] ?? todo;
+    const activeIndex = todo
+      .split("## Active issue index", 2)[1]
+      ?.split("The active issue is widened", 1)[0] ?? "";
 
     expect(activeIndex).not.toContain("issues/1)");
     expect(activeIndex).not.toContain("issues/14)");
     expect(activeIndex).not.toContain("issues/17)");
     expect(activeIndex).not.toContain("issues/21)");
+    expect(activeIndex).not.toContain("issues/9)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
     expect(todo).toContain("closed [#17]");
     expect(todo).toContain("closed [#21]");
+    expect(todo).toContain("closed [#9]");
   });
 });
