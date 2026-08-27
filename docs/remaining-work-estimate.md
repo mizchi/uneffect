@@ -69,9 +69,8 @@ parallel speed-up.
 
 ## Dependency-critical order
 
-1. #20 is active. Its next slice generalizes the exact helper fragment to a
-   bounded two-helper chain with an explicit depth budget; higher-order,
-   collection-valued, realm, and
+1. #20 is active. Its next slice defines one opt-in same-realm global alias
+   identity while cross-realm, higher-order, collection-valued, and
    transformed-declaration cases remain non-proofs.
 2. #18 stays blocked until #20's project-boundary evidence is sufficient for
    module-order consumers.
@@ -89,7 +88,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #20 TypeScript project parity | M | 1–2 weeks | Generalize to an explicit two-helper depth budget | Declaration transforms, realms, and compiler-domain compatibility |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | Prove one opt-in same-realm global alias identity | Declaration transforms, realms, and compiler-domain compatibility |
 | 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |

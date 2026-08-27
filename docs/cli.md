@@ -154,10 +154,11 @@ separately records direct scalar child actions that verify locally and remain
 valid after substitution into the annotated parent action. A guarded action is
 accepted only through a sole direct wrapper call; the JSON link includes the
 inherited `guard`. Links retain producer/consumer compiler/config provenance
-and the same declaration integrity evidence. One call may pass through one
-TypeChecker-resolved, write-screened local function helper whose body is exactly
-the child call, with the bounded path emitted as `callPath` and any child guard
-retained. Deeper/reassigned/cyclic helpers, helper-local guards or extra work,
+and the same declaration integrity evidence. One call may pass through at most
+two TypeChecker-resolved, write-screened local function helpers whose bodies are
+exactly the next call, with the bounded path emitted as `callPath`, the limit as
+`helperDepthBudget: 2`, and any child guard retained. A third,
+reassigned/cyclic helper, helper-local guard or extra work,
 guarded wrappers with additional work, collection-valued updates, and
 transformed declaration cases are not composed. Other proof domains are not
 composed.

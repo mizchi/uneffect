@@ -425,7 +425,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     ] : [],
     exclusions: [
       "contract, ownership, invariant, and temporal evidence is not composed across project boundaries",
-      "cross-project refinement composition is limited to scalar direct calls or one write-screened sole-call local helper with exact declarations",
+      "cross-project refinement composition is limited to scalar direct calls or at most two write-screened sole-call local helpers with exact declarations",
       "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
       ...(options.buildArtifacts === "require-fresh" || options.buildArtifacts === "require-exact" ? [] : ["composite build-artifact freshness was observed but not required"]),
       ...(options.buildArtifacts === "require-exact" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),

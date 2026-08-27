@@ -250,6 +250,7 @@ export { analyzeUneffectProject, defineUneffectValidator, validateUneffectProjec
 export type { AnalyzeUneffectProjectOptions, CallCardinality, FunctionSpecialization, ProjectValidatorDiagnostic, UneffectProjectAnalysis, UneffectProjectSummary, UneffectValidator, UneffectValidatorDefinition, ValidateUneffectProjectOptions } from "./custom-validators.js";
 export { verifyUneffectProject } from "./project-verification.js";
 export type { ProjectVerificationObligation, ProjectWorkspaceAssurance, ProjectWorkspaceVerificationBlocker, ProjectWorkspaceVerificationDomain, VerifyUneffectProjectBaseOptions, VerifyUneffectProjectOptions, VerifyUneffectProjectResult, VerifyUneffectWorkspaceOptions, VerifyUneffectWorkspaceResult } from "./project-verification.js";
+export { WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET } from "./workspace-refinements.js";
 export type { WorkspaceRefinementCompositionBlocker, WorkspaceRefinementLink } from "./workspace-refinements.js";
 export { composeWorkspaceEffects } from "./workspace-effects.js";
 export type { CompletedEffectProject, DeclarationOutputIntegrity, WorkspaceEffectComposition, WorkspaceEffectCompositionBlocker, WorkspaceEffectLink } from "./workspace-effects.js";

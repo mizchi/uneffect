@@ -416,8 +416,11 @@ describe("uneffect command line", () => {
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
         required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
         $defs: { refinementComposition: { properties: { links: { items: {
-          required: expect.arrayContaining(["callPath"]),
-          properties: { callPath: { type: "array", items: { type: "string" }, minItems: 2 }, guard: { type: "string" } },
+          required: expect.arrayContaining(["callPath", "helperDepthBudget"]),
+          properties: {
+            callPath: { type: "array", items: { type: "string" }, minItems: 2 },
+            helperDepthBudget: { type: "integer", const: 2 }, guard: { type: "string" },
+          },
         } } } } },
       });
       const staleArtifacts = capture();

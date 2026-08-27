@@ -72,11 +72,11 @@ same property is proved for arbitrary TypeScript.
   the parent model and recorded in `refinementComposition`. The parent action
   is checked again after summary substitution, while producer/consumer
   compiler/config and exact declaration evidence remain visible.
-- One unguarded scalar child call may pass through one TypeChecker-resolved,
-  write-screened source-local function helper. The link records the complete
-  three-declaration `callPath`; reassignment, recursion, a second helper level,
+- A scalar child call may pass through at most two TypeChecker-resolved,
+  write-screened source-local function helpers. The link records the complete
+  `callPath` and `helperDepthBudget: 2`; reassignment, recursion, a third helper,
   and semantically visible helper updates fail closed.
-- The same sole-call helper may carry a guarded child action. The helper
+- The same sole-call chain may carry a guarded child action. Every helper
   declaration is bound to the exact child contract, so guard identity reaches
   parent revalidation; helper-local guards, extra work, and conditional
   invocation remain rejected.

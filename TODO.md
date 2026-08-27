@@ -62,7 +62,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Generalize the exact helper fragment to a bounded two-helper chain with an explicit depth budget. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Define and test opt-in runtime/realm identity for one same-realm global alias. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research
@@ -666,6 +666,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Preserve a locally verified scalar action guard across an exact sole direct project-reference call, serialize the guard in the composition ledger, and reject guard mismatch, invalid producer guards, or wrappers with additional work.
     - [x] Compose one unguarded child scalar action through one TypeChecker-resolved, write-screened source-local function helper; retain the full call path and reject reassignment, extra updates, recursion, and deeper helper chains.
     - [x] Preserve a guarded child scalar action through that sole-call helper, binding the helper declaration to the exact child contract and rejecting helper-local guards, extra work, or conditional invocation.
+    - [x] Generalize the sole-call chain to two write-screened local helpers, publish `helperDepthBudget: 2`, preserve the complete guarded call path, and reject a third helper.
     - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
     - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.

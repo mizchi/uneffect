@@ -185,7 +185,7 @@ export function createCheckWorkspaceJsonReport(
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
-        "cross-project refinement composition is limited to scalar direct calls or one write-screened sole-call local helper with exact declarations",
+        "cross-project refinement composition is limited to scalar direct calls or at most two write-screened sole-call local helpers with exact declarations",
         "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         ...(outputIntegrity.status === "verified" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),

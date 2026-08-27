@@ -50,13 +50,14 @@
         "status": { "enum": ["not-applicable", "verified", "unknown"] },
         "links": { "type": "array", "items": {
           "type": "object", "additionalProperties": false,
-          "required": ["fromProject", "toProject", "callerFile", "callee", "adapterName", "version", "modelName", "callPath", "evidence", "declarationFile", "declarationIntegrity", "producer", "consumer"],
+          "required": ["fromProject", "toProject", "callerFile", "callee", "adapterName", "version", "modelName", "callPath", "helperDepthBudget", "evidence", "declarationFile", "declarationIntegrity", "producer", "consumer"],
           "properties": {
             "fromProject": { "type": "string" }, "toProject": { "type": "string" },
             "callerFile": { "type": "string" }, "callee": { "type": "string" },
             "adapterName": { "type": "string" }, "version": { "type": "string" },
             "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
             "callPath": { "type": "array", "items": { "type": "string" }, "minItems": 2 },
+            "helperDepthBudget": { "type": "integer", "const": 2 },
             "guard": { "type": "string" },
             "declarationFile": { "type": "string" },
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },

@@ -49,10 +49,10 @@ links the documented direct scalar action fragment only after local child
 validation, exact declaration matching, and parent-action revalidation. A
 guarded action is accepted only through a sole direct wrapper call and records
 the inherited guard; extra wrapper work prevents guard inheritance. One call
-may cross one TypeChecker-resolved, write-screened local function helper whose
-body is exactly that call. The evidence link retains its complete `callPath`
-and any child guard. Deeper indirection and helper-local control flow remain
-unsupported.
+may cross at most two TypeChecker-resolved, write-screened local function
+helpers whose bodies are exactly the next call. The evidence link retains its
+complete `callPath`, explicit `helperDepthBudget: 2`, and any child guard. A
+third helper and helper-local control flow remain unsupported.
 It does not link solver obligations, cross-project invariants, ownership, or
 temporal evidence. Supported parameter, exported
 closure/module, same-realm global, and bounded iterator Effect substitutions are

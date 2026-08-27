@@ -13,6 +13,9 @@ import type { TemporalExpression } from "./temporal-expressions.js";
 import type { TypeScriptProject, TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { DeclarationOutputIntegrity } from "./workspace-effects.js";
 
+/** Maximum number of source-local function helpers admitted on a proof-grade refinement link. */
+export const WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET = 2;
+
 export interface ProjectRefinementActionSummary extends ExternalRefinementActionContract {
   sourceFile: string;
 }
@@ -33,6 +36,7 @@ export interface WorkspaceRefinementLink {
   modelName: string;
   /** Annotated parent action, bounded local helpers, then the child export. */
   callPath: string[];
+  helperDepthBudget: number;
   guard?: string;
   evidence: "verified" | "unknown";
   declarationFile: string;
@@ -189,6 +193,7 @@ export function composeWorkspaceRefinements(
                     callerFile: source.fileName, callee, adapterName: contract.adapterName,
                     version: contract.version, modelName: contract.modelName,
                     callPath: [...callPath, callee],
+                    helperDepthBudget: WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET,
                     ...(contract.guard ? { guard: formatRefinementExpression(contract.guard) } : {}),
                     evidence: contract.evidence,
                     declarationFile: declarationSource.fileName, declarationIntegrity,
@@ -220,10 +225,11 @@ export function composeWorkspaceRefinements(
                 });
                 return undefined;
               }
-              if (activeHelpers.size >= 2) {
+              if (activeHelpers.size >= WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET) {
                 blockers.push({
                   kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
-                  subject: helperName, message: `local refinement helper depth exceeds the supported single-helper fragment at ${helperName}`,
+                  subject: helperName,
+                  message: `local refinement helper depth exceeds explicit budget ${WORKSPACE_REFINEMENT_HELPER_DEPTH_BUDGET} at ${helperName}`,
                 });
                 return undefined;
               }
@@ -261,7 +267,7 @@ export function composeWorkspaceRefinements(
         });
         return ambiguous ? undefined : resolved;
       };
-      visit(statement.body, [statement.name.text], new Set([declarationKey(statement)]));
+      visit(statement.body, [statement.name.text], new Set());
     }
   }
   return { contracts, links, blockers };

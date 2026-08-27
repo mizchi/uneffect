@@ -275,7 +275,8 @@ const indirectRefinementParentText = `
   */
   /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
   /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-  function apply(runtime: Runtime) { incrementChild(runtime) }
+  function bounce(runtime: Runtime) { incrementChild(runtime) }
+  function apply(runtime: Runtime) { bounce(runtime) }
   /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { apply(runtime) }
 `;
 const indirectRefinementDeclarationText = `declare module "indirect-child" {
@@ -389,11 +390,12 @@ describe("refinement receiver identity", () => {
     analyzeProjectRefinements(leaseAuthorityProgram, project, new Map());
   }, { time: 500, iterations: 20 });
 
-  bench("compose one write-screened indirect project refinement helper", () => {
+  bench("compose two write-screened indirect project refinement helpers", () => {
     const result = composeWorkspaceRefinements(
       indirectRefinementProgram, indirectRefinementCurrent, [indirectRefinementCompleted],
     );
-    if (result.links[0]?.callPath.length !== 3 || result.links[0]?.guard !== "armed"
+    if (result.links[0]?.callPath.length !== 4 || result.links[0]?.guard !== "armed"
+      || result.links[0]?.helperDepthBudget !== 2
       || result.blockers.length > 0) {
       throw new Error("indirect refinement benchmark fixture did not compose");
     }

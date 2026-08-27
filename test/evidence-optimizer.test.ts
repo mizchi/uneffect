@@ -59,8 +59,11 @@ describe("evidence and optimizer obligations", () => {
         properties: { schema: { const: "uneffect-project-workspace/v1" } },
         required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
         $defs: { refinementComposition: { properties: { links: { items: {
-          required: expect.arrayContaining(["callPath"]),
-          properties: { callPath: { type: "array", items: { type: "string" }, minItems: 2 }, guard: { type: "string" } },
+          required: expect.arrayContaining(["callPath", "helperDepthBudget"]),
+          properties: {
+            callPath: { type: "array", items: { type: "string" }, minItems: 2 },
+            helperDepthBudget: { type: "integer", const: 2 }, guard: { type: "string" },
+          },
         } } } } },
       });
       expect(verified.projects.map((item) => item.project.projectFile)).toEqual([

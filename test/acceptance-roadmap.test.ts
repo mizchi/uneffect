@@ -275,7 +275,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
 
       writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
         "function apply(runtime: Runtime) { incrementChild(runtime) }",
-        "function apply(runtime: Runtime) { bounce(runtime) }\n        function bounce(runtime: Runtime) { incrementChild(runtime) }",
+        "function apply(runtime: Runtime) { bounce(runtime) }\n        function bounce(runtime: Runtime) { relay(runtime) }\n        function relay(runtime: Runtime) { incrementChild(runtime) }",
       ));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
       const overDepth = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
@@ -284,7 +284,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       expect(overDepth.refinementComposition).toMatchObject({
         status: "unknown",
         blockers: expect.arrayContaining([expect.objectContaining({
-          classification: "unknown", subject: "bounce", message: expect.stringContaining("depth exceeds"),
+          classification: "unknown", subject: "relay", message: expect.stringContaining("depth exceeds explicit budget 2"),
         })]),
       });
     } finally {
@@ -292,7 +292,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }
   });
 
-  it("preserves a child scalar guard through one write-screened local helper", async () => {
+  it("preserves a child scalar guard through an explicit two-helper depth budget", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-indirect-guarded-refinement-"));
     const root = join(directory, "tsconfig.json");
@@ -327,7 +327,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         ${model}
         /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
-        function apply(runtime: Runtime) { incrementChild(runtime) }
+        function bounce(runtime: Runtime) { incrementChild(runtime) }
+        function apply(runtime: Runtime) { bounce(runtime) }
         /* uneffect: effect Mutate<typeof runtime.count> */
         /* uneffect: refinement counter@1 action increment */
         export function increment(runtime: Runtime) { apply(runtime) }
@@ -353,7 +354,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         status: "verified",
         links: [expect.objectContaining({
           adapterName: "counter", modelName: "increment", evidence: "verified",
-          guard: "armed && count > 0", callPath: ["increment", "apply", "increment"],
+          guard: "armed && count > 0", helperDepthBudget: 2,
+          callPath: ["increment", "apply", "bounce", "increment"],
         })],
         blockers: [],
       });
@@ -361,8 +363,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
 
       const parentSource = readFileSync(join(parent, "src", "counter.ts"), "utf8");
       writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
-        "function apply(runtime: Runtime) { incrementChild(runtime) }",
-        "function apply(runtime: Runtime) { if (!runtime.armed) return; incrementChild(runtime) }",
+        "function apply(runtime: Runtime) { bounce(runtime) }",
+        "function apply(runtime: Runtime) { if (!runtime.armed) return; bounce(runtime) }",
       ));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
       const helperGuard = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
@@ -377,8 +379,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       });
 
       writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
-        "function apply(runtime: Runtime) { incrementChild(runtime) }",
-        "function apply(runtime: Runtime) { runtime.count += 0; incrementChild(runtime) }",
+        "function apply(runtime: Runtime) { bounce(runtime) }",
+        "function apply(runtime: Runtime) { runtime.count += 0; bounce(runtime) }",
       ));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
       const helperWork = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
@@ -393,8 +395,8 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       });
 
       writeFileSync(join(parent, "src", "counter.ts"), parentSource.replace(
-        "function apply(runtime: Runtime) { incrementChild(runtime) }",
-        "function apply(runtime: Runtime) { if (runtime.armed) incrementChild(runtime) }",
+        "function apply(runtime: Runtime) { bounce(runtime) }",
+        "function apply(runtime: Runtime) { if (runtime.armed) bounce(runtime) }",
       ));
       expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
       const conditionalInvocation = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
@@ -405,6 +407,22 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         blockers: expect.arrayContaining([expect.objectContaining({
           classification: "violation", subject: "counter:increment",
           message: expect.stringContaining("does not enforce model action guard"),
+        })]),
+      });
+
+      writeFileSync(join(parent, "src", "counter.ts"), parentSource
+        .replace(
+          "function bounce(runtime: Runtime) { incrementChild(runtime) }",
+          "function relay(runtime: Runtime) { incrementChild(runtime) }\n        function bounce(runtime: Runtime) { relay(runtime) }",
+        ));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const overDepth = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(overDepth.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          classification: "unknown", subject: "relay", message: expect.stringContaining("depth exceeds"),
         })]),
       });
     } finally {
