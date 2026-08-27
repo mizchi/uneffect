@@ -52,7 +52,7 @@ There are three useful planning numbers:
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #20 TypeScript project parity | M | 1–2 weeks | One provenance-preserving scalar refinement across a direct project reference | Declaration transforms and compiler-domain compatibility |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | Generalize exact refinement summaries beyond one unguarded scalar direct call | Declaration transforms, realms, and compiler-domain compatibility |
 | 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |

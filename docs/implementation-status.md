@@ -66,6 +66,10 @@ same property is proved for arbitrary TypeScript.
 - Temporal declarations compose calls between modeled functions, preserve
   source locations, and support runtime execution, replay, Z3 lowering, Quint
   generation, and normalized counterexample traces for the documented subset.
+- Solution workspaces compose one locally verified, unguarded scalar refinement
+  action through a direct referenced-project call. The parent action is checked
+  again after summary substitution, while producer/consumer compiler/config and
+  exact declaration evidence remain visible in `refinementComposition`.
 - The linter detects syntactic and solver-level constant properties,
   contradictory initial constraints, globally impossible guards, duplicate or
   subsumed properties, bounded unreachability, and several inductively proved

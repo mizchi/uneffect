@@ -4,7 +4,7 @@
   "title": "Uneffect workspace check decision v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"],
+  "required": ["schema", "outcome", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-workspace-check/v1" },
     "outcome": { "enum": ["passed", "failed"] },
@@ -16,6 +16,7 @@
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "./uneffect-check-v1.schema.json" } },
     "effectComposition": { "$ref": "#/$defs/effectComposition" },
+    "refinementComposition": { "$ref": "#/$defs/refinementComposition" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/assurance" }] }
   },
@@ -39,6 +40,26 @@
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
             "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
             "effects": { "type": "array", "items": { "type": "string" } }
+          }
+        } },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    },
+    "refinementComposition": {
+      "type": "object", "additionalProperties": false, "required": ["status", "links", "blockers"],
+      "properties": {
+        "status": { "enum": ["not-applicable", "verified", "unknown"] },
+        "links": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fromProject", "toProject", "callerFile", "callee", "adapterName", "version", "modelName", "evidence", "declarationFile", "declarationIntegrity", "producer", "consumer"],
+          "properties": {
+            "fromProject": { "type": "string" }, "toProject": { "type": "string" },
+            "callerFile": { "type": "string" }, "callee": { "type": "string" },
+            "adapterName": { "type": "string" }, "version": { "type": "string" },
+            "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
+            "declarationFile": { "type": "string" },
+            "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
+            "producer": { "$ref": "#/$defs/provenance" }, "consumer": { "$ref": "#/$defs/provenance" }
           }
         } },
         "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
@@ -109,6 +130,10 @@
         "consumerModuleFile": { "type": ["string", "null"] }, "parity": { "enum": ["exact", "mismatch", "unknown"] },
         "reason": { "type": "string" }
       }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler"],
+      "properties": { "projectFile": { "type": "string" }, "compiler": { "$ref": "#/$defs/compiler" } }
     },
     "config": {
       "type": "object", "additionalProperties": false, "required": ["projectFile", "compiler", "rootFiles"],

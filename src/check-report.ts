@@ -7,6 +7,7 @@ import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
 import type { WorkspaceEffectComposition } from "./workspace-effects.js";
+import type { WorkspaceRefinementComposition, WorkspaceRefinementLink } from "./workspace-refinements.js";
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { EffectUnknownReason } from "./effects.js";
 import type { AssumptionLedger } from "./assumptions.js";
@@ -80,6 +81,11 @@ export interface CheckWorkspaceJsonReport {
     }>;
     blockers: WorkspaceCheckBlocker[];
   };
+  refinementComposition: {
+    status: "not-applicable" | "verified" | "unknown";
+    links: WorkspaceRefinementLink[];
+    blockers: WorkspaceCheckBlocker[];
+  };
   blockers: WorkspaceCheckBlocker[];
   assurance: WorkspaceCheckAssurance | null;
 }
@@ -121,6 +127,7 @@ export function createCheckWorkspaceJsonReport(
   profile?: AssuranceProfile,
   options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity } = {},
   effectComposition?: WorkspaceEffectComposition,
+  refinementComposition?: WorkspaceRefinementComposition,
 ): CheckWorkspaceJsonReport {
   const blockers: WorkspaceCheckBlocker[] = workspace.blockers.map((blocker) => ({
     kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
@@ -140,6 +147,8 @@ export function createCheckWorkspaceJsonReport(
   }
   const compositionBlockers: WorkspaceCheckBlocker[] = (effectComposition?.blockers ?? []).map((blocker) => ({ ...blocker }));
   blockers.push(...compositionBlockers);
+  const refinementCompositionBlockers: WorkspaceCheckBlocker[] = (refinementComposition?.blockers ?? []).map((blocker) => ({ ...blocker }));
+  blockers.push(...refinementCompositionBlockers);
   const checkedConfigs = new Set(projects.flatMap((project) => project.project ? [project.project.projectFile] : []));
   if (profile) for (const project of workspace.projects) if (!checkedConfigs.has(project.projectFile) && project.provenance.compiler.parity !== "exact") blockers.push({
     kind: "typescript", classification: "unknown", projectFile: project.projectFile,
@@ -169,11 +178,14 @@ export function createCheckWorkspaceJsonReport(
         "every project config resolves the exact analyzer TypeScript version",
         ...((effectComposition?.links.length ?? 0) > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
         ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
+        ...((refinementComposition?.links.length ?? 0) > 0 ? ["verified child-project scalar refinement actions are composed into direct parent action calls"] : []),
+        ...((refinementComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
         ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
       ] : [],
       exclusions: [
         "referenced projects are checked as separate Programs; no cross-project whole-program proof is claimed",
+        "cross-project refinement composition is limited to unguarded scalar actions through direct calls and exact declarations",
         "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         ...(outputIntegrity.status === "verified" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
@@ -201,6 +213,11 @@ export function createCheckWorkspaceJsonReport(
         }) } : {}),
       })),
       blockers: compositionBlockers,
+    },
+    refinementComposition: {
+      status: refinementCompositionBlockers.length > 0 ? "unknown" : (refinementComposition?.links.length ?? 0) > 0 ? "verified" : "not-applicable",
+      links: [...(refinementComposition?.links ?? [])],
+      blockers: refinementCompositionBlockers,
     },
   };
 }

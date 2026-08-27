@@ -62,7 +62,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Compose one scalar refinement summary across one direct project reference while retaining compiler/config/declaration provenance. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Generalize the exact cross-project refinement fragment beyond one unguarded scalar direct call without flattening compiler domains. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 After these Phase 1 handoffs, select work from the phase-ordered issue index
@@ -647,7 +647,9 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Re-emit child declarations in memory with the exact analyzer TypeScript Program, compare SHA-256-bound exact bytes with every `.d.ts` consumed by an Effect link, and fail closed on missing/mismatched outputs even when SolutionBuilder reports fresh.
     - [x] Add an opt-in exact-build gate that requires freshness and byte-compares all TypeScript-emitted runtime JavaScript and declarations, rejecting declaration-only/no-emit and transformed pipelines without a validated mapping.
     - [x] Make an empty cross-project Effect composition ledger `not-applicable` rather than vacuously `verified`, and lock the distinction with programmatic and CLI tests.
-    - [ ] Compose refinement evidence and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
+    - [x] Compose one locally verified unguarded scalar refinement action across a direct project reference, retain producer/consumer compiler/config and exact declaration provenance, and revalidate the parent action after summary substitution.
+    - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
+    - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.
 - [x] Make `no-unknown` reject unresolved capability argument sets such as `Fetch<POST, Unknown<dynamic-url>>`, not only summaries whose outer evidence status is `unknown`.
 - [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA/decorator ordering, side-effectful external packages, computed/external dynamic imports, dynamically selected or mutable callback identifiers, and dynamically produced decorator application. Immutable local/imported function identifiers for known callback owners are resolved by TypeChecker identity; reassigned live bindings fail closed. ([#18](https://github.com/mizchi/uneffect/issues/18))

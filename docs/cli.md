@@ -149,7 +149,12 @@ Same-realm `globalThis` is recorded separately as
 not a claim about Workers, iframes, `window`, Node `global`, or `process`.
 Fully bounded iterator parameters are instantiated at resolved call sites. Each
 Effect link includes `declarationIntegrity`; the child `.d.ts` must byte-match a
-same-compiler in-memory declaration re-emission. Other proof domains are not composed.
+same-compiler in-memory declaration re-emission. `refinementComposition`
+separately records direct unguarded scalar child actions that verify locally
+and remain valid after substitution into the annotated parent action. Its links
+retain producer/consumer compiler/config provenance and the same declaration
+integrity evidence. Guarded, indirect, collection-valued, and transformed
+declaration cases are not composed. Other proof domains are not composed.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite
 outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:

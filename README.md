@@ -131,7 +131,12 @@ checked as separate compiler domains and the command emits
 closed. The CLI composes the same narrow, verified function and module Effect interface as
 the project API and records it in `effectComposition`; every consumed child
 `.d.ts` must exactly match an in-memory same-compiler declaration re-emission.
-It does not compose the other proof domains. A ledger with no accepted link and
+It also composes an unguarded scalar refinement action called directly from an
+annotated parent action and records compiler/config/declaration provenance in
+`refinementComposition`. The child action and its create/observe projection
+must verify locally first. Guarded actions, indirect calls, collection-valued
+updates, abstraction transforms, and non-exact declarations remain explicit
+non-proofs. It does not compose the other proof domains. A ledger with no accepted link and
 no blocker reports `not-applicable`, never `verified`; an empty composition is
 not evidence that a cross-project property was checked.
 
@@ -140,7 +145,8 @@ same graph separation to the effect, contract, typed-array, ownership,
 assumption, and optional temporal verifier bundle. It returns
 `uneffect-project-workspace/v1` with every child result and one aggregate
 assurance decision. Cross-project evidence composition remains limited to
-verified function and module Effect summaries. Those summaries are composed
+verified function/module Effect summaries and the scalar refinement fragment
+above. Effect summaries are composed
 child-first at resolved call sites/imports only after the consumed declaration
 file exactly matches an in-memory re-emission, and
 reported in `effectComposition`. A verified function summary may substitute a

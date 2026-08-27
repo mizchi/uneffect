@@ -44,8 +44,11 @@ commitment.
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
-   build-artifact validation are implemented; general cross-project refinement
-   and non-identical declaration-transform validation remain. It consumes the
+   build-artifact validation are implemented. One direct, locally verified,
+   unguarded scalar refinement action now composes across an exact declaration
+   boundary with producer/consumer provenance and parent revalidation. General
+   refinement, guarded/indirect/collection edges, realms, and non-identical
+   declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
    of #9; it is now the active Phase 1 Issue.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)

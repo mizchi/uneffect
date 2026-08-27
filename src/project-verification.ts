@@ -20,6 +20,10 @@ import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectCompositionBlocker, type WorkspaceEffectLink } from "./workspace-effects.js";
+import {
+  analyzeProjectRefinements, composeWorkspaceRefinements,
+  type CompletedRefinementProject, type WorkspaceRefinementCompositionBlocker, type WorkspaceRefinementLink,
+} from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { Z3ExecutionOptions } from "./z3.js";
 
@@ -101,6 +105,7 @@ export interface VerifyUneffectWorkspaceResult {
   configs: Array<TypeScriptProjectProvenance & { rootFiles: string[] }>;
   projects: ProjectWorkspaceVerificationDomain[];
   effectComposition: { status: "not-applicable" | "verified" | "unknown"; links: WorkspaceEffectLink[]; blockers: WorkspaceEffectCompositionBlocker[] };
+  refinementComposition: { status: "not-applicable" | "verified" | "unknown"; links: WorkspaceRefinementLink[]; blockers: WorkspaceRefinementCompositionBlocker[] };
   blockers: ProjectWorkspaceVerificationBlocker[];
   assurance: ProjectWorkspaceAssurance;
 }
@@ -345,7 +350,9 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
   });
   const projects: ProjectWorkspaceVerificationDomain[] = [];
   const effectLinks: WorkspaceEffectLink[] = [], effectBlockers: WorkspaceEffectCompositionBlocker[] = [];
+  const refinementLinks: WorkspaceRefinementLink[] = [], refinementBlockers: WorkspaceRefinementCompositionBlocker[] = [];
   const completed: CompletedEffectProject[] = [];
+  const completedRefinements: CompletedRefinementProject[] = [];
   const outputIntegrity: BuildOutputIntegrity = { status: options.buildArtifacts === "require-exact" ? "verified" : "not-checked", outputs: [] };
   const base: VerifyUneffectProjectBaseOptions = {
     ...(options.runtimeAssertions === undefined ? {} : { runtimeAssertions: options.runtimeAssertions }),
@@ -375,13 +382,22 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     effectLinks.push(...composition.links);
     effectBlockers.push(...composition.blockers);
     blockers.push(...composition.blockers);
+    const refinementComposition = composeWorkspaceRefinements(program, project, completedRefinements);
+    refinementLinks.push(...refinementComposition.links);
+    refinementBlockers.push(...refinementComposition.blockers);
+    blockers.push(...refinementComposition.blockers);
     const verification = await verifyUneffectProjectFiles({
       ...base, files: selected.files,
       ...(moduleInitializationEntry !== undefined && project.fileNames.includes(moduleInitializationEntry)
         ? { moduleInitializationEntry } : {}),
     }, { project, program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts });
     projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
-    completed.push({ project, summaries: verification.effects.summaries, declarationOutputs: inspectDeclarationOutputs(program) });
+    const declarationOutputs = inspectDeclarationOutputs(program);
+    completed.push({ project, summaries: verification.effects.summaries, declarationOutputs });
+    const refinementAnalysis = analyzeProjectRefinements(program, project, refinementComposition.contracts);
+    refinementBlockers.push(...refinementAnalysis.blockers);
+    blockers.push(...refinementAnalysis.blockers);
+    completedRefinements.push({ project, summaries: refinementAnalysis.summaries, declarationOutputs });
     for (const blocker of verification.assurance.blockers) blockers.push({
       kind: blocker.domain, classification: blocker.classification, projectFile: project.projectFile,
       subject: blocker.subject, message: blocker.message,
@@ -403,10 +419,13 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       "every participating config resolves the exact analyzer TypeScript version",
       ...(effectLinks.length > 0 ? ["verified child-project function and module effects are composed into resolved parent calls and imports"] : []),
       ...(effectLinks.length > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
+      ...(refinementLinks.length > 0 ? ["verified child-project scalar refinement actions are composed into direct parent action calls"] : []),
+      ...(refinementLinks.length > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
       ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
     ] : [],
     exclusions: [
-      "contract, ownership, refinement, and temporal evidence is not composed across project boundaries",
+      "contract, ownership, invariant, and temporal evidence is not composed across project boundaries",
+      "cross-project refinement composition is limited to unguarded scalar actions through direct calls and exact declarations",
       "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
       ...(options.buildArtifacts === "require-fresh" || options.buildArtifacts === "require-exact" ? [] : ["composite build-artifact freshness was observed but not required"]),
       ...(options.buildArtifacts === "require-exact" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
@@ -419,7 +438,10 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
     references: workspace.references, buildOrder: workspace.buildOrder,
     buildArtifacts: workspace.buildArtifacts, outputIntegrity,
     configs: workspace.projects.map((project) => ({ ...project.provenance, rootFiles: project.fileNames })),
-    projects, effectComposition: { status: effectBlockers.length > 0 ? "unknown" : effectLinks.length > 0 ? "verified" : "not-applicable", links: effectLinks, blockers: effectBlockers }, blockers, assurance,
+    projects,
+    effectComposition: { status: effectBlockers.length > 0 ? "unknown" : effectLinks.length > 0 ? "verified" : "not-applicable", links: effectLinks, blockers: effectBlockers },
+    refinementComposition: { status: refinementBlockers.length > 0 ? "unknown" : refinementLinks.length > 0 ? "verified" : "not-applicable", links: refinementLinks, blockers: refinementBlockers },
+    blockers, assurance,
   };
 }
 

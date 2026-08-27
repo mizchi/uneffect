@@ -8,6 +8,7 @@ import { loadBuiltinRegistryConfig } from "./registry-config.js";
 import { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
+import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject, type WorkspaceRefinementComposition } from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 
 export const checkCommand: CliCommand = {
@@ -61,7 +62,9 @@ export const checkCommand: CliCommand = {
     if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"])) {
       const reports = [];
       const completed: CompletedEffectProject[] = [];
+      const completedRefinements: CompletedRefinementProject[] = [];
       const composed: WorkspaceEffectComposition = { contracts: new Map(), moduleContracts: new Map(), links: [], blockers: [] };
+      const composedRefinements: WorkspaceRefinementComposition = { contracts: new Map(), links: [], blockers: [] };
       const outputIntegrity: BuildOutputIntegrity = { status: values["require-exact-build-artifacts"] ? "verified" : "not-checked", outputs: [] };
       for (const domain of workspace.projects) {
         if (domain.fileNames.length === 0) continue;
@@ -72,6 +75,9 @@ export const checkCommand: CliCommand = {
         const composition = composeWorkspaceEffects(program, domain, completed);
         composed.links.push(...composition.links);
         composed.blockers.push(...composition.blockers);
+        const refinementComposition = composeWorkspaceRefinements(program, domain, completedRefinements);
+        composedRefinements.links.push(...refinementComposition.links);
+        composedRefinements.blockers.push(...refinementComposition.blockers);
         const domainResult = await checkFiles(domain.fileNames, {
           mode: values.strict ? "strict" : "gradual", requireAnnotations: !values.infer, builtinRegistry,
           compilerOptions: domain.compilerOptions, project: domain.provenance,
@@ -80,11 +86,15 @@ export const checkCommand: CliCommand = {
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
-        completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs: inspectDeclarationOutputs(program) });
+        const declarationOutputs = inspectDeclarationOutputs(program);
+        completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs });
+        const refinementAnalysis = analyzeProjectRefinements(program, domain, refinementComposition.contracts);
+        composedRefinements.blockers.push(...refinementAnalysis.blockers);
+        completedRefinements.push({ project: domain, summaries: refinementAnalysis.summaries, declarationOutputs });
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
-      }, composed);
+      }, composed, composedRefinements);
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {
         for (const item of reports) {

@@ -14,6 +14,8 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-p
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
+import { analyzeProjectRefinements } from "../src/workspace-refinements.js";
+import type { TypeScriptProject } from "../src/typescript-project.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
 const chainedConstants = Array.from({ length: 128 }, (_, index) =>
@@ -308,6 +310,22 @@ describe("refinement receiver identity", () => {
 
   bench("warm TypeChecker Node Lease collection actions", () => {
     validateRefinementActionBodiesInProgram(leaseAuthorityProgram, leaseAuthorityFile, "leaseAuthority", leaseAuthoritySpec);
+  }, { time: 500, iterations: 20 });
+
+  bench("export verified project refinement summaries with provenance", () => {
+    const project: TypeScriptProject = {
+      projectFile: "/bench/tsconfig.json", fileNames: [leaseAuthorityFile],
+      compilerOptions: leaseAuthorityProgram.getCompilerOptions(), projectReferences: [],
+      provenance: {
+        projectFile: "/bench/tsconfig.json",
+        compiler: {
+          analyzerVersion: ts.version, analyzerPackageFile: "/bench/typescript/package.json",
+          consumerVersion: ts.version, consumerPackageFile: "/bench/typescript/package.json",
+          consumerModuleFile: "/bench/typescript/index.js", parity: "exact",
+        },
+      },
+    };
+    analyzeProjectRefinements(leaseAuthorityProgram, project, new Map());
   }, { time: 500, iterations: 20 });
 });
 

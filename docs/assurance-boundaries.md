@@ -86,8 +86,9 @@ aggregate assurance result.
 A passing CLI workspace result establishes only that every listed domain passed
 the selected profile relative to the recorded assumptions and that root-source
 ownership was unambiguous. It is not a cross-project whole-program proof:
-only uniquely resolved `verified` function and module Effect summaries are composed by the
-CLI, while refinements and the other proof domains are not,
+only uniquely resolved `verified` function/module Effect summaries and the
+documented direct scalar refinement fragment are composed by the CLI, while
+cross-project invariants, contracts, ownership, and temporal evidence are not;
 build-artifact freshness is not load-bearing unless explicitly required,
 declaration contents are not independently attested, and runtime package resolution
 outside the selected Programs remains excluded. A graph with a cycle has no
@@ -129,8 +130,21 @@ A verified child iterator consumer whose every parameter has an
 `effect_parameter` bound is instantiated through resolved generator
 factories, supported stored iterators, forwarded iterator parameters, and
 standard pure iterators. Its bound is checked in the parent Program, including
-the declared Promise-consumer `Throw`-to-rejection behavior. Success still excludes cross-project refinements, contracts,
-ownership, and temporal composition. Every `.d.ts` consumed by an Effect link
+the declared Promise-consumer `Throw`-to-rejection behavior.
+
+The separate `refinementComposition` ledger admits one additional fragment: an
+unguarded scalar child action whose local implementation and create/observe
+projection verify against its model, called directly from an annotated parent
+action with the same adapter version. The parent action is revalidated after
+substituting the child action summary. Every link retains producer and consumer
+compiler/config provenance and exact declaration integrity. A stale or modified
+declaration, ambiguous export, adapter/version mismatch, or semantically
+incompatible parent model prevents `verified` composition. Guarded actions,
+indirect/higher-order calls, collection updates, abstraction transforms, and
+non-TypeScript declaration transforms remain unsupported.
+
+Success still excludes cross-project invariants, contracts, ownership, and
+temporal composition. Every `.d.ts` consumed by an Effect or refinement link
 must exactly match a same-compiler in-memory declaration re-emission; missing or
 different bytes block the link even when SolutionBuilder says `fresh`. SolutionBuilder
 freshness is always reported and can be made load-bearing with

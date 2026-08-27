@@ -66,6 +66,22 @@ export interface RefinementActionDiagnostic {
   message: string;
 }
 
+/** A declaration-bound action fact established in another TypeScript project. */
+export interface ExternalRefinementActionContract {
+  adapterName: string;
+  version: string;
+  modelName: string;
+  exportName: string;
+  assignments: readonly { target: string; expressionAst: TemporalExpression }[];
+  evidence: "verified" | "unknown";
+  reason?: string;
+}
+
+export interface RefinementActionValidationOptions {
+  /** Keys are `${declaration source file}:${declaration start}` identities in the consuming Program. */
+  externalActions?: ReadonlyMap<string, ExternalRefinementActionContract>;
+}
+
 export type RefinementInvariantDiagnosticCode = "missing-invariant-binding" | "unknown-invariant-binding" | "unsupported-invariant-body" | "invariant-expression-mismatch";
 
 export interface RefinementInvariantDiagnostic {
@@ -801,6 +817,7 @@ function validateRefinementActionBodiesInSource(
   spec: TemporalSpec,
   checker?: ts.TypeChecker,
   program?: ts.Program,
+  options: RefinementActionValidationOptions = {},
 ): RefinementActionDiagnostic[] {
   const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
@@ -3095,7 +3112,27 @@ function validateRefinementActionBodiesInSource(
         || checker !== undefined && ts.isPropertyAccessExpression(node.expression) && resolveFunction(node.expression) !== undefined)) {
         const helperName = node.expression.getText();
         const helper = resolveFunction(node.expression);
+        const helperSource = helper?.getSourceFile();
+        const declarationKey = helper && helperSource
+          ? `${helperSource.fileName}:${helper.getStart(helperSource)}` : undefined;
+        const external = declarationKey ? options.externalActions?.get(declarationKey) : undefined;
         const callKey = helper ? `function:${helper.getSourceFile().fileName}:${helper.pos}` : `function:${helperName}`;
+        if (helper && !helper.body && external?.evidence === "verified"
+          && external.adapterName === adapterName && external.version === manifest.version
+          && helper.parameters.length === 1 && node.arguments.length === 1) {
+          const receiverArgument = node.arguments[0]!;
+          const substitutedReceiver = ts.isIdentifier(receiverArgument) ? substitutions.get(receiverArgument.text) : undefined;
+          const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
+            || ts.isIdentifier(receiverArgument) && (receiverArgument.text === receiver
+              || (substitutedReceiver !== undefined && ts.isIdentifier(substitutedReceiver) && substitutedReceiver.text === receiver));
+          if (!receiverMatches || external.assignments.some(({ target }) => !stateNames.has(target))) return undefined;
+          const resolved = external.assignments.map(({ target, expressionAst }) => [
+            target, expandLocalSnapshots(resolveCurrentState(expressionAst)),
+          ] as const);
+          for (const [target, expression] of resolved) updates.set(target, expression);
+          if (terminalReturn) return "return";
+          continue;
+        }
         if (!helper?.body || activeCalls.has(callKey) || helper.parameters.length !== node.arguments.length
           || helper.parameters.length === 0 || helper.parameters.some((parameter) => !ts.isIdentifier(parameter.name))) return undefined;
         const receiverArgument = node.arguments[0]!;
@@ -3424,10 +3461,11 @@ export function validateRefinementActionBodiesInProgram(
   fileName: string,
   adapterName: string,
   spec: TemporalSpec,
+  options: RefinementActionValidationOptions = {},
 ): RefinementActionDiagnostic[] {
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
-  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), program);
+  return validateRefinementActionBodiesInSource(source, source.text, adapterName, spec, program.getTypeChecker(), program, options);
 }
 
 function collectProgramHelperFunctions(source: ts.SourceFile, checker: ts.TypeChecker): Map<string, ts.FunctionDeclaration> {
@@ -3588,9 +3626,10 @@ export async function validateRefinementActionBodiesWithZ3(
 /** Combines TypeChecker-backed builtin identity checks with Z3 guard and scalar-update equivalence. */
 export async function validateRefinementActionBodiesInProgramWithZ3(
   program: ts.Program, fileName: string, adapterName: string, spec: TemporalSpec,
+  options: RefinementActionValidationOptions = {},
 ): Promise<Array<Z3RefinementDiagnostic<RefinementActionDiagnostic>>> {
   const guards = await dischargeExpressionMismatchesWithZ3(
-    validateRefinementActionBodiesInProgram(program, fileName, adapterName, spec), "action-guard-mismatch", spec,
+    validateRefinementActionBodiesInProgram(program, fileName, adapterName, spec, options), "action-guard-mismatch", spec,
   );
   return dischargeExpressionMismatchesWithZ3(guards, "action-update-mismatch", spec);
 }

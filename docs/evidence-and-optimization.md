@@ -44,8 +44,11 @@ is `schemas/uneffect-project-workspace-v1.schema.json`.
 
 This aggregation links only uniquely resolved `verified` function and module Effect
 summaries across project declaration/import boundaries and records every accepted or
-blocked link in `effectComposition`. It does not link solver obligations,
-refinements, ownership, or temporal evidence. Supported parameter, exported
+blocked link in `effectComposition`. A separate `refinementComposition` ledger
+links the documented direct, unguarded scalar action fragment only after local
+child validation, exact declaration matching, and parent-action revalidation.
+It does not link solver obligations, cross-project invariants, ownership, or
+temporal evidence. Supported parameter, exported
 closure/module, same-realm global, and bounded iterator Effect substitutions are
 part of the linked Effect contract. Every declaration consumed by such a link
 must exactly match a SHA-256-bound same-compiler in-memory declaration emit.

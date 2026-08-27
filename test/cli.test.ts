@@ -400,6 +400,7 @@ describe("uneffect command line", () => {
       const validReport = JSON.parse(valid.stdout) as CheckWorkspaceJsonReport;
       expect(validReport).toMatchObject({ schema: "uneffect-workspace-check/v1", outcome: "passed", rootProjectFile: project, blockers: [] });
       expect(validReport.effectComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
+      expect(validReport.refinementComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
       expect(validReport.buildArtifacts.status).toBe("stale");
       expect(validReport.buildOrder).toEqual([join(a, "tsconfig.json"), join(b, "tsconfig.json"), project]);
       expect(validReport.configs.find((item) => item.projectFile === join(a, "tsconfig.json"))?.rootFiles).toEqual([join(a, "src", "a.ts")]);
@@ -413,7 +414,7 @@ describe("uneffect command line", () => {
       ]);
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
-        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"]),
+        required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -645,6 +646,53 @@ describe("uneffect command line", () => {
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 60_000);
+
+  it("reports cross-project scalar refinement composition in workspace JSON", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-refinement-workspace-"));
+    const project = join(directory, "tsconfig.json");
+    const child = join(directory, "packages", "child");
+    const parent = join(directory, "packages", "parent");
+    try {
+      for (const path of [join(directory, "node_modules", "typescript"), join(child, "src"), join(parent, "src")]) {
+        mkdirSync(path, { recursive: true });
+      }
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      const model = `state count: int\ninit count = 0\naction increment: count' = count + 1`;
+      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:\n${model}\n*/
+        export interface Runtime { count: number }
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
+      `);
+      writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
+        import type { Runtime } from "../../child/src/counter.js"
+        /* uneffect:\n${model}\n*/
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { incrementChild(runtime) }
+      `);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: { composite: true, declaration: true, emitDeclarationOnly: true, rootDir: "src", outDir: "dist", strict: true, module: "NodeNext", moduleResolution: "NodeNext", types: [] },
+        include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify(config([{ path: "../child" }])));
+      writeFileSync(project, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [project], {}).build()).toBe(ts.ExitStatus.Success);
+      const io = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], io)).toBe(exitCode.success);
+      expect(JSON.parse(io.stdout)).toMatchObject({
+        refinementComposition: {
+          status: "verified", blockers: [],
+          links: [expect.objectContaining({ adapterName: "counter", version: "1", modelName: "increment", evidence: "verified" })],
+        },
+        assurance: { passed: true, claims: expect.arrayContaining(["verified child-project scalar refinement actions are composed into direct parent action calls"]) },
+      });
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  }, 30_000);
 
   it("reports missing or excess positional arguments per command", async () => {
     const missing = capture();

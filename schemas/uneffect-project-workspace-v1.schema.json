@@ -4,7 +4,7 @@
   "title": "Uneffect programmatic project-workspace verification v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"],
+  "required": ["schema", "rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"],
   "properties": {
     "schema": { "const": "uneffect-project-workspace/v1" },
     "rootProjectFile": { "type": "string" },
@@ -15,6 +15,7 @@
     "configs": { "type": "array", "items": { "$ref": "#/$defs/config" } },
     "projects": { "type": "array", "items": { "$ref": "#/$defs/project" } },
     "effectComposition": { "$ref": "#/$defs/effectComposition" },
+    "refinementComposition": { "$ref": "#/$defs/refinementComposition" },
     "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } },
     "assurance": { "$ref": "#/$defs/assurance" }
   },
@@ -38,6 +39,26 @@
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
             "evidence": { "enum": ["verified", "trusted", "inferred", "unknown"] },
             "effects": { "type": "array", "items": { "type": "object" } }
+          }
+        } },
+        "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }
+      }
+    },
+    "refinementComposition": {
+      "type": "object", "additionalProperties": false, "required": ["status", "links", "blockers"],
+      "properties": {
+        "status": { "enum": ["not-applicable", "verified", "unknown"] },
+        "links": { "type": "array", "items": {
+          "type": "object", "additionalProperties": false,
+          "required": ["fromProject", "toProject", "callerFile", "callee", "adapterName", "version", "modelName", "evidence", "declarationFile", "declarationIntegrity", "producer", "consumer"],
+          "properties": {
+            "fromProject": { "type": "string" }, "toProject": { "type": "string" },
+            "callerFile": { "type": "string" }, "callee": { "type": "string" },
+            "adapterName": { "type": "string" }, "version": { "type": "string" },
+            "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
+            "declarationFile": { "type": "string" },
+            "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
+            "producer": { "$ref": "#/$defs/provenance" }, "consumer": { "$ref": "#/$defs/provenance" }
           }
         } },
         "blockers": { "type": "array", "items": { "$ref": "#/$defs/blocker" } }

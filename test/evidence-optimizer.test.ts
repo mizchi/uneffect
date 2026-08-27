@@ -57,7 +57,7 @@ describe("evidence and optimizer obligations", () => {
       });
       expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-project-workspace/v1" } },
-        required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "blockers", "assurance"]),
+        required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
       });
       expect(verified.projects.map((item) => item.project.projectFile)).toEqual([
         join(aDirectory, "tsconfig.json"), join(bDirectory, "tsconfig.json"),
@@ -65,8 +65,9 @@ describe("evidence and optimizer obligations", () => {
       expect(verified.projects.map((item) => item.project.compiler.parity)).toEqual(["exact", "exact"]);
       expect(verified.projects.map((item) => item.verification.assurance.status)).toEqual(["verified", "verified"]);
       expect(verified.effectComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
+      expect(verified.refinementComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
       expect(verified.assurance.claims).toContain("every referenced compiler domain passed project verification");
-      expect(verified.assurance.exclusions).toContain("contract, ownership, refinement, and temporal evidence is not composed across project boundaries");
+      expect(verified.assurance.exclusions).toContain("contract, ownership, invariant, and temporal evidence is not composed across project boundaries");
       expect(verified.buildArtifacts.status).toBe("stale");
 
       const staleArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });

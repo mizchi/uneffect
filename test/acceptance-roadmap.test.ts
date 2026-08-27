@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -16,6 +16,148 @@ function futureApi(name: string): FutureApi {
 const files = (entries: Record<string, string>) => entries;
 
 describe("Uneffect end-to-end acceptance roadmap", () => {
+  it("composes a verified scalar refinement action across a direct project reference", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-project-refinement-"));
+    const root = join(directory, "tsconfig.json");
+    const child = join(directory, "packages", "child");
+    const parent = join(directory, "packages", "parent");
+    try {
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      mkdirSync(join(child, "src"), { recursive: true });
+      mkdirSync(join(parent, "src"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({
+        name: "typescript", version: ts.version, main: "index.js",
+      }));
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:
+        state count: int
+        init count = 0
+        action increment: count' = count + 1
+      */
+        export interface Runtime { count: number }
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */
+        export function increment(runtime: Runtime) { runtime.count++ }
+      `);
+      writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
+        import type { Runtime } from "../../child/src/counter.js"
+        /* uneffect:
+          state count: int
+          init count = 0
+          action increment: count' = count + 1
+        */
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */
+        export function increment(runtime: Runtime) { incrementChild(runtime) }
+      `);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: {
+          composite: true, declaration: true, emitDeclarationOnly: true,
+          rootDir: "src", outDir: "dist", strict: true,
+          module: "NodeNext", moduleResolution: "NodeNext", types: [],
+        },
+        include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify(config([{ path: "../child" }])));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+
+      const result = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; links: unknown[]; blockers: unknown[] };
+        assurance: { claims: string[] };
+      };
+      expect(result.refinementComposition).toMatchObject({
+        status: "verified",
+        links: [expect.objectContaining({
+          adapterName: "counter", version: "1", modelName: "increment",
+          fromProject: join(parent, "tsconfig.json"), toProject: join(child, "tsconfig.json"),
+          evidence: "verified", declarationIntegrity: expect.objectContaining({ status: "verified" }),
+          producer: expect.objectContaining({ projectFile: join(child, "tsconfig.json") }),
+          consumer: expect.objectContaining({ projectFile: join(parent, "tsconfig.json") }),
+        })],
+        blockers: [],
+      });
+      expect(result.assurance).toMatchObject({ passed: true, blockers: [] });
+      expect(result.assurance.claims).toContain(
+        "verified child-project scalar refinement actions are composed into direct parent action calls",
+      );
+
+      const childDeclaration = join(child, "dist", "counter.d.ts");
+      const exactDeclaration = readFileSync(childDeclaration, "utf8");
+      appendFileSync(childDeclaration, "// transformed after an otherwise fresh build\n");
+      const transformed = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(transformed.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          kind: "refinement-composition", subject: "increment",
+          message: expect.stringContaining("declaration output content mismatch"),
+        })]),
+      });
+      writeFileSync(childDeclaration, exactDeclaration);
+
+      const exactParentSource = readFileSync(join(parent, "src", "counter.ts"), "utf8");
+      const incompatibleParent = exactParentSource
+        .replace("action increment: count' = count + 1", "action increment: count' = count + 2");
+      writeFileSync(join(parent, "src", "counter.ts"), incompatibleParent);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const incompatible = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+        assurance: { passed: boolean };
+      };
+      expect(incompatible.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          kind: "refinement-composition", classification: "violation",
+          subject: "counter:increment", message: expect.stringContaining("expected count + 2"),
+        })]),
+      });
+      expect(incompatible.assurance.passed).toBe(false);
+
+      const versionDrift = exactParentSource.replaceAll("counter@1", "counter@2");
+      writeFileSync(join(parent, "src", "counter.ts"), versionDrift);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const incompatibleVersion = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(incompatibleVersion.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          kind: "refinement-composition", classification: "violation",
+          subject: "counter:increment", message: expect.stringContaining("outside the supported scalar refinement fragment"),
+        })]),
+      });
+
+      writeFileSync(join(parent, "src", "counter.ts"), exactParentSource);
+      const exactChildSource = readFileSync(join(child, "src", "counter.ts"), "utf8");
+      const ambiguousChild = exactChildSource
+        .replace("/* uneffect: refinement counter@1 create */", "/* uneffect: refinement counter@1 create */ /* uneffect: refinement secondary@1 create */")
+        .replace("/* uneffect: refinement counter@1 observe */", "/* uneffect: refinement counter@1 observe */ /* uneffect: refinement secondary@1 observe */")
+        .replace("/* uneffect: refinement counter@1 action increment */", "/* uneffect: refinement counter@1 action increment */ /* uneffect: refinement secondary@1 action increment */");
+      writeFileSync(join(child, "src", "counter.ts"), ambiguousChild);
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const ambiguous = await verifyProject({ projectFile: root, buildArtifacts: "require-fresh" }) as {
+        refinementComposition: { status: string; blockers: unknown[] };
+      };
+      expect(ambiguous.refinementComposition).toMatchObject({
+        status: "unknown",
+        blockers: expect.arrayContaining([expect.objectContaining({
+          kind: "refinement-composition", classification: "unknown", subject: "increment",
+          message: expect.stringContaining("cannot uniquely match increment"),
+        })]),
+      });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("refines state updates through non-escaping immutable runtime aliases", () => {
     const validateActions = futureApi("validateRefinementActionBodies");
     const parseSpecification = futureApi("parseSpec");
