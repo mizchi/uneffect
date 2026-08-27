@@ -42,6 +42,7 @@ engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
 work in #9, remains in the historical ledger and `docs/implementation-status.md`.
+General CFG and escaping-alias fixed points remain outside #9 and are owned by #23 and #24.
 
 ## Immediate execution queue
 
