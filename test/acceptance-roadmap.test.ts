@@ -3372,6 +3372,46 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toMatch(/not\(acquired_3\) or \(branch_\d+ == 0\)/);
   });
 
+  it("preserves a mixed switch and Boolean resource decision through catch join", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/mixed-decision-correlated-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsync(fileName, source) as {
+      resources: Array<{ binding: string; controlConditions: Array<{ id: string; expected: boolean }> }>;
+      resourceSwitches: Array<{ discriminant: string; hasDefault: boolean }>;
+      resourceIfs: Array<{ predicate: string }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true, true] },
+      { binding: "secondary", polarity: [true, false] },
+      { binding: "backup", polarity: [false] },
+    ]);
+    expect(result.resourceSwitches).toContainEqual(expect.objectContaining({
+      discriminant: "finite-string-identifier",
+      hasDefault: true,
+    }));
+    expect(result.resourceIfs).toContainEqual(expect.objectContaining({ predicate: "boolean-identifier" }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("mixed_decision_correlated_cleanup", result, "deliverMixedChoice") as string;
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_1 and acquired_3\) and not\(acquired_2 and acquired_3\)/);
+    expect(quint).toMatch(/not\(acquired_1\) or \(branch_\d+ == 1 and branch_\d+ == 1\)/);
+    expect(quint).toMatch(/not\(acquired_2\) or \(branch_\d+ == 1 and branch_\d+ == 0\)/);
+    expect(quint).toMatch(/not\(acquired_3\) or \(branch_\d+ == 0\)/);
+
+    const expressionPredicate = analyzeAsync("mixed-decision-expression.ts", `declare function choosePrimary(): boolean\n${source}`.replace(
+      "if (usePrimary)",
+      "if (choosePrimary())",
+    ));
+    expect(() => generateUnified("mixed_decision_expression", expressionPredicate, "deliverMixedChoice"))
+      .toThrow(/requires a Boolean identifier predicate/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

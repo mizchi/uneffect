@@ -739,8 +739,18 @@ acquisition exclusion, branch implication, and disposal only after acquisition.
 Expression predicates, missing leaves, multiple resources on one leaf, and a
 ninth condition are explicit non-proofs. Multiple acquisition, wrong-leaf
 cleanup, skipped cleanup, premature handler entry, and floating rejection are
-negative controls. Mixed switch/Boolean trees and arbitrary CFG joins remain
-open.
+negative controls.
+
+A mixed-decision sibling accepts one finite string-literal `switch` whose
+preferred case contains one Boolean-identifier `if`/`else` and whose explicit
+default contains one backup resource. Generation preserves the conjunction of
+the switch and Boolean paths, validates both provenance kinds, and enumerates
+one combined condition space capped at eight conditions. Expression predicates,
+open switch discriminants, incomplete or overlapping mixed leaves, multiple
+resources on a leaf, and a ninth combined condition are explicit non-proofs.
+Multiple acquisition, wrong-leaf cleanup, skipped cleanup, premature handler
+entry, and floating rejection remain negative controls. Other mixed shapes,
+arbitrary CFG joins, loops, and escaping aliases remain open.
 
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding

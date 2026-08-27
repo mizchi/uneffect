@@ -1556,6 +1556,91 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 90_000);
 
+  it("keeps mixed switch and Boolean resource decisions correlated through cleanup and catch", () => {
+    const fileName = "examples/dogfood/mixed-decision-correlated-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const quint = generateUnifiedAsyncQuint("mixed_decision_correlated_cleanup", result, "deliverMixedChoice");
+    expect(quint).toMatch(/val branchResourceExclusiveSafe = not\(acquired_1 and acquired_2\) and not\(acquired_1 and acquired_3\) and not\(acquired_2 and acquired_3\)/);
+    const positive = run(quint, 45);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["multiple_leaves_acquired", { acquireBothBranches: true }],
+      ["wrong_leaf_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `mixed_decision_correlated_cleanup_${name}`,
+        result,
+        "deliverMixedChoice",
+        options,
+      ), 45);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const incomplete = analyzeAsyncSafety("mixed-decision-incomplete.ts", source.replace(
+      `        } else {
+          await using secondary = openSecondary();
+          await secondary.send().then(() => undefined);
+        }`,
+      "        }",
+    ));
+    expect(() => generateUnifiedAsyncQuint("mixed_decision_incomplete", incomplete, "deliverMixedChoice"))
+      .toThrow(/mixed resource decision .* incomplete leaf coverage/);
+
+    const overlapping = analyzeAsyncSafety("mixed-decision-overlap.ts", source.replace(
+      "          await using primary = openPrimary();",
+      "          await using primary = openPrimary();\n          await using duplicate = openSecondary();",
+    ));
+    expect(() => generateUnifiedAsyncQuint("mixed_decision_overlap", overlapping, "deliverMixedChoice"))
+      .toThrow(/mixed resource decision .* overlapping acquisition paths/);
+
+    const expressionPredicate = analyzeAsyncSafety("mixed-decision-expression.ts", `declare function choosePrimary(): boolean\n${source}`.replace(
+      "if (usePrimary)",
+      "if (choosePrimary())",
+    ));
+    expect(() => generateUnifiedAsyncQuint("mixed_decision_expression", expressionPredicate, "deliverMixedChoice"))
+      .toThrow(/mixed resource decision .* requires a Boolean identifier predicate/);
+
+    const openDiscriminant = analyzeAsyncSafety("mixed-decision-open-route.ts", source.replace(
+      "route: MixedDeliveryRoute,",
+      "route: string,",
+    ));
+    expect(() => generateUnifiedAsyncQuint("mixed_decision_open_route", openDiscriminant, "deliverMixedChoice"))
+      .toThrow(/requires a finite string-literal union identifier discriminant/);
+
+    const predicates = Array.from({ length: 8 }, (_, index) => `b${index}: boolean`).join(", ");
+    const decisions = Array.from({ length: 8 }, (_, index) => `${index === 0 ? "if" : "else if"} (b${index}) { await using r${index} = open(); await r${index}.send() }`).join(" ");
+    const overBudget = analyzeAsyncSafety("mixed-decision-over-budget.ts", `
+      type Route = "preferred" | "backup"
+      interface R extends AsyncDisposable { send(): Promise<void> }
+      declare function open(): R
+      async function overBudget(route: Route, ${predicates}) {
+        try {
+          switch (route) {
+            case "preferred": { ${decisions} else { await using r8 = open(); await r8.send() }; break }
+            default: { await using backup = open(); await backup.send() }
+          }
+        } catch {}
+        await Promise.resolve(1).then(value => value)
+      }
+    `);
+    expect(() => generateUnifiedAsyncQuint("mixed_decision_over_budget", overBudget, "overBudget"))
+      .toThrow(/mixed resource decision .* exceeds the eight-condition proof budget/);
+
+    const floating = analyzeAsyncSafety("mixed-decision-floating.ts", source.replace(
+      "await secondary.send().then(() => undefined);",
+      "secondary.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverMixedChoice",
+      kind: "floating-promise",
+    }));
+  }, 120_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

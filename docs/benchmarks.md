@@ -1721,3 +1721,17 @@ incomplete or overlapping leaves, a ninth condition, multiple acquisition,
 wrong-leaf cleanup, skipped cleanup, premature handler entry, and floating
 rejection. The timing is not a CI budget or evidence for mixed decision kinds or
 arbitrary CFGs.
+
+The mixed-decision-correlated-cleanup workload selects a preferred switch arm,
+then one of two resources through a Boolean identifier, or selects a backup
+resource through the explicit default arm. It validates the switch discriminant
+and nested predicate provenance, complete/non-overlapping mixed leaf coverage,
+and one shared eight-condition budget before generating cleanup/handler
+invariants. A filtered run on 2026-08-28 measured 161.92 ms mean (6.1761
+operations/second over 20 fixed iterations, 7.10% relative margin of error).
+This includes cold TypeScript parsing/type checking and Quint source generation
+but excludes Quint execution. Separate tests run the positive model and reject
+an expression predicate, an open discriminant, incomplete or overlapping mixed
+leaves, a ninth combined condition, multiple acquisition, wrong-leaf cleanup,
+skipped cleanup, premature handler entry, and floating rejection. The timing is
+not a CI budget or evidence for arbitrary decision shapes or general CFG joins.

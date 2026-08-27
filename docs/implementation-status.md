@@ -353,6 +353,15 @@ same property is proved for arbitrary TypeScript.
   multiple resources on one leaf, and deeper over-budget trees are explicit
   non-proofs. Multiple acquisition, wrong-leaf cleanup, skipped cleanup,
   premature handler entry, and floating rejection remain load-bearing controls.
+- A mixed extension accepts one finite string-literal `switch` whose preferred
+  case contains one Boolean-identifier choice and whose explicit default owns a
+  backup resource. Generation validates both provenance kinds, complete and
+  pairwise non-overlapping mixed leaves, and one shared eight-condition budget
+  before Quint checks path implication, pairwise acquisition exclusion, and
+  dispose-after-acquire. Expression predicates, open discriminants, missing or
+  overlapping leaves, multiple resources per leaf, and larger mixed trees are
+  explicit non-proofs. Cleanup, handler, acquisition, and floating-Promise fault
+  injections remain load-bearing.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

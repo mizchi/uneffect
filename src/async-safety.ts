@@ -2438,7 +2438,8 @@ export function generateUnifiedAsyncQuint(
     const match = /^(.*@switch:\d+):case:\d+$/.exec(condition.id);
     return match?.[1];
   };
-  const ifGroupId = (condition: AsyncControlCondition): string | undefined => /@if:\d+$/.test(condition.id) ? condition.id : undefined;
+  const ifGroupIdFromId = (id: string): string | undefined => /@if:\d+$/.test(id) ? id : undefined;
+  const ifGroupId = (condition: AsyncControlCondition): string | undefined => ifGroupIdFromId(condition.id);
   const resourceDecisionGroups = [...resources.reduce((groups, resource, resourceIndex) => {
     const groupIds = new Set(resource.controlPaths.flatMap((path) => {
       const root = path.find((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined);
@@ -2451,6 +2452,43 @@ export function generateUnifiedAsyncQuint(
     }
     return groups;
   }, new Map<string, number[]>()).entries()].filter(([, resourceIndexes]) => resourceIndexes.length >= 2);
+  const mixedResourceGroups = resourceDecisionGroups.filter(([, resourceIndexes]) => {
+    const conditions = resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.flat());
+    return conditions.some((condition) => switchGroupId(condition) !== undefined)
+      && conditions.some((condition) => ifGroupId(condition) !== undefined);
+  });
+  for (const [groupId, resourceIndexes] of mixedResourceGroups) {
+    const conditionIds = [...new Set(resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.flat()
+      .filter((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined)
+      .map((condition) => condition.id)))];
+    const unsupportedPredicate = conditionIds.find((conditionId) => ifGroupIdFromId(conditionId) !== undefined
+      && !result.resourceIfs.some((decision) => decision.owner === owner
+        && decision.id === conditionId
+        && decision.predicate === "boolean-identifier"));
+    if (unsupportedPredicate) {
+      throw new Error(`${owner} mixed resource decision ${unsupportedPredicate} requires a Boolean identifier predicate`);
+    }
+    if (conditionIds.length > 8) {
+      throw new Error(`${owner} mixed resource decision ${groupId} exceeds the eight-condition proof budget`);
+    }
+    for (let left = 0; left < resourceIndexes.length; left++) for (let right = left + 1; right < resourceIndexes.length; right++) {
+      const leftResource = resources[resourceIndexes[left]!]!;
+      const rightResource = resources[resourceIndexes[right]!]!;
+      if (conditionPathsOverlap(leftResource.controlPaths, rightResource.controlPaths)) {
+        throw new Error(`${owner} mixed resource decision ${groupId} has overlapping acquisition paths`);
+      }
+    }
+    const groupPaths = resourceIndexes.flatMap((resourceIndex) => resources[resourceIndex]!.controlPaths.map((path) =>
+      path.filter((condition) => switchGroupId(condition) !== undefined || ifGroupId(condition) !== undefined),
+    ));
+    const coversSelection = (selection: number): boolean => groupPaths.some((path) => path.every((condition) => {
+      const index = conditionIds.indexOf(condition.id);
+      return index >= 0 && Boolean(selection & (1 << index)) === condition.expected;
+    }));
+    if (!Array.from({ length: 1 << conditionIds.length }, (_, selection) => selection).every(coversSelection)) {
+      throw new Error(`${owner} mixed resource decision ${groupId} has incomplete leaf coverage`);
+    }
+  }
   const switchResourceGroups = resourceDecisionGroups.filter(([groupId]) => groupId.includes("@switch:"));
   for (const [groupId, resourceIndexes] of switchResourceGroups) {
     const decision = result.resourceSwitches.find((candidate) => candidate.owner === owner && candidate.id === groupId);

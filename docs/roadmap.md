@@ -26,8 +26,9 @@ release date commitment.
    kind. One Boolean branch-correlated resource cleanup/handler join is also
    implemented, as is one exhaustive finite string-literal `switch` with three
    branch-local resources. One three-leaf nested Boolean decision tree is also
-   implemented. Mixed finite switch/Boolean trees and then arbitrary CFG work
-   remain, without weakening floating-error checks.
+   implemented. One finite switch with a nested Boolean preferred choice and a
+   default backup is also implemented. Other mixed shapes and arbitrary CFG
+   work remain, without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
