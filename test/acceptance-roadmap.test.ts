@@ -2041,6 +2041,144 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("consumes a conditional finally-break snapshot after it overrides prior completion", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state stop: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init stop = false
+       * action record: billed' = failed ? (stop ? billed + 4 : billed) : billed + (stop ? 3 : 4), audited' = audited + (failed ? 4 : 3)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
+      /* uneffect: refinement conditionalFinallyBreak@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalFinallyBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalFinallyBreak@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        for (let attempt = 0; attempt < 1; attempt++) {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } finally {
+            units += 1
+            runtime.audited += units
+            if (runtime.stop) break
+          }
+          units += 1
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-finally-break.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-finally-break.ts", source, "conditionalFinallyBreak", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongFinallySnapshot = source.replace("units += 1\n            runtime.audited", "units += 2\n            runtime.audited");
+    await expect(validateActions(
+      "conditional-finally-break-wrong.ts", wrongFinallySnapshot, "conditionalFinallyBreak", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const ownedLabeledBreak = source
+      .replace("for (let attempt", "attempts: for (let attempt")
+      .replace("if (runtime.stop) break", "if (runtime.stop) break attempts");
+    await expect(validateActions(
+      "conditional-finally-owned-break.ts", ownedLabeledBreak, "conditionalFinallyBreak", temporal,
+    )).resolves.toEqual([]);
+
+    const unknownFinallyBreak = source.replace("if (runtime.stop) break", "if (runtime.stop) break outer");
+    expect(validateActionsStatically(
+      "conditional-finally-unknown-break.ts", unknownFinallyBreak, "conditionalFinallyBreak", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
+  it("advances from a conditional finally-continue snapshot after overriding prior completion", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state retry: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init retry = false
+       * action record: billed' = failed ? (retry ? billed + 7 : billed) : billed + (retry ? 5 : 7), audited' = audited + (failed ? (retry ? 11 : 4) : (retry ? 8 : 9))
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; retry: boolean }
+      /* uneffect: refinement conditionalFinallyContinue@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement conditionalFinallyContinue@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement conditionalFinallyContinue@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } finally {
+            units += 1
+            runtime.audited += units
+            if (runtime.retry) continue
+          }
+          units += 1
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-finally-continue.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-finally-continue.ts", source, "conditionalFinallyContinue", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongFinallySnapshot = source.replace("units += 1\n            runtime.audited", "units += 2\n            runtime.audited");
+    await expect(validateActions(
+      "conditional-finally-continue-wrong.ts", wrongFinallySnapshot, "conditionalFinallyContinue", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const ownedLabeledContinue = source
+      .replace("for (let attempt", "attempts: for (let attempt")
+      .replace("if (runtime.retry) continue", "if (runtime.retry) continue attempts");
+    await expect(validateActions(
+      "conditional-finally-owned-continue.ts", ownedLabeledContinue, "conditionalFinallyContinue", temporal,
+    )).resolves.toEqual([]);
+
+    const unknownLabeledContinue = source.replace(
+      "if (runtime.retry) continue", "if (runtime.retry) continue outer",
+    );
+    expect(validateActionsStatically(
+      "conditional-finally-unknown-continue.ts", unknownLabeledContinue, "conditionalFinallyContinue", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

@@ -177,6 +177,16 @@ const finallyEscalationAccountingSource = readFileSync(finallyEscalationAccounti
 const finallyEscalationAccountingSpec = parseSpec(
   finallyEscalationAccountingFile, finallyEscalationAccountingSource,
 ).temporal;
+const finallyCircuitBreakAccountingFile = "examples/dogfood/finally-circuit-break-accounting.ts";
+const finallyCircuitBreakAccountingSource = readFileSync(finallyCircuitBreakAccountingFile, "utf8");
+const finallyCircuitBreakAccountingSpec = parseSpec(
+  finallyCircuitBreakAccountingFile, finallyCircuitBreakAccountingSource,
+).temporal;
+const finallyRetryAccountingFile = "examples/dogfood/finally-retry-accounting.ts";
+const finallyRetryAccountingSource = readFileSync(finallyRetryAccountingFile, "utf8");
+const finallyRetryAccountingSpec = parseSpec(
+  finallyRetryAccountingFile, finallyRetryAccountingSource,
+).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1223,6 +1233,24 @@ describe("typed-array static verification", () => {
       finallyEscalationAccountingSource,
       "finallyEscalationAccounting",
       finallyEscalationAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("override predecessor completion with an owning-loop finally break", () => {
+    validateRefinementActionBodies(
+      finallyCircuitBreakAccountingFile,
+      finallyCircuitBreakAccountingSource,
+      "finallyCircuitBreakAccounting",
+      finallyCircuitBreakAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("override predecessor completion with an owning-loop finally continue", () => {
+    validateRefinementActionBodies(
+      finallyRetryAccountingFile,
+      finallyRetryAccountingSource,
+      "finallyRetryAccounting",
+      finallyRetryAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

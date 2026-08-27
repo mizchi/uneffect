@@ -2645,13 +2645,16 @@ function validateRefinementActionBodiesInSource(
             const finallyThrow = completionPredicate(finallyCompletion, "throw");
             const finallyBreak = completionPredicate(finallyCompletion, "break");
             const finallyContinue = completionPredicate(finallyCompletion, "continue");
-            // Return and supported normalized throw overrides carry explicit
-            // snapshots. Break/continue and labeled overrides still need
-            // target-specific edge ownership.
-            if (!isBooleanCompletionPredicate(finallyBreak, false)
-              || !isBooleanCompletionPredicate(finallyContinue, false)
-              || !isBooleanCompletionPredicate(labeledCompletionPredicate(finallyCompletion), false)) return undefined;
-            const finallyNormal = notCompletionPredicate(orCompletionPredicates(finallyReturn, finallyThrow));
+            // Return, supported normalized throw, and loop-owned transfers
+            // carry explicit snapshots. Cross/nested labeled overrides still
+            // need target-specific edge ownership.
+            if (!isBooleanCompletionPredicate(labeledCompletionPredicate(finallyCompletion), false)) return undefined;
+            const finallyNormal = notCompletionPredicate(orCompletionPredicates(
+              orCompletionPredicates(
+                orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
+              ),
+              finallyContinue,
+            ));
             const replayFinally = (
               incoming: ReadonlyMap<string, TemporalExpression>,
             ): { completion: ActionCompletion; normalLocals: Map<string, TemporalExpression> } | undefined => {
@@ -2667,8 +2670,6 @@ function validateRefinementActionBodiesInSource(
                 allowMutableLoopWrites,
               );
               if (!replayCompletion
-                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "break"), false)
-                || !isBooleanCompletionPredicate(completionPredicate(replayCompletion, "continue"), false)
                 || !isBooleanCompletionPredicate(labeledCompletionPredicate(replayCompletion), false)) return undefined;
               return { completion: replayCompletion, normalLocals: replayLocals };
             };
@@ -2706,8 +2707,8 @@ function validateRefinementActionBodiesInSource(
               orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
               orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
               sequenceThrowValue(finallyCompletion, transformedPrior),
-              andCompletionPredicates(finallyNormal, priorBreak),
-              andCompletionPredicates(finallyNormal, priorContinue),
+              orCompletionPredicates(finallyBreak, andCompletionPredicates(finallyNormal, priorBreak)),
+              orCompletionPredicates(finallyContinue, andCompletionPredicates(finallyNormal, priorContinue)),
               mergeCompletionLabels(new Map(), completionLabels(residualCompletion, "break"), finallyNormal),
               mergeCompletionLabels(new Map(), completionLabels(residualCompletion, "continue"), finallyNormal),
               sequenceEdgeLocals(finallyCompletion, transformedPrior, "throw"),

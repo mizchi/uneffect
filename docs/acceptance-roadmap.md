@@ -530,6 +530,26 @@ unsupported. The finalization-escalation dogfood applies the same shape to
 reviewed scalar failure data and rejects incorrect normalization. Finally-owned
 break/continue/labels, aliases, and the general CFG fixed point remain open.
 
+A thirtieth case mutates an outer scalar in mandatory `finally`, audits it, and
+conditionally breaks its owning one-iteration bounded loop. The finally-owned
+break overrides either normal completion or a pending scalar throw, is consumed
+only by that loop, and carries three/four units into post-loop billing. If
+finally completes normally, the normal predecessor runs the suffix while the
+pending throw survives and suppresses billing. Z3 rejects a wrong finalization
+increment. The finally circuit-break dogfood applies the same shape to one
+statically configured delivery attempt and rejects an extra stopped-attempt
+charge.
+
+A thirty-first case mutates and audits an outer scalar in mandatory `finally`,
+then conditionally continues its owning two-iteration bounded loop. The
+finally-owned continue overrides normal or pending scalar-throw completion and
+the next iteration starts from its five/seven-unit snapshot; only a normally
+completed finalizer reaches that iteration's suffix. Z3 rejects a wrong billing
+increment. The same-owner loop label is accepted, while an unknown target is
+rejected. The finally retry-accounting dogfood applies this rule to a bounded
+delivery policy and rejects an extra retry charge. Cross/nested labels, aliases,
+dynamic loops, and the general CFG fixed point remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

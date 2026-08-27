@@ -455,6 +455,56 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves a finally-owned circuit break overrides a pending attempt failure", async () => {
+    const fileName = "examples/dogfood/finally-circuit-break-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "finallyCircuitBreakAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "finallyCircuitBreakAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "finallyCircuitBreakAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const overbilledCircuit = source.replace(
+      "if (runtime.circuitOpen) break;",
+      "if (runtime.circuitOpen) { units += 1; break; }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, overbilledCircuit, "finallyCircuitBreakAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recordAttempt", target: "billedUnits",
+    }));
+  });
+
+  it("proves finally-owned bounded retry advances from the overriding snapshot", async () => {
+    const fileName = "examples/dogfood/finally-retry-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "finallyRetryAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "finallyRetryAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "finallyRetryAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const extraRetryCharge = source.replace(
+      "if (runtime.retryImmediately) continue;",
+      "if (runtime.retryImmediately) { units += 1; continue; }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, extraRetryCharge, "finallyRetryAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recordBatch", target: "billedUnits",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

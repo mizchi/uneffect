@@ -1605,3 +1605,21 @@ operations/second over 636 samples, 9.47% relative margin of error). This warm
 static-analysis observation excludes parsing and Z3 and is not a CI budget or
 regression claim. Opaque payloads, finally-owned break/continue/labels, aliases,
 and the general CFG fixed point remain outside the measured fragment.
+
+The finally circuit-break accounting workload conditionally breaks from
+mutable-local mandatory `finally`, overriding a normal or pending throw and
+carrying the selected snapshot into post-loop billing. A filtered run on
+2026-08-27 measured 0.5109 ms mean (1,957.43 operations/second over 979 samples,
+9.58% relative margin of error). This warm static-analysis observation excludes
+parsing and Z3 and is not a CI budget or regression claim. Finally-owned
+continue/labels, dynamic loops, aliases, and the general CFG fixed point remain
+outside the measured fragment.
+
+The finally retry-accounting workload conditionally continues from
+mutable-local mandatory `finally`, overriding a normal or pending throw and
+advancing the next of two bounded attempts from the selected snapshot. A
+filtered run on 2026-08-27 measured 1.5040 ms mean (664.90 operations/second
+over 333 samples, 10.53% relative margin of error). This high-variance warm
+static-analysis observation excludes parsing and Z3 and is not a CI budget or
+regression claim. Cross/nested labels, dynamic loops, aliases, and the general
+CFG fixed point remain outside the measured fragment.

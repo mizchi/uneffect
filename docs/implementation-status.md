@@ -217,8 +217,12 @@ same property is proved for arbitrary TypeScript.
   predecessor, its return snapshot overrides normal or abrupt completion, and
   an outer finally observes the selected transformed snapshot. The same narrow
   rule now accepts a supported normalized scalar throw, preserving its payload
-  with the finally-owned snapshot for an outer catch. Opaque payloads and
-  finally-owned break/continue/labels remain fail-closed.
+  with the finally-owned snapshot for an outer catch. A finally-owned break may
+  likewise override normal or throw completion and is consumed with its
+  transformed snapshot at the owning bounded-loop boundary. A finally-owned
+  continue likewise overrides its predecessor and advances the next bounded
+  iteration from that snapshot. A statically resolved owner label is accepted;
+  opaque payloads and cross/nested label capture remain fail-closed.
   A scalar-switch extension assigns a separate local map to every expanded case
   entry/fallthrough path, merges normal values by case selection, and carries
   selected return/throw maps into the existing completion lattice. Default-free

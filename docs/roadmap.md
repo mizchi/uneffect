@@ -68,8 +68,11 @@ release date commitment.
    a statically resolved owning-loop label. A mutable-local finally may now
    conditionally return or throw, overriding prior completion while retaining
    its own snapshot and normalized throw payload for an outer finally/catch.
-   Finally-owned break/continue target ownership is next before the general CFG
-   fixed point.
+   Finally-owned break and continue now override their predecessors and are
+   consumed at, or advance from, the owning bounded-loop boundary. The
+   statically resolved owner label is accepted; cross/nested capture remains a
+   non-proof. Extracting this completion model as the reusable CFG handoff is
+   next before the general fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

@@ -152,15 +152,19 @@ A mutable-local mandatory `finally` may also conditionally return or throw a
 supported normalized scalar. Its abrupt snapshot overrides the selected
 predecessor completion and remains available to an outer `finally` or catch;
 the throw payload and snapshot are kept paired. When finally completes normally,
-the transformed predecessor edge survives. Finally-owned break/continue/label
-overrides and opaque throw payloads remain unsupported.
+the transformed predecessor edge survives. A finally-owned break may override
+normal or abrupt completion and is consumed at its owning bounded-loop boundary.
+A finally-owned continue may similarly override its predecessor and advances
+the owning bounded loop from its snapshot. The statically resolved owner label
+has the same semantics. Cross/nested labels and opaque throw payloads remain
+unsupported.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
 by an unknown/cross/nested label transfer or an opaque rethrow payload,
-mutable-local mutation combined
-with finally-owned break/continue/label completion, mutable-local flow through dynamic or
+mutable-local mutation combined with cross/nested finally-owned label
+completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain
 unsupported rather than being approximated.
