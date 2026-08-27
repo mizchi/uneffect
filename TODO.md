@@ -27,8 +27,10 @@ Remaining volume and estimate assumptions are maintained in
 
 ## Current implementation snapshot
 
-[#9](https://github.com/mizchi/uneffect/issues/9) is the sole active issue. The
-current tested fragment composes caught awaited rejection, mandatory `finally`,
+[#20](https://github.com/mizchi/uneffect/issues/20) is the sole active issue.
+The Promise/resource fragment completed by
+[#9](https://github.com/mizchi/uneffect/issues/9) composes caught awaited
+rejection, mandatory `finally`,
 reverse sync/async disposal, bounded owned loop transfers, one restricted
 nested-scope conditional join, one rejecting inner async disposal routed through
 its handler, a two-resource inner disposal stack that finishes before catch
@@ -42,32 +44,26 @@ join. A non-uniform Boolean decision may now dispose an async resource before
 an early `return` or typed `throw`. Return remains distinct through mandatory
 `finally`; throw remains distinct until branch cleanup enters catch, where the
 supported handler either recovers it or rethrows before mandatory `finally`.
-Neither abrupt arm may enter the later resource decision. The current worktree
-candidate extends resource-generation identity through one supported
-two-iteration outer loop. Its focused acceptance, negative-control, and dogfood
-tests pass, but it remains part of active Issue #9 until the English boundary
-documentation, full local validation, commit, push, and remote CI are complete.
-General CFG and escaping-alias fixed points remain outside #9 and are owned by
-#23 and #24.
+Neither abrupt arm may enter the later resource decision. One supported
+two-iteration outer loop now preserves Boolean-selected async-resource
+generation identity across cleanup and owned `continue`/`break`. General CFG
+and escaping-alias fixed points remain outside #9 and are owned by #23 and #24.
 
 This summary deliberately does not restate the full proof boundary. Use
 `docs/feature-matrix.md` for supported and unsupported user-visible behavior,
-Issue #9 for the next executable acceptance case and its negative controls,
-and `docs/implementation-status.md` for completed implementation detail. General
+closed Issue #9 for its acceptance history and negative controls, and
+`docs/implementation-status.md` for completed implementation detail. General
 CFG fixed points and dynamic-value evidence are owned by #23 and #24.
 
 ## Immediate execution queue
 
-Only the first row is active. `Next` rows record promotion order, not a claim
-that every later row depends on completion of every earlier row. In particular,
-#20 consumes the shared #3 summary contract and does not depend on finishing
-#9's resource-specific lowering.
+Only the first row is active. #18 remains blocked until #20 establishes the
+required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Land and validate the tested two-iteration resource-generation slice; close only after remote CI is green and the proof boundary is documented. |
-| 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Promote after #9 lands; independently consume #3's provenance-preserving summaries across project references. |
-| 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Compose one scalar refinement summary across one direct project reference while retaining compiler/config/declaration provenance. |
+| 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 After these Phase 1 handoffs, select work from the phase-ordered issue index
 below. Do not promote a queued Issue merely because a historical checkbox is
@@ -88,16 +84,15 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 14 open implementation Issues: one `active`, one
-`next`, one `blocked`, and eleven `queued`. Every open Issue has exactly one
+As of 2026-08-28 there are 13 open implementation Issues: one `active`, one
+`blocked`, and eleven `queued`. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
 Closed Issues are historical evidence and must not retain an execution-status
 label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Throw-versus-normal resource joins and Promise/resource-specific outer-loop lowering without weakening floating-rejection diagnostics |
-| Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
+| Active | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
@@ -114,8 +109,7 @@ label.
 The active issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
-by #3 now feeds the active #9 async/resource slice and the next #20
-cross-project refinement slice. Phase 2 and later issues remain intentionally
+by #3 now feeds the active #20 cross-project refinement slice. Phase 2 and later issues remain intentionally
 queued behind these proof-boundary items.
 
 Closed issue history is retained in the relevant checked entries below. In
@@ -124,7 +118,8 @@ the reviewed DOM overlay expansion closed [#14](https://github.com/mizchi/uneffe
 the common native/WASM Z3 execution layer closed [#17](https://github.com/mizchi/uneffect/issues/17),
 reviewed external-registry configuration closed [#19](https://github.com/mizchi/uneffect/issues/19),
 reviewed TypeScript traversal callback timing closed [#21](https://github.com/mizchi/uneffect/issues/21),
-and evidence-preserving external-verifier timeout recovery closed [#22](https://github.com/mizchi/uneffect/issues/22).
+evidence-preserving external-verifier timeout recovery closed [#22](https://github.com/mizchi/uneffect/issues/22),
+and bounded Promise/exception/resource composition closed [#9](https://github.com/mizchi/uneffect/issues/9).
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
@@ -743,12 +738,12 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v6 Corsa contract validates protocol-symbol edges and disjunctive correlated control paths; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.
   - [x] Cover typed aliases, interface inheritance, intersections, and generic constraints in the TypeChecker frontend.
-- [ ] Compose Promise chains, `await`, `try/catch`, and async disposal into one control-flow model. ([#9](https://github.com/mizchi/uneffect/issues/9))
+- [x] Compose the documented bounded Promise chains, `await`, `try/catch`, and async disposal fragments into one control-flow model. ([#9](https://github.com/mizchi/uneffect/issues/9))
   - [x] Connect analyzed Promise-chain terminal states to await resume/rejection edges.
   - [x] Route disposal throw/rejection through catch and the async function's returned Promise in the shared IR.
   - [x] Preserve concrete catch/finally statement sequencing in the unified graph.
   - [x] Lower the single-function unified graph into one Quint transition module.
-  - [ ] Generalize unified lowering to the remaining Promise/resource-specific awaited chains, nested cleanup scopes, and completion joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
+  - [x] Complete the bounded Promise/resource-specific awaited-chain, nested-cleanup, and completion-join scope owned by #9; general CFG and alias widening are tracked separately. ([#9](https://github.com/mizchi/uneffect/issues/9))
     - [x] Give sequential awaited chains distinct wait/resume states and preserve their source order before cleanup.
     - [x] Dispose resources from a straight-line nested scope before a following outer await, while retaining idempotent final cleanup on failure paths.
     - [x] Dispose a resource whose complete nested scope precedes the first modeled await before entering that await.
@@ -771,7 +766,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Preserve two independent finite resource decisions across an intermediate join; validate both stages and a combined eight-condition budget, keep exclusion local to each stage, require first-stage disposal before second-stage acquisition, and reject delayed/skipped/wrong cleanup, wrong-stage acquisition, incomplete/overlapping stages, disposed alias use, premature handler entry, and floating rejection.
     - [x] Preserve one non-uniform Boolean return-versus-normal resource decision: distinguish fallthrough guards from acquisition-decision conditions, dispose the return arm before completion, retain return through mandatory `finally`, and prevent later acquisition or outer continuation; keep await rejection routed through catch and retain return-fallthrough, normal-skip, cleanup-before-return, wrong/skipped cleanup, premature-handler, incomplete/overlapping, and floating-Promise controls.
     - [x] Preserve the bounded typed-throw-versus-normal counterpart with a distinct completion kind: dispose the throw arm before catch, distinguish handler recovery from rethrow, traverse mandatory `finally`, and prevent the throw path from entering the later decision; retain throw-fallthrough, cleanup-before-throw, handler-bypass, normal-skip, wrong/skipped cleanup, premature-handler, incomplete/overlapping, and floating-Promise controls.
-    - [ ] Land one canonical two-iteration outer `for` with a complete Boolean-selected async resource generation, cleanup before the iteration join, owned `continue`/`break`, and load-bearing stale-generation, reacquire-before-cleanup, wrong/skipped-cleanup, caught-rejection-bypass, floating-Promise, bound, predicate, incomplete-branch, and alias-escape controls. ([#9](https://github.com/mizchi/uneffect/issues/9))
+    - [x] Land one canonical two-iteration outer `for` with a complete Boolean-selected async resource generation, cleanup before the iteration join, owned `continue`/`break`, and load-bearing stale-generation, reacquire-before-cleanup, wrong/skipped-cleanup, caught-rejection-bypass, floating-Promise, bound, predicate, incomplete-branch, and alias-escape controls. ([#9](https://github.com/mizchi/uneffect/issues/9))
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.
@@ -801,7 +796,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Prove default-free resource-alias cleanup switches exhaustive over finite TypeScript string, number, and boolean literal unions.
     - [x] Treat terminal `return` paths, including exhaustive terminal `if`/`else` both inside and outside switches, as not reaching subsequent disposed-resource alias uses.
     - [x] Keep resource-alias kills inside `try` and `catch` conditional while recognizing mandatory `finally` clears, preventing exception-path false negatives.
-    - [ ] Add loop-carried data invariants, resource-generation identity for escaping aliases, and general CFG joins. ([#9](https://github.com/mizchi/uneffect/issues/9))
+    - [x] Harden loop-carried resource generations and alias diagnostics within the documented bounded fragment; general CFG joins and escaping aliases are tracked by #23 and #24.
       - [x] Join resource aliases introduced in `for`/`for...in`/`for...of`/`while`/`do...while` bodies when every executed iteration terminally clears or returns; preserve zero-iteration state and reject pre-clear abrupt completion.
       - [x] Compute a finite per-target loop exit summary so clear-before-`break`/`continue` paths join safely, while uncleared exits and clear-then-reassign paths remain escaping.
       - [x] Treat an unconditional direct/static-slot alias clear in a loop-local `finally` as the common exceptional, normal, and transfer exit; retain conditional or uncleared finally paths conservatively.

@@ -25,11 +25,11 @@ not a suitable single implementation branch.
 
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
-| 1 — Proof boundaries | #9, #20, #18 | 4–8 engineer-weeks | Medium |
+| 1 — Proof boundaries | #20, #18 | 4–8 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 18–35 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–45 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 14 open Issues | **51–100 engineer-weeks** | Low |
+| **Total additive effort** | 13 open Issues | **51–100 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -38,7 +38,7 @@ proof-boundary Issue limit useful parallelism.
 
 There are three useful planning numbers:
 
-- **Phase 1 critical path: 4–8 engineer-weeks.** Land #9, complete #20, then
+- **Phase 1 critical path: 4–8 engineer-weeks.** Complete #20, then
   implement the first exact #18 module-ordering fragment.
 - **One focused product line: roughly 12–27 engineer-weeks after Phase 1.** For
   example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
@@ -52,24 +52,23 @@ There are three useful planning numbers:
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #9 Promise/exception/resource flow | S (landing) | 1–3 days | Land the focused-test-green two-iteration resource-generation slice, document its exact shape, and pass full local/remote CI | Solver stability and ensuring the narrow recognizer remains fail-closed |
-| 2 | #20 TypeScript project parity | M | 1–2 weeks | One provenance-preserving scalar refinement across a direct project reference | Declaration transforms and compiler-domain compatibility |
-| 3 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
-| 4 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
-| 5 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
-| 6 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
-| 7 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
-| 8 | #6 typed arrays/SHA-256 | L–XL | 4–9 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
-| 9 | #24 aliases/dynamic refinement | XL | 6–12 weeks | One non-escaping mutable alias through a local helper | Region identity, higher-order flow, and closed-world dispatch |
-| 10 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
-| 11 | #10 event-loop ownership | L–XL | 5–10 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
-| 12 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
-| 13 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
-| 14 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | One provenance-preserving scalar refinement across a direct project reference | Declaration transforms and compiler-domain compatibility |
+| 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
+| 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
+| 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
+| 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
+| 6 | #4 property generation/shrinking | L | 3–5 weeks | Constructive generator and refinement-preserving shrinker | User predicates and recursion budgets |
+| 7 | #6 typed arrays/SHA-256 | L–XL | 4–9 weeks | Interprocedural non-escaping typed-array alias slice | Resize/shared memory plus #23/#24 dependencies |
+| 8 | #24 aliases/dynamic refinement | XL | 6–12 weeks | One non-escaping mutable alias through a local helper | Region identity, higher-order flow, and closed-world dispatch |
+| 9 | #8 native Corsa parity | L | 4–7 weeks | Type-aware inferred-effect parity for a small fixture corpus | Corsa API maturity and source/type identity mapping |
+| 10 | #10 event-loop ownership | L–XL | 5–10 weeks | One cited poll/I/O callback family | Host/version differences, realms, and dynamic cancellation |
+| 11 | #7 independently checkable evidence | M | 2–4 weeks | Design decision plus one certificate/replay experiment | Solver proof formats may force a measured rejection |
+| 12 | #16 React lifecycle | XL | 6–12 weeks | One dynamic component/Hook flow slice | Concurrency, server boundaries, and dynamic ownership |
+| 13 | #13 proof-gated optimization | XL | 6–12 weeks | Fail-closed stable-read reuse transformation | Depends on evidence, aliases, CFG, and frontend parity |
 
 ## Recommended delivery checkpoints
 
-1. **Usable local proof boundary (4–8 weeks):** finish #9 and #20, then the
+1. **Usable local proof boundary (4–8 weeks):** finish #20, then the
    supported exact module-initialization slice in #18. This is the shortest path
    to making assurance survive realistic project composition.
 2. **General analysis foundation (10–19 additional weeks):** prioritize #23,
@@ -94,9 +93,9 @@ There are three useful planning numbers:
 
 ## Estimate status and non-claims
 
-- The #9 reduction is based on a present worktree candidate whose focused
-  acceptance, negative-control, and dogfood tests pass. It is not counted as
-  implemented until the repository's landing policy is satisfied.
+- #9 is excluded from the remaining estimate after commit `5dfdb0e` passed all
+  local checks and remote CI run 33105172614. General CFG and escaping-alias
+  work discovered during #9 remains counted in #23 and #24.
 - Estimates for #13, #16, and #24 remain epic-level placeholders. Each must be
   split into a bounded child Issue before activation; their upper bounds are
   materially less certain than Phase 1.

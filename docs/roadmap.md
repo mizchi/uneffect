@@ -22,7 +22,7 @@ commitment.
    `implementation-status.md` and `feature-matrix.md` for the detailed completed
    fragment and exclusions.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
-   is active. Its bounded outer `continue`/`break`, mixed-disposal rejection,
+   is complete for its documented bounded scope. Its outer `continue`/`break`, mixed-disposal rejection,
    restricted nested-scope conditional-join, and single caught inner-disposal
    rejection slices are implemented. A two-resource protected disposal stack
    now completes before catch and retains a finite single/suppressed failure
@@ -36,10 +36,9 @@ commitment.
    decision now retains cleanup and mandatory `finally` while excluding later
    normal work. Its typed throw-versus-normal counterpart now cleans up before
    catch, distinguishes recovery from rethrow, and excludes later normal work
-   without weakening floating-error checks. A focused-test-green worktree
-   candidate now preserves branch-selected resource generations through one
-   canonical two-iteration outer loop; it remains active until documentation,
-   full validation, landing, and remote CI complete. General scalar CFG
+   without weakening floating-error checks. Branch-selected resource generations
+   are preserved through one canonical two-iteration outer loop with cleanup
+   before the iteration join. General scalar CFG
    fixed points and dynamic alias evidence are separately owned by #23 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
@@ -48,7 +47,7 @@ commitment.
    build-artifact validation are implemented; general cross-project refinement
    and non-identical declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
-   of #9; its `next` status is execution ordering only.
+   of #9; it is now the active Phase 1 Issue.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
