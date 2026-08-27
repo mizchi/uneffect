@@ -1768,6 +1768,8 @@ function validateRefinementActionBodiesInSource(
           };
         };
         const deltas = new Map<string, PiecewiseAffineLoopDelta>();
+        const breakUpdates = new Map<string, TemporalExpression>();
+        let stateChangingBreakUpdates = 0;
         const breakConditionNames = hasInvariantEarlyBreak ? scalarNames(breakWhen) : new Set<string>();
         const breakCondition = hasInvariantEarlyBreak ? atLoopEntry(breakWhen) : undefined;
         if (!breakConditionNames || (hasInvariantEarlyBreak && !breakCondition)
@@ -1777,10 +1779,22 @@ function validateRefinementActionBodiesInSource(
               { kind: "name", name },
             ))) return undefined;
         for (const name of stateNames) {
+          const breakUpdateExpression: TemporalExpression = hasInvariantEarlyBreak
+            ? specializedStateUpdate(name, true)
+            : { kind: "name", name };
           if (hasInvariantEarlyBreak && !sameRefinementExpression(
-            specializedStateUpdate(name, true),
+            breakUpdateExpression,
             { kind: "name", name },
-          )) return undefined;
+          )) {
+            // The initial state-changing break slice permits one non-counter
+            // affine update before the break. Evaluate it from the loop-entry
+            // snapshot: the invariant break condition makes this path execute
+            // at most once, so it is not part of the recurrence.
+            if (name === counterName || !affineDelta(name, breakUpdateExpression)) return undefined;
+            const breakUpdate = atLoopEntry(breakUpdateExpression);
+            if (!breakUpdate || ++stateChangingBreakUpdates > 1) return undefined;
+            breakUpdates.set(name, breakUpdate);
+          }
           if (name === counterName) {
             deltas.set(name, { kind: "affine", value: { constant: counterDelta, counterCoefficient: 0 } });
             continue;
@@ -1904,16 +1918,28 @@ function validateRefinementActionBodiesInSource(
             continue;
           }
           const unguardedTotal = totalForPiecewise(piecewise);
-          if (piecewiseStutters(piecewise)) continue;
-          const totalDelta: TemporalExpression = {
-            kind: "conditional", condition: entryGuard,
-            whenTrue: hasInvariantEarlyBreak ? {
-              kind: "conditional", condition: breakCondition!, whenTrue: zero, whenFalse: unguardedTotal,
-            } : unguardedTotal,
-            whenFalse: zero,
+          if (!hasInvariantEarlyBreak) {
+            if (piecewiseStutters(piecewise)) continue;
+            updates.set(name, {
+              kind: "binary", operator: "add", left: entryValue,
+              right: {
+                kind: "conditional", condition: entryGuard,
+                whenTrue: unguardedTotal, whenFalse: zero,
+              },
+            });
+            continue;
+          }
+          const breakUpdate = breakUpdates.get(name) ?? entryValue;
+          if (piecewiseStutters(piecewise) && sameRefinementExpression(breakUpdate, entryValue)) continue;
+          const repeatedValue: TemporalExpression = piecewiseStutters(piecewise) ? entryValue : {
+            kind: "binary", operator: "add", left: entryValue, right: unguardedTotal,
           };
           updates.set(name, {
-            kind: "binary", operator: "add", left: entryValue, right: totalDelta,
+            kind: "conditional", condition: entryGuard,
+            whenTrue: {
+              kind: "conditional", condition: breakCondition!, whenTrue: breakUpdate, whenFalse: repeatedValue,
+            },
+            whenFalse: entryValue,
           });
         }
         continue;

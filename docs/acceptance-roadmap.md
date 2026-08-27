@@ -284,11 +284,12 @@ recurrences, opaque entry updates, and general loop invariants remain
 fail-closed. A fifth case consumes an unlabeled `continue` after a guaranteed
 ranking update, including mandatory `finally` accounting, and rejects the same
 continue before that update. A sixth zero-update early-break case lets a
-loop-entry pause flag
-selects untouched state instead of the recurrence, while a counter-dependent or
-post-update break is rejected. State-changing break branches, mixed
-break/continue flow, throw, and return remain fail-closed. These are closed-form
-affine rules, not a general TypeScript CFG proof.
+loop-entry pause flag select untouched state instead of the recurrence. A
+seventh case performs one non-counter affine update on that stopping path, as
+when paused telemetry records the untouched backlog exactly once. Counter
+updates, multiple/non-affine break updates, counter-dependent or post-update
+break checks, mixed break/continue flow, throw, and return remain fail-closed.
+These are closed-form affine rules, not a general TypeScript CFG proof.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

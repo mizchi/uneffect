@@ -2744,7 +2744,7 @@ describe("annotated refinement bindings", () => {
       "early-break.ts", source, "earlyBreak", temporal,
     )).resolves.toEqual([]);
 
-    for (const [fileName, changed] of [
+    for (const [fileName, changed, code = "unsupported-action-body"] of [
       ["early-break-after-update.ts", source.replace(
         "if (runtime.paused) break\n          runtime.pending--",
         "runtime.pending--\n          if (runtime.paused) break",
@@ -2760,9 +2760,90 @@ describe("annotated refinement bindings", () => {
       ["early-break-finally-update.ts", source.replace(
         "if (runtime.paused) break",
         "try { if (runtime.paused) break } finally { runtime.weighted++ }",
-      )],
+      ), "action-update-mismatch"],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "earlyBreak", temporal)).toContainEqual(
+        expect.objectContaining({ code, modelName: "drain" }),
+      );
+    }
+  });
+
+  it("composes one affine state update on an invariant early-break path", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state weighted: int
+      state deferred: int
+      state paused: bool
+      init pending = 0
+      init weighted = 0
+      init deferred = 0
+      init paused = false
+      action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0)
+    */
+      interface Runtime { pending: number; weighted: number; deferred: number; paused: boolean }
+      /* uneffect: refinement stateChangingBreak@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement stateChangingBreak@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement stateChangingBreak@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.paused) {
+            runtime.deferred += runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = parseSpec("state-changing-break.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "state-changing-break.ts", source, "stateChangingBreak", temporal,
+    )).resolves.toEqual([]);
+
+    const finallySource = source
+      .replace(
+        "deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0)",
+        "deferred' = deferred + (pending > 0 ? (paused ? pending : pending * (pending - 1) / 2) : 0)",
+      )
+      .replace(
+        `if (runtime.paused) {
+            runtime.deferred += runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.weighted += runtime.pending`,
+        `try {
+            if (runtime.paused) break
+            runtime.pending--
+            runtime.weighted += runtime.pending
+          } finally {
+            runtime.deferred += runtime.pending
+          }`,
+      );
+    const finallyTemporal = parseSpec("state-changing-break-finally.ts", finallySource).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "state-changing-break-finally.ts", finallySource, "stateChangingBreak", finallyTemporal,
+    )).resolves.toEqual([]);
+
+    for (const [fileName, changed] of [
+      ["state-changing-break-counter.ts", source.replace(
+        "runtime.deferred += runtime.pending\n            break",
+        "runtime.deferred += runtime.pending\n            runtime.pending--\n            break",
+      )],
+      ["state-changing-break-two-updates.ts", source.replace(
+        "runtime.deferred += runtime.pending\n            break",
+        "runtime.deferred += runtime.pending\n            runtime.weighted++\n            break",
+      )],
+      ["state-changing-break-coupled.ts", source.replace(
+        "runtime.deferred += runtime.pending",
+        "runtime.deferred += runtime.weighted",
+      )],
+      ["state-changing-break-nonlinear.ts", source.replace(
+        "runtime.deferred += runtime.pending",
+        "runtime.deferred *= runtime.pending",
+      )],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "stateChangingBreak", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
       );
     }

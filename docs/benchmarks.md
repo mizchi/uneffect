@@ -1399,3 +1399,12 @@ completion collection, break-condition invariance, true/false specialization,
 entry-state substitution, and closed-form construction; it excludes Z3 and
 state-changing, counter-dependent, or mixed abrupt-flow breaks. This is an
 observation rather than a CI regression budget.
+
+After extending that workload to record the untouched backlog with one affine
+state update on the invariant break path, the filtered benchmark measured
+0.2612 ms mean (3,828.72 operations/second over 1,915 samples, 9.34% relative
+margin of error) on 2026-08-27. The changed workload additionally measures
+break-path affine decomposition, loop-entry substitution, and the explicit
+single-update budget. The margin of error is too high for a comparative speed
+claim; this remains an observation and executable complexity guard, not a CI
+regression threshold.

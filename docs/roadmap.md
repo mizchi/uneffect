@@ -19,8 +19,10 @@ release date commitment.
    joins, arbitrary mutually coupled loops, and exception-heavy recurrences
    remain. An unlabeled `continue` is consumed only after merged loop state
    proves that every path took the ranking step, including mandatory `finally`.
-   A separate rule splits one loop-invariant zero-update early `break` from the
-   repeating path; state-changing and dynamically selected breaks remain open.
+   A separate rule splits one loop-invariant early `break` from the repeating
+   path and permits one non-counter affine update on the stopping path;
+   counter-changing, multi-update, non-affine, and dynamically selected breaks
+   remain open.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

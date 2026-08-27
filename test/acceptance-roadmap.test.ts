@@ -696,6 +696,50 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("composes one state update performed by a loop-invariant early break", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * state deferred: int
+       * state paused: bool
+       * init pending = 0
+       * init weighted = 0
+       * init deferred = 0
+       * init paused = false
+       * action drain: pending' = pending > 0 ? (paused ? pending : 0) : pending, weighted' = weighted + (pending > 0 ? (paused ? 0 : pending * (pending - 1) / 2) : 0), deferred' = deferred + (pending > 0 ? (paused ? pending : 0) : 0)
+       */
+      interface Runtime { pending: number; weighted: number; deferred: number; paused: boolean }
+      /* uneffect: refinement deferredDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement deferredDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement deferredDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          if (runtime.paused) {
+            runtime.deferred += runtime.pending
+            break
+          }
+          runtime.pending--
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("deferred-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("deferred-drain.ts", source, "deferredDrain", temporal)).resolves.toEqual([]);
+
+    const twoBreakUpdates = source.replace(
+      "runtime.deferred += runtime.pending\n            break",
+      "runtime.deferred += runtime.pending\n            runtime.weighted++\n            break",
+    );
+    await expect(validateActions(
+      "deferred-drain-two-updates.ts", twoBreakUpdates, "deferredDrain", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

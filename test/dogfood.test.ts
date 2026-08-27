@@ -124,7 +124,7 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
-  it("proves that a paused telemetry drain leaves the backlog untouched", async () => {
+  it("proves that a paused telemetry drain records the untouched backlog once", async () => {
     const fileName = "examples/dogfood/paused-telemetry-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
@@ -133,8 +133,8 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "pausedTelemetry", temporal)).toEqual([]);
 
     const latePauseCheck = source.replace(
-      "if (runtime.paused) break;\n    runtime.queued--;",
-      "runtime.queued--;\n    if (runtime.paused) break;",
+      "if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      break;\n    }\n    runtime.queued--;",
+      "runtime.queued--;\n    if (runtime.paused) {\n      runtime.deferred += runtime.queued;\n      break;\n    }",
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, latePauseCheck, "pausedTelemetry", temporal,
