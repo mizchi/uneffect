@@ -36,9 +36,10 @@ throw/catch predecessor. Scalar `switch` now preserves those snapshots through
 case selection, fallthrough, break, default, return, and typed throw/catch. The
 same edge ownership now carries initialized mutable scalars through bounded
 finite-loop iterations and normal, break, continue, direct-return, and typed
-throw/finally exits. Dynamic loops, mutable-local labels and standalone nested
-blocks, alias escape, catch/finally mutation, rethrow, and dispatch boundaries
-remain explicitly unsupported.
+throw/finally exits. Ordinary standalone lexical blocks now project only
+outer-visible bindings through normal and abrupt exits. Dynamic loops,
+mutable-local labels, shadowing or alias escape, catch/finally mutation,
+rethrow, and dispatch boundaries remain explicitly unsupported.
 
 ## Active issue index
 
@@ -365,7 +366,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Carry initialized mutable-scalar snapshots on supported typed scalar throw edges into `catch` while preserving the distinct normally completing `try` snapshot; join two conditional throwing snapshots with the shared phi contract and reject opaque payloads, catch-side local mutation, rethrow, and missing edge evidence.
         - [x] Join the outer-visible mutable-scalar snapshots owned by normal, direct-return, and supported typed throw/catch-return predecessors before mandatory `finally`, so its state updates observe the correct path value; retain finally-local mutation and missing edge evidence as non-proofs.
         - [x] Give each scalar `switch` entry/fallthrough path its own mutable-local environment, join normal continuation and return/throw edge snapshots by case selection (including unmatched default), and reject opaque discriminants, dynamic cases, nested-block mutation, and model-misaligned fallthrough.
-        - [x] Carry initialized mutable-scalar snapshots from one bounded finite-loop iteration to the next and retain edge-owned `break`, `continue`, direct-return, and typed throw snapshots through mandatory `finally`; consume loop-owned transfers at the correct boundary and reject dynamic/over-budget loops, mutable-local labels, standalone nested blocks, and model mismatches.
+        - [x] Carry initialized mutable-scalar snapshots from one bounded finite-loop iteration to the next and retain edge-owned `break`, `continue`, direct-return, and typed throw snapshots through mandatory `finally`; consume loop-owned transfers at the correct boundary and reject dynamic/over-budget loops, mutable-local labels, and model mismatches. Standalone nested blocks were added by the following slice.
+        - [x] Project outer-visible mutable-scalar snapshots through ordinary standalone lexical blocks on normal and abrupt exits while keeping block-local constants scoped; reject shadowing, escaped block locals, catch/finally-side mutation, switch-case nested mutation, and label ambiguity.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.

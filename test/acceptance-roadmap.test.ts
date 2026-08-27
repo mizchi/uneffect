@@ -1211,7 +1211,6 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         "for (const step of [1, 2, 3, 4] as const)",
         "for (const step of runtime.steps)",
       ).replace("mode: number }", "mode: number; steps: number[] }")],
-      ["finite-loop-local-nested-block.ts", source.replace("units += step", "{ units += step }")],
       ["finite-loop-local-labeled.ts", source
         .replace("for (const step of", "outer: for (const step of")
         .replace("continue\n", "continue outer\n")],
@@ -1227,6 +1226,11 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
         code: "unsupported-action-body", modelName: "record",
       }));
     }
+
+    const nestedBlock = source.replace("units += step", "{ units += step }");
+    await expect(validateActions(
+      "finite-loop-local-nested-block.ts", nestedBlock, "finiteLoopLocal", temporal,
+    )).resolves.toEqual([]);
 
     const canonicalWhile = `
       /* uneffect:
@@ -1254,6 +1258,57 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     await expect(validateActions(
       "finite-while-local.ts", canonicalWhile, "finiteWhileLocal", whileTemporal,
     )).resolves.toEqual([]);
+  });
+
+  it("projects outer mutable locals through a standalone lexical block", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state total: int
+       * state stopped: bool
+       * init total = 0
+       * init stopped = false
+       * action record: total' = stopped ? total : total + 5
+       */
+      interface Runtime { total: number; stopped: boolean }
+      /* uneffect: refinement lexicalLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement lexicalLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement lexicalLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        {
+          const increment = 2
+          units += increment
+          if (runtime.stopped) return
+          units += 2
+        }
+        runtime.total += units
+      }
+    `;
+    const temporal = (parseSpecification("lexical-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "lexical-local.ts", source, "lexicalLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongSuffix = source.replace("units += 2\n        }", "units += 3\n        }");
+    await expect(validateActions(
+      "lexical-local-wrong-suffix.ts", wrongSuffix, "lexicalLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    for (const [fileName, changed] of [
+      ["lexical-local-shadow.ts", source.replace("const increment = 2", "let units = 2")],
+      ["lexical-local-escape.ts", source.replace("runtime.total += units", "runtime.total += increment")],
+    ] as const) {
+      expect(validateActionsStatically(
+        fileName, changed, "lexicalLocal", temporal,
+      ), fileName).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "record",
+      }));
+    }
   });
 
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {

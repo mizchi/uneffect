@@ -291,7 +291,7 @@ describe("Uneffect dogfood", () => {
       fileName, source, "boundedBatchBilling", temporal,
     )).resolves.toEqual([]);
 
-    const underbilled = source.replace("units += 1;", "units += 2;");
+    const underbilled = source.replace("const perSinkOverhead = 1;", "const perSinkOverhead = 2;");
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, underbilled, "boundedBatchBilling", temporal,
     )).resolves.toContainEqual(expect.objectContaining({

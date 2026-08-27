@@ -381,11 +381,23 @@ statically expanded `for...of` iterations. It keeps normal, consumed-continue,
 consumed-break, direct-return, and typed throw/catch-return snapshots distinct;
 the mandatory per-iteration `finally` audits the value owned by each edge. A
 wrong accumulation is rejected by Z3, while dynamic iteration, a 65-element
-literal beyond the per-loop budget, a mutable write in a standalone nested
-block, and a labeled mutable-local transfer remain explicit non-proofs. The
+literal beyond the per-loop budget, and a labeled mutable-local transfer remain
+explicit non-proofs. A nested lexical block is accepted by the following flow
+projection slice. The
 bounded batch billing dogfood applies the same control flow to four configured
 telemetry sinks. Dynamic/general loops, labels, standalone blocks,
-catch/finally-side local mutation, alias escape, and rethrow remain open.
+catch/finally-side local mutation, alias escape, and rethrow were still open in
+that slice.
+
+An eighteenth case mutates an outer initialized scalar inside an ordinary
+standalone lexical block, uses a block-local constant, and projects the normal
+and direct-return snapshots back to the enclosing continuation. The normal path
+bills five units while the returning path suppresses the suffix. A wrong suffix
+is rejected by Z3; shadowing and a block-local value escaping into the outer
+suffix remain explicit non-proofs. The bounded batch billing dogfood now scopes
+its per-sink overhead constant in such a block inside each expanded iteration.
+Catch/finally-side mutation, nested switch-case mutation, labels, alias escape,
+and general CFG joins remain open.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

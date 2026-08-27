@@ -3243,15 +3243,21 @@ describe("annotated refinement bindings", () => {
         "if (runtime.urgent) weight = 2",
         "selected: { weight = 2; break selected }",
       )],
-      ["local-join-bare-block.ts", source.replace(
-        "if (runtime.urgent) weight = 2",
-        "{ weight = 2 }",
-      )],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "localJoin", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
       );
     }
+
+    const bareBlock = source.replace(
+      "if (runtime.urgent) weight = 2",
+      "{ weight = 2 }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      "local-join-bare-block.ts", bareBlock, "localJoin", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
 
     const abrupt = source
       .replace(

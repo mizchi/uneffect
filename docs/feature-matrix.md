@@ -108,12 +108,15 @@ continue snapshot. Unlabeled `break` contributes its
 snapshot to the loop's normal exit, while direct return and supported typed
 throw retain their edge snapshots; mandatory `finally` observes the snapshot
 owned by every completion path before the transfer is consumed or propagated.
+An ordinary standalone lexical block evaluates with a nested local map, then
+projects normal and abrupt snapshots back to bindings visible at block entry;
+block-local constants cannot escape.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch- or finally-side
 mutable-local writes, rethrows, mutable-local flow through dynamic or
-over-budget loops, labeled blocks, or standalone nested blocks, opaque switch discriminants,
+over-budget loops or labeled blocks, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain
 unsupported rather than being approximated.
 

@@ -1202,6 +1202,36 @@ function validateRefinementActionBodiesInSource(
     const joined = joinLocalSnapshots(predicate, projected, normalLocals);
     return joined ? new Map(joined) : undefined;
   };
+  const projectCompletionLocalSnapshots = (
+    completion: ActionCompletion,
+    visibleNames: Iterable<string>,
+  ): ActionCompletion | undefined => {
+    if (typeof completion === "string") return completion;
+    const names = [...visibleNames];
+    const project = (snapshot: ReadonlyMap<string, TemporalExpression> | undefined) =>
+      snapshot ? projectLocalSnapshot(snapshot, names) : undefined;
+    const throwLocals = project(completionThrowLocals(completion));
+    const returnLocals = project(completionReturnLocals(completion));
+    const breakLocals = project(completionBreakLocals(completion));
+    const continueLocals = project(completionContinueLocals(completion));
+    if ((completionThrowLocals(completion) && !throwLocals)
+      || (completionReturnLocals(completion) && !returnLocals)
+      || (completionBreakLocals(completion) && !breakLocals)
+      || (completionContinueLocals(completion) && !continueLocals)) return undefined;
+    return makeCompletion(
+      completionPredicate(completion, "return"),
+      completionPredicate(completion, "throw"),
+      completionThrowValue(completion),
+      completionPredicate(completion, "break"),
+      completionPredicate(completion, "continue"),
+      completionLabels(completion, "break"),
+      completionLabels(completion, "continue"),
+      throwLocals,
+      returnLocals,
+      breakLocals,
+      continueLocals,
+    );
+  };
   const maxFiniteExpansionIterations = 256;
   let finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
   const collect = (
@@ -1788,18 +1818,26 @@ function validateRefinementActionBodiesInSource(
         );
       }
       if (ts.isBlock(statement)) {
+        const visibleNames = [...localValues.keys()];
+        const nestedLocals = new Map(localValues);
         const completion = collect(
           statement, receiver, runtimeClass, substitutions,
-          updates, new Map(localValues), activeCalls,
+          updates, nestedLocals, activeCalls,
           allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue,
           ownedBreakLabel, ownedContinueLabel,
           activeBreakLabels, activeContinueLabels,
           allowMutableLoopWrites,
         );
         if (!completion) return undefined;
-        if (completion === "normal") continue;
+        const projectedNormal = projectLocalSnapshot(nestedLocals, visibleNames);
+        const projectedCompletion = projectCompletionLocalSnapshots(completion, visibleNames);
+        if (!projectedNormal || !projectedCompletion) return undefined;
+        localValues.clear();
+        for (const [name, value] of projectedNormal) localValues.set(name, value);
+        if (projectedCompletion === "normal") continue;
         return applyContinuation(
-          completion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+          projectedCompletion, updates, ts.factory.createBlock(body.statements.slice(statementIndex + 1), true),
+          localValues,
         );
       }
       if (ts.isLabeledStatement(statement)) {
@@ -3021,12 +3059,9 @@ function validateRefinementActionBodiesInSource(
           const finiteExpansionNode = allowMutableLoopWrites;
           let owner: ts.Node | undefined = ownershipNode.parent;
           while (owner && !ts.isFunctionLike(owner)) {
-            const finiteLoopBodyBlock = allowMutableLoopWrites && ts.isBlock(owner)
-              && (sourceFileName === undefined || ts.isIterationStatement(owner.parent, false));
-            if (ts.isBlock(owner) && !ts.isFunctionLike(owner.parent) && !ts.isIfStatement(owner.parent)
-              && !finiteLoopBodyBlock
-              && !(ts.isTryStatement(owner.parent) && owner.parent.tryBlock === owner
-                && (!!owner.parent.catchClause || !!owner.parent.finallyBlock))) return undefined;
+            if (ts.isBlock(owner) && (ts.isCatchClause(owner.parent)
+              || (ts.isTryStatement(owner.parent) && owner.parent.finallyBlock === owner)
+              || ts.isCaseClause(owner.parent))) return undefined;
             if ((!finiteExpansionNode && ts.isIterationStatement(owner, false)) || ts.isLabeledStatement(owner)) return undefined;
             owner = owner.parent;
           }

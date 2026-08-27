@@ -197,6 +197,11 @@ same property is proved for arbitrary TypeScript.
   loop-owned transfers are consumed only at the loop boundary, and mandatory
   `finally` reads the snapshot for each incoming edge. Dynamic or over-budget
   loops and mutable-local labeled transfers remain non-proofs.
+  Ordinary standalone lexical blocks now use a nested local map and project
+  every normal/return/throw/break/continue snapshot back to names visible at
+  block entry. Block-local constants remain usable inside the block but cannot
+  escape; shadowing, catch/finally-side mutation, nested switch-case mutation,
+  and labeled mutable-local ownership remain non-proofs.
   Finite loops are expanded into the same completion sequence as straight-line
   code, so an early return suppresses later iterations while a surrounding
   `finally` still runs. The

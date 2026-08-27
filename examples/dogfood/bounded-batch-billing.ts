@@ -36,7 +36,10 @@ export function billConfiguredBatch(runtime: BatchBilling): void {
         if (runtime.outcome === 2 && sinkWeight === 2) break;
         if (runtime.outcome === 3 && sinkWeight === 2) return;
         if (runtime.outcome === 4 && sinkWeight === 2) throw units;
-        units += 1;
+        {
+          const perSinkOverhead = 1;
+          units += perSinkOverhead;
+        }
       } finally {
         runtime.auditedUnits += units;
       }
