@@ -294,10 +294,12 @@ same property is proved for arbitrary TypeScript.
 - `completion-flow.ts` defines the shared completion kinds, loop-target identity,
   concrete conditioned paths, and predicate-joined payload/snapshot summary used
   by refinement and async safety. Handler-local loops consume only their own
-  break/continue. A transfer to an outer loop remains visible in
-  `completionPaths`, emits `unsupported-control-transfer`, and makes unified
-  Quint lowering refuse the model. The outer-loop transition itself is not yet
-  modeled; this is fail-closed evidence, not a cleanup proof.
+  break/continue. A canonical one-to-eight-iteration outer `for` whose block is
+  leading lexical `using` declarations followed by one final `try` can consume
+  a statically owned labeled `continue` after reverse-order async disposal. Its
+  Quint model tracks acquisition generations and rejects stale cleanup. Other
+  outer transfers remain visible in `completionPaths`, emit
+  `unsupported-control-transfer`, and make unified lowering refuse the model.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

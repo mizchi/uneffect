@@ -1,8 +1,7 @@
-// A realistic boundary case: retry policy owns an outer attempt loop while
-// await-using cleanup runs inside try/finally. Uneffect retains the continue
-// target but currently refuses unified lowering because the outer loop is not
-// yet part of the handler CFG. This explicit non-proof prevents cleanup from
-// being certified by treating the retry as ordinary fallthrough.
+// A realistic bounded case: retry policy owns an outer attempt loop while an
+// await-using resource spans delivery and its finally policy. Continuing the
+// labeled loop exits that resource scope, so disposal must finish before the
+// next acquisition generation begins.
 
 export interface DeliverySession extends AsyncDisposable {
   send(): Promise<void>;
@@ -10,12 +9,12 @@ export interface DeliverySession extends AsyncDisposable {
 
 export async function deliverWithRetry(
   retry: boolean,
-  open: () => Promise<DeliverySession>,
+  open: () => DeliverySession,
 ): Promise<void> {
   attempts: for (let attempt = 0; attempt < 2; attempt++) {
+    await using session = open();
     try {
-      await using session = await open();
-      await session.send();
+      await session.send().then(() => undefined);
     } finally {
       if (retry) continue attempts;
     }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -3074,7 +3074,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
             await using session = await open()
             await deliver(session)
           } finally {
-            if (retry) continue attempts
+          if (retry) continue missing
           }
         }
       }
@@ -3090,14 +3090,14 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     };
     expect(result.controlStatements[0]?.completionPaths).toContainEqual(expect.objectContaining({
       completion: "continue",
-      target: { kind: "label", label: "attempts" },
+      target: { kind: "label", label: "missing" },
     }));
     expect(result.diagnostics).toContainEqual(expect.objectContaining({
       functionName: "run",
       kind: "unsupported-control-transfer",
     }));
     expect(() => generateUnified("target_aware_completion", result, "run")).toThrow(
-      /continue attempts leaves the modeled handler CFG/,
+      /continue missing leaves the modeled handler CFG/,
     );
 
     const ownedSource = `
@@ -3120,6 +3120,25 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       kind: "unsupported-control-transfer",
     }));
     expect(() => generateUnified("owned_handler_completion", owned, "run")).not.toThrow();
+  });
+
+  it("lowers cleanup before a statically owned outer retry continue", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/target-aware-retry-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsync(fileName, source) as {
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      kind: "unsupported-control-transfer",
+    }));
+    const quint = generateUnified("target_aware_retry_cleanup", result, "deliverWithRetry") as string;
+    expect(quint).toContain("action dispose_start_session_continue_attempts");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(quint).toContain("action continue_attempts_exit");
+    expect(quint.indexOf("action dispose_start_session_continue_attempts"))
+      .toBeLessThan(quint.indexOf("action continue_attempts_repeat"));
   });
 
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {

@@ -433,8 +433,9 @@ describe("typed-array static verification", () => {
     });
   }, { time: 500, iterations: 5 });
 
-  bench("retain target-aware retry cleanup completion", () => {
-    analyzeAsyncSafety("target-aware-retry-cleanup.ts", targetAwareRetryCleanupSource);
+  bench("lower bounded target-aware retry cleanup", () => {
+    const result = analyzeAsyncSafety("target-aware-retry-cleanup.ts", targetAwareRetryCleanupSource);
+    generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

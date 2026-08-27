@@ -24,21 +24,27 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
-  it("retains an outer retry target instead of certifying cleanup by fallthrough", () => {
+  it("lowers a bounded outer retry only after loop-scoped async cleanup", () => {
     const fileName = "examples/dogfood/target-aware-retry-cleanup.ts";
     const source = readFileSync(fileName, "utf8");
     const result = analyzeAsyncSafety(fileName, source);
     expect(result.controlStatements[0]?.completionPaths).toContainEqual(expect.objectContaining({
       completion: "continue",
       target: { kind: "label", label: "attempts" },
+      ownerId: expect.any(String),
     }));
-    expect(result.diagnostics).toContainEqual(expect.objectContaining({
-      functionName: "deliverWithRetry",
+    expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({
+      owner: "deliverWithRetry",
+      label: "attempts",
+      iterations: 2,
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
       kind: "unsupported-control-transfer",
-      message: expect.stringContaining("continue attempts leaves the modeled handler CFG"),
     }));
-    expect(() => generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry"))
-      .toThrow(/refuses to treat it as normal completion/);
+    const quint = generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry");
+    expect(quint).toContain("action dispose_start_session_continue_attempts");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(quint).toContain("action continue_attempts_exit");
   });
 
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {

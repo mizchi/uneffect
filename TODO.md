@@ -34,10 +34,10 @@ rethrow keep abrupt snapshots separate from normal catch completion.
 
 The shared completion contract now carries normal/return/throw/break/continue,
 target identity, predicates, payloads, and edge snapshots. Refinement and
-Promise/resource analysis use the same owner test. The next Red/Green slice is
-teaching unified async lowering to consume a statically owned outer-loop
-transfer after cleanup instead of stopping at the new explicit non-proof.
-Cross/nested labels, dynamic
+Promise/resource analysis use the same owner test. Unified async lowering now
+consumes a labeled `continue` owned by a canonical bounded outer `for` after
+loop-scoped async disposal. The next Red/Green slice adds the matching outer
+`break` exit and post-loop continuation. Cross/nested labels, dynamic
 loops, aliases, opaque throw payloads, and dynamic dispatch remain explicit
 non-proofs. The detailed tested
 fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
@@ -51,7 +51,7 @@ summary work; they are not parallel implementation promises.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Promise/rejection/disposal paths lower statically owned outer-loop transfers from the shared completion representation without suppressing floating errors. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Add the matching bounded outer-loop `break`, then compose rejection and multiple disposal paths without suppressing floating errors. |
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
@@ -71,7 +71,7 @@ by the phase ordering.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Statically owned outer-loop transfers, then one general Promise/exception/disposal CFG fixed point |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Bounded outer-loop `break`, then one general Promise/exception/disposal CFG fixed point |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -88,9 +88,10 @@ by the phase ordering.
 
 The active issue is widened one Red/Green acceptance slice at a time. Each slice
 must retain an adjacent unsupported negative control and add a benchmark when
-it expands solver or analysis work. When #3 supplies a reusable completion/CFG
-representation, #9 and #20 are the next independent consumers. Phase 2 and
-later issues remain intentionally queued behind these proof-boundary items.
+it expands solver or analysis work. The reusable completion contract delivered
+by #3 now feeds the active #9 async/resource slice and the next #20
+cross-project refinement slice. Phase 2 and later issues remain intentionally
+queued behind these proof-boundary items.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -732,6 +733,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Correlate nested `if` then/else operations through shared condition identity/polarity and carry it through validated Corsa schema v5; loop and general CFG joins remain conservative.
     - [x] Preserve top-level catch/finally `return` and `throw` completion so abrupt handlers do not fall through to later awaits.
     - [x] Give one awaited chain per top-level catch/finally statement dedicated terminal/resume states, including finally-before-outer-await ordering.
+    - [x] Lower a labeled `continue` from mandatory `finally` to its canonical bounded outer `for`, completing reverse-order loop-scoped async disposal before reacquiring the next resource generation; reject unknown labels, non-canonical/dynamic bounds, intervening statements, and loops beyond the explicit eight-iteration proof budget.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

@@ -1624,11 +1624,13 @@ static-analysis observation excludes parsing and Z3 and is not a CI budget or
 regression claim. Cross/nested labels, dynamic loops, aliases, and the general
 CFG fixed point remain outside the measured fragment.
 
-The target-aware retry-cleanup workload parses a two-attempt async delivery with
-`await using` and retains a finally-owned `continue attempts` that leaves the
-currently modeled handler CFG. A filtered run on 2026-08-27 measured 178.83 ms
-mean (5.592 operations/second over 20 fixed iterations, 5.53% relative margin
-of error). This cold TypeScript-Program analysis includes parsing and type
-checking, but excludes Quint evaluation because lowering deliberately refuses
-the unresolved transfer. It is an observation, not a CI budget or proof of the
-outer retry loop.
+The target-aware retry-cleanup workload parses a two-attempt async delivery,
+resolves its finally-owned `continue attempts`, and generates the unified Quint
+model that disposes the loop-scoped `await using` resource before retry. A
+filtered run on 2026-08-27 measured 370.90 ms mean (2.6961 operations/second
+over 20 fixed iterations, 14.82% relative margin of error). This cold
+TypeScript-Program analysis includes parsing, type checking, and Quint source
+generation, but excludes Quint execution. The separately executed acceptance
+model and stale-generation negative control establish the modeled invariant;
+this high-variance measurement is not a CI budget or a claim about unsupported
+outer transfers.

@@ -118,6 +118,7 @@ export interface AsyncSafetyResult {
   controlEdges: AsyncControlEdge[];
   controlRegions: AsyncControlRegion[];
   controlStatements: AsyncControlStatement[];
+  controlTransferOwners: AsyncControlTransferOwner[];
   ownershipObligations: OwnershipGuardObligation[];
   diagnostics: AsyncSafetyDiagnostic[];
 }
@@ -148,6 +149,17 @@ export interface AsyncControlLoop {
 export interface AsyncControlCompletionPath extends CompletionPath<AsyncControlCondition> {
   controlConditions: AsyncControlCondition[];
   target?: CompletionTarget;
+  ownerId?: string;
+}
+export interface AsyncControlTransferOwner {
+  id: string;
+  owner: string;
+  regionId: string;
+  label?: string;
+  kind: "for";
+  iterations: number;
+  span: { start: number; end: number };
+  bodySpan: { start: number; end: number };
 }
 export interface OwnershipGuardObligation {
   owner: string;
@@ -566,7 +578,7 @@ function resourceScope(ownerNode: ts.FunctionLikeDeclaration, declaration: ts.Va
 export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.SourceFile, options: AsyncSafetyOptions = {}): AsyncSafetyResult {
   const checker = program.getTypeChecker();
   const resourceRetentionCache = new Map<ts.SignatureDeclaration, ReadonlySet<number>>();
-  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
+  const promises: PromiseObservation[] = [], promiseBindings: PromiseBinding[] = [], resources: ResourceBinding[] = [], resourceAliases: ResourceAliasEscape[] = [], resourceEscapes: ResourceEscape[] = [], ownershipObligations: OwnershipGuardObligation[] = [], controlRegions: AsyncControlRegion[] = [], controlStatements: AsyncControlStatement[] = [], controlTransferOwners: AsyncControlTransferOwner[] = [], diagnostics: AsyncSafetyDiagnostic[] = [];
   const validateOwnershipContracts = (node: ts.Node): void => {
     if (ts.isFunctionLike(node)) for (const directive of ["consumes_rejection", "consumes_callback_rejection"] as const) for (const error of parseIndexedOwnershipContract(node, directive).errors) {
       diagnostics.push({ fileName: source.fileName, functionName: functionName(node), line: lineAt(source, error.position), kind: "invalid-ownership-contract", severity: "error", message: error.message, notes: [{ label: "because", detail: "an ownership directive that does not resolve against this declaration transfers nothing, so callers keep the rejection responsibility" }] });
@@ -1859,6 +1871,59 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       diagnostics.push({ fileName: source.fileName, functionName: owner, line: lineAt(source, binding.span.start), kind: "floating-promise", severity: "error", message: `${owner} leaves Promise binding ${binding.binding} without await, return, rejection handler, explicit void, or responsibility transfer`, notes: [{ label: "because", detail: `every path through ${owner} leaves ${binding.binding} unobserved, so its rejection escapes as an unhandled rejection` }] });
     }
   };
+  const boundedForIterations = (loop: ts.ForStatement): number | undefined => {
+    if (!loop.initializer || !ts.isVariableDeclarationList(loop.initializer)
+      || loop.initializer.declarations.length !== 1 || !loop.condition || !loop.incrementor) return undefined;
+    const declaration = loop.initializer.declarations[0]!;
+    if (!ts.isIdentifier(declaration.name) || !declaration.initializer || !ts.isNumericLiteral(declaration.initializer)) return undefined;
+    const binding = declaration.name.text;
+    if (!ts.isBinaryExpression(loop.condition) || !ts.isIdentifier(loop.condition.left)
+      || loop.condition.left.text !== binding || !ts.isNumericLiteral(loop.condition.right)
+      || loop.condition.operatorToken.kind !== ts.SyntaxKind.LessThanToken) return undefined;
+    const increments = (ts.isPostfixUnaryExpression(loop.incrementor) || ts.isPrefixUnaryExpression(loop.incrementor))
+      && loop.incrementor.operator === ts.SyntaxKind.PlusPlusToken
+      && ts.isIdentifier(loop.incrementor.operand) && loop.incrementor.operand.text === binding;
+    if (!increments) return undefined;
+    const iterations = Number(loop.condition.right.text) - Number(declaration.initializer.text);
+    return Number.isSafeInteger(iterations) && iterations > 0 && iterations <= 8 ? iterations : undefined;
+  };
+  const isUsingStatement = (statement: ts.Statement): boolean => ts.isVariableStatement(statement)
+    && (statement.declarationList.flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
+  const resolveTransferOwner = (
+    statement: ts.Statement,
+    target: CompletionTarget | undefined,
+    owner: string,
+    regionId: string,
+    tryNode: ts.TryStatement,
+  ): AsyncControlTransferOwner | undefined => {
+    if (!target) return undefined;
+    for (let current: ts.Node | undefined = statement.parent; current && !ts.isFunctionLike(current); current = current.parent) {
+      const isLoop = ts.isForStatement(current) || ts.isWhileStatement(current) || ts.isDoStatement(current)
+        || ts.isForInStatement(current) || ts.isForOfStatement(current);
+      if (!isLoop) continue;
+      const labeled = ts.isLabeledStatement(current.parent) && current.parent.statement === current ? current.parent : undefined;
+      const owns = target.kind === "nearest-loop" || labeled?.label.text === target.label;
+      if (!owns) continue;
+      if (!ts.isForStatement(current) || !ts.isBlock(current.statement)) return undefined;
+      const tryIndex = current.statement.statements.indexOf(tryNode);
+      if (tryIndex !== current.statement.statements.length - 1
+        || !current.statement.statements.slice(0, tryIndex).every(isUsingStatement)) return undefined;
+      const iterations = boundedForIterations(current);
+      if (!iterations) return undefined;
+      const spanNode = labeled ?? current;
+      return {
+        id: `${owner}@loop:${current.getStart(source)}`,
+        owner,
+        regionId,
+        ...(labeled ? { label: labeled.label.text } : {}),
+        kind: "for",
+        iterations,
+        span: { start: spanNode.getStart(source), end: spanNode.getEnd() },
+        bodySpan: { start: current.statement.getStart(source), end: current.statement.getEnd() },
+      };
+    }
+    return undefined;
+  };
   const visit = (node: ts.Node): void => {
     if (ts.isTryStatement(node)) {
       const owner = enclosingFunctionName(node);
@@ -1943,9 +2008,16 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
           }
           return [{ controlConditions: conditions, completion: "normal" }];
         };
-        const paths = execute(statement, []);
+        const paths = execute(statement, []).map((path): AsyncControlCompletionPath => {
+          if (!isLoopTransfer(path.completion)) return path;
+          const transferOwner = resolveTransferOwner(statement, path.target, owner, regionId, node);
+          if (!transferOwner) return path;
+          if (!controlTransferOwners.some((candidate) => candidate.id === transferOwner.id)) controlTransferOwners.push(transferOwner);
+          return { ...path, ownerId: transferOwner.id };
+        });
         for (const path of paths) {
           if (!isLoopTransfer(path.completion)) continue;
+          if (path.ownerId) continue;
           const formatted = formatTargetedCompletion(path);
           diagnostics.push({
             fileName: source.fileName,
@@ -2002,7 +2074,7 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       : disposal.catchesFailure ? "disposal-throw-caught" : "disposal-throw-escapes";
     controlEdges.push({ owner: disposal.owner, from: `dispose:${disposal.binding}:${failure}`, to: disposal.catchesFailure ? "catch" : disposal.escapingFailure === "reject" ? "function:rejected" : "function:threw", kind });
   }
-  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, ownershipObligations, diagnostics };
+  return { fileName: source.fileName, promises, promiseBindings, resources, resourceAliases, resourceEscapes, disposals, promiseChains, controlEdges, controlRegions, controlStatements, controlTransferOwners, ownershipObligations, diagnostics };
 }
 
 function logicVariables(expression: LogicExpression, names: Set<string>): void {
@@ -2109,7 +2181,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const unresolvedTransfer = result.controlStatements
     .filter((statement) => statement.owner === owner)
     .flatMap((statement) => statement.completionPaths)
-    .find((path) => isLoopTransfer(path.completion));
+    .find((path) => isLoopTransfer(path.completion) && !path.ownerId);
   if (unresolvedTransfer) {
     throw new Error(`${formatTargetedCompletion(unresolvedTransfer)} leaves the modeled handler CFG; unified async lowering refuses to treat it as normal completion`);
   }
@@ -2124,6 +2196,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const controlRegions = result.controlRegions.filter((item) => item.owner === owner).sort((left, right) => left.fullSpan.start - right.fullSpan.start);
   const catchStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "catch").sort((left, right) => left.span.start - right.span.start);
   const finallyStatements = result.controlStatements.filter((item) => item.owner === owner && item.region === "finally").sort((left, right) => left.span.start - right.span.start);
+  const transferOwners = result.controlTransferOwners.filter((item) => item.owner === owner);
   if (awaited.length === 0) throw new Error(`${owner} has no awaited analyzed Promise chain`);
   type NormalEvent =
     | { kind: "acquire"; index: number; position: number }
@@ -2214,6 +2287,19 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     });
     return { region, catchPc, catchLayout, afterCatchPc, finallyPc, finallyLayout };
   });
+  const transferLayouts = transferOwners.map((transferOwner) => {
+    const disposalIndexes = disposals.flatMap((disposal, index) => {
+      const resource = resources.find((candidate) => candidate.binding === disposal.binding && candidate.scopeId === disposal.scopeId);
+      return resource && resource.span.start >= transferOwner.bodySpan.start && resource.span.end <= transferOwner.bodySpan.end
+        ? [index] : [];
+    });
+    const entryPc = normalLayout.find(({ event }) => event.position >= transferOwner.bodySpan.start && event.position <= transferOwner.bodySpan.end)?.pc;
+    if (entryPc === undefined) throw new Error(`${transferOwner.id} has no modeled loop entry event`);
+    const cleanupPc = nextPc;
+    nextPc += disposalIndexes.length;
+    const decisionPc = nextPc++;
+    return { transferOwner, disposalIndexes, entryPc, cleanupPc, decisionPc };
+  });
   const cleanupPc = nextPc, completePc = cleanupPc + disposals.length;
   const containingTry = (position: number) => controlRegions
     .filter((region) => position >= region.trySpan.start && position <= region.trySpan.end)
@@ -2230,6 +2316,8 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     return exceptionalTarget(outer.region);
   };
   const continuationPc = (end: number) => normalLayout.find(({ event }) => event.position > end)?.pc ?? cleanupPc;
+  const transferLayoutForRegion = (regionId: string) => transferLayouts.find((layout) => layout.transferOwner.regionId === regionId);
+  const transferLayoutForPath = (path: AsyncControlCompletionPath) => transferLayouts.find((layout) => layout.transferOwner.id === path.ownerId);
   const labels = resources.map((resource, index) => resources.filter((item) => item.binding === resource.binding).length === 1 ? safe(resource.binding) : `${safe(resource.binding)}_${index}`);
   const branchIds = [...new Set([
     ...resources.flatMap((item) => item.controlPaths.flat()),
@@ -2254,10 +2342,12 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     return `not(${guards.join(" and ")})`;
   };
   const lines = [`module ${safe(moduleName)} {`, "  var pc: int", "  var completion: int", "  var broken: bool"];
+  transferLayouts.forEach(({ transferOwner }) => lines.push(`  var loop_iteration_${safe(transferOwner.id)}: int`));
   branchIds.forEach((_, index) => lines.push(`  var branch_${index}: int`));
   resources.forEach((_, index) => lines.push(`  var acquired_${index}: bool`, `  var disposed_${index}: bool`, `  var disposing_${index}: bool`, `  var generation_${index}: int`, `  var disposed_generation_${index}: int`));
   aliases.forEach((_, index) => lines.push(`  var alias_generation_${index}: int`));
   lines.push("", "  action init = all {", "    pc' = 0,", "    completion' = 0,", "    broken' = false,");
+  transferLayouts.forEach(({ transferOwner }) => lines.push(`    loop_iteration_${safe(transferOwner.id)}' = 0,`));
   branchIds.forEach((_, index) => lines.push(`    branch_${index}' = -1,`));
   resources.forEach((_, index) => lines.push(`    acquired_${index}' = false,`, `    disposed_${index}' = false,`, `    disposing_${index}' = false,`, `    generation_${index}' = 0,`, `    disposed_generation_${index}' = -1,`));
   aliases.forEach((_, index) => lines.push(`    alias_generation_${index}' = -1,`));
@@ -2266,6 +2356,10 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   const emit = (name: string, guards: string[], updates = new Map<string, string>()): void => {
     actions.push(name);
     lines.push("", `  action ${name} = all {`, ...guards.map((guard) => `    ${guard},`), `    pc' = ${updates.get("pc") ?? "pc"},`, `    completion' = ${updates.get("completion") ?? "completion"},`, `    broken' = ${updates.get("broken") ?? "broken"},`);
+    transferLayouts.forEach(({ transferOwner }) => {
+      const variable = `loop_iteration_${safe(transferOwner.id)}`;
+      lines.push(`    ${variable}' = ${updates.get(variable) ?? variable},`);
+    });
     branchIds.forEach((_, index) => lines.push(`    branch_${index}' = ${updates.get(`branch_${index}`) ?? `branch_${index}`},`));
     resources.forEach((_, index) => lines.push(`    acquired_${index}' = ${updates.get(`acquired_${index}`) ?? `acquired_${index}`},`, `    disposed_${index}' = ${updates.get(`disposed_${index}`) ?? `disposed_${index}`},`, `    disposing_${index}' = ${updates.get(`disposing_${index}`) ?? `disposing_${index}`},`, `    generation_${index}' = ${updates.get(`generation_${index}`) ?? `generation_${index}`},`, `    disposed_generation_${index}' = ${updates.get(`disposed_generation_${index}`) ?? `disposed_generation_${index}`},`));
     aliases.forEach((_, index) => lines.push(`    alias_generation_${index}' = ${updates.get(`alias_generation_${index}`) ?? `alias_generation_${index}`},`));
@@ -2288,6 +2382,28 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       emit(`dispose_throw_${label}`, [`pc == ${current}`, `acquired_${resourceIndex}`, `not(disposed_${resourceIndex})`], new Map([["pc", String(failureNext)], ["completion", disposal.catchesFailure ? "0" : "if (completion == 0) 2 else 3"], [`disposed_${resourceIndex}`, "true"], [`disposed_generation_${resourceIndex}`, `generation_${resourceIndex}`]]));
     }
   };
+  transferLayouts.forEach(({ transferOwner, disposalIndexes, entryPc, cleanupPc: transferCleanupPc, decisionPc }) => {
+    const transferName = safe(transferOwner.label ?? transferOwner.id);
+    disposalIndexes.forEach((disposalIndex, order) => {
+      const current = transferCleanupPc + order;
+      const next = order + 1 < disposalIndexes.length ? current + 1 : decisionPc;
+      emitDisposal(disposalIndex, current, next, `_continue_${transferName}`, cleanupPc);
+    });
+    const iteration = `loop_iteration_${safe(transferOwner.id)}`;
+    emit(`continue_${transferName}_repeat`, [
+      `pc == ${decisionPc}`,
+      `${iteration} < ${transferOwner.iterations - 1}`,
+      "completion == 0",
+    ], new Map([
+      ["pc", String(entryPc)],
+      [iteration, `${iteration} + 1`],
+    ]));
+    emit(`continue_${transferName}_exit`, [
+      `pc == ${decisionPc}`,
+      `${iteration} >= ${transferOwner.iterations - 1}`,
+      "completion == 0",
+    ], new Map([["pc", String(continuationPc(transferOwner.span.end))]]));
+  });
   branchIds.forEach((_, index) => {
     emit(`choose_branch_${index}_true`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "1"]]));
     emit(`choose_branch_${index}_false`, [`branch_${index} == -1`], new Map([[`branch_${index}`, "0"]]));
@@ -2342,7 +2458,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
     if (event.kind === "acquire") {
       const resource = resources[event.index]!;
       const guards = [`pc == ${pc}`, ...conditionPathGuards(resource.controlPaths)];
-      emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
+      emit(`acquire_${labels[event.index]}`, guards, new Map([["pc", String(next)], [`acquired_${event.index}`, "true"], [`disposed_${event.index}`, options.reuseStaleDisposal ? `disposed_${event.index}` : "false"], [`generation_${event.index}`, `generation_${event.index} + 1`]]));
       emit(`acquire_fail_${labels[event.index]}`, guards, new Map([["pc", String(cleanupPc)], ["completion", "1"]]));
       const mismatch = conditionPathMismatch(resource.controlPaths);
       if (resource.conditional) emit(`skip_acquire_${labels[event.index]}`, mismatch ? [`pc == ${pc}`, mismatch] : [`pc == ${pc}`], new Map([["pc", String(next)]]));
@@ -2394,7 +2510,7 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
   regionLayouts.forEach((layout, regionIndex) => {
     const regionSuffix = regionLayouts.length === 1 ? "" : `_${regionIndex}`;
     const finalEntry = layout.finallyLayout.length ? layout.finallyPc : exceptionalTarget(layout.region);
-    const afterRegion = continuationPc(layout.region.fullSpan.end);
+    const afterRegion = transferLayoutForRegion(layout.region.id)?.cleanupPc ?? continuationPc(layout.region.fullSpan.end);
     layout.catchLayout.forEach(({ statement, pc, awaitIndexes, events, loopDecisionPc }, index) => {
       const next = layout.catchLayout[index + 1]?.pc ?? layout.afterCatchPc;
       if (events.length > 0) {
@@ -2470,9 +2586,11 @@ export function generateUnifiedAsyncQuint(moduleName: string, result: AsyncSafet
       }
       const pathSuffix = statement.completionPaths.length === 1 && statement.completionPaths[0]!.controlConditions.length === 0 ? undefined : statement.completionPaths;
       for (const [pathIndex, path] of (pathSuffix ?? [statement.completionPaths[0]!]).entries()) {
-        const target = path.completion === "normal" ? next : path.completion === "return" ? cleanupPc : exceptionalTarget(layout.region);
+        const transferTarget = transferLayoutForPath(path)?.cleanupPc;
+        const target = transferTarget ?? (path.completion === "normal" ? next : path.completion === "return" ? cleanupPc : exceptionalTarget(layout.region));
         const updates = new Map<string, string>([["pc", String(target)]]);
         if (path.completion === "return") updates.set("completion", "0");
+        if (isLoopTransfer(path.completion) && transferTarget !== undefined) updates.set("completion", "0");
         if (path.completion === "throw") updates.set("completion", "1");
         emit(`finally_statement_${index}${regionSuffix}${pathSuffix ? `_path_${pathIndex}` : ""}`, [`pc == ${pc}`, ...conditionGuards(path.controlConditions)], updates);
       }

@@ -2023,6 +2023,27 @@ describe("async error and explicit resource safety", () => {
     expect(run(stale).status).not.toBe(0);
   }, 10_000);
 
+  it("disposes a loop-scoped resource before a bounded outer continue repeats", () => {
+    const fileName = "examples/dogfood/target-aware-retry-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.controlTransferOwners).toEqual([
+      expect.objectContaining({ owner: "deliverWithRetry", label: "attempts", kind: "for", iterations: 2 }),
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      kind: "unsupported-control-transfer",
+    }));
+    const quint = generateUnifiedAsyncQuint("target_aware_retry_cleanup", result, "deliverWithRetry");
+    expect(quint).toContain("action dispose_start_session_continue_attempts");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(run(quint, 32).status).toBe(0);
+
+    const stale = generateUnifiedAsyncQuint("target_aware_retry_cleanup_stale", result, "deliverWithRetry", {
+      reuseStaleDisposal: true,
+    });
+    expect(stale).toContain("action skip_stale_disposed_session_continue_attempts");
+    expect(run(stale, 32).status).not.toBe(0);
+  }, 20_000);
+
   it("rejects direct aliases of a using resource used after its lexical scope", () => {
     const result = analyzeAsyncSafety("escaping-resource-alias.ts", `
       interface Resource { send(): void; [Symbol.asyncDispose](): Promise<void> }
