@@ -1458,3 +1458,10 @@ operations/second over 3,611 samples, 10.16% relative margin of error). This
 warm static-analysis measurement excludes parsing and Z3 and is recorded as an
 observation, not a CI budget. It does not cover the still-unsupported abrupt,
 exception, switch, or loop local-environment joins.
+
+After adding the suppressed-batch early-return edge, the same filtered workload
+measured 0.3833 ms mean (2,608.96 operations/second over 1,305 samples, 11.30%
+relative margin of error) on 2026-08-27. The workload now constructs separate
+return and normal continuation paths and passes only the latter's local
+snapshot into billing. Because the workload changed and variance is high, this
+is an observation rather than a regression claim or CI budget.

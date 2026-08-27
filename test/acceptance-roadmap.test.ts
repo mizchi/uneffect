@@ -983,6 +983,40 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("carries the normal predecessor local environment past an abrupt branch", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state priority: bool
+       * init billed = 0
+       * init audited = 0
+       * init priority = false
+       * action record: billed' = priority ? billed : billed + 4, audited' = priority ? audited : audited + 1
+       */
+      interface Runtime { billed: number; audited: number; priority: boolean }
+      /* uneffect: refinement abruptLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement abruptLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement abruptLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        if (runtime.priority) {
+          units = 2
+          return
+        }
+        units += 3
+        runtime.billed += units
+        runtime.audited++
+      }
+    `;
+    const temporal = (parseSpecification("abrupt-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "abrupt-local.ts", source, "abruptLocal", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

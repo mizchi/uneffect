@@ -34,8 +34,10 @@ release date commitment.
    selected outcomes remain open.
    As the first reusable CFG seam, state updates and initialized mutable scalar
    locals now share one phi-join contract across normally completing sequential
-   `if` diamonds. The next step is to carry that local environment through
-   abrupt and exception edges before extending it to switches and loops.
+   `if` diamonds, including a returning arm whose suffix runs only with the
+   normal predecessor's local snapshot. The next step is to carry local
+   environments through typed throw/catch edges before extending them to
+   switches and loops.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

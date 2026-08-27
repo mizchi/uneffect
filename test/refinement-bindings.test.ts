@@ -3235,10 +3235,6 @@ describe("annotated refinement bindings", () => {
       ["local-join-const-write.ts", source.replace("let weight = 1", "const weight = 1")],
       ["local-join-uninitialized.ts", source.replace("let weight = 1", "let weight: number")],
       ["local-join-opaque.ts", source.replace("weight = 2", "weight = Number.parseInt('2')")],
-      ["local-join-abrupt.ts", source.replace(
-        "if (runtime.urgent) weight = 2",
-        "if (runtime.urgent) { weight = 2; return }",
-      )],
       ["local-join-loop.ts", source.replace(
         "if (runtime.urgent) weight = 2",
         "while (runtime.urgent) { weight = 2; break }",
@@ -3247,11 +3243,34 @@ describe("annotated refinement bindings", () => {
         "if (runtime.urgent) weight = 2",
         "try { weight = 2 } finally { runtime.audited += 0 }",
       )],
+      ["local-join-switch.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "switch (runtime.urgent) { case true: weight = 2; break; default: break }",
+      )],
+      ["local-join-labeled.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "selected: { weight = 2; break selected }",
+      )],
+      ["local-join-bare-block.ts", source.replace(
+        "if (runtime.urgent) weight = 2",
+        "{ weight = 2 }",
+      )],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "localJoin", temporal)).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
       );
     }
+
+    const abrupt = source
+      .replace(
+        "action record: total' = total + (sampled ? (urgent ? 5 : 4) : (urgent ? 2 : 1)), audited' = audited + 1",
+        "action record: total' = urgent ? total : total + (sampled ? 4 : 1), audited' = urgent ? audited : audited + 1",
+      )
+      .replace("if (runtime.urgent) weight = 2", "if (runtime.urgent) { weight = 2; return }");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "local-join-abrupt.ts", abrupt, "localJoin",
+      parseSpec("local-join-abrupt.ts", abrupt).temporal,
+    )).resolves.toEqual([]);
 
     const mismatchedModel = source.replace("weight += 3", "weight += 4");
     await expect(validateRefinementActionBodiesWithZ3(

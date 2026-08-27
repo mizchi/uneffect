@@ -84,12 +84,15 @@ and dynamically selected completion remain unsupported. This is a closed-form
 affine rule, not a general loop fixed point.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
-`+=`, or `-=` and joined through sequential normally completing `if` diamonds.
+`+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
+arms produce phi values; when one arm returns, only the normal predecessor's
+local snapshot is passed to the continuation and the return path retains its
+pre-continuation state.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
-`const`, opaque right-hand sides, or mutable-local joins crossing abrupt
-completion, `try`, `switch`, loops, or labeled blocks remain unsupported rather
+`const`, opaque right-hand sides, or mutable-local joins crossing throws,
+`try`, `switch`, loops, labeled blocks, or standalone nested blocks remain unsupported rather
 than being approximated.
 
 For the React row, event handlers and callback refs also include immutable

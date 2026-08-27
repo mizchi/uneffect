@@ -1339,20 +1339,16 @@ function validateRefinementActionBodiesInSource(
       });
       for (const [name, value] of joined) localValues.set(name, value);
     };
-    const mutableLocalsChanged = (
-      branch: ReadonlyMap<string, TemporalExpression>,
-      before: ReadonlyMap<string, TemporalExpression>,
-    ): boolean => [...before.keys()].some((name) => !name.startsWith("\u0000mutable:")
-      && !sameRefinementExpression(branch.get(name) ?? before.get(name)!, before.get(name)!));
     const applyContinuation = (
       completion: ActionCompletion,
       branchUpdates: Map<string, TemporalExpression>,
       continuation: ts.Block,
+      branchLocals: Map<string, TemporalExpression> = new Map(localValues),
     ): ActionCompletion | undefined => {
       if (completion === "return" || completion === "throw" || completion === "break" || completion === "continue") return completion;
       if (completion === "normal") return collect(
         continuation, receiver, runtimeClass, substitutions,
-        branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        branchUpdates, new Map(branchLocals), activeCalls, allowTerminalReturn, allowTerminalThrow,
         allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
         activeBreakLabels, activeContinueLabels,
       );
@@ -1360,7 +1356,7 @@ function validateRefinementActionBodiesInSource(
       const continuingUpdates = new Map(branchUpdates);
       const continued = collect(
         continuation, receiver, runtimeClass, substitutions,
-        continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+        continuingUpdates, new Map(branchLocals), activeCalls, allowTerminalReturn, allowTerminalThrow,
         allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
         activeBreakLabels, activeContinueLabels,
       );
@@ -2341,12 +2337,10 @@ function validateRefinementActionBodiesInSource(
         let whenFalse = collect(falseBlock, receiver, runtimeClass, substitutions, falseUpdates, falseLocals, activeCalls, allowTerminalReturn, allowTerminalThrow, allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel, activeBreakLabels, activeContinueLabels);
         if (!whenTrue || !whenFalse) return undefined;
         const hasAbruptBranch = whenTrue !== "normal" || whenFalse !== "normal";
-        if (hasAbruptBranch && (mutableLocalsChanged(trueLocals, beforeLocals)
-          || mutableLocalsChanged(falseLocals, beforeLocals))) return undefined;
         if (hasAbruptBranch) {
           const continuation = ts.factory.createBlock(body.statements.slice(statementIndex + 1), true);
-          whenTrue = applyContinuation(whenTrue, trueUpdates, continuation);
-          whenFalse = applyContinuation(whenFalse, falseUpdates, continuation);
+          whenTrue = applyContinuation(whenTrue, trueUpdates, continuation, trueLocals);
+          whenFalse = applyContinuation(whenFalse, falseUpdates, continuation, falseLocals);
           if (!whenTrue || !whenFalse) return undefined;
         }
         mergeConditionalUpdates(condition, trueUpdates, falseUpdates, before);
@@ -2701,8 +2695,10 @@ function validateRefinementActionBodiesInSource(
       }
       if (ts.isBinaryExpression(node)) {
         if (ts.isIdentifier(node.left) && localValues.has(mutableLocalMarker(node.left.text))) {
+          if (node.getSourceFile().fileName === "__uneffect_labeled_block.ts") return undefined;
           let owner: ts.Node | undefined = node.parent;
           while (owner && !ts.isFunctionLike(owner)) {
+            if (ts.isBlock(owner) && !ts.isFunctionLike(owner.parent) && !ts.isIfStatement(owner.parent)) return undefined;
             if (ts.isIterationStatement(owner, false) || ts.isSwitchStatement(owner)
               || ts.isTryStatement(owner) || ts.isLabeledStatement(owner)) return undefined;
             owner = owner.parent;

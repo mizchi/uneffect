@@ -337,6 +337,14 @@ mismatch. Uninitialized locals, `var`, writes to `const`, opaque assignments,
 and local joins through abrupt completion, `try`, `switch`, loops, or labels
 remain unsupported.
 
+A thirteenth case updates a mutable scalar local on an arm that returns, then
+proves that only the normal predecessor executes the suffix with its own local
+snapshot. The suppressed-batch path in adaptive billing now returns before
+billing and audit state changes, while the normal path retains priority/retry
+accounting. Mutable locals crossing typed throws, `try`/`catch`, switches,
+loops, labels, or standalone nested blocks remain unsupported rather than
+reusing an enclosing snapshot.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation
