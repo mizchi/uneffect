@@ -72,6 +72,10 @@ same property is proved for arbitrary TypeScript.
   the parent model and recorded in `refinementComposition`. The parent action
   is checked again after summary substitution, while producer/consumer
   compiler/config and exact declaration evidence remain visible.
+- One unguarded scalar child call may pass through one TypeChecker-resolved,
+  write-screened source-local function helper. The link records the complete
+  three-declaration `callPath`; reassignment, recursion, a second helper level,
+  and semantically visible helper updates fail closed.
 - The linter detects syntactic and solver-level constant properties,
   contradictory initial constraints, globally impossible guards, duplicate or
   subsumed properties, bounded unreachability, and several inductively proved

@@ -415,7 +415,10 @@ describe("uneffect command line", () => {
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
         required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
-        $defs: { refinementComposition: { properties: { links: { items: { properties: { guard: { type: "string" } } } } } } },
+        $defs: { refinementComposition: { properties: { links: { items: {
+          required: expect.arrayContaining(["callPath"]),
+          properties: { callPath: { type: "array", items: { type: "string" }, minItems: 2 }, guard: { type: "string" } },
+        } } } } },
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -688,9 +691,9 @@ describe("uneffect command line", () => {
       expect(JSON.parse(io.stdout)).toMatchObject({
         refinementComposition: {
           status: "verified", blockers: [],
-          links: [expect.objectContaining({ adapterName: "counter", version: "1", modelName: "increment", guard: "armed && count > 0", evidence: "verified" })],
+          links: [expect.objectContaining({ adapterName: "counter", version: "1", modelName: "increment", callPath: ["increment", "increment"], guard: "armed && count > 0", evidence: "verified" })],
         },
-        assurance: { passed: true, claims: expect.arrayContaining(["verified child-project scalar refinement actions are composed into direct parent action calls"]) },
+        assurance: { passed: true, claims: expect.arrayContaining(["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"]) },
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 30_000);

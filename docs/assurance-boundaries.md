@@ -143,7 +143,10 @@ the child action summary. Every link retains producer and consumer
 compiler/config provenance and exact declaration integrity. A stale or modified
 declaration, ambiguous export, adapter/version or guard mismatch, invalid child
 guard, extra wrapper work, or semantically incompatible parent model prevents
-`verified` composition. Indirect/higher-order calls, collection updates,
+`verified` composition. One unguarded edge may pass through one
+TypeChecker-resolved, write-screened source-local function helper; the link
+records its full `callPath`. Guarded indirect calls, higher-order values,
+reassigned/cyclic helpers, a second helper level, collection updates,
 abstraction transforms, and non-TypeScript declaration transforms remain
 unsupported.
 

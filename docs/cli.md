@@ -154,9 +154,12 @@ separately records direct scalar child actions that verify locally and remain
 valid after substitution into the annotated parent action. A guarded action is
 accepted only through a sole direct wrapper call; the JSON link includes the
 inherited `guard`. Links retain producer/consumer compiler/config provenance
-and the same declaration integrity evidence. Indirect calls, guarded wrappers
-with additional work, collection-valued updates, and transformed declaration
-cases are not composed. Other proof domains are not composed.
+and the same declaration integrity evidence. One unguarded call may pass through
+one TypeChecker-resolved, write-screened local function helper, with the bounded
+path emitted as `callPath`. Guarded indirect calls, deeper/reassigned/cyclic
+helpers, guarded wrappers with additional work, collection-valued updates, and
+transformed declaration cases are not composed. Other proof domains are not
+composed.
 
 Add `--require-build-artifacts` when the checked boundary consumes composite
 outputs and CI must reject missing or stale `.d.ts`/`.tsbuildinfo` state:

@@ -31,6 +31,8 @@ export interface WorkspaceRefinementLink {
   adapterName: string;
   version: string;
   modelName: string;
+  /** Annotated parent action, bounded local helpers, then the child export. */
+  callPath: string[];
   guard?: string;
   evidence: "verified" | "unknown";
   declarationFile: string;
@@ -71,6 +73,42 @@ function ownsDeclaration(project: CompletedRefinementProject, fileName: string):
     || project.project.fileNames.some((source) => resolve(source) === normalized);
 }
 
+function symbolOccursIn(checker: ts.TypeChecker, root: ts.Node, symbol: ts.Symbol): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (ts.isIdentifier(node) && checker.getSymbolAtLocation(node) === symbol) { found = true; return; }
+    ts.forEachChild(node, visit);
+  };
+  visit(root);
+  return found;
+}
+
+/** Function declarations are followed only while their binding has no source-level writes. */
+function isWriteScreenedLocalHelper(
+  checker: ts.TypeChecker,
+  source: ts.SourceFile,
+  declaration: ts.FunctionDeclaration,
+): boolean {
+  if (!declaration.name || declaration.getSourceFile() !== source) return false;
+  const symbol = checker.getSymbolAtLocation(declaration.name);
+  if (!symbol) return false;
+  let written = false;
+  const visit = (node: ts.Node): void => {
+    if (written) return;
+    if (ts.isBinaryExpression(node)
+      && node.operatorToken.kind >= ts.SyntaxKind.FirstAssignment
+      && node.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      && symbolOccursIn(checker, node.left, symbol)) { written = true; return; }
+    if ((ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node))
+      && [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(node.operator)
+      && symbolOccursIn(checker, node.operand, symbol)) { written = true; return; }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(source, visit);
+  return !written;
+}
+
 /** Bind locally verified child action summaries only to direct calls inside annotated parent actions. */
 export function composeWorkspaceRefinements(
   program: ts.Program,
@@ -99,7 +137,7 @@ export function composeWorkspaceRefinements(
     for (const statement of source.statements) {
       if (!ts.isFunctionDeclaration(statement) || !statement.name || !statement.body
         || !actionExports.has(statement.name.text)) continue;
-      const visit = (node: ts.Node): void => {
+      const visit = (node: ts.Node, callPath: readonly string[], activeHelpers: ReadonlySet<string>): void => {
         if (ts.isFunctionLike(node) && node !== statement) return;
         if (ts.isCallExpression(node)) {
           const declaration = callDeclaration(checker, node);
@@ -145,6 +183,7 @@ export function composeWorkspaceRefinements(
                     fromProject: current.projectFile, toProject: owner.project.projectFile,
                     callerFile: source.fileName, callee, adapterName: contract.adapterName,
                     version: contract.version, modelName: contract.modelName,
+                    callPath: [...callPath, callee],
                     ...(contract.guard ? { guard: formatRefinementExpression(contract.guard) } : {}),
                     evidence: contract.evidence,
                     declarationFile: declarationSource.fileName, declarationIntegrity,
@@ -156,12 +195,51 @@ export function composeWorkspaceRefinements(
                   });
                 }
               }
+              return;
+            }
+            if (ts.isFunctionDeclaration(declaration) && declaration.body
+              && declarationSource === source && declaration.name) {
+              const helperName = declaration.name.text;
+              const helperKey = declarationKey(declaration);
+              if (!isWriteScreenedLocalHelper(checker, source, declaration)) {
+                blockers.push({
+                  kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
+                  subject: helperName, message: `local refinement helper ${helperName} is reassigned or cannot be write-screened`,
+                });
+                return;
+              }
+              if (activeHelpers.has(helperKey)) {
+                blockers.push({
+                  kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
+                  subject: helperName, message: `local refinement helper cycle reaches ${helperName}`,
+                });
+                return;
+              }
+              if (activeHelpers.size >= 2) {
+                blockers.push({
+                  kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
+                  subject: helperName, message: `local refinement helper depth exceeds the supported single-helper fragment at ${helperName}`,
+                });
+                return;
+              }
+              visit(declaration.body, [...callPath, helperName], new Set([...activeHelpers, helperKey]));
+              return;
+            }
+            if (declarationSource === source && ts.isVariableDeclaration(declaration)) {
+              const helperName = ts.isIdentifier(declaration.name)
+                ? declaration.name.text : node.expression.getText(source);
+              blockers.push({
+                kind: "refinement-composition", classification: "unknown", projectFile: current.projectFile,
+                subject: helperName,
+                message: `local refinement helper ${helperName} is reassigned or cannot be write-screened as a function declaration`,
+              });
+              return;
             }
           }
         }
-        ts.forEachChild(node, visit);
+        ts.forEachChild(node, (child) => visit(child, callPath, activeHelpers));
       };
-      visit(statement.body);
+      visit(statement.body, [statement.name.text], new Set([declarationKey(statement)]));
     }
   }
   return { contracts, links, blockers };

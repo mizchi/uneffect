@@ -116,6 +116,13 @@ must match the selected TypeScript compiler's exact in-memory declaration emit.
 Do not treat an empty (`not-applicable`) ledger as proof that refinements were
 composed.
 
+An unguarded action may also use exactly one source-local function helper. The
+helper must resolve by TypeChecker symbol identity, have no writes to its
+binding, and call the child action within the supported scalar body fragment.
+The report emits `callPath: [parentAction, helper, childAction]`. Guarded
+indirection, reassignment, recursion, and a second helper level remain
+`unknown`.
+
 If downstream projects rely on checked-in or cached composite outputs, add
 `--require-build-artifacts`. This rejects missing/stale `.d.ts` and buildinfo
 according to TypeScript SolutionBuilder. If the deployment executes the exact

@@ -14,7 +14,7 @@ import { analyzeAsyncPatterns, generateNodeEventLoopQuint } from "../src/async-p
 import { analyzeAsyncSafety, analyzeAsyncSafetyInProgram, generateUnifiedAsyncQuint } from "../src/async-safety.js";
 import { analyzePromiseChains } from "../src/promise-chains.js";
 import { analyzeEffectsInProgram, analyzeProgramEffects } from "../src/effects.js";
-import { analyzeProjectRefinements } from "../src/workspace-refinements.js";
+import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject } from "../src/workspace-refinements.js";
 import type { TypeScriptProject } from "../src/typescript-project.js";
 
 const SHA256_K = Array.from({ length: 64 }, (_, index) => `0x${((0x428a2f98 + index * 0x10101) >>> 0).toString(16)}`).join(",");
@@ -261,6 +261,63 @@ const warmAsyncSafetySource = warmAsyncSafetyProgram.getSourceFile(retryAttemptE
 const typedIntegerSourceName = "/bench/integer-casts.ts";
 const typedIntegerSourceText = `type U8 = number; type BoundedUint8Array<N extends number> = Uint8Array; const floorAlias = Math.floor; const { trunc: truncate } = Math; function write(output: BoundedUint8Array<256>, input: U8) { ${aliasedIntegerWrites} }`;
 const compilerOptions: ts.CompilerOptions = { target: ts.ScriptTarget.ES2024, module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, lib: ["lib.es2024.d.ts"] };
+const indirectRefinementParentName = "/bench/indirect-parent.ts";
+const indirectRefinementDeclarationName = "/bench/indirect-child.d.ts";
+const indirectRefinementParentText = `
+  import { increment as incrementChild, type Runtime } from "indirect-child"
+  /* uneffect:
+    state count: int
+    init count = 0
+    action increment: count' = count + 1
+  */
+  /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+  /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+  function apply(runtime: Runtime) { incrementChild(runtime) }
+  /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { apply(runtime) }
+`;
+const indirectRefinementDeclarationText = `declare module "indirect-child" {
+  export interface Runtime { count: number }
+  export function increment(runtime: Runtime): void
+}`;
+const indirectRefinementHost = ts.createCompilerHost(compilerOptions);
+const defaultIndirectGetSourceFile = indirectRefinementHost.getSourceFile.bind(indirectRefinementHost);
+indirectRefinementHost.fileExists = (fileName) => [indirectRefinementParentName, indirectRefinementDeclarationName].includes(fileName)
+  || ts.sys.fileExists(fileName);
+indirectRefinementHost.readFile = (fileName) => fileName === indirectRefinementParentName ? indirectRefinementParentText
+  : fileName === indirectRefinementDeclarationName ? indirectRefinementDeclarationText : ts.sys.readFile(fileName);
+indirectRefinementHost.getSourceFile = (fileName, languageVersion, onError, shouldCreateNewSourceFile) =>
+  fileName === indirectRefinementParentName
+    ? ts.createSourceFile(fileName, indirectRefinementParentText, languageVersion, true)
+    : fileName === indirectRefinementDeclarationName
+      ? ts.createSourceFile(fileName, indirectRefinementDeclarationText, languageVersion, true)
+      : defaultIndirectGetSourceFile(fileName, languageVersion, onError, shouldCreateNewSourceFile);
+const indirectRefinementProgram = ts.createProgram(
+  [indirectRefinementParentName, indirectRefinementDeclarationName], compilerOptions, indirectRefinementHost,
+);
+const exactCompiler = {
+  analyzerVersion: ts.version, analyzerPackageFile: "/bench/typescript/package.json",
+  consumerVersion: ts.version, consumerPackageFile: "/bench/typescript/package.json",
+  consumerModuleFile: "/bench/typescript/index.js", parity: "exact" as const,
+};
+const indirectRefinementCurrent: TypeScriptProject = {
+  projectFile: "/bench/parent-tsconfig.json", fileNames: [indirectRefinementParentName],
+  compilerOptions, projectReferences: [],
+  provenance: { projectFile: "/bench/parent-tsconfig.json", compiler: exactCompiler },
+};
+const indirectRefinementCompleted: CompletedRefinementProject = {
+  project: {
+    projectFile: "/bench/child-tsconfig.json", fileNames: [], compilerOptions, projectReferences: [],
+    provenance: { projectFile: "/bench/child-tsconfig.json", compiler: exactCompiler },
+  },
+  summaries: [{
+    adapterName: "counter", version: "1", modelName: "increment", exportName: "increment",
+    assignments: [{ target: "count", expressionAst: { kind: "binary", operator: "add", left: { kind: "name", name: "count" }, right: { kind: "integer", value: 1n } } }],
+    evidence: "verified", sourceFile: "/bench/child.ts",
+  }],
+  declarationOutputs: new Map([[indirectRefinementDeclarationName, {
+    status: "verified", fileName: indirectRefinementDeclarationName,
+  }]]),
+};
 const compilerHost = ts.createCompilerHost(compilerOptions);
 const defaultGetSourceFile = compilerHost.getSourceFile.bind(compilerHost);
 compilerHost.fileExists = (fileName) => fileName === typedIntegerSourceName || ts.sys.fileExists(fileName);
@@ -326,6 +383,15 @@ describe("refinement receiver identity", () => {
       },
     };
     analyzeProjectRefinements(leaseAuthorityProgram, project, new Map());
+  }, { time: 500, iterations: 20 });
+
+  bench("compose one write-screened indirect project refinement helper", () => {
+    const result = composeWorkspaceRefinements(
+      indirectRefinementProgram, indirectRefinementCurrent, [indirectRefinementCompleted],
+    );
+    if (result.links[0]?.callPath?.length !== 3 || result.blockers.length > 0) {
+      throw new Error("indirect refinement benchmark fixture did not compose");
+    }
   }, { time: 500, iterations: 20 });
 });
 
