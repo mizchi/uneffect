@@ -1493,3 +1493,12 @@ completion metadata, and the existing return/catch/finally join. The workload
 changed and the sample count is small, so this is an observation rather than a
 regression claim or CI budget; it excludes loops, opaque/dynamic cases, nested
 case blocks, and Z3.
+
+The bounded batch billing workload carries one initialized mutable scalar
+through four finite `for...of` iterations and normal, break, continue, return,
+typed throw/catch, and mandatory-finally edges. A filtered run on 2026-08-27
+measured 66.9909 ms mean (14.9274 operations/second over 20 samples, 1.63%
+relative margin of error). This warm static-analysis benchmark excludes parsing
+and Z3. It exposes the cost of constructing the expanded path-sensitive
+completion/local expressions; the observation is not a CI budget or a
+regression claim, and it does not imply support for dynamic loops or labels.

@@ -1154,6 +1154,108 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("carries mutable-local snapshots across bounded iterations and abrupt exits", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state mode: int
+       * init billed = 0
+       * init audited = 0
+       * init mode = 0
+       * action record: billed' = mode === 3 ? billed : billed + (mode === 4 ? 8 : (mode === 2 ? 4 : (mode === 1 ? 13 : 14))), audited' = audited + ((mode === 2 || mode === 3 || mode === 4) ? 6 : (mode === 1 ? 27 : 30))
+       */
+      interface Runtime { billed: number; audited: number; mode: number }
+      /* uneffect: refinement finiteLoopLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement finiteLoopLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement finiteLoopLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 0
+        try {
+          for (const step of [1, 2, 3, 4] as const) {
+            try {
+              units += step
+              if (runtime.mode === 1 && step === 2) continue
+              if (runtime.mode === 2 && step === 2) break
+              if (runtime.mode === 3 && step === 2) return
+              if (runtime.mode === 4 && step === 2) throw units
+              units += 1
+            } finally {
+              runtime.audited += units
+            }
+          }
+        } catch (amount) {
+          runtime.billed += units + amount
+          return
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification("finite-loop-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "finite-loop-local.ts", source, "finiteLoopLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongAccumulation = source.replace("units += 1", "units += 2");
+    await expect(validateActions(
+      "finite-loop-local-wrong-accumulation.ts", wrongAccumulation, "finiteLoopLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const unsupported = [
+      ["finite-loop-local-dynamic.ts", source.replace(
+        "for (const step of [1, 2, 3, 4] as const)",
+        "for (const step of runtime.steps)",
+      ).replace("mode: number }", "mode: number; steps: number[] }")],
+      ["finite-loop-local-nested-block.ts", source.replace("units += step", "{ units += step }")],
+      ["finite-loop-local-labeled.ts", source
+        .replace("for (const step of", "outer: for (const step of")
+        .replace("continue\n", "continue outer\n")],
+      ["finite-loop-local-over-budget.ts", source.replace(
+        "[1, 2, 3, 4] as const",
+        `[${Array.from({ length: 65 }, (_, index) => index + 1).join(", ")}] as const`,
+      )],
+    ] as const;
+    for (const [fileName, changed] of unsupported) {
+      expect(validateActionsStatically(
+        fileName, changed, "finiteLoopLocal", temporal,
+      ), fileName).toContainEqual(expect.objectContaining({
+        code: "unsupported-action-body", modelName: "record",
+      }));
+    }
+
+    const canonicalWhile = `
+      /* uneffect:
+       * state total: int
+       * init total = 0
+       * action record: total' = total + 6
+       */
+      interface Runtime { total: number }
+      /* uneffect: refinement finiteWhileLocal@1 create */ export function createWhile(initial: Runtime) { return initial }
+      /* uneffect: refinement finiteWhileLocal@1 observe */ export function observeWhile(runtime: Runtime) { return runtime }
+      /* uneffect: refinement finiteWhileLocal@1 action record */
+      export function recordWhile(runtime: Runtime) {
+        let units = 0
+        let index = 0
+        while (index < 3) {
+          units += index + 1
+          index++
+        }
+        runtime.total += units
+      }
+    `;
+    const whileTemporal = (parseSpecification(
+      "finite-while-local.ts", canonicalWhile,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "finite-while-local.ts", canonicalWhile, "finiteWhileLocal", whileTemporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

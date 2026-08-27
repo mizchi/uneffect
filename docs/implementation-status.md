@@ -190,10 +190,16 @@ same property is proved for arbitrary TypeScript.
   selected return/throw maps into the existing completion lattice. Default-free
   unmatched input retains the pre-switch environment. Opaque discriminants,
   dynamic/duplicate cases, nested-block case mutation, finally-local mutation,
-  loop, label, and standalone-block flow remain non-proofs.
-  Finite loops are
-  expanded into the same completion sequence as straight-line code, so an early return suppresses
-  later iterations while a surrounding `finally` still runs. The
+  label, and standalone-block flow remain non-proofs.
+  A bounded finite-loop extension now passes the preceding iteration's normal
+  or consumed-continue local map into the next expansion. Break, continue,
+  direct-return, and supported typed throw completions own distinct snapshots;
+  loop-owned transfers are consumed only at the loop boundary, and mandatory
+  `finally` reads the snapshot for each incoming edge. Dynamic or over-budget
+  loops and mutable-local labeled transfers remain non-proofs.
+  Finite loops are expanded into the same completion sequence as straight-line
+  code, so an early return suppresses later iterations while a surrounding
+  `finally` still runs. The
   same completion machinery consumes a statically named block's own `break`
   after its mandatory `finally` work and then executes the outer continuation.
   An unconditional supported `return` or `throw` terminates collection of its

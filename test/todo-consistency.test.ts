@@ -29,6 +29,23 @@ describe("TODO hierarchy consistency", () => {
     expect(stale.map((task) => `${task.line}:${task.text}`)).toEqual([]);
   });
 
+  it("keeps historical ledger headings distinct from live issue priorities", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    expect(todo).not.toMatch(/^## P\d/m);
+    expect(todo).toContain("## Historical ledger section 0 — Specification foundations");
+  });
+
+  it("assigns every unfinished ledger entry to exactly one owning issue", () => {
+    const todo = readFileSync("TODO.md", "utf8");
+    const unfinished = todo.split("\n").filter((line) => /^\s*- \[ \]/.test(line));
+
+    expect(unfinished.length).toBeGreaterThan(0);
+    for (const line of unfinished) {
+      const owners = [...line.matchAll(/\[#(\d+)\]\(https:\/\/github\.com\/mizchi\/uneffect\/issues\/\1\)/g)];
+      expect(owners, line).toHaveLength(1);
+    }
+  });
+
   it("tracks deferred optimizer implementation in the issue roadmap", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
@@ -40,7 +57,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 17, 18, 20];
+    const issueNumbers = [2, 3, 4, 5, 6, 7, 8, 9, 10, 13, 16, 18, 20];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -79,9 +96,11 @@ describe("TODO hierarchy consistency", () => {
 
     expect(activeIndex).not.toContain("issues/1)");
     expect(activeIndex).not.toContain("issues/14)");
+    expect(activeIndex).not.toContain("issues/17)");
     expect(activeIndex).not.toContain("issues/21)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
+    expect(todo).toContain("closed [#17]");
     expect(todo).toContain("closed [#21]");
   });
 });

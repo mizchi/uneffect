@@ -15,6 +15,8 @@ traceability and map to those issues rather than forming a second active queue.
 - This file records completed implementation history and links every unchecked
   item to exactly one owning Issue. An unchecked item without an Issue link is
   a bookkeeping error.
+- Historical ledger section numbers preserve the original implementation
+  sequence; they are not GitHub priority levels.
 - Local work is not reported as implemented until its acceptance test, adjacent
   negative controls, benchmark where required, English documentation, and full
   validation have landed on `main`.
@@ -32,9 +34,11 @@ measured benchmarks, and boundary documentation. A mandatory `finally` now
 observes the local snapshot owned by each normal, return, and supported typed
 throw/catch predecessor. Scalar `switch` now preserves those snapshots through
 case selection, fallthrough, break, default, return, and typed throw/catch. The
-next slice should carry the same ownership through bounded finite loops; alias,
-catch/finally mutation, rethrow, and dispatch boundaries remain explicitly
-unsupported.
+same edge ownership now carries initialized mutable scalars through bounded
+finite-loop iterations and normal, break, continue, direct-return, and typed
+throw/finally exits. Dynamic loops, mutable-local labels and standalone nested
+blocks, alias escape, catch/finally mutation, rethrow, and dispatch boundaries
+remain explicitly unsupported.
 
 ## Active issue index
 
@@ -156,7 +160,7 @@ The product-level completion gates are the skipped executable scenarios in
 the first relevant scenario, remove `.skip`, observe Red, and implement toward
 that end-to-end result. See `docs/acceptance-roadmap.md`.
 
-## P0 — Specification foundations
+## Historical ledger section 0 — Specification foundations
 
 - [x] Accept only the `uneffect:` block-comment marker.
 - [x] Parse source annotations into capability, invariant, and temporal projections.
@@ -183,7 +187,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Apply directive-name and payload validation to the normal Effect/check path, emit structured `effect/invalid` diagnostics, and downgrade every function/module summary in the invalid source to `unknown`.
 - [x] Split temporal action assignments with an expression-aware comma scanner so comparison operators are not misread as generic type delimiters.
 
-## P1 — Capability effects
+## Historical ledger section 1 — Capability effects
 
 - [x] Align operating-system capabilities with the Deno permission model.
   - [x] Use the common capability-set representation for every Deno category; only atom normalization and containment differ.
@@ -225,7 +229,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Route all effect inference builtins through the symbol adapter and remove the legacy source-text recognizer.
 - [x] Add the first structured scoped-effect parser and lattice implementation to the Rust hot path.
 
-## P1.5 — Custom validator specialization
+## Historical ledger section 1.5 — Custom validator specialization
 
 - [x] Implement the custom-validator acceptance tests before adding narrower cardinality features.
   - [x] Register a validator by stable name, version, and symbol-identity sink matcher.
@@ -236,7 +240,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
   - [x] Compose Generator and AsyncGenerator effects through `yield`, `yield*`, and iterator consumption count for resolved local functions.
   - [x] Validate an explicit application entrypoint so per-invocation bounds are not confused with process-wide uniqueness.
 
-## P2 — DOM semantic overlay
+## Historical ledger section 2 — DOM semantic overlay
 
 - [x] Split DOM operations into `AttributeRead`/`AttributeWrite`, `NodeRead`/`NodeWrite`, `TextRead`/`TextWrite`, `PropertyRead`/`PropertyWrite`, `LayoutRead`, `Create`, `Listen`, `Dispatch`, and `Parse`; selected call overlays and reviewed attribute collection, tree topology, text, and `HTMLInputElement.value` property access are executable, while broader Web IDL coverage remains [#14](https://github.com/mizchi/uneffect/issues/14).
 - [x] Use receiver identity regions as proof-grade DOM scopes.
@@ -245,7 +249,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Mark event dispatch, custom-element reactions, getters, proxies, and coercions as possible user-code invocation.
 - [x] Fingerprint the consumed `lib.dom.d.ts` and report unclassified API drift.
 
-## P3 — Invariants and Z3
+## Historical ledger section 3 — Invariants and Z3
 
 - [x] Lint syntactically constant temporal invariants and actions consisting only of self-assignments.
 - [x] Detect solver-level tautologies, inconsistent initial states, unreachable actions, vacuous invariants, duplicate/subsumed properties, and invariants preserved only because no progress is possible.
@@ -361,6 +365,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Carry initialized mutable-scalar snapshots on supported typed scalar throw edges into `catch` while preserving the distinct normally completing `try` snapshot; join two conditional throwing snapshots with the shared phi contract and reject opaque payloads, catch-side local mutation, rethrow, and missing edge evidence.
         - [x] Join the outer-visible mutable-scalar snapshots owned by normal, direct-return, and supported typed throw/catch-return predecessors before mandatory `finally`, so its state updates observe the correct path value; retain finally-local mutation and missing edge evidence as non-proofs.
         - [x] Give each scalar `switch` entry/fallthrough path its own mutable-local environment, join normal continuation and return/throw edge snapshots by case selection (including unmatched default), and reject opaque discriminants, dynamic cases, nested-block mutation, and model-misaligned fallthrough.
+        - [x] Carry initialized mutable-scalar snapshots from one bounded finite-loop iteration to the next and retain edge-owned `break`, `continue`, direct-return, and typed throw snapshots through mandatory `finally`; consume loop-owned transfers at the correct boundary and reject dynamic/over-budget loops, mutable-local labels, standalone nested blocks, and model mismatches.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.
@@ -470,7 +475,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Save counterexample models in a machine-readable verification artifact.
 - [x] Expose project-level Z3 obligations and optional explicit Valibot assertion emit through one build API.
 
-## P4 — Temporal logic and ownership
+## Historical ledger section 4 — Temporal logic and ownership
 
 - [x] Encode a bounded two-node Node Lease clock-skew model and lock both the vulnerable counterexample and skew-grace candidate with Quint tests.
 - [ ] Add collection-valued temporal state (`Set`, `Map`, records) and finite-domain quantifiers so node-indexed lease models do not require manual flattening. ([#5](https://github.com/mizchi/uneffect/issues/5))
@@ -518,7 +523,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Instantiate contracts for `structuredClone`, `Worker.postMessage`, `MessagePort.postMessage`, and related platform APIs.
 - [x] Distinguish `SharedArrayBuffer` sharing from transfer.
 
-## P4.5 — Typed array refinements
+## Historical ledger section 4.5 — Typed array refinements
 
 - [x] Add `U8`, `BoundedUint8Array<MaxLength>`, and optional Valibot runtime refinements.
 - [x] Prove direct Uint8Array constructor bounds and indexed u8 writes from helper-type domains and `requires` clauses.
@@ -553,7 +558,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
 - [x] Support package exports and bounded `Array.from({ length }, (_, index) => expr)` generated table initializers.
 - [x] Benchmark project-level import/re-export resolution against the single-file baseline before optimizing it.
 
-## P5 — Evidence and optimization
+## Historical ledger section 5 — Evidence and optimization
 
 - [x] Add a cross-domain assumption ledger for every currently emitted `trusted` builtin call, typed-array escape hatch, and temporal summary, with reason, scope, source span, expiration/owner metadata, and CI policy. Extend it when new trusted domains are introduced.
 - [ ] Investigate proof certificates or independently checkable evidence for supported Z3/Quint fragments; current artifacts bind tool inputs and versions but are not proof terms. ([#7](https://github.com/mizchi/uneffect/issues/7))
@@ -608,7 +613,7 @@ production compressor/mangler that consumes them is intentionally deferred to
 [#13](https://github.com/mizchi/uneffect/issues/13); these checked design items
 must not be read as a claim that arbitrary source rewriting is implemented.
 
-## P6 — Native integration and productization
+## Historical ledger section 6 — Native integration and productization
 
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts. ([#8](https://github.com/mizchi/uneffect/issues/8))
@@ -665,7 +670,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
   - [x] Partition every TypeScript test into exactly one fast, Z3, Quint, or mixed integration tier with an executable no-gap/no-overlap manifest check.
   - [x] Keep generated child Vitest files runnable when they inherit a parent tier selection.
 
-## P7 — Explicit resource management
+## Historical ledger section 7 — Explicit resource management
 
 - [x] Model `using` disposal as an implicit reverse-order `finally` region, including nested lexical scopes.
 - [x] Model `await using` disposal as an asynchronous cleanup transition and suspension point.
@@ -675,7 +680,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Preserve exact nested `SuppressedError` payload types in the analysis IR. (Quint retains the finite abstract state.)
 - [x] Add positive models and broken controls for missing, duplicated, reordered, and non-awaited disposal.
 
-## P8 — Async/resource model hardening
+## Historical ledger section 8 — Async/resource model hardening
 
 - [x] Resolve builtin and user-defined disposal protocols by TypeChecker/Corsa symbol identity without escaped-name matching. (The v6 Corsa contract validates protocol-symbol edges and disjunctive correlated control paths; production Context Mapper emission remains tracked in P6.)
   - [x] Distinguish the standard `Symbol.dispose` and `Symbol.asyncDispose` symbols from shadowed or same-spelled properties.

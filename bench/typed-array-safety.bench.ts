@@ -153,6 +153,9 @@ const circuitBreakerTelemetrySpec = parseSpec(circuitBreakerTelemetryFile, circu
 const adaptiveBatchAccountingFile = "examples/dogfood/adaptive-batch-accounting.ts";
 const adaptiveBatchAccountingSource = readFileSync(adaptiveBatchAccountingFile, "utf8");
 const adaptiveBatchAccountingSpec = parseSpec(adaptiveBatchAccountingFile, adaptiveBatchAccountingSource).temporal;
+const boundedBatchBillingFile = "examples/dogfood/bounded-batch-billing.ts";
+const boundedBatchBillingSource = readFileSync(boundedBatchBillingFile, "utf8");
+const boundedBatchBillingSpec = parseSpec(boundedBatchBillingFile, boundedBatchBillingSource).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1145,6 +1148,15 @@ describe("typed-array static verification", () => {
       adaptiveBatchAccountingSource,
       "adaptiveBatchAccounting",
       adaptiveBatchAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("carry mutable-local billing through bounded loop exits", () => {
+    validateRefinementActionBodies(
+      boundedBatchBillingFile,
+      boundedBatchBillingSource,
+      "boundedBatchBilling",
+      boundedBatchBillingSpec,
     );
   }, { time: 500, iterations: 20 });
 

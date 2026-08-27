@@ -376,6 +376,17 @@ base, priority, priority-retry fallthrough, and retry-default accounting while
 retaining suppressed, cancelled, and failed abrupt paths. Mutable-local loops,
 labels, standalone blocks, catch/finally mutation, and rethrow remain open.
 
+A seventeenth case carries one initialized mutable scalar through four
+statically expanded `for...of` iterations. It keeps normal, consumed-continue,
+consumed-break, direct-return, and typed throw/catch-return snapshots distinct;
+the mandatory per-iteration `finally` audits the value owned by each edge. A
+wrong accumulation is rejected by Z3, while dynamic iteration, a 65-element
+literal beyond the per-loop budget, a mutable write in a standalone nested
+block, and a labeled mutable-local transfer remain explicit non-proofs. The
+bounded batch billing dogfood applies the same control flow to four configured
+telemetry sinks. Dynamic/general loops, labels, standalone blocks,
+catch/finally-side local mutation, alias escape, and rethrow remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

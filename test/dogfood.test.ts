@@ -281,6 +281,24 @@ describe("Uneffect dogfood", () => {
     );
   });
 
+  it("proves bounded batch billing through loop-carried local completion edges", async () => {
+    const fileName = "examples/dogfood/bounded-batch-billing.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(fileName, source, "boundedBatchBilling", temporal)).toEqual([]);
+    expect(validateRefinementStateProjection(fileName, source, "boundedBatchBilling", temporal)).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "boundedBatchBilling", temporal,
+    )).resolves.toEqual([]);
+
+    const underbilled = source.replace("units += 1;", "units += 2;");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, underbilled, "boundedBatchBilling", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "billBatch",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

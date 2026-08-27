@@ -101,12 +101,19 @@ Scalar `switch` evaluates each case entry over its own local environment,
 retains source-ordered fallthrough and unlabeled break behavior, uses the
 pre-switch environment for an unmatched default-free path, and joins normal,
 return, and supported typed throw/catch snapshots by the selected case.
+For a bounded ascending `for`, finite literal `for...of`, or canonical bounded
+local-counter loop, each expanded iteration receives the preceding normal
+mutable-local snapshot; guaranteed-advancement `for` forms also consume a
+continue snapshot. Unlabeled `break` contributes its
+snapshot to the loop's normal exit, while direct return and supported typed
+throw retain their edge snapshots; mandatory `finally` observes the snapshot
+owned by every completion path before the transfer is consumed or propagated.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch- or finally-side
-mutable-local writes, rethrows, mutable-local flow through loops, labeled
-blocks, or standalone nested blocks, opaque switch discriminants,
+mutable-local writes, rethrows, mutable-local flow through dynamic or
+over-budget loops, labeled blocks, or standalone nested blocks, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain
 unsupported rather than being approximated.
 

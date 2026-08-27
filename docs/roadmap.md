@@ -42,8 +42,12 @@ release date commitment.
    outer-visible snapshots owned by normal, direct-return, and supported typed
    throw/catch-return predecessors. Scalar switches now give every selected
    entry/fallthrough path a local map and join normal/return/throw snapshots,
-   including default-free unmatched input. The next step is bounded finite-loop
-   edge ownership.
+   including default-free unmatched input. Bounded finite-loop expansion now
+   carries that map between iterations, keeps break/continue/return/throw edge
+   snapshots distinct through mandatory finally, and consumes loop-owned
+   transfers at their boundary. The next step is mutable-local ownership for
+   unambiguous labels and standalone nested blocks before the general CFG fixed
+   point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
