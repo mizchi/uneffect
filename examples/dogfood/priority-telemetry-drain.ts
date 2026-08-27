@@ -2,16 +2,19 @@
  * state queued: int
  * state pressure: int
  * state priority: bool
+ * state sampled: bool
  * init queued = 0
  * init pressure = 0
  * init priority = false
- * action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? (priority ? queued * (queued - 1) / 2 : 0) : 0)
+ * init sampled = false
+ * action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? (priority ? queued * (queued - 1) / 2 : (sampled ? queued : 0)) : 0)
  */
 
 export interface PriorityTelemetryBacklog {
   queued: number;
   pressure: number;
   priority: boolean;
+  sampled: boolean;
 }
 
 /* uneffect: refinement priorityTelemetry@1 create */
@@ -31,5 +34,6 @@ export function drainPriorityTelemetryBacklog(runtime: PriorityTelemetryBacklog)
   while (runtime.queued > 0) {
     runtime.queued--;
     if (runtime.priority) runtime.pressure += runtime.queued;
+    else if (runtime.sampled) runtime.pressure++;
   }
 }

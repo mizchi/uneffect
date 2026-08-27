@@ -271,9 +271,11 @@ type PiecewiseAffineLoopDelta =
   | {
     kind: "conditional";
     condition: TemporalExpression;
-    whenTrue: AffineLoopDelta;
-    whenFalse: AffineLoopDelta;
+    whenTrue: PiecewiseAffineLoopDelta;
+    whenFalse: PiecewiseAffineLoopDelta;
   };
+
+const MAX_AFFINE_LOOP_BRANCH_LEAVES = 8;
 
 /** Extracts an exact safe-integer affine form without guessing unsupported operations. */
 function decomposeAffineStateExpression(expression: TemporalExpression): AffineStateExpression | undefined {
@@ -1696,9 +1698,12 @@ function validateRefinementActionBodiesInSource(
           }
           return undefined;
         };
-        const piecewiseDelta = (name: string, expression: TemporalExpression): PiecewiseAffineLoopDelta | undefined => {
+        const piecewiseDelta = (
+          name: string,
+          expression: TemporalExpression,
+        ): { value: PiecewiseAffineLoopDelta; leaves: number } | undefined => {
           const direct = affineDelta(name, expression);
-          if (direct) return { kind: "affine", value: direct };
+          if (direct) return { value: { kind: "affine", value: direct }, leaves: 1 };
           if (expression.kind !== "conditional") return undefined;
           const conditionNames = scalarNames(expression.condition);
           if (!conditionNames || [...conditionNames].some((conditionName) => stateNames.has(conditionName)
@@ -1706,12 +1711,18 @@ function validateRefinementActionBodiesInSource(
               loopUpdates.get(conditionName) ?? { kind: "name", name: conditionName },
               { kind: "name", name: conditionName },
             ))) return undefined;
-          const whenTrue = affineDelta(name, expression.whenTrue);
-          const whenFalse = affineDelta(name, expression.whenFalse);
+          const whenTrue = piecewiseDelta(name, expression.whenTrue);
+          const whenFalse = piecewiseDelta(name, expression.whenFalse);
           const condition = atLoopEntry(expression.condition);
-          return whenTrue && whenFalse && condition
-            ? { kind: "conditional", condition, whenTrue, whenFalse }
-            : undefined;
+          if (!whenTrue || !whenFalse || !condition
+            || whenTrue.leaves + whenFalse.leaves > MAX_AFFINE_LOOP_BRANCH_LEAVES) return undefined;
+          return {
+            value: {
+              kind: "conditional", condition,
+              whenTrue: whenTrue.value, whenFalse: whenFalse.value,
+            },
+            leaves: whenTrue.leaves + whenFalse.leaves,
+          };
         };
         const deltas = new Map<string, PiecewiseAffineLoopDelta>();
         for (const name of stateNames) {
@@ -1721,7 +1732,7 @@ function validateRefinementActionBodiesInSource(
           }
           const delta = piecewiseDelta(name, loopUpdates.get(name) ?? { kind: "name", name });
           if (!delta) return undefined;
-          deltas.set(name, delta);
+          deltas.set(name, delta.value);
         }
         const stepValue = Math.abs(counterDelta);
         if (!Number.isSafeInteger(stepValue) || stepValue <= 0) return undefined;
@@ -1806,6 +1817,16 @@ function validateRefinementActionBodiesInSource(
               : { kind: "binary", operator: "add", left: constantTotal, right: counterTotal };
           })();
         };
+        const totalForPiecewise = (piecewise: PiecewiseAffineLoopDelta): TemporalExpression => piecewise.kind === "affine"
+          ? totalFor(piecewise.value)
+          : {
+            kind: "conditional", condition: piecewise.condition,
+            whenTrue: totalForPiecewise(piecewise.whenTrue),
+            whenFalse: totalForPiecewise(piecewise.whenFalse),
+          };
+        const piecewiseStutters = (piecewise: PiecewiseAffineLoopDelta): boolean => piecewise.kind === "affine"
+          ? piecewise.value.constant === 0 && piecewise.value.counterCoefficient === 0
+          : piecewiseStutters(piecewise.whenTrue) && piecewiseStutters(piecewise.whenFalse);
         for (const [name, piecewise] of deltas) {
           const entryValue = entryValues.get(name)!;
           if (name === counterName) {
@@ -1821,18 +1842,8 @@ function validateRefinementActionBodiesInSource(
             });
             continue;
           }
-          const unguardedTotal: TemporalExpression = piecewise.kind === "affine"
-            ? totalFor(piecewise.value)
-            : {
-              kind: "conditional", condition: piecewise.condition,
-              whenTrue: totalFor(piecewise.whenTrue),
-              whenFalse: totalFor(piecewise.whenFalse),
-            };
-          const unchanged = piecewise.kind === "affine"
-            ? piecewise.value.constant === 0 && piecewise.value.counterCoefficient === 0
-            : piecewise.whenTrue.constant === 0 && piecewise.whenTrue.counterCoefficient === 0
-              && piecewise.whenFalse.constant === 0 && piecewise.whenFalse.counterCoefficient === 0;
-          if (unchanged) continue;
+          const unguardedTotal = totalForPiecewise(piecewise);
+          if (piecewiseStutters(piecewise)) continue;
           const totalDelta: TemporalExpression = {
             kind: "conditional", condition: entryGuard, whenTrue: unguardedTotal, whenFalse: zero,
           };

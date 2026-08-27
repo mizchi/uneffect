@@ -117,9 +117,9 @@ same property is proved for arbitrary TypeScript.
   safe-integer constant magnitude and the body has no abrupt completion. Other
   state writes may have safe-integer constant per-iteration deltas. A unit
   countdown additionally admits deltas affine in the ranking counter and
-  derives exact triangular totals. One scalar conditional join is supported
-  when the condition is invariant across the loop and both outcomes have affine
-  ranking-counter deltas. Non-unit steps
+  derives exact triangular totals. A scalar conditional decision tree with at
+  most eight leaves is supported when every condition is invariant across the
+  loop and every outcome has an affine ranking-counter delta. Non-unit steps
   derive a ceiling quotient from a guarded nonnegative distance and divide only
   the remainder-subtracted, exactly divisible numerator, keeping JavaScript,
   Quint, and Z3 results aligned while preserving final counter overshoot.
@@ -127,7 +127,7 @@ same property is proved for arbitrary TypeScript.
   snapshotted and substituted into its guard, trip count, and closed-form
   results before the lexical suffix is composed. Dynamic or unsafe bounds or
   steps, direction mismatches, other loop guards, mutated/counter-dependent or
-  nested piecewise conditions, mutually coupled or self-amplifying recurrences,
+  over-budget piecewise conditions, mutually coupled or self-amplifying recurrences,
   opaque entry updates, and abrupt
   exits remain unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from

@@ -2621,6 +2621,47 @@ describe("annotated refinement bindings", () => {
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
   });
 
+  it("bounds a loop-invariant affine decision tree at eight leaves", () => {
+    const fixture = (leafCount: number): string => {
+      const flags = Array.from({ length: leafCount - 1 }, (_, index) => `flag${index}`);
+      const branchTotal = flags.reduceRight(
+        (otherwise, flag) => `${flag} ? pending * (pending - 1) / 2 : (${otherwise})`,
+        "0",
+      );
+      const branchBody = flags.map((flag, index) => `${index === 0 ? "if" : "else if"} (runtime.${flag}) runtime.weighted += runtime.pending`).join("\n          ");
+      return `/* uneffect:
+        state pending: int
+        state weighted: int
+        ${flags.map((flag) => `state ${flag}: bool`).join("\n        ")}
+        init pending = 0
+        init weighted = 0
+        ${flags.map((flag) => `init ${flag} = false`).join("\n        ")}
+        action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${branchTotal}) : 0)
+      */
+        interface Runtime { pending: number; weighted: number; ${flags.map((flag) => `${flag}: boolean`).join("; ")} }
+        /* uneffect: refinement boundedBranches@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement boundedBranches@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: refinement boundedBranches@1 action drain */
+        export function drain(runtime: Runtime) {
+          while (runtime.pending > 0) {
+            runtime.pending--
+            ${branchBody}
+          }
+        }
+      `;
+    };
+
+    const eightLeaves = fixture(8);
+    expect(validateRefinementActionBodies(
+      "eight-branch-leaves.ts", eightLeaves, "boundedBranches", parseSpec("eight-branch-leaves.ts", eightLeaves).temporal,
+    )).toEqual([]);
+
+    const nineLeaves = fixture(9);
+    expect(validateRefinementActionBodies(
+      "nine-branch-leaves.ts", nineLeaves, "boundedBranches", parseSpec("nine-branch-leaves.ts", nineLeaves).temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int

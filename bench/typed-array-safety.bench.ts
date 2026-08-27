@@ -141,6 +141,33 @@ const triangularDrainSpec = parseSpec(triangularDrainFile, triangularDrainSource
 const priorityTelemetryFile = "examples/dogfood/priority-telemetry-drain.ts";
 const priorityTelemetrySource = readFileSync(priorityTelemetryFile, "utf8");
 const priorityTelemetrySpec = parseSpec(priorityTelemetryFile, priorityTelemetrySource).temporal;
+const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
+const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
+const affineBranchTotal = affineBranchFlags.reduceRight(
+  (otherwise, flag) => `${flag} ? pending * (pending - 1) / 2 : (${otherwise})`,
+  "0",
+);
+const affineBranchBody = affineBranchFlags.map(
+  (flag, index) => `${index === 0 ? "if" : "else if"} (runtime.${flag}) runtime.weighted += runtime.pending`,
+).join("\n    ");
+const affineBranchBudgetSource = `/* uneffect:
+  state pending: int
+  state weighted: int
+  ${affineBranchFlags.map((flag) => `state ${flag}: bool`).join("\n  ")}
+  init pending = 0
+  init weighted = 0
+  ${affineBranchFlags.map((flag) => `init ${flag} = false`).join("\n  ")}
+  action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (${affineBranchTotal}) : 0)
+*/
+interface Runtime { pending: number; weighted: number; ${affineBranchFlags.map((flag) => `${flag}: boolean`).join("; ")} }
+/* uneffect: refinement affineBranchBudget@1 action drain */
+export function drain(runtime: Runtime) {
+  while (runtime.pending > 0) {
+    runtime.pending--
+    ${affineBranchBody}
+  }
+}`;
+const affineBranchBudgetSpec = parseSpec(affineBranchBudgetFile, affineBranchBudgetSource).temporal;
 const generatedMigrationFile = "examples/dogfood/generated-one-shot-migration.ts";
 const uneffectSourceFiles = readdirSync("src").filter((name) => name.endsWith(".ts")).map((name) => `src/${name}`);
 const uneffectEffectProgram = ts.createProgram(uneffectSourceFiles, {
@@ -1061,6 +1088,15 @@ describe("typed-array static verification", () => {
       priorityTelemetrySource,
       "priorityTelemetry",
       priorityTelemetrySpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("summarize the eight-leaf affine loop branch budget", () => {
+    validateRefinementActionBodies(
+      affineBranchBudgetFile,
+      affineBranchBudgetSource,
+      "affineBranchBudget",
+      affineBranchBudgetSpec,
     );
   }, { time: 500, iterations: 20 });
 

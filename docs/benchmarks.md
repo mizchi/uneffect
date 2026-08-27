@@ -1374,11 +1374,19 @@ statistics, so no timing or regression claim is recorded. The workload covers
 affine decomposition and triangular closed-form construction; it excludes
 parsing, Z3 equivalence, mutually coupled recurrences, and general CFG joins.
 
-On 2026-08-27, the realistic priority-telemetry variant measured 0.1175 ms mean
-(8,509.42 operations/second over 4,255 samples, 9.14% relative margin of error).
-A stable boolean selects between triangular pressure accounting and stuttering
-while a backlog drains. The warm workload measures branch collection, invariant
-condition screening, affine decomposition, and piecewise closed-form
-construction. Its high margin of error makes it an observation rather than a
-comparative claim or regression budget. It excludes nested/dynamically changing
+On 2026-08-27, after extending the realistic priority-telemetry variant to a
+two-level priority/sampled decision tree, it measured 0.2519 ms mean (3,969.25
+operations/second over 1,985 samples, 13.93% relative margin of error). The warm
+workload measures branch collection, invariant-condition screening, affine
+decomposition, leaf-budget enforcement, and piecewise closed-form construction.
+Its high margin of error and changed workload make it an observation rather
+than a comparative claim or regression budget. It excludes dynamically changing
 conditions, Z3 equivalence, and exception-aware loop joins.
+
+An additional warm workload fixes the supported maximum of eight affine leaves.
+The filtered Vitest Bench invocation completed on 2026-08-27, but the current
+singleton reporter emitted no sample statistics (and a two-benchmark comparison
+reported an unusable `NaNx` ratio), so no timing claim is recorded. The
+executable workload is retained to expose crashes or accidental unbounded tree
+construction; the eight-leaf acceptance and nine-leaf rejection are asserted
+separately in the unit suite.

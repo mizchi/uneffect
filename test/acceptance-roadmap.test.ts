@@ -577,6 +577,47 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("summarizes a bounded tree of loop-invariant affine branches", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * state priority: bool
+       * state sampled: bool
+       * init pending = 0
+       * init weighted = 0
+       * init priority = false
+       * init sampled = false
+       * action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (priority ? pending * (pending - 1) / 2 : (sampled ? pending : 0)) : 0)
+       */
+      interface Runtime { pending: number; weighted: number; priority: boolean; sampled: boolean }
+      /* uneffect: refinement tieredDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement tieredDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement tieredDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          if (runtime.priority) runtime.weighted += runtime.pending
+          else if (runtime.sampled) runtime.weighted++
+        }
+      }
+    `;
+    const temporal = (parseSpecification("tiered-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("tiered-drain.ts", source, "tieredDrain", temporal)).resolves.toEqual([]);
+
+    const mutableSample = source.replace(
+      "else if (runtime.sampled) runtime.weighted++",
+      "else if (runtime.sampled) runtime.weighted++\n          runtime.sampled = false",
+    );
+    await expect(validateActions(
+      "tiered-drain-mutable-sample.ts", mutableSample, "tieredDrain", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

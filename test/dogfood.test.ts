@@ -95,7 +95,7 @@ describe("Uneffect dogfood", () => {
     );
   });
 
-  it("proves priority-only telemetry pressure across a symbolic branch join", async () => {
+  it("proves tiered telemetry pressure across symbolic branch joins", async () => {
     const fileName = "examples/dogfood/priority-telemetry-drain.ts";
     const source = readFileSync(fileName, "utf8");
     const temporal = parseSpec(fileName, source).temporal;
@@ -104,8 +104,8 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
 
     const wrongOrder = source.replace(
-      "runtime.queued--;\n    if (runtime.priority) runtime.pressure += runtime.queued;",
-      "if (runtime.priority) runtime.pressure += runtime.queued;\n    runtime.queued--;",
+      "runtime.queued--;\n    if (runtime.priority) runtime.pressure += runtime.queued;\n    else if (runtime.sampled) runtime.pressure++;",
+      "if (runtime.priority) runtime.pressure += runtime.queued;\n    else if (runtime.sampled) runtime.pressure++;\n    runtime.queued--;",
     );
     expect(await validateRefinementActionBodiesWithZ3(
       fileName, wrongOrder, "priorityTelemetry", temporal,
@@ -114,8 +114,8 @@ describe("Uneffect dogfood", () => {
     }));
 
     const mutablePriority = source.replace(
-      "if (runtime.priority) runtime.pressure += runtime.queued;",
-      "if (runtime.priority) runtime.pressure += runtime.queued;\n    runtime.priority = false;",
+      "else if (runtime.sampled) runtime.pressure++;",
+      "else if (runtime.sampled) { runtime.pressure++; runtime.sampled = false; }",
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, mutablePriority, "priorityTelemetry", temporal,
