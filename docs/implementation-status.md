@@ -335,6 +335,16 @@ same property is proved for arbitrary TypeScript.
   handler entry, and floating rejection are load-bearing controls. Nested
   branch trees, dynamic discriminants, multiple branch-local resources, and
   arbitrary joins remain unsupported.
+- An exhaustive-switch extension accepts a finite string-literal union
+  identifier, literal cases, an explicit default, no fallthrough, at most eight
+  case conditions, and exactly one differently named async resource per path.
+  The analysis IR records discriminant provenance; model generation proves the
+  finite path set covers every selection and that resource paths do not overlap.
+  Quint additionally checks pairwise acquisition exclusion. Missing default,
+  fallthrough, open `string` discriminants, multiple acquisition, wrong-case
+  cleanup, skipped cleanup, premature handler entry, and floating rejection are
+  load-bearing controls. This is not support for arbitrary switch expressions
+  or CFG joins.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

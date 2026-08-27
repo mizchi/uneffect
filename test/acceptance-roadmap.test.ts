@@ -3307,6 +3307,40 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(quint).toMatch(/not\(acquired_2\) or \(branch_\d+ == 0\)/);
   });
 
+  it("preserves exhaustive switch resource ownership through catch join", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/switch-correlated-cleanup.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; conditional: boolean; controlConditions: Array<{ id: string; expected: boolean }> }>;
+      resourceSwitches: Array<{ discriminant: string; hasDefault: boolean; caseCount: number }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.slice(1).map(({ binding, conditional, controlConditions }) => ({ binding, conditional, controlConditions }))).toEqual([
+      { binding: "primary", conditional: true, controlConditions: [expect.objectContaining({ expected: true })] },
+      { binding: "secondary", conditional: true, controlConditions: [expect.objectContaining({ expected: false }), expect.objectContaining({ expected: true })] },
+      { binding: "backup", conditional: true, controlConditions: [expect.objectContaining({ expected: false }), expect.objectContaining({ expected: false })] },
+    ]);
+    const [primary, secondary, backup] = result.resources.slice(1);
+    expect(secondary?.controlConditions[0]?.id).toBe(primary?.controlConditions[0]?.id);
+    expect(backup?.controlConditions[0]?.id).toBe(primary?.controlConditions[0]?.id);
+    expect(backup?.controlConditions[1]?.id).toBe(secondary?.controlConditions[1]?.id);
+    expect(result.resourceSwitches).toContainEqual(expect.objectContaining({
+      discriminant: "finite-string-identifier",
+      hasDefault: true,
+      caseCount: 2,
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("switch_correlated_cleanup", result, "deliverByRoute") as string;
+    expect(quint).toContain("val branchResourceSafe");
+    expect(quint).toContain("val branchResourceExclusiveSafe");
+    expect(quint).toContain("val disposalAcquisitionSafe");
+    expect(quint).toMatch(/not\(acquired_1\) or \(branch_\d+ == 1\)/);
+    expect(quint).toMatch(/not\(acquired_2\) or \(branch_\d+ == 0 and branch_\d+ == 1\)/);
+    expect(quint).toMatch(/not\(acquired_3\) or \(branch_\d+ == 0 and branch_\d+ == 0\)/);
+  });
+
   it("allows compression or mangling only when persisted proof dependencies still match", async () => {
     const optimizeProject = futureApi("optimizeUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-acceptance-evidence-"));

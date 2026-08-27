@@ -31,9 +31,10 @@ reverse sync/async disposal, bounded owned loop transfers, one restricted
 nested-scope conditional join, one rejecting inner async disposal routed through
 its handler, a two-resource inner disposal stack that finishes before catch
 while retaining a finite `0 | single | suppressed` completion abstraction, and
-one Boolean `if`/`else` that acquires exactly one branch-local async resource
-before a shared cleanup/handler join. The next Red/Green slice generalizes that
-correlation without claiming an arbitrary CFG fixed point.
+one Boolean `if`/`else` or exhaustive finite string-literal `switch` that
+acquires exactly one branch-local async resource before a shared
+cleanup/handler join. The next Red/Green slice generalizes that correlation to
+one nested finite decision tree without claiming an arbitrary CFG fixed point.
 
 This summary deliberately does not restate the full proof boundary. Use
 `docs/feature-matrix.md` for supported and unsupported user-visible behavior,
@@ -78,7 +79,7 @@ historical evidence and must not retain an execution-status label.
 
 | Status | Phase | Issue | Area | Depends on | Remaining boundary |
 | --- | --- | --- | --- | --- | --- |
-| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Branch-correlated resource ownership through cleanup/handler joins, then arbitrary-join CFG fixed point |
+| Active | 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Async resources | Shared completion contract from #3 | Nested finite resource-decision ownership through cleanup/handler joins, then arbitrary-join CFG fixed point |
 | Next | 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | TypeScript projects | #3 summaries | Remaining cross-project refinement/declaration semantic validation |
 | Blocked | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | #20 | Exact ESM/TLA/external/dynamic initialization semantics |
 | Queued | 2 | [#23](https://github.com/mizchi/uneffect/issues/23) | General refinement CFG | Shared completion contract | General loop/arbitrary-join fixed points and explicit proof budgets |
@@ -747,6 +748,7 @@ must not be read as a claim that arbitrary source rewriting is implemented.
     - [x] Keep one caught inner async-disposal rejection pending until the enclosing conditional catch recovers or rethrows it, traverse mandatory outer finally, finish remaining outer cleanup exactly once, and reject a handler-bypass fault in Quint.
     - [x] Complete a two-resource inner async disposal stack in reverse order before catch, retain a finite single-versus-suppressed failure kind, route protected body/acquisition failures through the same cleanup chain, and reject premature-handler, lost-suppression, skipped, and reordered controls.
     - [x] Preserve one finite Boolean `if`/`else` resource choice through branch-local async cleanup and a shared catch/finally join; require acquisition-path and dispose-after-acquire invariants and reject both-branch acquisition, wrong-branch cleanup, skipped cleanup, premature handler entry, and floating rejection.
+    - [x] Preserve an exhaustive finite string-literal `switch` choice across three branch-local async resources and a shared catch/finally join; require finite-discriminant provenance, full path coverage, pairwise acquisition exclusion, and dispose-after-acquire, while rejecting missing default, fallthrough/overlap, open discriminants, multiple acquisition, wrong-case cleanup, skipped cleanup, premature handler entry, and floating rejection.
     - [x] Give sequential and nested `try` statements stable control-region identities and route rejection to the innermost containing catch.
     - [x] Propagate top-level rethrows and single awaited handler failures through enclosing control regions, including pending completion through finally.
     - [x] Sequence multiple analyzed awaits in one top-level catch/finally statement and preserve enclosing failure propagation.

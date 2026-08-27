@@ -1696,3 +1696,15 @@ but excludes Quint execution. Separate tests run the positive model and reject
 both-branch acquisition, wrong-branch cleanup, skipped cleanup, premature
 handler entry, and floating rejection. The timing is noisy and is neither a CI
 budget nor evidence for nested branch trees, dynamic joins, or arbitrary CFGs.
+
+The switch-correlated-cleanup workload selects one of three differently named
+async resources using a finite string-literal union identifier, literal cases,
+and an explicit default. It validates complete, non-overlapping path coverage
+before generating shared cleanup/handler invariants. A filtered run on
+2026-08-28 measured 394.36 ms mean (2.5358 operations/second over 20 fixed
+iterations, 8.79% relative margin of error). This includes cold TypeScript
+parsing/type checking and Quint source generation but excludes Quint execution.
+Separate tests run the positive model and reject missing default, fallthrough,
+an open discriminant, multiple acquisition, wrong-case cleanup, skipped cleanup,
+premature handler entry, and floating rejection. The timing is not a CI budget
+or evidence for nested decisions or arbitrary CFGs.

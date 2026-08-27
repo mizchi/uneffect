@@ -24,8 +24,9 @@ release date commitment.
    rejection slices are implemented. A two-resource protected disposal stack
    now completes before catch and retains a finite single/suppressed failure
    kind. One Boolean branch-correlated resource cleanup/handler join is also
-   implemented. General finite branch shapes and then arbitrary CFG work remain,
-   without weakening floating-error checks.
+   implemented, as is one exhaustive finite string-literal `switch` with three
+   branch-local resources. A nested finite decision tree and then arbitrary CFG
+   work remain, without weakening floating-error checks.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies

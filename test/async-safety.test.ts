@@ -1432,6 +1432,60 @@ describe("async error and explicit resource safety", () => {
     }));
   }, 60_000);
 
+  it("keeps an exhaustive switch resource choice correlated through cleanup and catch", () => {
+    const fileName = "examples/dogfood/switch-correlated-cleanup.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    const quint = generateUnifiedAsyncQuint("switch_correlated_cleanup", result, "deliverByRoute");
+    expect(quint).toContain("val branchResourceExclusiveSafe");
+    const positive = run(quint, 40);
+    expect(positive.status, positive.stdout + positive.stderr).toBe(0);
+
+    for (const [name, options] of [
+      ["multiple_resources_acquired", { acquireBothBranches: true }],
+      ["wrong_case_cleanup", { wrongBranchCleanup: true }],
+      ["skipped_scope_cleanup", { skipScopeCleanup: true }],
+      ["premature_handler", { prematureDisposalHandler: true }],
+    ] as const) {
+      const broken = run(generateUnifiedAsyncQuint(
+        `switch_correlated_cleanup_${name}`,
+        result,
+        "deliverByRoute",
+        options,
+      ), 40);
+      expect(broken.status, `${name}\n${broken.stdout}${broken.stderr}`).not.toBe(0);
+      expect(broken.stdout + broken.stderr).toMatch(/violation|counterexample/i);
+    }
+
+    const missingDefault = analyzeAsyncSafety("switch-missing-default.ts", source
+      .replace('      default: {\n        await using backup = openBackup();\n        await backup.send().then(() => undefined);\n      }\n', ""));
+    expect(() => generateUnifiedAsyncQuint("switch_missing_default", missingDefault, "deliverByRoute"))
+      .toThrow(/not exhaustive; add an explicit default resource path/);
+
+    const fallthrough = analyzeAsyncSafety("switch-resource-fallthrough.ts", source.replace(
+      '        break;\n      }\n      case "secondary"',
+      '      }\n      case "secondary"',
+    ));
+    expect(() => generateUnifiedAsyncQuint("switch_resource_fallthrough", fallthrough, "deliverByRoute"))
+      .toThrow(/overlapping or fallthrough acquisition paths/);
+
+    const dynamicDiscriminant = analyzeAsyncSafety("switch-dynamic-discriminant.ts", source.replace(
+      "route: DeliveryRoute,",
+      "route: string,",
+    ));
+    expect(() => generateUnifiedAsyncQuint("switch_dynamic_discriminant", dynamicDiscriminant, "deliverByRoute"))
+      .toThrow(/requires a finite string-literal union identifier discriminant/);
+
+    const floating = analyzeAsyncSafety("switch-correlated-floating.ts", source.replace(
+      "await backup.send().then(() => undefined);",
+      "backup.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverByRoute",
+      kind: "floating-promise",
+    }));
+  }, 75_000);
+
   it("preserves concrete catch and finally statement order in the unified graph", () => {
     const result = analyzeAsyncSafety("sequenced-finally.ts", `
       declare function note(value: string): void

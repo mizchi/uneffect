@@ -143,6 +143,24 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val disposalAcquisitionSafe");
   });
 
+  it("preserves an exhaustive switch resource choice through shared recovery", () => {
+    const fileName = "examples/dogfood/switch-correlated-cleanup.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.resources.slice(1).map(({ binding, controlConditions }) => ({
+      binding,
+      polarity: controlConditions.map(({ expected }) => expected),
+    }))).toEqual([
+      { binding: "primary", polarity: [true] },
+      { binding: "secondary", polarity: [false, true] },
+      { binding: "backup", polarity: [false, false] },
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint("switch_correlated_cleanup", result, "deliverByRoute");
+    expect(quint).toContain("val branchResourceSafe");
+    expect(quint).toContain("val branchResourceExclusiveSafe");
+    expect(quint).toContain("val disposalAcquisitionSafe");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

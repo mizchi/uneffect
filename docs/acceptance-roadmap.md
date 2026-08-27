@@ -720,6 +720,17 @@ one Boolean branch; larger stacks, nested/general branch trees, multiple nested
 cleanup scopes, concrete error payloads in Quint, and arbitrary CFG joins remain
 open.
 
+An exhaustive-switch sibling accepts a finite string-literal union identifier,
+literal cases, an explicit default, no fallthrough, and one differently named
+async resource per path. Analysis records the discriminant classification;
+model generation checks finite path coverage and pairwise non-overlap before
+Quint proves acquisition exclusion, branch implication, and disposal only after
+acquisition. Missing default, fallthrough, an open `string` discriminant,
+multiple acquisition, wrong-case cleanup, skipped cleanup, premature handler
+entry, and floating rejection are negative controls. The bound is eight case
+conditions and does not cover arbitrary expressions, nested decisions, or
+general CFG joins.
+
 The temporal project-verification slice extracts Web scheduling from Uneffect
 TypeScript and applies named callback summaries atomically in the corresponding
 timer, microtask, animation-frame, or scheduler transition. A due callback with
