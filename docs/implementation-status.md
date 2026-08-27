@@ -189,6 +189,13 @@ same property is proved for arbitrary TypeScript.
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.
   `try/finally` without `catch` also preserves its normal local environment.
+  A normally completing mandatory-finally block may now mutate outer-visible
+  scalars. State updates are evaluated once over the joined incoming map, while
+  the local-only transformation is replayed over the normal and each supported
+  abrupt predecessor map. The transformed snapshots are attached to surviving
+  return/throw/break/continue edges, so a nested outer finally observes the
+  post-finally value. Mutation combined with a conditional or abrupt finally
+  override remains fail-closed.
   A scalar-switch extension assigns a separate local map to every expanded case
   entry/fallthrough path, merges normal values by case selection, and carries
   selected return/throw maps into the existing completion lattice. Default-free

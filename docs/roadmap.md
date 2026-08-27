@@ -51,7 +51,10 @@ release date commitment.
    labels now preserve and consume their own mutable-local transfer snapshots.
    A normally completing catch can now mutate outer-visible scalars and join
    them with the normal try predecessor before the common continuation. The
-   next step is finally-side mutable-local ownership before the general CFG
+   A normally completing mandatory finally can now mutate the joined local map;
+   the same transformation is replayed over each incoming completion snapshot
+   before it survives to an outer finally or continuation. The next step is
+   abrupt catch-side mutation and mutable-local rethrow before the general CFG
    fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.

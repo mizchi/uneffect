@@ -118,11 +118,16 @@ their own break/continue snapshots through expansion and mandatory `finally`.
 A normally completing `catch` starts from its typed-throw local snapshot,
 projects mutations to bindings visible before `try`, and joins them with the
 normal try snapshot before the shared continuation.
+A normally completing mandatory `finally` may mutate outer-visible scalars.
+The checker evaluates state updates over the joined incoming environment and
+replays the local transformation over each normal/return/throw/break/continue
+snapshot before attaching it to the surviving edge.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
-by abrupt completion, finally-side mutable-local writes, mutable-local rethrows, mutable-local flow through dynamic or
+by abrupt completion, mutable-local rethrows, mutable-local mutation combined
+with conditional/abrupt finally completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain
 unsupported rather than being approximated.

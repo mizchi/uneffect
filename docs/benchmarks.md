@@ -1510,6 +1510,16 @@ shared continuation. The changed workload and high variance preclude a
 comparative claim; this is not a CI budget and excludes Z3, abrupt catch-side
 mutation, finally-side mutation, and general exception-aware CFG joins.
 
+After adding one common mutable-local per-attempt overhead in mandatory
+`finally` and replaying it over normal, return, and recovered-throw snapshots,
+the filtered workload measured 3.5814 ms mean (279.22 operations/second over
+140 samples, 6.75% relative margin of error) on 2026-08-27. This includes the
+per-edge local replay, joined finally state update, switch flow, and common
+billing continuation. The workload changed and the sample count is small, so
+this is an observation rather than a comparative claim or CI budget. It
+excludes Z3, abrupt finally overrides, mutable-local rethrow, and general CFG
+fixed points.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink

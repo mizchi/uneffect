@@ -216,6 +216,16 @@ describe("Uneffect dogfood", () => {
       code: "action-update-mismatch", modelName: "record", target: "auditedUnits",
     }));
 
+    const missingAttemptOverhead = source.replace(
+      "units += 1; // common per-attempt overhead on normal, return, and recovered throw paths",
+      "// missing per-attempt overhead",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, missingAttemptOverhead, "adaptiveBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
     const billedCancellation = source.replace(
       "units = 1;\n      return;",
       "units = 1;\n      runtime.billedUnits += units;\n      return;",

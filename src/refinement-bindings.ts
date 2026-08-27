@@ -2560,8 +2560,11 @@ function validateRefinementActionBodiesInSource(
           const priorThrow = completionPredicate(residualCompletion, "throw");
           const priorBreak = completionPredicate(residualCompletion, "break");
           const priorContinue = completionPredicate(residualCompletion, "continue");
+          const beforeFinallyUpdates = new Map(updates);
+          const normalBeforeFinallyLocals = new Map(localValues);
           const finallyLocals = joinIncomingCompletionLocals(residualCompletion, localValues);
           if (!finallyLocals) return undefined;
+          const joinedBeforeFinallyLocals = new Map(finallyLocals);
           const finallyCompletion = collect(
             statement.finallyBlock, receiver, runtimeClass, substitutions,
             updates, finallyLocals, activeCalls, true, true,
@@ -2570,37 +2573,90 @@ function validateRefinementActionBodiesInSource(
             allowMutableLoopWrites,
           );
           if (!finallyCompletion) return undefined;
-          const finallyReturn = completionPredicate(finallyCompletion, "return");
-          const finallyThrow = completionPredicate(finallyCompletion, "throw");
-          const finallyBreak = completionPredicate(finallyCompletion, "break");
-          const finallyContinue = completionPredicate(finallyCompletion, "continue");
-          const finallyNormal = notCompletionPredicate(orCompletionPredicates(
-            orCompletionPredicates(
-              orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
-            ),
-            orCompletionPredicates(finallyContinue, labeledCompletionPredicate(finallyCompletion)),
-          ));
-          residualCompletion = makeCompletion(
-            orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
-            orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
-            sequenceThrowValue(finallyCompletion, residualCompletion),
-            orCompletionPredicates(finallyBreak, andCompletionPredicates(finallyNormal, priorBreak)),
-            orCompletionPredicates(finallyContinue, andCompletionPredicates(finallyNormal, priorContinue)),
-            mergeCompletionLabels(
-              completionLabels(finallyCompletion, "break"),
+          const finallyMutatesVisibleLocal = [...joinedBeforeFinallyLocals.keys()].some((name) =>
+            !name.startsWith("\u0000mutable:")
+            && !sameRefinementExpression(joinedBeforeFinallyLocals.get(name)!, finallyLocals.get(name)!));
+          if (finallyMutatesVisibleLocal) {
+            if (finallyCompletion !== "normal") return undefined;
+            const replayFinallyLocals = (
+              incoming: ReadonlyMap<string, TemporalExpression>,
+            ): Map<string, TemporalExpression> | undefined => {
+              const replayLocals = new Map(incoming);
+              // The joined evaluation above owns state updates. Replays only
+              // project the mandatory local transformation onto each incoming
+              // completion edge, so their copied update maps are discarded.
+              const replayCompletion = collect(
+                statement.finallyBlock!, receiver, runtimeClass, substitutions,
+                new Map(beforeFinallyUpdates), replayLocals, activeCalls, true, true,
+                allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
+                activeBreakLabels, activeContinueLabels,
+                allowMutableLoopWrites,
+              );
+              return replayCompletion === "normal" ? replayLocals : undefined;
+            };
+            const normalAfterFinallyLocals = replayFinallyLocals(normalBeforeFinallyLocals);
+            if (!normalAfterFinallyLocals) return undefined;
+            const replayEdge = (abrupt: AbruptCompletion): ReadonlyMap<string, TemporalExpression> | undefined => {
+              if (isBooleanCompletionPredicate(completionPredicate(residualCompletion, abrupt), false)) return undefined;
+              const incoming = completionEdgeLocals(residualCompletion, abrupt);
+              return incoming ? replayFinallyLocals(incoming) : undefined;
+            };
+            const throwAfterFinallyLocals = replayEdge("throw");
+            const returnAfterFinallyLocals = replayEdge("return");
+            const breakAfterFinallyLocals = replayEdge("break");
+            const continueAfterFinallyLocals = replayEdge("continue");
+            if ((!isBooleanCompletionPredicate(priorThrow, false) && !throwAfterFinallyLocals)
+              || (!isBooleanCompletionPredicate(priorReturn, false) && !returnAfterFinallyLocals)
+              || (!isBooleanCompletionPredicate(priorBreak, false) && !breakAfterFinallyLocals)
+              || (!isBooleanCompletionPredicate(priorContinue, false) && !continueAfterFinallyLocals)) return undefined;
+            localValues.clear();
+            for (const [name, value] of normalAfterFinallyLocals) localValues.set(name, value);
+            residualCompletion = makeCompletion(
+              priorReturn,
+              priorThrow,
+              completionThrowValue(residualCompletion),
+              priorBreak,
+              priorContinue,
               completionLabels(residualCompletion, "break"),
-              finallyNormal,
-            ),
-            mergeCompletionLabels(
-              completionLabels(finallyCompletion, "continue"),
               completionLabels(residualCompletion, "continue"),
-              finallyNormal,
-            ),
-            sequenceEdgeLocals(finallyCompletion, residualCompletion, "throw"),
-            sequenceEdgeLocals(finallyCompletion, residualCompletion, "return"),
-            sequenceEdgeLocals(finallyCompletion, residualCompletion, "break"),
-            sequenceEdgeLocals(finallyCompletion, residualCompletion, "continue"),
-          );
+              throwAfterFinallyLocals,
+              returnAfterFinallyLocals,
+              breakAfterFinallyLocals,
+              continueAfterFinallyLocals,
+            );
+          } else {
+            const finallyReturn = completionPredicate(finallyCompletion, "return");
+            const finallyThrow = completionPredicate(finallyCompletion, "throw");
+            const finallyBreak = completionPredicate(finallyCompletion, "break");
+            const finallyContinue = completionPredicate(finallyCompletion, "continue");
+            const finallyNormal = notCompletionPredicate(orCompletionPredicates(
+              orCompletionPredicates(
+                orCompletionPredicates(finallyReturn, finallyThrow), finallyBreak,
+              ),
+              orCompletionPredicates(finallyContinue, labeledCompletionPredicate(finallyCompletion)),
+            ));
+            residualCompletion = makeCompletion(
+              orCompletionPredicates(finallyReturn, andCompletionPredicates(finallyNormal, priorReturn)),
+              orCompletionPredicates(finallyThrow, andCompletionPredicates(finallyNormal, priorThrow)),
+              sequenceThrowValue(finallyCompletion, residualCompletion),
+              orCompletionPredicates(finallyBreak, andCompletionPredicates(finallyNormal, priorBreak)),
+              orCompletionPredicates(finallyContinue, andCompletionPredicates(finallyNormal, priorContinue)),
+              mergeCompletionLabels(
+                completionLabels(finallyCompletion, "break"),
+                completionLabels(residualCompletion, "break"),
+                finallyNormal,
+              ),
+              mergeCompletionLabels(
+                completionLabels(finallyCompletion, "continue"),
+                completionLabels(residualCompletion, "continue"),
+                finallyNormal,
+              ),
+              sequenceEdgeLocals(finallyCompletion, residualCompletion, "throw"),
+              sequenceEdgeLocals(finallyCompletion, residualCompletion, "return"),
+              sequenceEdgeLocals(finallyCompletion, residualCompletion, "break"),
+              sequenceEdgeLocals(finallyCompletion, residualCompletion, "continue"),
+            );
+          }
           if (residualCompletion === "normal") continue;
         }
         const priorReturn = completionPredicate(residualCompletion, "return");
@@ -3076,8 +3132,7 @@ function validateRefinementActionBodiesInSource(
           const finiteExpansionNode = allowMutableLoopWrites;
           let owner: ts.Node | undefined = ownershipNode.parent;
           while (owner && !ts.isFunctionLike(owner)) {
-            if (ts.isBlock(owner) && ((ts.isTryStatement(owner.parent) && owner.parent.finallyBlock === owner)
-              || ts.isCaseClause(owner.parent))) return undefined;
+            if (ts.isBlock(owner) && ts.isCaseClause(owner.parent)) return undefined;
             if ((!finiteExpansionNode && ts.isIterationStatement(owner, false))
               || (ts.isLabeledStatement(owner) && owner.label.text !== ownedBreakLabel)) return undefined;
             owner = owner.parent;

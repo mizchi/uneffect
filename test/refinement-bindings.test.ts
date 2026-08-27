@@ -3330,15 +3330,21 @@ describe("annotated refinement bindings", () => {
         "runtime.audited++\n          return",
         "runtime.audited++\n          throw amount",
       )],
-      ["caught-local-finally-write.ts", source.replace(
-        "          return\n        }\n        runtime.billed",
-        "          return\n        } finally {\n          units = 5\n        }\n        runtime.billed",
-      )],
     ] as const) {
       expect(validateRefinementActionBodies(fileName, changed, "caughtLocal", temporal), fileName).toContainEqual(
         expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
       );
     }
+
+    const finallyWrite = source.replace(
+      "          return\n        }\n        runtime.billed",
+      "          return\n        } finally {\n          units = 5\n        }\n        runtime.billed",
+    );
+    expect(validateRefinementActionBodies(
+      "caught-local-finally-write.ts", finallyWrite, "caughtLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
 
     const bothThrow = source
       .replace(
@@ -3402,7 +3408,7 @@ describe("annotated refinement bindings", () => {
     );
     expect(validateRefinementActionBodies(
       "finally-local-mutation.ts", mutatedFinallyLocal, "finallyLocal", temporal,
-    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }));
+    )).toContainEqual(expect.objectContaining({ code: "action-update-mismatch", modelName: "record" }));
   });
 
   it("owns mutable-local snapshots across scalar switch paths", async () => {

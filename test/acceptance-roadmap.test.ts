@@ -1429,6 +1429,107 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("applies a mandatory-finally local mutation to every incoming completion edge", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state mode: int
+       * init billed = 0
+       * init audited = 0
+       * init mode = 0
+       * action record: billed' = mode === 1 ? billed : billed + (mode === 2 ? 5 : 6), audited' = audited + (mode === 1 ? 3 : (mode === 2 ? 5 : 6))
+       */
+      interface Runtime { billed: number; audited: number; mode: number }
+      /* uneffect: refinement finallyMutation@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement finallyMutation@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement finallyMutation@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          if (runtime.mode === 1) {
+            units += 1
+            return
+          }
+          if (runtime.mode === 2) {
+            units += 3
+            throw units
+          }
+          units += 4
+        } catch (amount) {
+          units = amount
+        } finally {
+          units += 1
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification("finally-local-mutation.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "finally-local-mutation.ts", source, "finallyMutation", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongFinalization = source.replace("units += 1\n          runtime.audited", "units += 2\n          runtime.audited");
+    await expect(validateActions(
+      "finally-local-wrong-finalization.ts", wrongFinalization, "finallyMutation", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const nestedSource = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state stopped: bool
+       * init billed = 0
+       * init audited = 0
+       * init stopped = false
+       * action record: billed' = stopped ? billed : billed + 4, audited' = audited + (stopped ? 3 : 4)
+       */
+      interface Runtime { billed: number; audited: number; stopped: boolean }
+      /* uneffect: refinement nestedFinallyMutation@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement nestedFinallyMutation@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement nestedFinallyMutation@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          try {
+            if (runtime.stopped) {
+              units += 1
+              return
+            }
+            units += 2
+          } finally {
+            units += 1
+          }
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const nestedTemporal = (parseSpecification(
+      "nested-finally-local-mutation.ts", nestedSource,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "nested-finally-local-mutation.ts", nestedSource, "nestedFinallyMutation", nestedTemporal,
+    )).resolves.toEqual([]);
+
+    const abruptFinally = source.replace(
+      "runtime.audited += units",
+      "runtime.audited += units\n          if (runtime.mode === 2) return",
+    );
+    expect(validateActionsStatically(
+      "finally-local-abrupt.ts", abruptFinally, "finallyMutation", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

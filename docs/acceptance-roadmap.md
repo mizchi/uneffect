@@ -422,6 +422,19 @@ mandatory `finally` audit, and performs common billing afterward. Opaque
 payloads, abrupt catch-side mutation, finally-side mutation, alias escape, and
 general exception-aware CFG joins remain open.
 
+A twenty-first case mutates an outer scalar in a normally completing mandatory
+`finally` after normal, direct-return, and typed throw/recovered-catch
+predecessors. The checker evaluates the audit update over their joined local
+environment, then replays the local increment on each predecessor snapshot.
+The surviving normal paths bill six or five units; the return path audits three
+without billing. A nested positive control proves the transformed return-edge
+snapshot reaches an outer finally. A wrong increment is rejected by Z3, while
+combining local mutation with a conditional finally return remains an explicit
+non-proof. Adaptive billing now adds one common per-attempt overhead in finally
+across cancellation, recovered failure, and every normal billing mode; removing
+it produces a model mismatch. Abrupt catch mutation, mutable-local rethrow,
+abrupt finally overrides, alias escape, and general CFG joins remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation
