@@ -45,8 +45,10 @@ is `schemas/uneffect-project-workspace-v1.schema.json`.
 This aggregation links only uniquely resolved `verified` function and module Effect
 summaries across project declaration/import boundaries and records every accepted or
 blocked link in `effectComposition`. A separate `refinementComposition` ledger
-links the documented direct, unguarded scalar action fragment only after local
-child validation, exact declaration matching, and parent-action revalidation.
+links the documented direct scalar action fragment only after local child
+validation, exact declaration matching, and parent-action revalidation. A
+guarded action is accepted only through a sole direct wrapper call and records
+the inherited guard; extra wrapper work prevents guard inheritance.
 It does not link solver obligations, cross-project invariants, ownership, or
 temporal evidence. Supported parameter, exported
 closure/module, same-realm global, and bounded iterator Effect substitutions are

@@ -69,9 +69,9 @@ parallel speed-up.
 
 ## Dependency-critical order
 
-1. #20 is active. Its next slice is guarded direct scalar refinement
-   composition; indirect, collection-valued, realm, and transformed-declaration
-   cases remain non-proofs.
+1. #20 is active. Its next slice is one symbol-resolved indirect scalar action
+   through a local helper; higher-order, collection-valued, realm, and
+   transformed-declaration cases remain non-proofs.
 2. #18 stays blocked until #20's project-boundary evidence is sufficient for
    module-order consumers.
 3. #23 precedes CFG-sensitive portions of #6, #24, and #13.
@@ -88,7 +88,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #20 TypeScript project parity | M | 1–2 weeks | Generalize exact refinement summaries beyond one unguarded scalar direct call | Declaration transforms, realms, and compiler-domain compatibility |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | Compose one symbol-resolved indirect scalar action through a local helper | Declaration transforms, realms, and compiler-domain compatibility |
 | 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |

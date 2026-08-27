@@ -72,6 +72,8 @@ export interface ExternalRefinementActionContract {
   version: string;
   modelName: string;
   exportName: string;
+  /** Guard proved by the producer action body. The consumer may inherit it only through an exact sole direct call. */
+  guard?: TemporalExpression;
   assignments: readonly { target: string; expressionAst: TemporalExpression }[];
   evidence: "verified" | "unknown";
   reason?: string;
@@ -249,7 +251,7 @@ const temporalBinaryOperators = new Map<ts.SyntaxKind, TemporalBinaryOperator>([
   [ts.SyntaxKind.GreaterThanToken, "gt"], [ts.SyntaxKind.GreaterThanEqualsToken, "gte"],
 ]);
 
-function formatRefinementExpression(expression: TemporalExpression): string {
+export function formatRefinementExpression(expression: TemporalExpression): string {
   return generateRuntimeAssertionExpression(expression);
 }
 
@@ -933,6 +935,27 @@ function validateRefinementActionBodiesInSource(
     return guard ? { guard: canonicalize(guard), updates: ts.factory.createBlock(body.statements.slice(1), true) } : { updates: body };
   };
 
+  const directExternalAction = (
+    body: ts.Block,
+    receiver: string,
+  ): ExternalRefinementActionContract | undefined => {
+    if (body.statements.length !== 1) return undefined;
+    const statement = body.statements[0]!;
+    const expression = ts.isExpressionStatement(statement) ? statement.expression
+      : ts.isReturnStatement(statement) ? statement.expression : undefined;
+    if (!expression || !ts.isCallExpression(expression) || expression.arguments.length !== 1) return undefined;
+    if (!ts.isIdentifier(expression.expression) && !ts.isPropertyAccessExpression(expression.expression)) return undefined;
+    const helper = resolveFunction(expression.expression);
+    const helperSource = helper?.getSourceFile();
+    if (!helper || helper.body || !helperSource || helper.parameters.length !== 1) return undefined;
+    const external = options.externalActions?.get(`${helperSource.fileName}:${helper.getStart(helperSource)}`);
+    if (!external || external.evidence !== "verified" || external.adapterName !== adapterName
+      || external.version !== manifest.version) return undefined;
+    const argument = expression.arguments[0]!;
+    if (!ts.isIdentifier(argument) || argument.text !== receiver) return undefined;
+    return external;
+  };
+
   type ActionCompletion = CompletionSummary<
     TemporalExpression,
     TemporalExpression,
@@ -1247,6 +1270,7 @@ function validateRefinementActionBodiesInSource(
   };
   const maxFiniteExpansionIterations = 256;
   let finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
+  let permittedGuardedExternal: ExternalRefinementActionContract | undefined;
   const collect = (
     body: ts.Block,
     receiver: string,
@@ -3120,6 +3144,7 @@ function validateRefinementActionBodiesInSource(
         if (helper && !helper.body && external?.evidence === "verified"
           && external.adapterName === adapterName && external.version === manifest.version
           && helper.parameters.length === 1 && node.arguments.length === 1) {
+          if (external.guard && external !== permittedGuardedExternal) return undefined;
           const receiverArgument = node.arguments[0]!;
           const substitutedReceiver = ts.isIdentifier(receiverArgument) ? substitutions.get(receiverArgument.text) : undefined;
           const receiverMatches = receiverArgument.kind === ts.SyntaxKind.ThisKeyword
@@ -3404,7 +3429,9 @@ function validateRefinementActionBodiesInSource(
     const runtimeParameter = implementation?.parameters[0];
     const receiver = runtimeParameter && ts.isIdentifier(runtimeParameter.name) ? runtimeParameter.name.text : undefined;
     const guardedBody = implementation?.body && receiver ? earlyReturnGuard(implementation.body, receiver) : undefined;
-    const actualGuard = guardedBody?.guard;
+    const inheritedExternal = guardedBody && receiver
+      ? directExternalAction(guardedBody.updates, receiver) : undefined;
+    const actualGuard = guardedBody?.guard ?? inheritedExternal?.guard;
     if (action.guard && !actualGuard) {
       diagnostics.push({ code: "missing-action-guard", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: "<missing>", message: `${exportName} does not enforce model action guard ${action.guard.expression}` });
     } else if (!action.guard && actualGuard) {
@@ -3412,11 +3439,22 @@ function validateRefinementActionBodiesInSource(
     } else if (action.guard && actualGuard && !sameRefinementExpression(action.guard.expressionAst, actualGuard)) {
       diagnostics.push({ code: "action-guard-mismatch", adapterName, modelName: action.name, exportName, expected: formatRefinementExpression(action.guard.expressionAst), actual: formatRefinementExpression(actualGuard), message: `${exportName} enforces ${formatRefinementExpression(actualGuard)}, expected ${action.guard.expression}` });
     }
+    if (guardedBody?.guard && inheritedExternal?.guard
+      && !sameRefinementExpression(guardedBody.guard, inheritedExternal.guard)) {
+      diagnostics.push({
+        code: "action-guard-mismatch", adapterName, modelName: action.name, exportName,
+        expected: formatRefinementExpression(inheritedExternal.guard),
+        actual: formatRefinementExpression(guardedBody.guard),
+        message: `${exportName} guard ${formatRefinementExpression(guardedBody.guard)} does not match child action guard ${formatRefinementExpression(inheritedExternal.guard)}`,
+      });
+    }
     const updates = new Map<string, TemporalExpression>();
     finiteExpansionIterationsRemaining = maxFiniteExpansionIterations;
+    permittedGuardedExternal = inheritedExternal;
     const completion = guardedBody && receiver && finiteLoopNestingWithinLimit(guardedBody.updates)
       ? collect(guardedBody.updates, receiver, resolveRuntimeClass(runtimeParameter), new Map(), updates)
       : undefined;
+    permittedGuardedExternal = undefined;
     if (!completion) {
       diagnostics.push({ code: "unsupported-action-body", adapterName, modelName: action.name, exportName, message: `${exportName} uses an action body outside the supported scalar refinement fragment` });
       continue;

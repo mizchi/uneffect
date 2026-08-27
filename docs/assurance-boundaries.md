@@ -132,16 +132,20 @@ factories, supported stored iterators, forwarded iterator parameters, and
 standard pure iterators. Its bound is checked in the parent Program, including
 the declared Promise-consumer `Throw`-to-rejection behavior.
 
-The separate `refinementComposition` ledger admits one additional fragment: an
-unguarded scalar child action whose local implementation and create/observe
-projection verify against its model, called directly from an annotated parent
-action with the same adapter version. The parent action is revalidated after
-substituting the child action summary. Every link retains producer and consumer
+The separate `refinementComposition` ledger admits one additional fragment: a
+scalar child action whose local implementation and create/observe projection
+verify against its model, called directly from an annotated parent action with
+the same adapter version. An unguarded action may appear as a direct call. A
+guarded action is admitted only when the parent wrapper body is exactly that
+call; the verified child guard is inherited, checked against the parent model,
+and serialized on the link. The parent action is revalidated after substituting
+the child action summary. Every link retains producer and consumer
 compiler/config provenance and exact declaration integrity. A stale or modified
-declaration, ambiguous export, adapter/version mismatch, or semantically
-incompatible parent model prevents `verified` composition. Guarded actions,
-indirect/higher-order calls, collection updates, abstraction transforms, and
-non-TypeScript declaration transforms remain unsupported.
+declaration, ambiguous export, adapter/version or guard mismatch, invalid child
+guard, extra wrapper work, or semantically incompatible parent model prevents
+`verified` composition. Indirect/higher-order calls, collection updates,
+abstraction transforms, and non-TypeScript declaration transforms remain
+unsupported.
 
 Success still excludes cross-project invariants, contracts, ownership, and
 temporal composition. Every `.d.ts` consumed by an Effect or refinement link

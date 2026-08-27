@@ -107,8 +107,10 @@ single compiler domain; they do not request solution expansion.
 
 The workspace report contains separate `effectComposition` and
 `refinementComposition` ledgers. The latter currently verifies only a direct
-call from one annotated action to an unguarded scalar action in a referenced
-project. Both projects must use the same adapter version, the child
+call from one annotated action to a scalar action in a referenced project. A
+guarded action requires the parent wrapper body to contain only that call; its
+verified guard is checked and emitted on the link. Both projects must use the
+same adapter version, the child
 create/observe/action bindings must verify locally, and the consumed `.d.ts`
 must match the selected TypeScript compiler's exact in-memory declaration emit.
 Do not treat an empty (`not-applicable`) ledger as proof that refinements were

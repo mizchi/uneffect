@@ -62,7 +62,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Generalize the exact cross-project refinement fragment beyond one unguarded scalar direct call without flattening compiler domains. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Compose one symbol-resolved indirect scalar action across a local helper without flattening compiler domains. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research
@@ -663,6 +663,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Add an opt-in exact-build gate that requires freshness and byte-compares all TypeScript-emitted runtime JavaScript and declarations, rejecting declaration-only/no-emit and transformed pipelines without a validated mapping.
     - [x] Make an empty cross-project Effect composition ledger `not-applicable` rather than vacuously `verified`, and lock the distinction with programmatic and CLI tests.
     - [x] Compose one locally verified unguarded scalar refinement action across a direct project reference, retain producer/consumer compiler/config and exact declaration provenance, and revalidate the parent action after summary substitution.
+    - [x] Preserve a locally verified scalar action guard across an exact sole direct project-reference call, serialize the guard in the composition ledger, and reject guard mismatch, invalid producer guards, or wrappers with additional work.
     - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
     - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.

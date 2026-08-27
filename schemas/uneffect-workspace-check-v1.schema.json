@@ -57,6 +57,7 @@
             "callerFile": { "type": "string" }, "callee": { "type": "string" },
             "adapterName": { "type": "string" }, "version": { "type": "string" },
             "modelName": { "type": "string" }, "evidence": { "enum": ["verified", "unknown"] },
+            "guard": { "type": "string" },
             "declarationFile": { "type": "string" },
             "declarationIntegrity": { "$ref": "#/$defs/declarationIntegrity" },
             "producer": { "$ref": "#/$defs/provenance" }, "consumer": { "$ref": "#/$defs/provenance" }

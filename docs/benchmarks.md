@@ -1797,11 +1797,12 @@ bodies, loop fixed points, or escaping-alias generation tracking.
 ## Cross-project scalar refinement summaries
 
 The project-summary benchmark validates one warm TypeScript Program's
-refinement bindings, create/observe projection, and action bodies before
+refinement bindings, create/observe projection, and guarded action bodies before
 exporting compiler/config-bound action summaries. A filtered Vitest bench run
-on 2026-08-28 measured 0.6928 ms mean (1,443.48 operations/second over 722
-samples, 0.66% relative margin of error). This excludes Program construction,
+on 2026-08-28 measured 0.6845 ms mean (1,460.82 operations/second over 731
+samples, 0.95% relative margin of error). This excludes Program construction,
 filesystem declaration comparison, parent-project loading, and Z3. It is a
-regression baseline for local summary export, not a latency claim for an entire
-solution workspace or evidence that guarded, indirect, collection-valued, or
-transformed-declaration composition is supported.
+regression baseline for local summary export, including verified action guards;
+it is not a latency claim for an entire solution workspace or evidence that
+indirect, guarded-with-extra-work, collection-valued, or transformed-declaration
+composition is supported.

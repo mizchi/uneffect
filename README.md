@@ -131,12 +131,15 @@ checked as separate compiler domains and the command emits
 closed. The CLI composes the same narrow, verified function and module Effect interface as
 the project API and records it in `effectComposition`; every consumed child
 `.d.ts` must exactly match an in-memory same-compiler declaration re-emission.
-It also composes an unguarded scalar refinement action called directly from an
-annotated parent action and records compiler/config/declaration provenance in
-`refinementComposition`. The child action and its create/observe projection
-must verify locally first. Guarded actions, indirect calls, collection-valued
-updates, abstraction transforms, and non-exact declarations remain explicit
-non-proofs. It does not compose the other proof domains. A ledger with no accepted link and
+It also composes a locally verified scalar refinement action called directly
+from an annotated parent action and records compiler/config/declaration
+provenance in `refinementComposition`. An unguarded action may be a direct call;
+a guarded action is accepted only when the wrapper body is exactly that call,
+so the verified child guard is the wrapper guard. The child action and its
+create/observe projection must verify locally first. Indirect calls, wrappers
+with additional work that try to inherit a guard, collection-valued updates,
+abstraction transforms, and non-exact declarations remain explicit non-proofs.
+It does not compose the other proof domains. A ledger with no accepted link and
 no blocker reports `not-applicable`, never `verified`; an empty composition is
 not evidence that a cross-project property was checked.
 

@@ -44,10 +44,12 @@ commitment.
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
    on TypeChecker-derived evidence; cross-project summaries and declaration
-   build-artifact validation are implemented. One direct, locally verified,
-   unguarded scalar refinement action now composes across an exact declaration
-   boundary with producer/consumer provenance and parent revalidation. General
-   refinement, guarded/indirect/collection edges, realms, and non-identical
+   build-artifact validation are implemented. A direct, locally verified scalar
+   refinement action now composes across an exact declaration boundary with
+   producer/consumer provenance and parent revalidation. A guarded child action
+   composes only through a sole direct wrapper call and records its inherited
+   guard. General indirect/collection edges, guarded wrappers with extra work,
+   realms, and non-identical
    declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
    of #9; it is now the active Phase 1 Issue.

@@ -415,6 +415,7 @@ describe("uneffect command line", () => {
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
         required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
+        $defs: { refinementComposition: { properties: { links: { items: { properties: { guard: { type: "string" } } } } } } },
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -658,13 +659,13 @@ describe("uneffect command line", () => {
       }
       writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
       writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
-      const model = `state count: int\ninit count = 0\naction increment: count' = count + 1`;
+      const model = `state armed: bool\nstate count: int\ninit armed = true\ninit count = 1\naction increment: count' = count + 1\naction_when increment: armed && count > 0`;
       writeFileSync(join(child, "src", "counter.ts"), `/* uneffect:\n${model}\n*/
-        export interface Runtime { count: number }
+        export interface Runtime { armed: boolean; count: number }
         /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
         /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
         /* uneffect: effect Mutate<typeof runtime.count> */
-        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { runtime.count++ }
+        /* uneffect: refinement counter@1 action increment */ export function increment(runtime: Runtime) { if (!(runtime.armed && runtime.count > 0)) return; runtime.count++ }
       `);
       writeFileSync(join(parent, "src", "counter.ts"), `import { increment as incrementChild } from "../../child/src/counter.js"
         import type { Runtime } from "../../child/src/counter.js"
@@ -687,7 +688,7 @@ describe("uneffect command line", () => {
       expect(JSON.parse(io.stdout)).toMatchObject({
         refinementComposition: {
           status: "verified", blockers: [],
-          links: [expect.objectContaining({ adapterName: "counter", version: "1", modelName: "increment", evidence: "verified" })],
+          links: [expect.objectContaining({ adapterName: "counter", version: "1", modelName: "increment", guard: "armed && count > 0", evidence: "verified" })],
         },
         assurance: { passed: true, claims: expect.arrayContaining(["verified child-project scalar refinement actions are composed into direct parent action calls"]) },
       });

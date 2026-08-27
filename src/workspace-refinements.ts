@@ -5,6 +5,7 @@ import {
   extractRefinementBindings,
   validateRefinementActionBodiesInProgram,
   validateRefinementStateProjectionInProgram,
+  formatRefinementExpression,
   type ExternalRefinementActionContract,
 } from "./refinement-bindings.js";
 import { parseSpec } from "./spec-ir.js";
@@ -30,6 +31,7 @@ export interface WorkspaceRefinementLink {
   adapterName: string;
   version: string;
   modelName: string;
+  guard?: string;
   evidence: "verified" | "unknown";
   declarationFile: string;
   declarationIntegrity: DeclarationOutputIntegrity;
@@ -132,7 +134,7 @@ export function composeWorkspaceRefinements(
                   }
                   const contract: ExternalRefinementActionContract = summary ? {
                     adapterName: summary.adapterName, version: summary.version, modelName: summary.modelName,
-                    exportName: summary.exportName, assignments: summary.assignments,
+                    exportName: summary.exportName, guard: summary.guard, assignments: summary.assignments,
                     evidence: verified ? "verified" : "unknown", ...(reason ? { reason } : {}),
                   } : {
                     adapterName: "<ambiguous>", version: "<unknown>", modelName: callee,
@@ -142,7 +144,9 @@ export function composeWorkspaceRefinements(
                   links.push({
                     fromProject: current.projectFile, toProject: owner.project.projectFile,
                     callerFile: source.fileName, callee, adapterName: contract.adapterName,
-                    version: contract.version, modelName: contract.modelName, evidence: contract.evidence,
+                    version: contract.version, modelName: contract.modelName,
+                    ...(contract.guard ? { guard: formatRefinementExpression(contract.guard) } : {}),
+                    evidence: contract.evidence,
                     declarationFile: declarationSource.fileName, declarationIntegrity,
                     producer: owner.project.provenance, consumer: current.provenance,
                   });
@@ -227,9 +231,10 @@ export function analyzeProjectRefinements(
         if (projection.length > 0 || actions.length > 0) continue;
         for (const action of temporal.actions) {
           const exportName = manifest.actions[action.name];
-          if (!exportName || action.guard) continue;
+          if (!exportName) continue;
           summaries.push({
             adapterName, version: manifest.version, modelName: action.name, exportName,
+            ...(action.guard ? { guard: action.guard.expressionAst as TemporalExpression } : {}),
             assignments: action.assignments.map(({ target, expressionAst }) => ({ target, expressionAst: expressionAst as TemporalExpression })),
             evidence: "verified", sourceFile: source.fileName,
           });
