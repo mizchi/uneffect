@@ -618,6 +618,45 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("consumes continue after a guaranteed affine ranking step", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state pending: int
+       * state weighted: int
+       * state priority: bool
+       * init pending = 0
+       * init weighted = 0
+       * init priority = false
+       * action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0)
+       */
+      interface Runtime { pending: number; weighted: number; priority: boolean }
+      /* uneffect: refinement continueDrain@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement continueDrain@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement continueDrain@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          runtime.pending--
+          if (!runtime.priority) continue
+          runtime.weighted += runtime.pending
+        }
+      }
+    `;
+    const temporal = (parseSpecification("continue-drain.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions("continue-drain.ts", source, "continueDrain", temporal)).resolves.toEqual([]);
+
+    const skippedStep = source.replace(
+      "runtime.pending--\n          if (!runtime.priority) continue",
+      "if (!runtime.priority) continue\n          runtime.pending--",
+    );
+    await expect(validateActions(
+      "continue-drain-skipped-step.ts", skippedStep, "continueDrain", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "drain",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

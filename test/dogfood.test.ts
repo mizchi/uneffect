@@ -103,19 +103,19 @@ describe("Uneffect dogfood", () => {
     expect(validateRefinementStateProjection(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
     expect(await validateRefinementActionBodiesWithZ3(fileName, source, "priorityTelemetry", temporal)).toEqual([]);
 
-    const wrongOrder = source.replace(
-      "runtime.queued--;\n    if (runtime.priority) runtime.pressure += runtime.queued;\n    else if (runtime.sampled) runtime.pressure++;",
-      "if (runtime.priority) runtime.pressure += runtime.queued;\n    else if (runtime.sampled) runtime.pressure++;\n    runtime.queued--;",
+    const skippedRankingStep = source.replace(
+      "runtime.queued--;\n    if (!runtime.priority && !runtime.sampled) continue;",
+      "if (!runtime.priority && !runtime.sampled) continue;\n    runtime.queued--;",
     );
     expect(await validateRefinementActionBodiesWithZ3(
-      fileName, wrongOrder, "priorityTelemetry", temporal,
+      fileName, skippedRankingStep, "priorityTelemetry", temporal,
     )).toContainEqual(expect.objectContaining({
-      code: "action-update-mismatch", modelName: "drain", target: "pressure",
+      code: "unsupported-action-body", modelName: "drain",
     }));
 
     const mutablePriority = source.replace(
-      "else if (runtime.sampled) runtime.pressure++;",
-      "else if (runtime.sampled) { runtime.pressure++; runtime.sampled = false; }",
+      "else runtime.pressure++;",
+      "else { runtime.pressure++; runtime.sampled = false; }",
     );
     await expect(validateRefinementActionBodiesWithZ3(
       fileName, mutablePriority, "priorityTelemetry", temporal,

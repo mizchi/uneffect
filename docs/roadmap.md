@@ -17,7 +17,8 @@ release date commitment.
    state deltas affine in the ranking counter, and a loop-invariant scalar
    decision tree of at most eight affine leaves. Larger or dynamically changing
    joins, arbitrary mutually coupled loops, and exception-heavy recurrences
-   remain.
+   remain. An unlabeled `continue` is consumed only after merged loop state
+   proves that every path took the ranking step, including mandatory `finally`.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

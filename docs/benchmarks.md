@@ -1375,13 +1375,14 @@ affine decomposition and triangular closed-form construction; it excludes
 parsing, Z3 equivalence, mutually coupled recurrences, and general CFG joins.
 
 On 2026-08-27, after extending the realistic priority-telemetry variant to a
-two-level priority/sampled decision tree, it measured 0.2519 ms mean (3,969.25
-operations/second over 1,985 samples, 13.93% relative margin of error). The warm
-workload measures branch collection, invariant-condition screening, affine
-decomposition, leaf-budget enforcement, and piecewise closed-form construction.
-Its high margin of error and changed workload make it an observation rather
-than a comparative claim or regression budget. It excludes dynamically changing
-conditions, Z3 equivalence, and exception-aware loop joins.
+two-level priority/sampled decision tree with an early post-ranking `continue`,
+it measured 0.1894 ms mean (5,278.81 operations/second over 2,640 samples, 8.02%
+relative margin of error). The warm workload measures abrupt-flow collection,
+ranking-step screening, invariant-condition screening, affine decomposition,
+leaf-budget enforcement, and piecewise closed-form construction. Its high
+margin of error and changed workload make it an observation rather than a
+comparative claim or regression budget. It excludes dynamically changing
+conditions, Z3 equivalence, and general exception-aware loop joins.
 
 An additional warm workload fixes the supported maximum of eight affine leaves.
 The filtered Vitest Bench invocation completed on 2026-08-27, but the current

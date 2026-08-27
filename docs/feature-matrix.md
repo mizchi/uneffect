@@ -40,8 +40,8 @@ successful verification.
 For the TypeScript-to-model refinement row, the dynamic-`while` boundary has
 one explicit exception: `while (counter > L)`, `>= L`, `< U`, and `<= U` are
 summarized for signed safe-integer constant bounds when the counter changes
-toward the bound by a positive safe-integer constant magnitude, every other
-state write is a safe-integer constant delta, and the body completes normally.
+toward the bound by a positive safe-integer constant magnitude and the body
+completes normally or only continues after the ranking step.
 A remainder-subtracted exact
 quotient derives the ceiling trip count without relying on backend-specific
 negative or fractional division, and the final counter preserves overshoot.
@@ -54,8 +54,12 @@ conditions are evaluated from loop-entry state and the tree is capped at eight
 leaves. Update order remains significant. Dynamic or unsafe bounds or steps,
 other loop guards, mutated or counter-dependent branch conditions, larger
 piecewise trees, mutually coupled or self-amplifying recurrences, opaque entry
-updates, and abrupt exits remain unsupported. This is a closed-form affine rule,
-not a general loop fixed point.
+updates, and break/return/throw exits remain unsupported. An unlabeled
+`continue` is consumed only when symbolic merging proves that every continuing
+path has already taken the affine ranking step; a skipped step is rejected as a
+possible nontermination path. Mandatory `finally` updates remain part of that
+merged iteration. This is a closed-form affine rule, not a general loop fixed
+point.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

@@ -114,7 +114,8 @@ same property is proved for arbitrary TypeScript.
   separate symbolic affine fragment, `while (counter > L)`, `>= L`, `< U`, and
   `<= U` are summarized for signed safe-integer constant bounds without
   expansion when the counter changes toward the bound by a positive
-  safe-integer constant magnitude and the body has no abrupt completion. Other
+  safe-integer constant magnitude and the body either completes normally or
+  only continues after taking the ranking step. Other
   state writes may have safe-integer constant per-iteration deltas. A unit
   countdown additionally admits deltas affine in the ranking counter and
   derives exact triangular totals. A scalar conditional decision tree with at
@@ -128,8 +129,10 @@ same property is proved for arbitrary TypeScript.
   results before the lexical suffix is composed. Dynamic or unsafe bounds or
   steps, direction mismatches, other loop guards, mutated/counter-dependent or
   over-budget piecewise conditions, mutually coupled or self-amplifying recurrences,
-  opaque entry updates, and abrupt
-  exits remain unsupported. Within the
+  opaque entry updates, and break/return/throw exits remain unsupported. An
+  unlabeled `continue` is consumed when the merged update proves every path
+  already took the ranking step; mandatory `finally` work is included in that
+  iteration. A continue that can skip the step remains unsupported. Within the
   finite-loop fragment, an unlabeled `break` is retained separately from
   return/throw through conditional and try/finally completion, consumed by the
   loop, and followed by the outer continuation. An ascending finite `for` also

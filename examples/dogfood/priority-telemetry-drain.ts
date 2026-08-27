@@ -7,7 +7,7 @@
  * init pressure = 0
  * init priority = false
  * init sampled = false
- * action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? (priority ? queued * (queued - 1) / 2 : (sampled ? queued : 0)) : 0)
+ * action drain: queued' = queued > 0 ? 0 : queued, pressure' = pressure + (queued > 0 ? ((!priority && !sampled) ? 0 : (priority ? queued * (queued - 1) / 2 : queued)) : 0)
  */
 
 export interface PriorityTelemetryBacklog {
@@ -33,7 +33,8 @@ export function drainPriorityTelemetryBacklog(runtime: PriorityTelemetryBacklog)
   // is removed. Non-priority drains deliberately avoid this accounting path.
   while (runtime.queued > 0) {
     runtime.queued--;
+    if (!runtime.priority && !runtime.sampled) continue;
     if (runtime.priority) runtime.pressure += runtime.queued;
-    else if (runtime.sampled) runtime.pressure++;
+    else runtime.pressure++;
   }
 }

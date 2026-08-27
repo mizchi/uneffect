@@ -1643,10 +1643,15 @@ function validateRefinementActionBodiesInSource(
         const loopCompletion = collect(
           asBlock(statement.statement), receiver, runtimeClass, substitutions,
           loopUpdates, new Map(localValues), activeCalls,
-          false, false, false, false,
+          false, false, false, true,
           undefined, undefined, activeBreakLabels, activeContinueLabels,
         );
-        if (loopCompletion !== "normal") return undefined;
+        if (!loopCompletion) return undefined;
+        const hasOnlyConsumedContinue = isBooleanCompletionPredicate(completionPredicate(loopCompletion, "return"), false)
+          && isBooleanCompletionPredicate(completionPredicate(loopCompletion, "throw"), false)
+          && isBooleanCompletionPredicate(completionPredicate(loopCompletion, "break"), false)
+          && isBooleanCompletionPredicate(labeledCompletionPredicate(loopCompletion), false);
+        if (loopCompletion !== "normal" && !hasOnlyConsumedContinue) return undefined;
         const counterForm = decomposeAffineStateExpression(loopUpdates.get(counterName) ?? { kind: "name", name: counterName });
         const counterDelta = counterForm?.constant;
         if (!counterForm || counterForm.coefficients.size !== 1 || counterForm.coefficients.get(counterName) !== 1) return undefined;

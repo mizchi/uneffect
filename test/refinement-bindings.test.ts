@@ -2662,6 +2662,58 @@ describe("annotated refinement bindings", () => {
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
   });
 
+  it("consumes continue only after every path takes the affine ranking step", async () => {
+    const source = `/* uneffect:
+      state pending: int
+      state weighted: int
+      state audited: int
+      state priority: bool
+      init pending = 0
+      init weighted = 0
+      init audited = 0
+      init priority = false
+      action drain: pending' = pending > 0 ? 0 : pending, weighted' = weighted + (pending > 0 ? (!priority ? 0 : pending * (pending - 1) / 2) : 0), audited' = audited + (pending > 0 ? pending : 0)
+    */
+      interface Runtime { pending: number; weighted: number; audited: number; priority: boolean }
+      /* uneffect: refinement continueFinally@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement continueFinally@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement continueFinally@1 action drain */
+      export function drain(runtime: Runtime) {
+        while (runtime.pending > 0) {
+          try {
+            runtime.pending--
+            if (!runtime.priority) continue
+            runtime.weighted += runtime.pending
+          } finally {
+            runtime.audited++
+          }
+        }
+      }
+    `;
+    const temporal = parseSpec("continue-finally.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "continue-finally.ts", source, "continueFinally", temporal,
+    )).resolves.toEqual([]);
+
+    const skippedStep = source.replace(
+      "runtime.pending--\n            if (!runtime.priority) continue",
+      "if (!runtime.priority) continue\n            runtime.pending--",
+    );
+    expect(validateRefinementActionBodies(
+      "continue-finally-skipped-step.ts", skippedStep, "continueFinally", temporal,
+    )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }));
+
+    for (const [fileName, changed] of [
+      ["continue-finally-return.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) return")],
+      ["continue-finally-throw.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) throw false")],
+      ["continue-finally-break.ts", source.replace("if (!runtime.priority) continue", "if (!runtime.priority) break")],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "continueFinally", temporal)).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
+      );
+    }
+  });
+
   it("summarizes only terminating constant-delta state scale-up loops", async () => {
     const source = `/* uneffect:
       state active: int
