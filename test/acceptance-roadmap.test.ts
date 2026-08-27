@@ -1103,6 +1103,57 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     )).resolves.toEqual([]);
   });
 
+  it("owns mutable-local snapshots across scalar switch fallthrough and completion edges", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state kind: int
+       * init billed = 0
+       * init audited = 0
+       * init kind = 0
+       * action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2)))
+       */
+      interface Runtime { billed: number; audited: number; kind: number }
+      /* uneffect: refinement switchLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement switchLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement switchLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          switch (runtime.kind) {
+            case 0:
+              units = 2
+              break
+            case 1:
+              units = 3
+              return
+            case 2:
+              units = 4
+              throw units
+            case 3:
+              units = 5
+            default:
+              units += 1
+              break
+          }
+        } catch (amount) {
+          runtime.billed += units + amount
+          return
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification("switch-local.ts", source) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "switch-local.ts", source, "switchLocal", temporal,
+    )).resolves.toEqual([]);
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

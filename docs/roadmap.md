@@ -40,8 +40,10 @@ release date commitment.
    completion retains its separate environment; two throwing arms share the
    same phi contract. Mandatory `finally` now projects and joins the
    outer-visible snapshots owned by normal, direct-return, and supported typed
-   throw/catch-return predecessors. The next step is to extend edge-owned local
-   flow through scalar switches before loops.
+   throw/catch-return predecessors. Scalar switches now give every selected
+   entry/fallthrough path a local map and join normal/return/throw snapshots,
+   including default-free unmatched input. The next step is bounded finite-loop
+   edge ownership.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)

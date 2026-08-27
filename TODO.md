@@ -30,9 +30,11 @@ typed scalar throw/catch edge. Throw and normal predecessors retain distinct
 local snapshots, with acceptance, negative controls, adaptive-billing dogfood,
 measured benchmarks, and boundary documentation. A mandatory `finally` now
 observes the local snapshot owned by each normal, return, and supported typed
-throw/catch predecessor. The next slice should extend that ownership through
-scalar `switch`; loop, alias, catch/finally mutation, rethrow, and dispatch
-boundaries remain explicitly unsupported.
+throw/catch predecessor. Scalar `switch` now preserves those snapshots through
+case selection, fallthrough, break, default, return, and typed throw/catch. The
+next slice should carry the same ownership through bounded finite loops; alias,
+catch/finally mutation, rethrow, and dispatch boundaries remain explicitly
+unsupported.
 
 ## Active issue index
 
@@ -358,6 +360,7 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
         - [x] Carry each `if` predecessor's mutable-local snapshot into its own continuation, allowing one arm to return without executing the suffix while the normal arm uses its path-specific local values; retain throw/try/switch/loop/labeled/standalone-block joins as non-proofs.
         - [x] Carry initialized mutable-scalar snapshots on supported typed scalar throw edges into `catch` while preserving the distinct normally completing `try` snapshot; join two conditional throwing snapshots with the shared phi contract and reject opaque payloads, catch-side local mutation, rethrow, and missing edge evidence.
         - [x] Join the outer-visible mutable-scalar snapshots owned by normal, direct-return, and supported typed throw/catch-return predecessors before mandatory `finally`, so its state updates observe the correct path value; retain finally-local mutation and missing edge evidence as non-proofs.
+        - [x] Give each scalar `switch` entry/fallthrough path its own mutable-local environment, join normal continuation and return/throw edge snapshots by case selection (including unmatched default), and reject opaque discriminants, dynamic cases, nested-block mutation, and model-misaligned fallthrough.
         - [ ] Extend action-body refinement beyond the current sequential scalar/nested-member fragment plus native Set/Map operations, scalar branches/switch paths, bounded finite loops with target-aware nested label transfers, acyclic TypeChecker-resolved helpers, and the documented return/throw/catch/finally completion subset to general loop fixed points, arbitrary joins, methods, higher-order values, and dynamic dispatch. Multi-write sequencing, including distinct record members, is composed symbolically and scalar guard equivalence is solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
         - [ ] Extend invariant-body refinement beyond normalized scalar predicates, immutable local constants, and acyclic TypeChecker-resolved pure helper graphs to collections, higher-order values, and dynamic dispatch. Logical equivalence within the normalized scalar fragment is now solver-proven opt-in. ([#3](https://github.com/mizchi/uneffect/issues/3))
           - [x] Preserve object-parameter substitutions across multiple imported helper layers without mistaking same-named parameters in distinct scopes for alias cycles.

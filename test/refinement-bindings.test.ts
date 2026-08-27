@@ -3239,10 +3239,6 @@ describe("annotated refinement bindings", () => {
         "if (runtime.urgent) weight = 2",
         "while (runtime.urgent) { weight = 2; break }",
       )],
-      ["local-join-switch.ts", source.replace(
-        "if (runtime.urgent) weight = 2",
-        "switch (runtime.urgent) { case true: weight = 2; break; default: break }",
-      )],
       ["local-join-labeled.ts", source.replace(
         "if (runtime.urgent) weight = 2",
         "selected: { weight = 2; break selected }",
@@ -3395,6 +3391,87 @@ describe("annotated refinement bindings", () => {
     expect(validateRefinementActionBodies(
       "finally-local-mutation.ts", mutatedFinallyLocal, "finallyLocal", temporal,
     )).toContainEqual(expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }));
+  });
+
+  it("owns mutable-local snapshots across scalar switch paths", async () => {
+    const source = `/* uneffect:
+      state billed: int
+      state audited: int
+      state kind: int
+      init billed = 0
+      init audited = 0
+      init kind = 0
+      action record: billed' = kind === 1 ? billed : billed + (kind === 2 ? 8 : (kind === 3 ? 6 : 2)), audited' = audited + (kind === 1 ? 3 : (kind === 2 ? 4 : (kind === 3 ? 6 : 2)))
+    */
+      interface Runtime { billed: number; audited: number; kind: number }
+      /* uneffect: refinement switchLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement switchLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement switchLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          switch (runtime.kind) {
+            case 0: units = 2; break
+            case 1: units = 3; return
+            case 2: units = 4; throw units
+            case 3: units = 5
+            default: units += 1; break
+          }
+        } catch (amount) {
+          runtime.billed += units + amount
+          return
+        } finally {
+          runtime.audited += units
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = parseSpec("switch-local.ts", source).temporal;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "switch-local.ts", source, "switchLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const defaultFree = `/* uneffect:
+      state total: int
+      state kind: int
+      init total = 0
+      init kind = 0
+      action record: total' = total + (kind === 0 ? 2 : 1)
+    */
+      interface Runtime { total: number; kind: number }
+      /* uneffect: refinement defaultFreeSwitch@1 create */ export function createDefaultFree(initial: Runtime) { return initial }
+      /* uneffect: refinement defaultFreeSwitch@1 observe */ export function observeDefaultFree(runtime: Runtime) { return runtime }
+      /* uneffect: refinement defaultFreeSwitch@1 action record */
+      export function recordDefaultFree(runtime: Runtime) {
+        let units = 1
+        switch (runtime.kind) {
+          case 0: units = 2; break
+        }
+        runtime.total += units
+      }
+    `;
+    await expect(validateRefinementActionBodiesWithZ3(
+      "switch-local-default-free.ts", defaultFree, "defaultFreeSwitch",
+      parseSpec("switch-local-default-free.ts", defaultFree).temporal,
+    )).resolves.toEqual([]);
+
+    const brokenFallthrough = source.replace("case 3: units = 5", "case 3: units = 4");
+    await expect(validateRefinementActionBodiesWithZ3(
+      "switch-local-fallthrough.ts", brokenFallthrough, "switchLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    for (const [fileName, changed] of [
+      ["switch-local-opaque-discriminant.ts", source.replace("switch (runtime.kind)", "switch (Number(runtime.kind))")],
+      ["switch-local-dynamic-case.ts", source.replace("case 0:", "case runtime.audited:")],
+      ["switch-local-duplicate-case.ts", source.replace("case 1:", "case 0:")],
+      ["switch-local-nested-block.ts", source.replace("case 0: units = 2; break", "case 0: { units = 2 }; break")],
+    ] as const) {
+      expect(validateRefinementActionBodies(fileName, changed, "switchLocal", temporal), fileName).toContainEqual(
+        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
+      );
+    }
   });
 
   it("summarizes only terminating constant-delta state scale-up loops", async () => {

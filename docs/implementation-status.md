@@ -185,8 +185,12 @@ same property is proved for arbitrary TypeScript.
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.
   `try/finally` without `catch` also preserves its normal local environment.
-  Finally-local mutation, switch, loop, label, and standalone-block flow remain
-  non-proofs.
+  A scalar-switch extension assigns a separate local map to every expanded case
+  entry/fallthrough path, merges normal values by case selection, and carries
+  selected return/throw maps into the existing completion lattice. Default-free
+  unmatched input retains the pre-switch environment. Opaque discriminants,
+  dynamic/duplicate cases, nested-block case mutation, finally-local mutation,
+  loop, label, and standalone-block flow remain non-proofs.
   Finite loops are
   expanded into the same completion sequence as straight-line code, so an early return suppresses
   later iterations while a surrounding `finally` still runs. The

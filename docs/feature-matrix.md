@@ -97,13 +97,18 @@ the protected region, joins normal, direct-return, and supported typed
 throw/catch-return snapshots by their completion predicates, and evaluates its
 state updates over that joined environment. A `try/finally` without `catch`
 retains the normal predecessor explicitly.
+Scalar `switch` evaluates each case entry over its own local environment,
+retains source-ordered fallthrough and unlabeled break behavior, uses the
+pre-switch environment for an unmatched default-free path, and joins normal,
+return, and supported typed throw/catch snapshots by the selected case.
 The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch- or finally-side
-mutable-local writes, rethrows, mutable-local flow through `switch`, loops,
-labeled blocks, or standalone nested blocks remain unsupported rather than
-being approximated.
+mutable-local writes, rethrows, mutable-local flow through loops, labeled
+blocks, or standalone nested blocks, opaque switch discriminants,
+dynamic/duplicate case labels, and nested-block case mutation remain
+unsupported rather than being approximated.
 
 For the React row, event handlers and callback refs also include immutable
 component-local and write-screened module-local function/arrow callbacks

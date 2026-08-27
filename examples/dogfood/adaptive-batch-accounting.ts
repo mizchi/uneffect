@@ -1,26 +1,23 @@
 /* uneffect:
  * state billedUnits: int
  * state auditedUnits: int
- * state priority: bool
- * state retried: bool
+ * state billingMode: int
  * state suppressed: bool
  * state failed: bool
  * state cancelled: bool
  * init billedUnits = 0
  * init auditedUnits = 0
- * init priority = false
- * init retried = false
+ * init billingMode = 0
  * init suppressed = false
  * init failed = false
  * init cancelled = false
- * action record: billedUnits' = suppressed || cancelled ? billedUnits : billedUnits + (failed ? 4 : (retried ? (priority ? 5 : 4) : (priority ? 2 : 1))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 1 : (failed ? 2 : (retried ? (priority ? 5 : 4) : (priority ? 2 : 1))))
+ * action record: billedUnits' = suppressed || cancelled ? billedUnits : billedUnits + (failed ? 4 : (billingMode === 0 ? 1 : (billingMode === 1 ? 2 : (billingMode === 2 ? 5 : 4)))), auditedUnits' = suppressed ? auditedUnits : auditedUnits + (cancelled ? 1 : (failed ? 2 : (billingMode === 0 ? 1 : (billingMode === 1 ? 2 : (billingMode === 2 ? 5 : 4)))))
  */
 
 export interface AdaptiveBatchAccounting {
   billedUnits: number;
   auditedUnits: number;
-  priority: boolean;
-  retried: boolean;
+  billingMode: number;
   suppressed: boolean;
   failed: boolean;
   cancelled: boolean;
@@ -56,8 +53,19 @@ export function recordAdaptiveBatch(runtime: AdaptiveBatchAccounting): void {
       units = 2;
       throw units;
     }
-    if (runtime.priority) units = 2;
-    if (runtime.retried) units += 3;
+    switch (runtime.billingMode) {
+      case 0:
+        units = 1;
+        break;
+      case 1:
+        units = 2;
+        break;
+      case 2:
+        units = 2;
+      default:
+        units += 3;
+        break;
+    }
   } catch (failedUnits) {
     runtime.billedUnits += units + failedUnits;
     return;

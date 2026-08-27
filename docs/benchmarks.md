@@ -1483,3 +1483,13 @@ throw/catch-return local snapshots, projects outer-visible bindings, and joins
 them for the mandatory finally update. The changed workload and small sample
 count preclude a regression claim; this remains an observation rather than a
 CI budget and excludes finally-local mutation, switches, loops, and Z3.
+
+After replacing the normal priority/retry decisions with a scalar billing-mode
+switch whose priority-retry case falls through to the retry default, the
+filtered workload measured 1.4899 ms mean (671.17 operations/second over 336
+samples, 5.58% relative margin of error) on 2026-08-27. It now includes
+per-entry local maps, fallthrough expansion, default selection, selected
+completion metadata, and the existing return/catch/finally join. The workload
+changed and the sample count is small, so this is an observation rather than a
+regression claim or CI budget; it excludes loops, opaque/dynamic cases, nested
+case blocks, and Z3.

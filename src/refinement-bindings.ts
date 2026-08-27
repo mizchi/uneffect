@@ -2583,10 +2583,13 @@ function validateRefinementActionBodiesInSource(
         const branches: Array<{
           condition: TemporalExpression;
           updates: Map<string, TemporalExpression>;
+          locals: Map<string, TemporalExpression>;
           completion: ActionCompletion;
         }> = [];
         let defaultUpdates: Map<string, TemporalExpression> | undefined;
+        let defaultLocals: Map<string, TemporalExpression> | undefined;
         let defaultCompletion: ActionCompletion = "normal";
+        const beforeLocals = new Map(localValues);
         let caseIndex = 0;
         for (let entry = 0; entry < clauses.length; entry++) {
           const clause = clauses[entry]!;
@@ -2607,16 +2610,18 @@ function validateRefinementActionBodiesInSource(
             } else pathStatements.push(...statements);
           }
           const branchUpdates = new Map(before);
+          const branchLocals = new Map(beforeLocals);
           const branch = collect(
             ts.factory.createBlock(pathStatements, true), receiver, runtimeClass, substitutions,
-            branchUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+            branchUpdates, branchLocals, activeCalls, allowTerminalReturn, allowTerminalThrow,
             allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
             activeBreakLabels, activeContinueLabels,
           );
           if (!branch) return undefined;
-          if (condition) branches.push({ condition, updates: branchUpdates, completion: branch });
+          if (condition) branches.push({ condition, updates: branchUpdates, locals: branchLocals, completion: branch });
           else {
             defaultUpdates = branchUpdates;
+            defaultLocals = branchLocals;
             defaultCompletion = branch;
           }
         }
@@ -2632,6 +2637,18 @@ function validateRefinementActionBodiesInSource(
             };
           }
           if (!sameRefinementExpression(merged, { kind: "name", name })) updates.set(name, merged);
+        }
+        for (const name of [...beforeLocals.keys()].filter((candidate) => !candidate.startsWith("\u0000mutable:"))) {
+          const original = beforeLocals.get(name)!;
+          let merged = defaultLocals?.get(name) ?? original;
+          for (let index = branches.length - 1; index >= 0; index--) {
+            const branch = branches[index]!;
+            const value = branch.locals.get(name) ?? original;
+            if (!sameRefinementExpression(value, merged)) merged = {
+              kind: "conditional", condition: branch.condition, whenTrue: value, whenFalse: merged,
+            };
+          }
+          localValues.set(name, merged);
         }
         let caseMatched: TemporalExpression = { kind: "boolean", value: false };
         for (const branch of branches) caseMatched = orCompletionPredicates(caseMatched, branch.condition);
@@ -2693,6 +2710,8 @@ function validateRefinementActionBodiesInSource(
               completionLabels(branch.completion, "continue"),
               completionLabels(selectedCompletion, "continue"),
             ),
+            joinEdgeLocals(branch.condition, "throw", branch.completion, selectedCompletion),
+            joinEdgeLocals(branch.condition, "return", branch.completion, selectedCompletion),
           );
         }
         const switchCompletion = makeCompletion(
@@ -2703,6 +2722,8 @@ function validateRefinementActionBodiesInSource(
           completionPredicate(selectedCompletion, "continue"),
           completionLabels(selectedCompletion, "break"),
           completionLabels(selectedCompletion, "continue"),
+          completionThrowLocals(selectedCompletion),
+          completionReturnLocals(selectedCompletion),
         );
         if (switchCompletion !== "normal") {
           return applyContinuation(
@@ -2901,8 +2922,7 @@ function validateRefinementActionBodiesInSource(
             if (ts.isBlock(owner) && !ts.isFunctionLike(owner.parent) && !ts.isIfStatement(owner.parent)
               && !(ts.isTryStatement(owner.parent) && owner.parent.tryBlock === owner
                 && (!!owner.parent.catchClause || !!owner.parent.finallyBlock))) return undefined;
-            if (ts.isIterationStatement(owner, false) || ts.isSwitchStatement(owner)
-              || ts.isLabeledStatement(owner)) return undefined;
+            if (ts.isIterationStatement(owner, false) || ts.isLabeledStatement(owner)) return undefined;
             owner = owner.parent;
           }
           const current = localValues.get(node.left.text);

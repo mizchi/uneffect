@@ -1139,7 +1139,7 @@ describe("typed-array static verification", () => {
     );
   }, { time: 500, iterations: 20 });
 
-  bench("route mutable-local billing through return catch and finally", () => {
+  bench("route mutable-local billing through switch return catch and finally", () => {
     validateRefinementActionBodies(
       adaptiveBatchAccountingFile,
       adaptiveBatchAccountingSource,

@@ -365,6 +365,17 @@ cancelled, failed, and normal/retried paths with independent underbilling,
 under-audit, and cancelled-billing controls. Mutable-local switches, loops,
 labels, standalone blocks, catch/finally mutation, and rethrow remain non-proofs.
 
+A sixteenth case gives each scalar-switch entry its own mutable-local snapshot
+and joins selected normal, direct-return, and typed throw/catch-return edges.
+It covers unlabeled break, an explicit default, and case-three fallthrough into
+that default before mandatory finally observes the selected units. Changing the
+fallthrough value produces a Z3 action mismatch; an opaque discriminant,
+state-derived case label, or nested case block with a mutable write remains an
+explicit non-proof. Adaptive billing now uses a numeric billing-mode switch for
+base, priority, priority-retry fallthrough, and retry-default accounting while
+retaining suppressed, cancelled, and failed abrupt paths. Mutable-local loops,
+labels, standalone blocks, catch/finally mutation, and rethrow remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation
