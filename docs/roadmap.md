@@ -9,79 +9,15 @@ release date commitment.
 ## Phase 1 — Make proof boundaries dependable
 
 1. [General TypeScript-to-model refinement](https://github.com/mizchi/uneffect/issues/3)
-   completed its bounded exception-aware completion handoff. Remaining general
-   CFG fixed points moved to [#23](https://github.com/mizchi/uneffect/issues/23),
-   while alias/higher-order/dynamic abstraction work moved to
-   [#24](https://github.com/mizchi/uneffect/issues/24). A first unbounded directional affine-loop rule now
-   derives a closed form from a symbolic loop-entry state and signed constant
-   bound without finite expansion, including positive constant step magnitudes,
-   exact overshoot in both directions, triangular totals for unit-countdown
-   state deltas affine in the ranking counter, and a loop-invariant scalar
-   decision tree of at most eight affine leaves. Larger or dynamically changing
-   joins, arbitrary mutually coupled loops, and exception-heavy recurrences
-   remain. An unlabeled `continue` is consumed only after merged loop state
-   proves that every path took the ranking step, including mandatory `finally`.
-   A separate rule splits one loop-invariant early `break` from the repeating
-   path and permits up to eight independent non-counter affine updates on the
-   stopping path. A caught scalar failure can break after mandatory `finally`
-   advances the ranking counter by the ordinary iteration delta;
-   an invariant retry/stop policy can instead select continue while sharing the
-   same ranking `finally`. A disjunctive invariant stop policy may retain an
-   aligned path-wise affine update tree of at most eight leaves; it does not
-   select an arbitrary true disjunct. Nested aligned Boolean policies are now
-   handled by bounded propositional entailment over at most 16 invariant atoms,
-   preserving choices that the selected completion path does not determine.
-   Differently-counter-changing,
-   cross-state-coupled, non-affine, over-budget, unaligned, and dynamically
-   selected outcomes remain open.
-   As the first reusable CFG seam, state updates and initialized mutable scalar
-   locals now share one phi-join contract across normally completing sequential
-   `if` diamonds, including a returning arm whose suffix runs only with the
-   normal predecessor's local snapshot. Supported typed scalar throw edges now
-   carry their own mutable-local snapshot into `catch`, while normal `try`
-   completion retains its separate environment; two throwing arms share the
-   same phi contract. Mandatory `finally` now projects and joins the
-   outer-visible snapshots owned by normal, direct-return, and supported typed
-   throw/catch-return predecessors. Scalar switches now give every selected
-   entry/fallthrough path a local map and join normal/return/throw snapshots,
-   including default-free unmatched input. Bounded finite-loop expansion now
-   carries that map between iterations, keeps break/continue/return/throw edge
-   snapshots distinct through mandatory finally, and consumes loop-owned
-   transfers at their boundary. Ordinary standalone lexical blocks project
-   only outer-visible local snapshots through normal and abrupt exits.
-   Statically owned labeled blocks and bounded `for`/literal-`for...of` owner
-   labels now preserve and consume their own mutable-local transfer snapshots.
-   A normally completing catch can now mutate outer-visible scalars and join
-   them with the normal try predecessor before the common continuation. A catch
-   that returns directly after such a mutation carries its projected snapshot
-   through an enclosing mandatory finally without executing the suffix. A
-   direct scalar rethrow also carries its transformed snapshot and payload
-   through mandatory finally into an outer catch. Conditional catch return now
-   retains separate return and normal snapshots; only the normal catch result
-   joins the normal try predecessor and reaches the suffix. Conditional scalar
-   rethrow now does the same for payload-bearing throw versus normal catch
-   completion, preserving the former through finally into an outer catch. A
-   normally completing mandatory finally can now mutate the joined local map;
-   the same transformation is replayed over each incoming completion snapshot
-   before it survives to an outer finally or continuation. A catch-owned break
-   now retains its projected snapshot through mandatory finally and is consumed
-   by its owning bounded loop before the post-loop join. Catch-owned continue
-   likewise advances the next bounded iteration from its own snapshot, including
-   a statically resolved owning-loop label. A mutable-local finally may now
-   conditionally return or throw, overriding prior completion while retaining
-   its own snapshot and normalized throw payload for an outer finally/catch.
-   Finally-owned break and continue now override their predecessors and are
-   consumed at, or advance from, the owning bounded-loop boundary. The
-   statically resolved owner label is accepted; cross/nested capture remains a
-   non-proof. A shared completion contract now carries these kinds, targets,
-   predicates, payloads, and snapshots into Promise/resource analysis. The next
-   handoff now models statically owned bounded outer `continue` and `break`
-   paths after cleanup; unresolved ownership still fails closed. The next slice
-   now also composes caught awaited rejection through mandatory finally and
-   reverse mixed sync/async disposal. A nested fragment joins two independently
-   rejecting awaits through conditional recover/rethrow, releases the inner
-   async scope before an outer awaited continuation, and checks cleanup
-   precedence across containing scopes.
+   completed the shared exception-aware completion handoff used by refinement
+   and Promise/resource analysis. Its tested bounded fragment includes scalar
+   snapshot joins, owned transfers, selected affine loop summaries, and
+   catch/finally completion routing. Remaining arbitrary CFG fixed points are
+   owned by [#23](https://github.com/mizchi/uneffect/issues/23); alias,
+   higher-order, dynamic-dispatch, and abstraction evidence is owned by
+   [#24](https://github.com/mizchi/uneffect/issues/24). See
+   `implementation-status.md` and `feature-matrix.md` for the detailed completed
+   fragment and exclusions.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    is active. Its bounded outer `continue`/`break`, mixed-disposal rejection,
    and restricted nested-scope conditional-join slices are implemented. Nested

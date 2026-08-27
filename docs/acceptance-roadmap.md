@@ -2,7 +2,9 @@
 
 The executable product roadmap lives in
 `test/acceptance-roadmap.test.ts`. All current product scenarios are enabled;
-the narrower limitations below remain tracked in `TODO.md`.
+the exact supported boundary is tracked in `feature-matrix.md`, while unfinished
+work is owned by GitHub Issues. `TODO.md` is retained only as a historical
+implementation ledger.
 
 The target is not a collection of unrelated linters. It is one gradual
 contract layer for existing TypeScript:

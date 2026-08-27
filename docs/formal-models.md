@@ -227,4 +227,4 @@ derived from the static thenable type.
 | Cache facts do not survive overlapping invalidation | Temporal IR design | Implemented | Rust tests + Quint model |
 | Broken invalidation is observable | Quint model | Confirmed counterexample | Fixed-seed negative model |
 | Transferred values cannot be reused | HTML ownership semantics + Uneffect design | Implemented | TypeScript/Rust checks + Quint negative model |
-| Scoped glob actuals are subsets of declarations | Scoped-effect design | Not implemented | Planned automata/subset tests |
+| Scoped glob actuals are subsets of declarations | Scoped-effect design | Implemented for the documented path/URL/permission subset | TypeScript/Rust containment witnesses and negative tests |

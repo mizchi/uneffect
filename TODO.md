@@ -1,4 +1,4 @@
-# Uneffect implementation roadmap
+# Uneffect implementation ledger
 
 Last reconciled with GitHub Issues: 2026-08-27.
 
@@ -23,35 +23,20 @@ traceability and map to those issues rather than forming a second active queue.
 - `priority:P0` means a proof-boundary or reliability dependency, not that all
   P0 Issues should be developed concurrently.
 
-## Current focus
+## Current implementation snapshot
 
-[#9](https://github.com/mizchi/uneffect/issues/9) is the sole active issue.
-The checked fragment now carries initialized mutable-scalar snapshots through
-the documented branch, switch, bounded-loop, lexical-block, owned-label,
-return, supported scalar throw/catch, and normally completing mandatory
-`finally` paths. Catch-side direct/conditional return and supported scalar
-rethrow keep abrupt snapshots separate from normal catch completion.
+[#9](https://github.com/mizchi/uneffect/issues/9) is the sole active issue. The
+current tested fragment composes caught awaited rejection, mandatory `finally`,
+reverse sync/async disposal, bounded owned loop transfers, and one restricted
+nested-scope conditional join. The next Red/Green slice routes a rejecting inner
+async disposal through an enclosing catch/finally while preserving the active
+completion and completing remaining outer cleanup exactly once.
 
-The shared completion contract now carries normal/return/throw/break/continue,
-target identity, predicates, payloads, and edge snapshots. Refinement and
-Promise/resource analysis use the same owner test. Unified async lowering now
-consumes labeled `continue` and `break` paths owned by a canonical bounded outer
-`for` after loop-scoped async disposal; break reaches the first post-loop await
-without routing ordinary completion out of the loop. A function-scoped caught
-await rejection now traverses mandatory `finally` and mixed async/sync cleanup
-in reverse acquisition order. The nested fragment now carries two independently
-rejecting awaits through a conditional recover/rethrow join and mandatory
-finally, disposes an inner async scope before an outer awaited continuation,
-and extends the cleanup invariant across containing scopes. Generated Quint
-rejects reordered and skipped cleanup while floating and unresolved-label
-controls remain diagnostics. The next Red/Green slice composes nested disposal
-failure into an enclosing catch before moving to the general CFG fixed point.
-Cross/nested labels, dynamic
-loops, aliases, opaque throw payloads, and dynamic dispatch remain explicit
-non-proofs. The detailed tested
-fragment lives in `docs/feature-matrix.md`; the exact acceptance case and
-controls live in Issue #9. The completed refinement handoff remains in Issue
-#3; general CFG and dynamic-value successors are #23 and #24.
+This summary deliberately does not restate the full proof boundary. Use
+`docs/feature-matrix.md` for supported and unsupported user-visible behavior,
+Issue #9 for the next executable acceptance case and its negative controls,
+and `docs/implementation-status.md` for completed implementation detail. General
+CFG fixed points and dynamic-value evidence are owned by #23 and #24.
 
 ## Immediate execution queue
 
@@ -60,7 +45,7 @@ summary work; they are not parallel implementation promises.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Compose one rejected awaited operation through `catch`/`finally` and multiple sync/async disposals without suppressing floating errors. |
+| 1 | [#9](https://github.com/mizchi/uneffect/issues/9) | Route rejecting inner async disposal through enclosing `catch`/`finally`, preserve the active completion, and complete remaining outer cleanup exactly once. |
 | 2 | [#20](https://github.com/mizchi/uneffect/issues/20) | Cross-project refinement consumes provenance-preserving summaries without flattening compiler domains. |
 | 3 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
