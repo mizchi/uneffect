@@ -25,21 +25,34 @@ not a suitable single implementation branch.
 
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
-| 1 — Proof boundaries | #9, #20, #18 | 5–10 engineer-weeks | Medium |
+| 1 — Proof boundaries | #9, #20, #18 | 4–8 engineer-weeks | Medium |
 | 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 18–35 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 23–45 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 14 open Issues | **52–102 engineer-weeks** | Low |
+| **Total additive effort** | 14 open Issues | **51–100 engineer-weeks** | Low |
 
-The total is deliberately additive and must not be read as calendar duration.
-Some Phase 2/3 research can run independently, but dependencies and the policy
-of keeping only one active proof-boundary Issue limit useful parallelism.
+The total is deliberately additive and must not be read as calendar duration or
+as the cost of a useful first release. Some Phase 2/3 research can run
+independently, but dependencies and the policy of keeping only one active
+proof-boundary Issue limit useful parallelism.
+
+There are three useful planning numbers:
+
+- **Phase 1 critical path: 4–8 engineer-weeks.** Land #9, complete #20, then
+  implement the first exact #18 module-ordering fragment.
+- **One focused product line: roughly 12–27 engineer-weeks after Phase 1.** For
+  example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
+  prioritizes #23, the first #24 alias slice, and #6. These alternatives should
+  not be added together unless both products are required.
+- **All currently requested work: 51–100 engineer-weeks.** This includes
+  production integration, broad React/event-loop semantics, native parity, and
+  proof-consuming optimization. It is a multi-phase research backlog.
 
 ## Issue-level remaining volume
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #9 Promise/exception/resource flow | M | 1–2 weeks | Resource-generation identity through one supported outer loop | Reacquisition, disposal generations, and floating rejection ownership |
+| 1 | #9 Promise/exception/resource flow | S (landing) | 1–3 days | Land the focused-test-green two-iteration resource-generation slice, document its exact shape, and pass full local/remote CI | Solver stability and ensuring the narrow recognizer remains fail-closed |
 | 2 | #20 TypeScript project parity | M | 1–2 weeks | One provenance-preserving scalar refinement across a direct project reference | Declaration transforms and compiler-domain compatibility |
 | 3 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 4 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
@@ -56,7 +69,7 @@ of keeping only one active proof-boundary Issue limit useful parallelism.
 
 ## Recommended delivery checkpoints
 
-1. **Usable local proof boundary (5–10 weeks):** finish #9 and #20, then the
+1. **Usable local proof boundary (4–8 weeks):** finish #9 and #20, then the
    supported exact module-initialization slice in #18. This is the shortest path
    to making assurance survive realistic project composition.
 2. **General analysis foundation (10–19 additional weeks):** prioritize #23,
@@ -78,3 +91,15 @@ of keeping only one active proof-boundary Issue limit useful parallelism.
   to narrow the next estimate.
 - A proof result that depends on an unimplemented boundary remains `unknown`;
   schedule pressure does not reduce the acceptance criteria.
+
+## Estimate status and non-claims
+
+- The #9 reduction is based on a present worktree candidate whose focused
+  acceptance, negative-control, and dogfood tests pass. It is not counted as
+  implemented until the repository's landing policy is satisfied.
+- Estimates for #13, #16, and #24 remain epic-level placeholders. Each must be
+  split into a bounded child Issue before activation; their upper bounds are
+  materially less certain than Phase 1.
+- No estimate assumes that bounded Quint exploration proves unbounded JavaScript
+  or host semantics. Unsupported CFG, alias, host, and solver cases stay
+  explicit `unknown` results.

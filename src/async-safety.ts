@@ -1972,8 +1972,23 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     const iterations = Number(loop.condition.right.text) - Number(declaration.initializer.text);
     return Number.isSafeInteger(iterations) && iterations > 0 && iterations <= 8 ? iterations : undefined;
   };
-  const isUsingStatement = (statement: ts.Statement): boolean => ts.isVariableStatement(statement)
+  const isUsingStatement = (statement: ts.Statement): statement is ts.VariableStatement => ts.isVariableStatement(statement)
     && (statement.declarationList.flags & ts.NodeFlags.Using) === ts.NodeFlags.Using;
+  const isDirectAwaitStatement = (statement: ts.Statement): boolean => ts.isExpressionStatement(statement)
+    && ts.isAwaitExpression(statement.expression);
+  const isBoundedConditionalResourceScope = (statement: ts.Statement): boolean => {
+    if (!ts.isIfStatement(statement) || !statement.elseStatement || !ts.isIdentifier(statement.expression)) return false;
+    const predicateType = checker.getTypeAtLocation(statement.expression);
+    if (!(predicateType.flags & ts.TypeFlags.BooleanLike)) return false;
+    const branchIsBounded = (branch: ts.Statement): boolean => {
+      if (!ts.isBlock(branch) || branch.statements.length < 2) return false;
+      const [resource, ...work] = branch.statements;
+      return Boolean(resource && isUsingStatement(resource)
+        && resource.declarationList.declarations.length === 1
+        && work.every(isDirectAwaitStatement));
+    };
+    return branchIsBounded(statement.thenStatement) && branchIsBounded(statement.elseStatement);
+  };
   const resolveTransferOwner = (
     statement: ts.Statement,
     completion: LoopTransferKind,
@@ -1992,8 +2007,11 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
       if (!owns) continue;
       if (!ts.isForStatement(current) || !ts.isBlock(current.statement)) return undefined;
       const tryIndex = current.statement.statements.indexOf(tryNode);
+      const prefix = current.statement.statements.slice(0, tryIndex);
+      const conditionalScopes = prefix.filter(isBoundedConditionalResourceScope);
       if (tryIndex !== current.statement.statements.length - 1
-        || !current.statement.statements.slice(0, tryIndex).every(isUsingStatement)) return undefined;
+        || conditionalScopes.length > 1
+        || !prefix.every((statement) => isUsingStatement(statement) || isBoundedConditionalResourceScope(statement))) return undefined;
       const iterations = boundedForIterations(current);
       if (!iterations) return undefined;
       const spanNode = labeled ?? current;
@@ -2317,6 +2335,8 @@ interface UnifiedAsyncQuintOptions {
   throwBeforeCleanup?: boolean;
   bypassThrowHandler?: boolean;
   skipNormalContinuation?: boolean;
+  reacquireBeforeLoopCleanup?: boolean;
+  bypassCaughtRejection?: boolean;
 }
 
 export function generateUnifiedAsyncQuint(
@@ -2824,6 +2844,19 @@ export function generateUnifiedAsyncQuint(
       ["pc", String(entryPc)],
       [iteration, `${iteration} + 1`],
     ]));
+    if (options.reacquireBeforeLoopCleanup) for (const disposalIndex of disposalIndexes) {
+      const resourceIndex = resourceIndexForDisposal(disposalIndex);
+      emit(`continue_${transferName}_reacquire_before_cleanup_${labels[resourceIndex]}`, [
+        `pc == ${decisionPc}`,
+        `${iteration} < ${transferOwner.iterations - 1}`,
+        `acquired_${resourceIndex}`,
+      ], new Map([
+        ["pc", String(entryPc)],
+        [iteration, `${iteration} + 1`],
+        [`disposed_${resourceIndex}`, "false"],
+        [`disposed_generation_${resourceIndex}`, "-1"],
+      ]));
+    }
     emit(`continue_${transferName}_exit`, [
       `pc == ${decisionPc}`,
       `${iteration} >= ${transferOwner.iterations - 1}`,
@@ -3074,6 +3107,12 @@ export function generateUnifiedAsyncQuint(
     if (!observation.catchesRejection) rejectionUpdates.set("completion", "1");
     if (!observation.catchesRejection) rejectionUpdates.set("disposal_failure_pending", "false");
     emit(`promise_${chain}_${observation.catchesRejection ? "reject_caught" : "reject_escapes"}`, guards, rejectionUpdates);
+    if (options.bypassCaughtRejection && observation.catchesRejection && eventRegionLayout?.catchLayout.length) {
+      emit(`promise_${chain}_reject_without_handler`, guards, new Map([
+        ["pc", String(eventRegionLayout.finallyLayout.length ? eventRegionLayout.finallyPc : continuationPc(eventRegion!.fullSpan.end))],
+        ["broken", "true"],
+      ]));
+    }
     if (options.prematureDisposalHandler && protectedCleanup && eventRegionLayout?.catchLayout.length) emit(
       `promise_${chain}_reject_premature_handler`,
       guards,
@@ -3244,6 +3283,13 @@ export function generateUnifiedAsyncQuint(
   const sequentialResourceJoinSafety = sequentialResourcePairs.map(([earlierIndex, laterIndex]) =>
     `(not(acquired_${laterIndex}) or not(acquired_${earlierIndex}) or (disposed_${earlierIndex} and disposed_generation_${earlierIndex} == generation_${earlierIndex}))`,
   ).join(" and ") || "true";
+  const loopGenerationSafety = transferLayouts.flatMap(({ transferOwner, disposalIndexes }) => {
+    const iteration = `loop_iteration_${safe(transferOwner.id)}`;
+    return disposalIndexes.map((disposalIndex) => {
+      const resourceIndex = resourceIndexForDisposal(disposalIndex);
+      return `(not(acquired_${resourceIndex}) or ${iteration} == 0 or generation_${resourceIndex} == ${iteration} + 1 or (disposed_${resourceIndex} and disposed_generation_${resourceIndex} == generation_${resourceIndex}))`;
+    });
+  }).join(" and ") || "true";
   const returnCompletionSafety = returnCompletions.map((completion) => {
     const containingResources = resources.map((resource, index) => ({ resource, index })).filter(({ resource }) => {
       const start = Number(resource.scopeId.slice(resource.scopeId.lastIndexOf("@") + 1));
@@ -3278,6 +3324,6 @@ export function generateUnifiedAsyncQuint(
     const laterAcquired = fact.laterResourceIndexes.map((index) => `acquired_${index}`).join(" or ") || "false";
     return `(pc != -2 or completion != 0 or branch_${branch} != ${normalValue} or handled_cleanup_failure or (${laterAcquired}))`;
   }).join(" and ") || "true";
-  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val sequentialResourceJoinSafe = ${sequentialResourceJoinSafety}`, `  val returnCompletionSafe = ${returnCompletionSafety}`, `  val throwCompletionSafe = ${throwCompletionSafety}`, `  val normalContinuationSafe = ${normalContinuationSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and sequentialResourceJoinSafe and returnCompletionSafe and throwCompletionSafe and normalContinuationSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
+  lines.push("", `  val branchResourceSafe = ${branchResourceSafety}`, `  val branchResourceExclusiveSafe = ${branchResourceExclusivity}`, `  val sequentialResourceJoinSafe = ${sequentialResourceJoinSafety}`, `  val loopGenerationSafe = ${loopGenerationSafety}`, `  val returnCompletionSafe = ${returnCompletionSafety}`, `  val throwCompletionSafe = ${throwCompletionSafety}`, `  val normalContinuationSafe = ${normalContinuationSafety}`, `  val disposalAcquisitionSafe = ${disposalAcquisitionSafety}`, `  val cleanupOrderSafe = ${cleanupOrder}`, "  val disposalSuppressionSafe = disposal_failure_count == disposal_failure_events", `  val handlerAfterCleanupSafe = not(handled_cleanup_failure) or (${caughtDisposalsFinished})`, "  val disposalHandlerSafe = (pc != -1 and pc != -2) or not(disposal_failure_pending)", `  val resourceSafe = not(broken) and branchResourceSafe and branchResourceExclusiveSafe and sequentialResourceJoinSafe and loopGenerationSafe and returnCompletionSafe and throwCompletionSafe and normalContinuationSafe and disposalAcquisitionSafe and cleanupOrderSafe and disposalSuppressionSafe and handlerAfterCleanupSafe and disposalHandlerSafe and ((pc != -1 and pc != -2) or (${disposed}))`, "}", "");
   return lines.join("\n");
 }

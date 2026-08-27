@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 52–102 engineer-weeks; this is implementation volume, not a calendar
+estimate is 51–100 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -36,8 +36,10 @@ commitment.
    decision now retains cleanup and mandatory `finally` while excluding later
    normal work. Its typed throw-versus-normal counterpart now cleans up before
    catch, distinguishes recovery from rethrow, and excludes later normal work
-   without weakening floating-error checks. Resource generations through a
-   supported outer loop remain here; general scalar CFG
+   without weakening floating-error checks. A focused-test-green worktree
+   candidate now preserves branch-selected resource generations through one
+   canonical two-iteration outer loop; it remains active until documentation,
+   full validation, landing, and remote CI complete. General scalar CFG
    fixed points and dynamic alias evidence are separately owned by #23 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI

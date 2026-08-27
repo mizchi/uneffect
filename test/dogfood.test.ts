@@ -260,6 +260,27 @@ describe("Uneffect dogfood", () => {
     expect(quint).toContain("val normalContinuationSafe");
   });
 
+  it("keeps conditional resource generations distinct across a bounded loop", () => {
+    const fileName = "examples/dogfood/conditional-loop-resource-generations.ts";
+    const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
+    expect(result.controlTransferOwners).toEqual([
+      expect.objectContaining({
+        owner: "deliverConditionalGenerations",
+        iterations: 2,
+        transfers: expect.arrayContaining(["break", "continue"]),
+      }),
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint(
+      "conditional_loop_resource_generations",
+      result,
+      "deliverConditionalGenerations",
+    );
+    expect(quint).toContain("val loopGenerationSafe");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(quint).toContain("action break_attempts_exit");
+  });
+
   it("enforces a telemetry Generator lazy-effect budget through the project API", async () => {
     const fileName = "examples/dogfood/telemetry-generator-budget.ts";
     const source = readFileSync(fileName, "utf8");

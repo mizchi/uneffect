@@ -3161,6 +3161,33 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
       .toBeLessThan(quint.indexOf("action promise_1_fulfill"));
   });
 
+  it("keeps conditional resource generations distinct across a bounded outer loop", () => {
+    const analyzeAsync = futureApi("analyzeAsyncSafety");
+    const generateUnified = futureApi("generateUnifiedAsyncQuint");
+    const fileName = "examples/dogfood/conditional-loop-resource-generations.ts";
+    const result = analyzeAsync(fileName, readFileSync(fileName, "utf8")) as {
+      resources: Array<{ binding: string; conditional: boolean }>;
+      controlTransferOwners: Array<{ iterations: number; transfers: string[] }>;
+      diagnostics: Array<{ kind: string }>;
+    };
+    expect(result.resources.filter(({ binding }) => binding === "primary" || binding === "secondary"))
+      .toEqual([
+        expect.objectContaining({ binding: "primary", conditional: true }),
+        expect.objectContaining({ binding: "secondary", conditional: true }),
+      ]);
+    expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({
+      iterations: 2,
+      transfers: expect.arrayContaining(["break", "continue"]),
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+
+    const quint = generateUnified("conditional_loop_resource_generations", result, "deliverConditionalGenerations") as string;
+    expect(quint).toContain("val loopGenerationSafe");
+    expect(quint).toMatch(/generation_primary.*generation_primary \+ 1|generation_1' = generation_1 \+ 1/);
+    expect(quint).toContain("disposed_generation");
+  });
+
   it("preserves a caught rejection through finally and reverse mixed disposal", () => {
     const analyzeAsync = futureApi("analyzeAsyncSafety");
     const generateUnified = futureApi("generateUnifiedAsyncQuint");

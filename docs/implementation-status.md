@@ -387,6 +387,17 @@ same property is proved for arbitrary TypeScript.
   handler entry, and floating rejection remain negative controls. Indirect or
   expression-level throw production, more than two stages, and arbitrary CFGs
   remain unsupported.
+- A generation-aware loop extension accepts one canonical two-iteration outer
+  `for` whose body contains one complete Boolean-identifier `if`/`else`. Each
+  branch acquires exactly one lexical async resource and performs only direct
+  awaited expression statements before a final `try` owns the already supported
+  labeled `continue`/`break`. `loopGenerationSafe` prevents disposal evidence
+  from iteration one satisfying iteration two, while branch cleanup completes
+  before the iteration join. Stale-generation reuse, reacquisition before prior
+  cleanup, wrong/skipped cleanup, caught-rejection bypass, floating Promise,
+  dynamic/over-budget bounds, expression predicates, incomplete branches, and
+  alias escape are negative controls. This is deliberately not a loop fixed
+  point or escaping-alias analysis; those remain #23 and #24 respectively.
 - Promise executors, reactions, `await`, `try`/`catch`, floating rejection
   diagnostics, and the major Promise combinators have executable models for
   the documented fragments. The ownership fixed point routes explicit `throw`

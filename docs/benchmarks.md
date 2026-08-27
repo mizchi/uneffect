@@ -1779,3 +1779,17 @@ cleanup-before-throw, handler bypass, skipped normal continuation,
 wrong/skipped cleanup, premature handler entry, incomplete/overlapping paths,
 and floating rejection. The timing is not a CI budget or evidence for indirect
 throw expressions, outer-loop resource generations, or arbitrary CFGs.
+
+The conditional-loop-resource-generations workload performs one complete
+Boolean-selected async-resource choice in each of two canonical outer-loop
+iterations, lowers branch cleanup before the iteration join, and emits
+`loopGenerationSafe` to distinguish reacquisition generations. A filtered run
+on 2026-08-28 measured 135.53 ms mean (7.3784 operations/second over 20 fixed
+iterations, 2.55% relative margin of error). This includes cold TypeScript
+parsing/type checking and Quint source generation but excludes Quint execution.
+Separate tests run the positive model, prove the generation invariant
+load-bearing, and reject stale-generation reuse, reacquisition before cleanup,
+wrong/skipped cleanup, caught-rejection bypass, floating Promise,
+dynamic/over-budget bounds, expression predicates, incomplete branches, and
+alias escape. The timing is not a CI budget or evidence for arbitrary loop
+bodies, loop fixed points, or escaping-alias generation tracking.

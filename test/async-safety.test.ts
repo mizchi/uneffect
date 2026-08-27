@@ -2737,6 +2737,104 @@ describe("async error and explicit resource safety", () => {
     expect(run(stale, 32).status).not.toBe(0);
   }, 20_000);
 
+  it("keeps conditional resource generations distinct across bounded continue and break", () => {
+    const fileName = "examples/dogfood/conditional-loop-resource-generations.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.controlTransferOwners).toEqual([
+      expect.objectContaining({
+        owner: "deliverConditionalGenerations",
+        label: "attempts",
+        iterations: 2,
+        transfers: expect.arrayContaining(["break", "continue"]),
+      }),
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "floating-promise" }));
+    const quint = generateUnifiedAsyncQuint(
+      "conditional_loop_resource_generations",
+      result,
+      "deliverConditionalGenerations",
+    );
+    expect(quint).toContain("val loopGenerationSafe");
+    expect(quint).toContain("action continue_attempts_repeat");
+    expect(quint).toContain("action break_attempts_exit");
+    expect(run(quint, 48).status).toBe(0);
+
+    for (const [name, options] of [
+      ["reuse_stale_disposal", { reuseStaleDisposal: true }],
+      ["reacquire_before_cleanup", { reacquireBeforeLoopCleanup: true }],
+      ["skip_scope_cleanup", { skipScopeCleanup: true }],
+      ["wrong_branch_cleanup", { wrongBranchCleanup: true }],
+      ["skip_transfer_cleanup", { skipTransferCleanup: true }],
+      ["bypass_caught_rejection", { bypassCaughtRejection: true }],
+    ] as const) {
+      const broken = generateUnifiedAsyncQuint(
+        `conditional_loop_resource_generations_${name}`,
+        result,
+        "deliverConditionalGenerations",
+        options,
+      );
+      expect(run(broken, 48).status, name).not.toBe(0);
+    }
+
+    const stale = generateUnifiedAsyncQuint(
+      "conditional_loop_resource_generations_load_bearing",
+      result,
+      "deliverConditionalGenerations",
+      { reacquireBeforeLoopCleanup: true },
+    );
+    expect(run(stale.replace(/val loopGenerationSafe = .*$/m, "val loopGenerationSafe = true"), 48).status)
+      .toBe(0);
+
+    const dynamic = analyzeAsyncSafety("conditional-loop-dynamic.ts", source.replace(
+      "attempt < 2",
+      "attempt < Number.MAX_SAFE_INTEGER",
+    ));
+    expect(dynamic.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+
+    const overBudget = analyzeAsyncSafety("conditional-loop-over-budget.ts", source.replace("attempt < 2", "attempt < 9"));
+    expect(overBudget.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+
+    const expressionPredicate = analyzeAsyncSafety("conditional-loop-expression.ts", source.replace(
+      "if (usePrimary)",
+      "if (!usePrimary)",
+    ));
+    expect(expressionPredicate.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+
+    const incomplete = analyzeAsyncSafety("conditional-loop-incomplete.ts", source.replace(
+      `    } else {
+      await using secondary = openSecondary();
+      await secondary.send().then(() => undefined);
+    }`,
+      "    }",
+    ));
+    expect(incomplete.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+
+    const escaped = analyzeAsyncSafety("conditional-loop-escape.ts", source
+      .replace(
+        "): Promise<void> {",
+        "): Promise<void> {\n  let escaped: ConditionalLoopChannel | undefined;",
+      )
+      .replace(
+        "      await primary.send().then(() => undefined);",
+        "      await primary.send().then(() => undefined);\n      escaped = primary;",
+      )
+      .replace(
+        "  await report().then(() => undefined);",
+        "  void escaped;\n  await report().then(() => undefined);",
+      ));
+    expect(escaped.diagnostics).toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+
+    const floating = analyzeAsyncSafety("conditional-loop-floating.ts", source.replace(
+      "await secondary.send().then(() => undefined);",
+      "secondary.send().then(() => undefined);",
+    ));
+    expect(floating.diagnostics).toContainEqual(expect.objectContaining({
+      functionName: "deliverConditionalGenerations",
+      kind: "floating-promise",
+    }));
+  }, 120_000);
+
   it("disposes before a bounded outer break reaches its post-loop await", () => {
     const fileName = "examples/dogfood/target-aware-break-cleanup.ts";
     const result = analyzeAsyncSafety(fileName, readFileSync(fileName, "utf8"));
