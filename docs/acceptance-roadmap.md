@@ -415,8 +415,9 @@ A twentieth case starts a normally completing catch from the mutable-local
 snapshot owned by a typed integer throw. The catch adds the payload to that
 local, projects away its binding, and joins the recovered value with the normal
 try predecessor before a common state update. The failed path contributes four
-units and the normal path two; a wrong recovery is rejected by Z3. Mutation
-followed by rethrow remains an explicit non-proof. Adaptive billing now uses
+units and the normal path two; a wrong recovery is rejected by Z3. At this
+slice mutation followed by rethrow remained a non-proof; the twenty-third case
+below closes the direct normalized-scalar form. Adaptive billing now uses
 the caught failure amount to update its local charge, passes the result through
 mandatory `finally` audit, and performs common billing afterward. Opaque
 payloads, abrupt catch-side mutation, finally-side mutation, alias escape, and
@@ -439,12 +440,23 @@ A twenty-second case starts `catch` from a typed throw's mutable-local snapshot,
 adds the caught scalar, and returns directly. The projected value remains owned
 by that return edge, so an enclosing mandatory `finally` audits four units on
 failure while the normal predecessor audits and bills two. A deliberately
-wrong catch increment is rejected by Z3, and replacing the return with a
-mutable-local rethrow remains an explicit non-proof. Adaptive batch accounting
+wrong catch increment is rejected by Z3. Replacing the return with a direct
+scalar rethrow is now analyzed and produces a model mismatch because billing
+no longer occurs; the nested positive form appears in the next case. Adaptive batch accounting
 now audits failed batches through this edge without billing them; an injected
 failure-side billing write produces an action mismatch. Conditional catch
 return, break/continue/label transfer, alias escape, and mutable-local rethrow
 remain open.
+
+A twenty-third case mutates a scalar in an inner catch, rethrows the normalized
+result, and carries both the new local snapshot and payload through mandatory
+`finally` into an outer catch. Failure audits four units and recovers eight;
+normal completion audits and recovers two. A wrong normalization is rejected by
+Z3, while an opaque `Error` rethrow remains unsupported. The rethrow batch
+accounting dogfood applies the same shape to validation-charge normalization
+and rejects both an off-by-one charge and opaque rethrow. Conditional
+return/rethrow, catch-owned break/continue/labels, abrupt finally mutation,
+alias escape, and general CFG joins remain open.
 
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact

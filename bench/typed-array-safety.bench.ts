@@ -153,6 +153,9 @@ const circuitBreakerTelemetrySpec = parseSpec(circuitBreakerTelemetryFile, circu
 const adaptiveBatchAccountingFile = "examples/dogfood/adaptive-batch-accounting.ts";
 const adaptiveBatchAccountingSource = readFileSync(adaptiveBatchAccountingFile, "utf8");
 const adaptiveBatchAccountingSpec = parseSpec(adaptiveBatchAccountingFile, adaptiveBatchAccountingSource).temporal;
+const rethrowBatchAccountingFile = "examples/dogfood/rethrow-batch-accounting.ts";
+const rethrowBatchAccountingSource = readFileSync(rethrowBatchAccountingFile, "utf8");
+const rethrowBatchAccountingSpec = parseSpec(rethrowBatchAccountingFile, rethrowBatchAccountingSource).temporal;
 const boundedBatchBillingFile = "examples/dogfood/bounded-batch-billing.ts";
 const boundedBatchBillingSource = readFileSync(boundedBatchBillingFile, "utf8");
 const boundedBatchBillingSpec = parseSpec(boundedBatchBillingFile, boundedBatchBillingSource).temporal;
@@ -1148,6 +1151,15 @@ describe("typed-array static verification", () => {
       adaptiveBatchAccountingSource,
       "adaptiveBatchAccounting",
       adaptiveBatchAccountingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("carry mutable-local recovery through nested rethrow and finally", () => {
+    validateRefinementActionBodies(
+      rethrowBatchAccountingFile,
+      rethrowBatchAccountingSource,
+      "rethrowBatchAccounting",
+      rethrowBatchAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

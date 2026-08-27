@@ -2482,16 +2482,22 @@ function validateRefinementActionBodiesInSource(
             const catchMutatesVisibleLocal = hasMutableCatchLocals && catchVisibleNames.some((name) =>
               !name.startsWith("\u0000mutable:")
               && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
-            const catchHasUnsupportedMutableAbrupt = !isBooleanCompletionPredicate(
-              completionPredicate(catchCompletion, "throw"), false,
-            ) || !isBooleanCompletionPredicate(
+            const catchThrowWhen = completionPredicate(catchCompletion, "throw");
+            const catchHasConditionalRethrow = !isBooleanCompletionPredicate(catchThrowWhen, false)
+              && !isBooleanCompletionPredicate(catchThrowWhen, true);
+            const catchHasUnsupportedMutableAbrupt = catchHasConditionalRethrow || !isBooleanCompletionPredicate(
               completionPredicate(catchCompletion, "break"), false,
             ) || !isBooleanCompletionPredicate(
               completionPredicate(catchCompletion, "continue"), false,
             ) || !isBooleanCompletionPredicate(labeledCompletionPredicate(catchCompletion), false);
             if (catchMutatesVisibleLocal && catchHasUnsupportedMutableAbrupt) return undefined;
-            if (!isBooleanCompletionPredicate(completionPredicate(catchCompletion, "throw"), false)
-              && [...catchLocals.keys()].some((name) => name.startsWith("\u0000mutable:"))) return undefined;
+            const rawCatchThrowLocals = completionThrowLocals(catchCompletion);
+            const catchThrowLocals = hasMutableCatchLocals && rawCatchThrowLocals
+              ? projectLocalSnapshot(rawCatchThrowLocals, catchVisibleNames)
+              : rawCatchThrowLocals;
+            if (hasMutableCatchLocals
+              && !isBooleanCompletionPredicate(catchThrowWhen, false)
+              && !catchThrowLocals) return undefined;
             if (catchCompletion === "normal" && projectedCatchLocals) {
               postCatchLocals = isBooleanCompletionPredicate(throwWhen, true)
                 ? projectedCatchLocals
@@ -2544,7 +2550,7 @@ function validateRefinementActionBodiesInSource(
                 completionLabels(catchCompletion, "continue"),
                 throwWhen,
               ),
-              completionThrowLocals(catchCompletion),
+              catchThrowLocals,
               residualReturnLocals,
               joinEdgeLocals(throwWhen, "break", catchCompletion, tryCompletion),
               joinEdgeLocals(throwWhen, "continue", catchCompletion, tryCompletion),

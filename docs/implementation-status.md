@@ -185,9 +185,11 @@ same property is proved for arbitrary TypeScript.
   before the common continuation. A direct catch return may now retain that
   projected mutation on its return edge, including through an enclosing
   mandatory `finally`; the normal try predecessor remains distinct and alone
-  reaches the suffix. Catch mutation followed by rethrow, break/continue/label
-  transfer, or conditional return remains a non-proof. Opaque payloads and
-  mutable-local rethrow also remain non-proofs. A mandatory-`finally` extension records direct
+  reaches the suffix. A direct supported scalar rethrow also projects its
+  transformed snapshot and normalized payload onto the throw edge, including
+  through mandatory `finally`, so an outer catch starts from matching evidence.
+  Conditional rethrow/return, break/continue/label transfer, and opaque rethrow
+  payloads remain non-proofs. A mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.

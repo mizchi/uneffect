@@ -3330,17 +3330,22 @@ describe("annotated refinement bindings", () => {
       code: "action-update-mismatch", modelName: "record",
     }));
 
-    for (const [fileName, changed] of [
-      ["caught-local-opaque-payload.ts", source.replace("throw units", "throw new Error('failed')")],
-      ["caught-local-rethrow.ts", source.replace(
-        "runtime.audited++\n          return",
-        "runtime.audited++\n          throw amount",
-      )],
-    ] as const) {
-      expect(validateRefinementActionBodies(fileName, changed, "caughtLocal", temporal), fileName).toContainEqual(
-        expect.objectContaining({ code: "unsupported-action-body", modelName: "record" }),
-      );
-    }
+    const opaquePayload = source.replace("throw units", "throw new Error('failed')");
+    expect(validateRefinementActionBodies(
+      "caught-local-opaque-payload.ts", opaquePayload, "caughtLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+
+    const rethrow = source.replace(
+      "runtime.audited++\n          return",
+      "runtime.audited++\n          throw amount",
+    );
+    expect(validateRefinementActionBodies(
+      "caught-local-rethrow.ts", rethrow, "caughtLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
 
     const finallyWrite = source.replace(
       "          return\n        }\n        runtime.billed",

@@ -1530,6 +1530,15 @@ not a regression claim or CI budget. It excludes Z3, mutable-local rethrow,
 conditional catch completion, abrupt finally overrides, and general CFG fixed
 points.
 
+The normalized rethrow batch accounting workload uses nested catches and one
+mandatory `finally` to carry a mutated scalar snapshot and its rethrown payload
+to an outer recovery boundary. A filtered run on 2026-08-27 measured 0.3590 ms
+mean (2,785.32 operations/second over 1,393 samples, 8.56% relative margin of
+error). This warm static-analysis measurement excludes parsing and Z3 and is
+an observation rather than a CI budget or comparison. Conditional or opaque
+rethrows, abrupt finally mutation, aliases, and general CFG fixed points remain
+outside the measured fragment.
+
 The bounded batch billing workload carries one initialized mutable scalar
 through four finite `for...of` iterations and normal, break, continue, return,
 typed throw/catch, and mandatory-finally edges. After placing the per-sink

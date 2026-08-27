@@ -122,6 +122,10 @@ A catch that returns directly after mutating an outer-visible scalar projects
 that mutation onto its return edge. An enclosing mandatory `finally` observes
 the catch-owned snapshot, while only the normal try predecessor reaches the
 post-try continuation.
+A catch that directly rethrows a supported normalized scalar after mutation
+projects both the changed snapshot and payload onto its throw edge. Mandatory
+`finally` preserves both, and an outer catch may bind the payload against the
+same local environment.
 A normally completing mandatory `finally` may mutate outer-visible scalars.
 The checker evaluates state updates over the joined incoming environment and
 replays the local transformation over each normal/return/throw/break/continue
@@ -130,7 +134,8 @@ The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
-by rethrow, break/continue/label transfer, or conditional return, mutable-local rethrows, mutable-local mutation combined
+by conditional return/rethrow, break/continue/label transfer, or an opaque
+rethrow payload, mutable-local mutation combined
 with conditional/abrupt finally completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain

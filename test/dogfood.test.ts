@@ -14,7 +14,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -244,6 +244,35 @@ describe("Uneffect dogfood", () => {
       fileName, billedCancellation, "adaptiveBatchAccounting", temporal,
     )).resolves.toContainEqual(expect.objectContaining({
       code: "action-update-mismatch", modelName: "record", target: "billedUnits",
+    }));
+  });
+
+  it("proves normalized batch recovery through mutable-local rethrow", async () => {
+    const fileName = "examples/dogfood/rethrow-batch-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "rethrowBatchAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "rethrowBatchAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "rethrowBatchAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongNormalization = source.replace("units += validationUnits", "units += validationUnits + 1");
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, wrongNormalization, "rethrowBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const opaqueRethrow = source.replace("throw units;\n    } finally", "throw new Error('invalid batch');\n    } finally");
+    expect(validateRefinementActionBodies(
+      fileName, opaqueRethrow, "rethrowBatchAccounting", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
     }));
   });
 

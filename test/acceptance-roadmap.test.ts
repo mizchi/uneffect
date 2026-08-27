@@ -1425,7 +1425,7 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     expect(validateActionsStatically(
       "catch-local-rethrow.ts", rethrow, "catchLocal", temporal,
     )).toContainEqual(expect.objectContaining({
-      code: "unsupported-action-body", modelName: "record",
+      code: "action-update-mismatch", modelName: "record",
     }));
   });
 
@@ -1582,6 +1582,68 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     const rethrow = source.replace("return\n        } finally", "throw reason\n        } finally");
     expect(validateActionsStatically(
       "catch-return-local-rethrow.ts", rethrow, "catchReturnLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+  });
+
+  it("carries a catch-side mutable-local update and payload onto a rethrow edge", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state recovered: int
+       * state audited: int
+       * state failed: bool
+       * init recovered = 0
+       * init audited = 0
+       * init failed = false
+       * action record: recovered' = recovered + (failed ? 8 : 2), audited' = audited + (failed ? 4 : 2)
+       */
+      interface Runtime { recovered: number; audited: number; failed: boolean }
+      /* uneffect: refinement catchRethrowLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement catchRethrowLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement catchRethrowLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        try {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } catch (reason) {
+            units += reason
+            throw units
+          } finally {
+            runtime.audited += units
+          }
+        } catch (amount) {
+          runtime.recovered += units + amount
+          return
+        }
+        runtime.recovered += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "catch-rethrow-local.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "catch-rethrow-local.ts", source, "catchRethrowLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongRethrowSnapshot = source.replace("units += reason", "units += reason + 1");
+    await expect(validateActions(
+      "catch-rethrow-local-wrong.ts", wrongRethrowSnapshot, "catchRethrowLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const opaqueRethrow = source.replace("throw units\n          } finally", "throw new Error('failed')\n          } finally");
+    expect(validateActionsStatically(
+      "catch-rethrow-local-opaque.ts", opaqueRethrow, "catchRethrowLocal", temporal,
     )).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "record",
     }));
