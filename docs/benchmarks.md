@@ -1568,3 +1568,13 @@ and Z3. It exposes the cost of constructing the expanded path-sensitive
 completion/local expressions and projecting block-local bindings; the high
 variance and changed workload preclude a comparative claim. The observation is
 not a CI budget and does not imply support for dynamic loops or labels.
+
+The circuit-breaker batch-accounting workload carries a catch-owned mutable
+scalar snapshot through mandatory `finally`, consumes its conditional break at
+a one-iteration configured-intake loop, and joins break and normal snapshots at
+the loop exit. A filtered run on 2026-08-27 measured 0.3783 ms mean (2,643.14
+operations/second over 1,322 samples, 9.33% relative margin of error). This is
+a warm static-analysis observation that excludes parsing and Z3, not a CI
+budget or regression claim. Catch-owned continue/labels, dynamic loops, abrupt
+finally overrides, aliases, and the general CFG fixed point remain outside the
+measured fragment.

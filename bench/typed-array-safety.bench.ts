@@ -159,6 +159,11 @@ const rethrowBatchAccountingSpec = parseSpec(rethrowBatchAccountingFile, rethrow
 const boundedBatchBillingFile = "examples/dogfood/bounded-batch-billing.ts";
 const boundedBatchBillingSource = readFileSync(boundedBatchBillingFile, "utf8");
 const boundedBatchBillingSpec = parseSpec(boundedBatchBillingFile, boundedBatchBillingSource).temporal;
+const circuitBreakerBatchAccountingFile = "examples/dogfood/circuit-breaker-batch-accounting.ts";
+const circuitBreakerBatchAccountingSource = readFileSync(circuitBreakerBatchAccountingFile, "utf8");
+const circuitBreakerBatchAccountingSpec = parseSpec(
+  circuitBreakerBatchAccountingFile, circuitBreakerBatchAccountingSource,
+).temporal;
 const affineBranchBudgetFile = "bench/eight-leaf-affine-drain.ts";
 const affineBranchFlags = Array.from({ length: 7 }, (_, index) => `flag${index}`);
 const affineBranchTotal = affineBranchFlags.reduceRight(
@@ -1169,6 +1174,15 @@ describe("typed-array static verification", () => {
       boundedBatchBillingSource,
       "boundedBatchBilling",
       boundedBatchBillingSpec,
+    );
+  }, { time: 500, iterations: 20 });
+
+  bench("carry a catch-owned break snapshot into a bounded-loop exit", () => {
+    validateRefinementActionBodies(
+      circuitBreakerBatchAccountingFile,
+      circuitBreakerBatchAccountingSource,
+      "circuitBreakerBatchAccounting",
+      circuitBreakerBatchAccountingSpec,
     );
   }, { time: 500, iterations: 20 });
 

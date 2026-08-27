@@ -2484,8 +2484,6 @@ function validateRefinementActionBodiesInSource(
               && !sameRefinementExpression(projectedCatchLocals!.get(name)!, projectedThrowLocals!.get(name)!));
             const catchThrowWhen = completionPredicate(catchCompletion, "throw");
             const catchHasUnsupportedMutableAbrupt = !isBooleanCompletionPredicate(
-              completionPredicate(catchCompletion, "break"), false,
-            ) || !isBooleanCompletionPredicate(
               completionPredicate(catchCompletion, "continue"), false,
             ) || !isBooleanCompletionPredicate(labeledCompletionPredicate(catchCompletion), false);
             if (catchMutatesVisibleLocal && catchHasUnsupportedMutableAbrupt) return undefined;
@@ -2529,12 +2527,29 @@ function validateRefinementActionBodiesInSource(
             if (hasMutableCatchLocals
               && !isBooleanCompletionPredicate(catchReturnWhen, false)
               && !catchReturnLocals) return undefined;
+            const tryBreakWhen = completionPredicate(tryCompletion, "break");
+            const catchBreakWhen = completionPredicate(catchCompletion, "break");
+            const tryBreakLocals = completionBreakLocals(tryCompletion);
+            const rawCatchBreakLocals = completionBreakLocals(catchCompletion);
+            const catchBreakLocals = hasMutableCatchLocals && rawCatchBreakLocals
+              ? projectLocalSnapshot(rawCatchBreakLocals, catchVisibleNames)
+              : rawCatchBreakLocals;
+            if (hasMutableCatchLocals
+              && !isBooleanCompletionPredicate(catchBreakWhen, false)
+              && !catchBreakLocals) return undefined;
             const residualReturnLocals = isBooleanCompletionPredicate(tryReturnWhen, false)
               ? catchReturnLocals
               : isBooleanCompletionPredicate(catchReturnWhen, false)
                 ? tryReturnLocals
                 : tryReturnLocals && catchReturnLocals
                   ? joinVisibleLocalSnapshots(tryReturnWhen, tryReturnLocals, catchReturnLocals, localValues.keys())
+                  : undefined;
+            const residualBreakLocals = isBooleanCompletionPredicate(tryBreakWhen, false)
+              ? catchBreakLocals
+              : isBooleanCompletionPredicate(catchBreakWhen, false)
+                ? tryBreakLocals
+                : tryBreakLocals && catchBreakLocals
+                  ? joinVisibleLocalSnapshots(tryBreakWhen, tryBreakLocals, catchBreakLocals, localValues.keys())
                   : undefined;
             residualCompletion = makeCompletion(
               orCompletionPredicates(
@@ -2563,7 +2578,7 @@ function validateRefinementActionBodiesInSource(
               ),
               catchThrowLocals,
               residualReturnLocals,
-              joinEdgeLocals(throwWhen, "break", catchCompletion, tryCompletion),
+              residualBreakLocals,
               joinEdgeLocals(throwWhen, "continue", catchCompletion, tryCompletion),
             );
           }
@@ -2703,9 +2718,10 @@ function validateRefinementActionBodiesInSource(
         if (isBooleanCompletionPredicate(priorAbrupt, true)) return residualCompletion;
         const beforeContinuation = new Map(updates);
         const continuingUpdates = new Map(updates);
+        const continuingLocals = new Map(localValues);
         const continued = collect(
           ts.factory.createBlock(body.statements.slice(statementIndex + 1), true), receiver, runtimeClass, substitutions,
-          continuingUpdates, new Map(localValues), activeCalls, allowTerminalReturn, allowTerminalThrow,
+          continuingUpdates, continuingLocals, activeCalls, allowTerminalReturn, allowTerminalThrow,
           allowBreak, allowContinue, ownedBreakLabel, ownedContinueLabel,
           activeBreakLabels, activeContinueLabels,
           allowMutableLoopWrites,
@@ -2713,6 +2729,8 @@ function validateRefinementActionBodiesInSource(
         if (!continued) return undefined;
         const normalWhen = notCompletionPredicate(priorAbrupt);
         mergeConditionalUpdates(priorAbrupt, beforeContinuation, continuingUpdates, beforeContinuation);
+        localValues.clear();
+        for (const [name, value] of continuingLocals) localValues.set(name, value);
         return makeCompletion(
           orCompletionPredicates(priorReturn, andCompletionPredicates(normalWhen, completionPredicate(continued, "return"))),
           orCompletionPredicates(priorThrow, andCompletionPredicates(normalWhen, completionPredicate(continued, "throw"))),

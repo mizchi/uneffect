@@ -193,8 +193,11 @@ same property is proved for arbitrary TypeScript.
   the normal try predecessor before the suffix. A conditional supported scalar
   rethrow similarly retains its branch snapshot and payload on the throw edge,
   while a later normal catch mutation reaches the suffix; mandatory `finally`
-  and an outer catch preserve that pairing. Break/continue/label transfer and opaque rethrow
-  payloads remain non-proofs. A mandatory-`finally` extension records direct
+  and an outer catch preserve that pairing. A conditional catch-owned break now
+  retains its projected mutation through mandatory `finally`, is consumed by
+  its owning bounded loop, and joins the post-loop local environment while the
+  normal catch snapshot alone reaches the loop suffix. Catch-owned continue,
+  labels, and opaque rethrow payloads remain non-proofs. A mandatory-`finally` extension records direct
   return snapshots as well, projects catch-local environments to bindings
   visible outside the protected region, and joins normal, return, and supported
   typed throw/catch-return predecessors before evaluating finally state writes.

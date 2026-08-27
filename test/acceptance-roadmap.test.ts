@@ -1780,6 +1780,69 @@ describe("Uneffect end-to-end acceptance roadmap", () => {
     }));
   });
 
+  it("carries a conditional catch break snapshot through finally into a bounded-loop exit", async () => {
+    const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
+    const validateActionsStatically = futureApi("validateRefinementActionBodies");
+    const parseSpecification = futureApi("parseSpec");
+    const source = `
+      /* uneffect:
+       * state billed: int
+       * state audited: int
+       * state failed: bool
+       * state stop: bool
+       * init billed = 0
+       * init audited = 0
+       * init failed = false
+       * init stop = false
+       * action record: billed' = billed + (failed ? (stop ? 4 : 7) : 3), audited' = audited + (failed ? (stop ? 4 : 6) : 2)
+       */
+      interface Runtime { billed: number; audited: number; failed: boolean; stop: boolean }
+      /* uneffect: refinement catchBreakLocal@1 create */ export function create(initial: Runtime) { return initial }
+      /* uneffect: refinement catchBreakLocal@1 observe */ export function observe(runtime: Runtime) { return runtime }
+      /* uneffect: refinement catchBreakLocal@1 action record */
+      export function record(runtime: Runtime) {
+        let units = 1
+        for (let attempt = 0; attempt < 1; attempt++) {
+          try {
+            if (runtime.failed) {
+              units += 2
+              throw 1
+            }
+            units += 1
+          } catch (reason) {
+            units += reason
+            if (runtime.stop) break
+            units += 2
+          } finally {
+            runtime.audited += units
+          }
+          units += 1
+        }
+        runtime.billed += units
+      }
+    `;
+    const temporal = (parseSpecification(
+      "conditional-catch-break.ts", source,
+    ) as { temporal: unknown }).temporal;
+    await expect(validateActions(
+      "conditional-catch-break.ts", source, "catchBreakLocal", temporal,
+    )).resolves.toEqual([]);
+
+    const wrongNormalSnapshot = source.replace("units += 2\n          } finally", "units += 3\n          } finally");
+    await expect(validateActions(
+      "conditional-catch-break-wrong.ts", wrongNormalSnapshot, "catchBreakLocal", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "record",
+    }));
+
+    const catchContinue = source.replace("if (runtime.stop) break", "if (runtime.stop) continue");
+    expect(validateActionsStatically(
+      "conditional-catch-continue.ts", catchContinue, "catchBreakLocal", temporal,
+    )).toContainEqual(expect.objectContaining({
+      code: "unsupported-action-body", modelName: "record",
+    }));
+  });
+
   it("composes an affine countdown summary from the symbolic state at loop entry", async () => {
     const validateActions = futureApi("validateRefinementActionBodiesWithZ3");
     const parseSpecification = futureApi("parseSpec");

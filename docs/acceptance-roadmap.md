@@ -482,6 +482,19 @@ shape and rejects wrong normalization, wrong recovered continuation, and an
 opaque payload. Catch-owned break/continue/labels, abrupt finally mutation,
 aliases, and the general CFG fixed point remain open.
 
+A twenty-sixth case mutates a scalar in catch, conditionally breaks its owning
+one-iteration bounded loop with a four-unit snapshot, and otherwise reaches a
+six-unit normal catch snapshot. Mandatory `finally` audits the selected value
+before the loop consumes break. Only the normal path executes the loop suffix,
+so the post-loop billing snapshots are four and seven units respectively; the
+non-failure path audits two and bills three. Z3 rejects a wrong normal catch
+increment. Replacing break with catch-owned continue remains an explicit
+unsupported control. The circuit-breaker batch-accounting dogfood applies the
+same shape to a statically configured telemetry intake and rejects an extra
+charge on the stopped attempt. Catch-owned continue/labels, opaque payloads,
+abrupt finally mutation, aliases, dynamic loops, and the general CFG fixed
+point remain open.
+
 The worker-pool dogfood exercises the increasing direction by provisioning in
 pairs until at least five workers are active. The model preserves the exact
 five-or-six-worker result, checks the matching start count and reconciliation

@@ -134,6 +134,11 @@ A catch that conditionally rethrows a supported normalized scalar retains the
 branch snapshot and payload on its throw edge and a separate normally
 completing snapshot after the branch. Mandatory `finally` and an outer catch
 consume the matching throw evidence.
+A catch that conditionally breaks its owning bounded loop after mutating an
+outer-visible scalar retains a separate break snapshot. Mandatory `finally`
+observes that snapshot before the loop consumes break and joins it into the
+post-loop local environment; only normal catch completion reaches the loop
+suffix.
 A normally completing mandatory `finally` may mutate outer-visible scalars.
 The checker evaluates state updates over the joined incoming environment and
 replays the local transformation over each normal/return/throw/break/continue
@@ -142,8 +147,7 @@ The state and local environments use the same explicit phi-value contract;
 branch-local declarations do not escape their lexical arm, and equal values do
 not create redundant conditionals. Uninitialized locals, `var`, writes to
 `const`, opaque right-hand sides or throw payloads, catch-side mutation followed
-by break/continue/label transfer or an opaque
-rethrow payload, mutable-local mutation combined
+by continue/label transfer or an opaque rethrow payload, mutable-local mutation combined
 with conditional/abrupt finally completion, mutable-local flow through dynamic or
 over-budget loops, unknown/cross/nested label ownership, shadowing or escaped block locals, opaque switch discriminants,
 dynamic/duplicate case labels, and nested-block case mutation remain

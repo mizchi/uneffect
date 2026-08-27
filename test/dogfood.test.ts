@@ -361,6 +361,31 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("proves circuit-breaker billing across a catch-owned bounded-loop exit", async () => {
+    const fileName = "examples/dogfood/circuit-breaker-batch-accounting.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    expect(validateRefinementBindingCoverage(
+      fileName, source, "circuitBreakerBatchAccounting", temporal,
+    )).toEqual([]);
+    expect(validateRefinementStateProjection(
+      fileName, source, "circuitBreakerBatchAccounting", temporal,
+    )).toEqual([]);
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, source, "circuitBreakerBatchAccounting", temporal,
+    )).resolves.toEqual([]);
+
+    const billedStoppedAttempt = source.replace(
+      "if (runtime.circuitOpen) break;",
+      "if (runtime.circuitOpen) { units += 1; break; }",
+    );
+    await expect(validateRefinementActionBodiesWithZ3(
+      fileName, billedStoppedAttempt, "circuitBreakerBatchAccounting", temporal,
+    )).resolves.toContainEqual(expect.objectContaining({
+      code: "action-update-mismatch", modelName: "recordAttempt", target: "billedUnits",
+    }));
+  });
+
   it("refines labeled telemetry cancellation through finally and audit continuation", async () => {
     const fileName = "examples/dogfood/labeled-telemetry-delivery.ts";
     const source = readFileSync(fileName, "utf8");

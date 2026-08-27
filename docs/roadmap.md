@@ -62,8 +62,9 @@ release date commitment.
    normally completing mandatory finally can now mutate the joined local map;
    the same transformation is replayed over each incoming completion snapshot
    before it survives to an outer finally or continuation. A catch-owned break
-   transfer through a bounded loop is next, followed by continue/label
-   transfers before the general CFG fixed point.
+   now retains its projected snapshot through mandatory finally and is consumed
+   by its owning bounded loop before the post-loop join. Catch-owned continue
+   and label transfers are next before the general CFG fixed point.
 2. [Unified Promise, exception, and resource flow](https://github.com/mizchi/uneffect/issues/9)
    must make rejection handling and disposal guarantees compositional.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
