@@ -160,6 +160,14 @@ members, counter-dependent path deltas, more than two members outside that
 exact upper-triangular family, nested/handler
 loops, budget exhaustion, and solver failure do not verify.
 
+The single driver/dependent family supports both source orderings. When the
+dependent executes after the driver, the edge records `read: updated`; when it
+executes first, it records `read: entry`. The `order` and `updates` arrays are
+the exact source order in both cases, and the two orders derive different
+triangular offsets. A driver-only dependent delta is not a stutter. This does
+not admit dependency cycles, multiple edges, repeated writes, or general
+matrix recurrence solving.
+
 One or two sequential direct `if/else` statements inside that loop may select
 piecewise affine member updates when they use distinct unchanged Boolean
 states. An omitted else is represented by a source-keyed identity predecessor.

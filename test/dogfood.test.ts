@@ -26,6 +26,37 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves an entry-read batch accounting recurrence", async () => {
+    const fileName = "examples/dogfood/cfg-entry-read-batch-flush.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgEntryReadBatchFlush", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      affineDependencies: expect.objectContaining({
+        order: ["emitted", "batchSize"],
+        edges: [{ from: "batchSize", to: "emitted", read: "entry" }],
+      }),
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+
+    const reordered = source.replace(
+      "runtime.emitted += runtime.batchSize;\n    runtime.batchSize++;",
+      "runtime.batchSize++;\n    runtime.emitted += runtime.batchSize;",
+    );
+    const broken = analyzeRefinementActionBodies(
+      fileName, reordered, "cfgEntryReadBatchFlush", temporal,
+    );
+    expect(broken.diagnostics).toContainEqual(expect.objectContaining({
+      modelName: "flush",
+      code: "action-update-mismatch",
+    }));
+  });
+
   it("proves a two-lane round-robin drain by Boolean parity", async () => {
     const fileName = "examples/dogfood/cfg-round-robin-drain.ts";
     const source = readFileSync(fileName, "utf8");

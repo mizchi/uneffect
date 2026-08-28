@@ -200,6 +200,13 @@ properties, and empty/uncovered input. A verified leaf never overrides an
 unknown sibling. Trusted typed-array obligations may pass, but are counted and
 remain listed as an exclusion rather than being described as proved.
 
+For the bounded triangular recurrence family, source order is proof-relevant:
+`read: entry` and `read: updated` produce distinct closed forms. The emitted
+spans and order are evidence, while structural convergence alone remains
+`unknown`; only independent Z3 base/step/ranking checks may verify the result.
+Cycles, repeated writes, and broader coupled recurrences stay outside the
+assurance boundary.
+
 The project gate exposes a four-state result instead of collapsing every
 outcome into a green or red boolean:
 

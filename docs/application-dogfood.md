@@ -548,6 +548,18 @@ updates, non-unit countdowns, integer self-amplification, exhausted budgets,
 modified summaries, and solver unavailability remain non-proofs. In
 particular, this does not claim an exponential closed form for retry backoff.
 
+P2.26 adds `cfg-entry-read-batch-flush.ts`, a batch-accounting loop that adds
+the driver value visible at iteration entry before incrementing that driver.
+The same triangular dependency artifact now preserves actual source order as
+`[emitted, batchSize]` and marks the edge from `batchSize` to `emitted` as an
+`entry` read. Its exact total uses `pending * (pending - 1) / 2`, whereas the
+existing updated-read family uses `pending * (pending + 1) / 2`. Structural
+convergence remains provisional until Z3 checks base, every step, and ranking.
+Reordering the statements while retaining the entry-read contract is a
+load-bearing mismatch. Cycles, self-amplification, non-affine or
+path-dependent updates, repeated writes, exhausted budgets, modified
+summaries, and solver unavailability remain non-proofs.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
@@ -575,7 +587,7 @@ The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
 `assumed` (3,882 summaries, 4,469 reviewed assumption occurrences, 74 files),
-and all 110 isolated dogfood cases pass.
+and all 111 isolated dogfood cases pass.
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

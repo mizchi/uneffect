@@ -2038,6 +2038,16 @@ one direct Boolean toggle and one unit countdown only; multiple or
 path-dependent toggles, helper aliases, non-unit ranking, integer
 self-amplification, and exponential recurrences are excluded.
 
+The P2.26 focused benchmark derives the complementary entry-read triangular
+recurrence for batch accounting. A selected run measured 0.2579 ms mean over
+1,939 structural samples (3,877.82 operations per second, 4.86% RME).
+Independent Z3 validation measured 50.8710 ms mean over 10 samples (19.66
+operations per second, 5.29% RME). These are development-host regression
+signals. They cover exactly one entry-read driver/dependent edge, one ranking
+member, and exact source-order evidence. Cycles, multiple edges, repeated or
+path-dependent writes, nonlinear updates, aliases, and general coupled
+recurrence solving remain outside the measurement.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

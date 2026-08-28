@@ -78,6 +78,12 @@ const cfgCoupledBatchFlushSpec = parseSpec(
   cfgCoupledBatchFlushFile,
   cfgCoupledBatchFlushSource,
 ).temporal;
+const cfgEntryReadBatchFlushFile = "examples/dogfood/cfg-entry-read-batch-flush.ts";
+const cfgEntryReadBatchFlushSource = readFileSync(cfgEntryReadBatchFlushFile, "utf8");
+const cfgEntryReadBatchFlushSpec = parseSpec(
+  cfgEntryReadBatchFlushFile,
+  cfgEntryReadBatchFlushSource,
+).temporal;
 const cfgConditionalWeightedFlushFile = "examples/dogfood/cfg-conditional-weighted-flush.ts";
 const cfgConditionalWeightedFlushSource = readFileSync(cfgConditionalWeightedFlushFile, "utf8");
 const cfgConditionalWeightedFlushSpec = parseSpec(
@@ -200,6 +206,42 @@ describe("refinement CFG fixed point", () => {
       || obligation.affineDependencies?.rule !== "source-ordered-upper-triangular-affine"
       || obligation.recurrenceProof?.status !== "verified") {
       throw new Error("upper-triangular CFG recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
+  bench("derive one entry-read triangular recurrence", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgEntryReadBatchFlushFile,
+      cfgEntryReadBatchFlushSource,
+      "cfgEntryReadBatchFlush",
+      cfgEntryReadBatchFlushSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.affineDependencies?.order.join(",") !== "emitted,batchSize"
+      || obligation.affineDependencies.edges[0]?.read !== "entry") {
+      throw new Error("entry-read triangular recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the entry-read triangular recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgEntryReadBatchFlushFile,
+      cfgEntryReadBatchFlushSource,
+      "cfgEntryReadBatchFlush",
+      cfgEntryReadBatchFlushSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.affineDependencies?.edges[0]?.read !== "entry"
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("entry-read triangular recurrence Z3 benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 2 });
 

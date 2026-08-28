@@ -177,6 +177,13 @@ same property is proved for arbitrary TypeScript.
   check over at most 16 invariant atoms removes only logically entailed choices
   and preserves every unresolved branch. The break-side tree is limited to
   eight affine leaves.
+  One bounded three-member recurrence family additionally records a single
+  acyclic driver/dependent edge. Both updated-driver and entry-driver reads are
+  supported: source spans determine the emitted update order and read kind,
+  and the summary uses the corresponding `n(n+1)/2` or `n(n-1)/2` offset.
+  Structural convergence is not proof; Z3 still checks base, member steps, and
+  ranking. Multiple/cyclic edges and general coupled recurrences remain
+  unsupported.
   Different counter deltas, a ninth update or leaf, cross-state coupling,
   non-affine updates, unaligned boolean formulas, counter-dependent or mutated
   policies, and dynamic completion selection remain unsupported. Within the

@@ -3332,7 +3332,11 @@ describe("annotated refinement bindings", () => {
                 rule: { const: "source-ordered-upper-triangular-affine" },
                 order: { minItems: 2, maxItems: 2 },
                 updates: { minItems: 2, maxItems: 2 },
-                edges: { minItems: 1, maxItems: 1 },
+                edges: {
+                  minItems: 1,
+                  maxItems: 1,
+                  prefixItems: [{ properties: { read: { enum: ["entry", "updated"] } } }],
+                },
               },
             },
             booleanInvolutions: {

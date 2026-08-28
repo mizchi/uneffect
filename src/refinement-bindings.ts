@@ -3101,7 +3101,9 @@ function validateRefinementActionBodiesInSource(
             whenFalse: totalForPiecewise(piecewise.whenFalse),
           };
         const piecewiseStutters = (piecewise: PiecewiseAffineLoopDelta): boolean => piecewise.kind === "affine"
-          ? piecewise.value.constant === 0 && piecewise.value.counterCoefficient === 0
+          ? piecewise.value.constant === 0
+            && piecewise.value.counterCoefficient === 0
+            && (piecewise.value.driverCoefficient ?? 0) === 0
           : piecewiseStutters(piecewise.whenTrue) && piecewiseStutters(piecewise.whenFalse);
         for (const [name, piecewise] of deltas) {
           const entryValue = entryValues.get(name)!;
@@ -3168,6 +3170,17 @@ function validateRefinementActionBodiesInSource(
             whenFalse: entryValue,
           });
         }
+        const sourceOrderedAffineUpdates = upperTriangular
+          ? upperTriangular.driverSpan.start < upperTriangular.dependentSpan.start
+            ? [
+              { state: upperTriangular.driver, span: upperTriangular.driverSpan },
+              { state: upperTriangular.dependent, span: upperTriangular.dependentSpan },
+            ] as const
+            : [
+              { state: upperTriangular.dependent, span: upperTriangular.dependentSpan },
+              { state: upperTriangular.driver, span: upperTriangular.driverSpan },
+            ] as const
+          : undefined;
         if (traceSink && currentModelName) traceSink.rankingRecurrences.push({
           modelName: currentModelName,
           loopStart: statement.getStart(source),
@@ -3185,14 +3198,11 @@ function validateRefinementActionBodiesInSource(
             name,
             updates.get(name) ?? entryValues.get(name) ?? { kind: "name", name },
           ])),
-          ...(upperTriangular ? {
+          ...(upperTriangular && sourceOrderedAffineUpdates ? {
             affineDependencies: {
               rule: "source-ordered-upper-triangular-affine" as const,
-              order: [upperTriangular.driver, upperTriangular.dependent] as const,
-              updates: [
-                { state: upperTriangular.driver, span: upperTriangular.driverSpan },
-                { state: upperTriangular.dependent, span: upperTriangular.dependentSpan },
-              ] as const,
+              order: [sourceOrderedAffineUpdates[0].state, sourceOrderedAffineUpdates[1].state] as const,
+              updates: sourceOrderedAffineUpdates,
               edges: [{
                 from: upperTriangular.driver,
                 to: upperTriangular.dependent,
