@@ -149,7 +149,7 @@ explicit conservative boundaries rather than untracked support.
    Completed child [#40](https://github.com/mizchi/uneffect/issues/40) proves one
    direct Boolean involution by an exact parity summary while retaining
    integer geometric growth as an explicit non-proof.
-   Active child [#41](https://github.com/mizchi/uneffect/issues/41) proves the
+   Completed child [#41](https://github.com/mizchi/uneffect/issues/41) proves the
    complementary entry-read order for one triangular affine dependency while
    retaining cycles and general coupled recurrences as explicit non-proofs.
    The first
