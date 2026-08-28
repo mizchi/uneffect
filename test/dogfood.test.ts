@@ -1,6 +1,6 @@
 import { globSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { analyzeEffects, analyzeProgramEffects } from "../src/effects.js";
@@ -15,6 +15,8 @@ import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
 import { analyzeRefinementActionBodies, analyzeRefinementActionBodiesInProgram, analyzeRefinementActionBodiesWithZ3, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
+import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -24,6 +26,34 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("exports a real checker-inferred Console effect and ordered calls from dogfood", async () => {
+    const fileName = "examples/dogfood/corsa-inferred-effect.ts";
+    const files = { [fileName]: readFileSync(fileName, "utf8") };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const emit = facts.symbols.find((symbol) => symbol.name === "emit")!;
+    const lookalike = facts.symbols.find((symbol) => symbol.name === "sameSpelledLookalike")!;
+    expect(emit.inferredEffects).toEqual([
+      expect.objectContaining({ effect: "Console", symbolIdentity: expect.any(String) }),
+    ]);
+    expect(lookalike.inferredEffects).toEqual([]);
+
+    const comparison = await compareUneffectFrontends({
+      files,
+      corsaFacts: facts,
+      requireCorsaCheckerFacts: true,
+    });
+    expect(comparison.equivalent, JSON.stringify(comparison.schemaDrift, null, 2)).toBe(true);
+    expect(comparison.corsaIr?.functions).toEqual([
+      { name: "emit", effects: ["Console"] },
+      { name: "main", effects: ["Console"] },
+      { name: "sameSpelledLookalike", effects: [] },
+    ]);
+    expect(comparison.corsaIr?.orderedEvents.map(({ caller, callee }) => ({ caller, callee }))).toEqual([
+      { caller: "main", callee: "emit" },
+      { caller: "main", callee: "emit" },
+    ]);
+  }, 20_000);
+
   it("correlates a local refinement alias region with independently checked Mutate effects", () => {
     const fileName = "examples/dogfood/local-alias-refinement.ts";
     const source = readFileSync(fileName, "utf8");

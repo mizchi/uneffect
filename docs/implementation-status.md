@@ -750,14 +750,17 @@ same property is proved for arbitrary TypeScript.
 ## Native integration, CI, and performance
 
 - The analyzer core is separated from frontend adapters. A Rust neutral IR and
-  schema-v7 consumer cover structured declarations, source spans, inferred
+  schema-v8 consumer cover structured declarations, source spans, inferred
   effects, calls, and ordered events. These are currently TypeScript-reference
   facts passed through Rust, with machine-readable provenance. An optional
   real corsa-bind exporter covers a fail-closed multi-file top-level function
   declaration, single immutable arrow/function-expression binding, and
   identifier-named top-level class method direct-call/type/trivia slice with
   named-function overload candidate/selection facts and project-wide byte
-  coordinates; broader
+  coordinates. It also exports one checker-inferred `Console` fact for the
+  standard `console.log` identity, including builtin key, operation span,
+  checker symbol, declaration, and compiler provenance; the same-spelled local
+  object is a negative control. Broader
   neutral-IR export remains incomplete.
 - CI separates unit, Z3, Quint simulation, exhaustive Quint, and integration
   jobs. Dependencies and solver/tool inputs are pinned, and solver-bearing test

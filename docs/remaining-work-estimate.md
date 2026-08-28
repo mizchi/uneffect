@@ -95,12 +95,14 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.11 bounded nested handler | #23 | Completed | under 1 week actual | One depth-two nested try/catch routes inner recovery/rethrow under a named nesting budget; deeper/resource/looped cases fail closed. |
 | P2.12 source-keyed nested regions | #23 | Completed | under 1 week actual | Two sibling nested handlers retain distinct source-keyed routing; a third region remains over-budget. |
 | P3.1 local alias seed | #26 (child of #24) | Completed | under 1 week actual | One non-escaping mutable object alias through one TypeChecker-resolved local helper emits source/compiler/symbol/region evidence; escape and dynamic selection remain negative controls. |
-| P3.2 checker-backed Corsa fact seed | #27 (child of #8) | Active after #26 | 1–2 weeks | One inferred-effect and ordered-call fixture reaches parity through the real checker path; a same-spelled symbol-distinct builtin remains negative. |
+| P3.2 checker-backed Corsa fact seed | #27 (child of #8) | Completed | under 1 week actual | One inferred `Console` effect and two ordered local calls reach parity through the real checker path with operation/compiler/declaration/symbol evidence; a same-spelled symbol-distinct object remains effect-free. |
+| P2.13 scalar sibling-region value join | #28 (child of #25) | Active after #27 | 1–2 weeks | One scalar environment joins across two source-keyed sibling handler regions; expression conflict and budget exhaustion remain non-proofs. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
-handoff is closed. #26 has completed the first executable child of #24; #27 is
-active as the first checker-backed child of #8. #25 separately owns general CFG
-value lattices and recurrence widening.
+handoff is closed. #26 has completed the first executable child of #24 and #27
+has completed the first checker-backed child of #8. #28 is active as the first
+scalar-value child of #25; general value lattices and recurrence widening remain
+in the parent.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
 emits a strict budgeted artifact, the reusable worklist carries payload,
@@ -155,7 +157,7 @@ composes exactly two sibling inner handlers. A third root remains over-budget.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No broad Phase 3 or Phase 4 epic should pre-empt the bounded #27 handoff merely
+No broad Phase 3 or Phase 4 epic should pre-empt the bounded #28 handoff merely
 because it has an attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -163,8 +165,8 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #27 checker-backed Corsa fact seed (included in #8) | M | 1–2 weeks | One inferred-effect and ordered-call parity fixture | Real checker export shape, symbol identity, and source provenance |
-| 2 | #25 general CFG values | L | 3–8 weeks | One independent scalar value join over sibling handler regions | Value conflict, widening, recurrence, and irreducible control |
+| 1 | #28 scalar sibling-region value join (included in #25) | M | 1–2 weeks | One independently checked scalar environment join | Value conflict, source correlation, and convergence budget |
+| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded child #28 | Value conflict, widening, recurrence, and irreducible control |
 | 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -182,9 +184,9 @@ be added to the owning Issue and reflected here before implementation begins.
 1. **Usable async module proof boundary:** completed for one direct exact
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
-2. **General analysis foundation:** #23 and the first executable #26 slice are
-   complete; #27 is the remaining 1–2 week first #8 slice. Completing parent #24 and #8 is
-   10–19 weeks. Keep these
+2. **General analysis foundation:** #23 and the first executable #26/#27 slices
+   are complete; #28 is the active 1–2 week first #25 value slice. Completing
+   parent #25/#24/#8 is 13–27 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
 3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
@@ -222,7 +224,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.11 bounded nested handler | under 1 engineer-week actual | Inner recovery and rethrow compose at depth two; whole-fixture analysis measured 10.3053 ms in a same-run 10–12 ms application baseline. |
 | Completed sub-slice | P2.12 source-keyed nested regions | under 1 engineer-week actual | Two sibling regions verify with distinct IDs; whole-fixture analysis measured 12.8770 ms versus 10.3243 ms for one region in the same run. |
 | Completed sub-slice | #26 local alias seed | under 1 engineer-week actual | One non-escaping alias verifies with separate refinement/Mutate evidence; escape, reassignment, computed, generic, dynamic, and unresolved controls fail closed. |
-| Current slice | #27 checker-backed Corsa fact seed | 1–2 engineer-weeks | Export one real checker inferred-effect and ordered-call fixture with symbol-distinct builtin rejection. |
+| Completed sub-slice | #27 checker-backed Corsa fact seed | under 1 engineer-week actual | One real checker inferred-`Console` fact and two ordered local calls normalize through Rust; the same-spelled local object stays effect-free and metadata drift fails parity. |
+| Current slice | #28 scalar sibling-region value join | 1–2 engineer-weeks | Join one scalar environment through two source-keyed handler regions with conflict and budget non-proofs. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -237,10 +240,10 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** #27, estimated at 1–2 engineer-weeks.
-- **Next foundation checkpoint:** complete #27, the bounded #8 native-fact
-  slice. #26 is complete; completing
-  parent #24 and #8 is 10–19 engineer-weeks.
+- **Next implementable result:** #28, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** complete #28, the bounded #25 scalar-value
+  slice. #26 and #27 are complete; completing parent #25/#24/#8 is 13–27
+  engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
   both required for an initial useful release.

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Node } from "@oxlint/plugins";
-import { OxlintUtils, SignatureKind, definePlugin, type CorsaSignature, type CorsaType, type CorsaTypeCheckerShape } from "corsa-oxlint";
+import { OxlintUtils, SignatureKind, definePlugin, type CorsaSignature, type CorsaSymbol, type CorsaType, type CorsaTypeCheckerShape } from "corsa-oxlint";
 
 export interface CorsaCheckerFactExportOptions {
   files: Record<string, string>;
@@ -14,11 +14,11 @@ export interface CorsaCheckerFactExportOptions {
 }
 
 export interface CorsaCheckerFactFile {
-  schemaVersion: 7;
+  schemaVersion: 8;
   fileId: number;
   compilerRevision: string;
   provenance: { producer: "corsa-checker"; checkerBacked: true };
-  symbols: Array<Record<string, unknown>>;
+  symbols: CorsaCheckerFactSymbol[];
   calls: Array<Record<string, unknown>>;
   trivia: Array<Record<string, unknown>>;
   protocolSymbols: Array<Record<string, unknown>>;
@@ -29,12 +29,43 @@ export interface CorsaCheckerFactFile {
   suppressedErrors: Array<Record<string, unknown>>;
 }
 
+export interface CorsaCheckerInferredEffectFact {
+  effect: string;
+  builtin: { module: string; export: string };
+  /** Opaque identity allocated by the active Corsa checker session. */
+  symbolIdentity: string;
+  declaration: { fileName: string; start: number; end: number };
+  /** Project-wide UTF-8 byte span of the operation that produced the effect. */
+  span: { start: number; end: number };
+}
+
+export interface CorsaCheckerFactSymbol extends Record<string, unknown> {
+  id: number;
+  name: string;
+  kind: string;
+  typeRepr: string;
+  overloads: string[];
+  effectParameters: number[];
+  inferredEffects: CorsaCheckerInferredEffectFact[];
+  span: { start: number; end: number };
+}
+
 interface PendingFunction {
   node: any;
   symbolId: string;
   name: string;
   typeRepr: string;
   overloads: Array<{ id: string; text: string }>;
+  start: number;
+  end: number;
+  inferredEffects: PendingInferredEffect[];
+}
+
+interface PendingInferredEffect {
+  effect: string;
+  builtin: { module: string; export: string };
+  symbolIdentity: string;
+  declaration: { fileName: string; start: number; end: number };
   start: number;
   end: number;
 }
@@ -73,6 +104,7 @@ export const corsaCheckerFactRule = createRule({
     const services = OxlintUtils.getParserServices(context);
     if (!services.hasFullTypeInformation) throw new Error("Corsa full type information is required");
     const checker = services.program.getTypeChecker();
+    const rootFiles = new Set(services.program.getRootFileNames().map((fileName: string) => fileName.toLowerCase()));
     const text = context.sourceCode.text as string;
     const functions: PendingFunction[] = [];
     const calls: PendingCall[] = [];
@@ -111,6 +143,7 @@ export const corsaCheckerFactRule = createRule({
           overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, node.range[0]),
           end: byteOffset(text, node.range[1]),
+          inferredEffects: [],
         };
         functions.push(pending);
         functionStack.push(pending);
@@ -141,6 +174,7 @@ export const corsaCheckerFactRule = createRule({
           overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, wrapper.range[0]),
           end: byteOffset(text, wrapper.range[1]),
+          inferredEffects: [],
         };
         functions.push(pending);
         bindingFunctions.set(initializer, pending);
@@ -166,6 +200,7 @@ export const corsaCheckerFactRule = createRule({
           overloads: type ? overloadFacts(checker, type) : [],
           start: byteOffset(text, node.range[0]),
           end: byteOffset(text, node.range[1]),
+          inferredEffects: [],
         };
         functions.push(pending);
         bindingFunctions.set(node.value, pending);
@@ -185,6 +220,11 @@ export const corsaCheckerFactRule = createRule({
         const type = checker.getTypeAtLocation(target as Node);
         const callee = type ? (checker.getSymbolOfType(type) ?? directSymbol) : directSymbol;
         if (!callee) return;
+        const inferred = directSymbol ? checkerBuiltinEffect(checker, node, directSymbol, text, rootFiles) : undefined;
+        if (inferred && !caller.inferredEffects.some((item) => item.effect === inferred.effect
+          && item.symbolIdentity === inferred.symbolIdentity && item.start === inferred.start)) {
+          caller.inferredEffects.push(inferred);
+        }
         calls.push({
           callerSymbolId: caller.symbolId,
           calleeSymbolId: callee.id,
@@ -300,6 +340,16 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
       typeRepr: item.typeRepr,
       overloads: item.overloads.map((overload) => overload.text),
       effectParameters: [],
+      inferredEffects: item.inferredEffects.map((effect) => ({
+        effect: effect.effect,
+        builtin: effect.builtin,
+        symbolIdentity: effect.symbolIdentity,
+        declaration: effect.declaration,
+        span: {
+          start: coordinates.base(item.fileName) + effect.start,
+          end: coordinates.base(item.fileName) + effect.end,
+        },
+      })),
       span: {
         start: coordinates.base(item.fileName) + item.start,
         end: coordinates.base(item.fileName) + item.end,
@@ -341,7 +391,7 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
       });
     });
     const facts: CorsaCheckerFactFile = {
-      schemaVersion: 7,
+      schemaVersion: 8,
       fileId: 1,
       compilerRevision,
       provenance: { producer: "corsa-checker", checkerBacked: true },
@@ -360,6 +410,43 @@ export async function exportCorsaCheckerFacts(options: CorsaCheckerFactExportOpt
   } finally {
     rmSync(workspace, { recursive: true, force: true });
   }
+}
+
+const checkerBuiltinContracts = new Map([
+  ["console\0console.log", { module: "global", export: "console.log", effect: "Console", declaration: /[\\/]lib[\\/]lib\.dom\.d\.ts$/ }],
+]);
+
+function checkerBuiltinEffect(
+  checker: CorsaTypeCheckerShape,
+  call: any,
+  callee: CorsaSymbol,
+  sourceText: string,
+  rootFiles: ReadonlySet<string>,
+): PendingInferredEffect | undefined {
+  if (call.callee?.type !== "MemberExpression" || call.callee.computed
+    || call.callee.object?.type !== "Identifier" || call.callee.property?.type !== "Identifier") return undefined;
+  const receiver = checker.getSymbolAtLocation(call.callee.object as Node);
+  const key = `${receiver?.name ?? ""}\0${receiver?.name ?? ""}.${callee.name}`;
+  const contract = checkerBuiltinContracts.get(key);
+  if (!contract || !receiver) return undefined;
+  const declarations = callee.declarations
+    .map((handle) => checker.getNode(handle))
+    .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
+  const receiverDeclarations = receiver.declarations
+    .map((handle) => checker.getNode(handle))
+    .filter((node): node is NonNullable<ReturnType<CorsaTypeCheckerShape["getNode"]>> => node !== undefined);
+  const isBuiltinDeclaration = (node: { fileName: string }): boolean =>
+    contract.declaration.test(node.fileName) && !rootFiles.has(node.fileName.toLowerCase());
+  const declaration = declarations.find(isBuiltinDeclaration);
+  if (!declaration || !receiverDeclarations.some(isBuiltinDeclaration)) return undefined;
+  return {
+    effect: contract.effect,
+    builtin: { module: contract.module, export: contract.export },
+    symbolIdentity: callee.id,
+    declaration: { fileName: declaration.fileName, start: declaration.pos, end: declaration.end },
+    start: byteOffset(sourceText, call.range[0]),
+    end: byteOffset(sourceText, call.range[1]),
+  };
 }
 
 function safeWorkspacePath(workspace: string, fileName: string): string {

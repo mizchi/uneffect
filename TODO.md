@@ -43,13 +43,16 @@ real top-level-await candidate, so broader module semantics stay queued rather
 than being widened without application evidence. The bounded reusable CFG
 handoff is complete in [#23](https://github.com/mizchi/uneffect/issues/23);
 the bounded local-alias handoff is complete in
-[#26](https://github.com/mizchi/uneffect/issues/26), and
-[#27](https://github.com/mizchi/uneffect/issues/27) is the next executable slice.
+[#26](https://github.com/mizchi/uneffect/issues/26), and the first checker-backed
+Corsa inferred-effect handoff is complete in
+[#27](https://github.com/mizchi/uneffect/issues/27). The next executable slice is
+[#28](https://github.com/mizchi/uneffect/issues/28), the bounded scalar-value
+child of #25.
 
-There are 13 open implementation Issues after closing #23 and #26 and opening
-#27: one proof-boundary
-Issue in Phase 1, five specification-expressiveness Issues in Phase 2, six
-production-integration Issues in Phase 3 (including bounded child #27), and one
+There are 13 open implementation Issues after closing #23, #26, and #27 and
+opening #28: one proof-boundary
+Issue in Phase 1, six specification-expressiveness Issues in Phase 2 (including
+bounded child #28), five production-integration Issues in Phase 3, and one
 proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -87,8 +90,11 @@ region. Remaining general value lattices and recurrence widening move to #25.
 P3.1 then adds one TypeChecker-backed, source-keyed, non-escaping local object
 alias through one direct helper; escape, reassignment, computed access,
 polymorphism, and dynamic/unresolved helper selection remain explicit
-non-proofs. The next executable integration slice is #27's checker-backed Corsa
-inferred-effect/call parity fixture.
+non-proofs. P3.2 exports one checker-backed `Console` inference and its ordered
+local calls with operation/compiler/declaration/symbol provenance; a
+same-spelled local object remains effect-free. General builtin and neutral-IR
+coverage remains in #8. The next executable slice is #28's scalar environment
+join across two sibling handler regions.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -100,7 +106,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#27](https://github.com/mizchi/uneffect/issues/27) | Export one checker-backed Corsa inferred-effect and ordered direct-call fixture; reject a same-spelled symbol-distinct builtin. |
+| 1 | [#28](https://github.com/mizchi/uneffect/issues/28) | Join one scalar environment across two source-keyed sibling handler regions; retain expression conflict and budget exhaustion as non-proofs. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -108,9 +114,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | Completed #23/#26 plus #27, the first executable #8 slice | 1–2 weeks for #27; 10–19 weeks for parent #24 and #8 epics | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | Completed #23/#26/#27 plus #28, the first executable #25 value slice | 1–2 weeks for #28; 13–27 weeks for parent #25/#24/#8 epics | CFG, value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #27 is included in #8. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #28 is included in #25. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -137,7 +143,7 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 13 open implementation Issues after the #23/#26 handoffs:
+As of 2026-08-28 there are 13 open implementation Issues after the #23/#26/#27 handoffs:
 one `active`, eleven `queued`, and one queued parent with its bounded child
 active. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
@@ -148,13 +154,13 @@ label.
 | --- | --- | --- | --- | --- | --- |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
+| Active | 2 | [#28](https://github.com/mizchi/uneffect/issues/28) | Scalar sibling-handler value join | Completed #23; child of #25 | One independently checked scalar environment join with conflict/budget negative controls |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
 | Queued | 2 | [#6](https://github.com/mizchi/uneffect/issues/6) | Typed arrays | Completed #23 plus #24; #25 if general joins are required | Interprocedural aliases, resize/shared memory, and complete SHA-256 composition |
 | Queued | 3 | [#24](https://github.com/mizchi/uneffect/issues/24) | Dynamic refinement | Completed #23 for bounded CFG-sensitive aliases | Interprocedural aliases, higher-order values, dynamic dispatch, and abstraction relations |
 | Queued | 3 | [#8](https://github.com/mizchi/uneffect/issues/8) | Native frontend | Stable neutral IR | Complete real Corsa checker fact parity |
-| Active | 3 | [#27](https://github.com/mizchi/uneffect/issues/27) | Corsa checker fact seed | Completed #23/#26; child of #8 | One inferred-effect and ordered-call parity fixture with a symbol-distinct negative control |
 | Queued | 3 | [#10](https://github.com/mizchi/uneffect/issues/10) | Event loop | #18 module semantics | Host-specific phases, dynamic cancellation, and polymorphic callbacks |
 | Queued | 3 | [#7](https://github.com/mizchi/uneffect/issues/7) | Evidence | Stable proof fragments | Independently checkable certificates or a measured rejection |
 | Queued | 3 | [#16](https://github.com/mizchi/uneffect/issues/16) | React | #9, #10, #24 | Dynamic component/Hook flow, server boundaries, and unbounded scheduling |
@@ -164,7 +170,9 @@ The active child issue is widened one Red/Green acceptance slice at a time. Each
 must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
 by #3 and the completed #23 source-keyed CFG fed the completed #26 alias seed.
-Active #27 now tests the first real checker-backed Corsa fact handoff.
+The completed #27 tests the first real checker-backed Corsa fact handoff.
+Active #28 now carries one scalar environment through sibling handler regions
+without equating structural reachability with a value proof.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -181,6 +189,8 @@ The bounded, source-keyed handler CFG handoff closed
 recurrence widening continue in #25.
 The TypeChecker-backed one-alias/one-helper region seed closed
 [#26](https://github.com/mizchi/uneffect/issues/26); broader aliases remain #24.
+The checker-backed inferred-`Console`/ordered-call handoff closed
+[#27](https://github.com/mizchi/uneffect/issues/27); broader Corsa parity remains #8.
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist
@@ -831,13 +841,14 @@ must not be read as a claim that arbitrary source rewriting is implemented.
 - [x] Compare the TypeScript declared-effect projection with the Rust Corsa schema consumer, including schema-drift and UTF-8 trivia controls.
 - [ ] Extend frontend parity from declarations to inferred effects, call edges, ordered events, and real Corsa checker facts. ([#8](https://github.com/mizchi/uneffect/issues/8))
   - [x] Compare transitive inferred effects, resolved local call edges, and source-ordered call events through the Rust schema consumer.
-  - [x] Carry mandatory fact provenance through schema v7 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
+  - [x] Carry mandatory fact provenance through schema v8 and fail closed when actual Corsa-checker facts are required but only reference-adapter records are available.
   - [x] Export the initial real checker-backed slice through the `corsa-oxlint` plugin context: top-level named functions and single immutable arrow/function-expression bindings, Corsa type text, direct call edges, and leading Uneffect trivia.
   - [x] Preserve Corsa symbol identity across project imports and place every frontend span in deterministic project-wide UTF-8 coordinates.
   - [x] Qualify duplicate top-level function spellings by source path in both adapters so cross-file edges cannot alias by name.
   - [x] Stop checker-backed call collection at unsupported nested function/callback boundaries instead of mislabeling deferred or unknown work as an immediate outer call.
   - [x] Export identifier-named methods of top-level classes and resolve direct cross-file method calls by checker symbol identity; reject explicitly annotated computed methods as uncovered instead of accepting empty parity.
   - [x] Export source-ordered named-function overload candidates and resolve call-site selections through Corsa signature identity using literal/base/union argument type alternatives; compare candidate text and selected index independently of normalized effect parity.
+  - [x] Export one checker-inferred standard `console.log` Effect with builtin/declaration/symbol/compiler/operation-span evidence, compare its two ordered local calls through Rust normalization, and reject a same-spelled symbol-distinct object. ([#27](https://github.com/mizchi/uneffect/issues/27))
   - [ ] Export and compare actual facts collected by the `corsa-bind` type-aware Oxlint bridge instead of reference-adapter synthesized records. TypeScript Go Content Mappers transform non-TS files and map spans; they are not a semantic fact API for ordinary TypeScript. ([#8](https://github.com/mizchi/uneffect/issues/8))
     - [ ] Extend the checker-backed exporter beyond named-function overloads and identifier-named methods of top-level classes to method/generic edge-case overloads, computed/polymorphic methods, nested callbacks/timing, Promise/resource records, and the complete neutral IR. ([#8](https://github.com/mizchi/uneffect/issues/8))
     - [ ] Define a signed/pinned evidence envelope for persisted Corsa facts; copied provenance strings must never satisfy the in-process checker gate. ([#8](https://github.com/mizchi/uneffect/issues/8))

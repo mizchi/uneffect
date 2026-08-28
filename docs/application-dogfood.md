@@ -412,6 +412,17 @@ member access, generic or dynamically selected helpers, and unresolved calls
 are adjacent negative controls. This proves one bounded alias shape, not heap
 alias analysis or interprocedural ownership.
 
+P3.2 adds `corsa-inferred-effect.ts` and runs it through the real
+`corsa-oxlint`/`tsgo` checker bridge. The unannotated `emit` function receives a
+direct `Console` fact from the standard `console.log` declaration identity, and
+`main` receives it transitively through two source-ordered local call edges.
+The adjacent `sameSpelledLookalike` function declares a local object named
+`console`; its distinct symbols produce no Effect. TypeScript reference facts
+and Rust-normalized Corsa facts agree on function effects, call edges, event
+order, and operation spans. This establishes one builtin and one direct-call
+family only, not general Console coverage, arbitrary globals, nested callbacks,
+dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as

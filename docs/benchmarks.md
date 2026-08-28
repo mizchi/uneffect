@@ -1932,3 +1932,14 @@ it excludes compiler creation, general escape analysis, imported helpers,
 multiple regions, and the separate Program Effect analysis. It is therefore a
 regression signal for this slice, not a general alias-analysis throughput
 claim.
+Corsa checker inferred-effect handoff (2026-08-28, Apple Silicon, one sample):
+
+- `pnpm vitest bench bench/corsa-checker-exporter.bench.ts --run`
+- one dogfood fixture exported and normalized: 791.81 ms
+
+This is an end-to-end latency observation, not a throughput claim: it includes
+temporary project creation, `corsa-oxlint` plus `tsgo`, a TypeScript reference
+Program/effect comparison, and the Rust normalizer subprocess. Vitest reported
+one timed sample (`rme` 0%), so the number is useful for guarding
+order-of-magnitude regressions only; it does not establish a stable
+distribution.

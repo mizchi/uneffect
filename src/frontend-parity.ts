@@ -4,16 +4,18 @@ import ts from "typescript";
 import { extractAnnotations } from "./annotations.js";
 import { formatEffect, parseEffectSet } from "./capabilities.js";
 import { analyzeAsyncSafety, composeResourceFailures, type ResourceError } from "./async-safety.js";
+import { analyzeProgramEffects } from "./effects.js";
 import type { CorsaCheckerFactFile } from "./corsa-checker-exporter.js";
 import { isAuthenticatedCorsaCheckerFacts } from "./corsa-fact-provenance.js";
 import { createProjectByteCoordinates, projectFunctionDisplayName } from "./project-coordinates.js";
+import { TypeScriptFrontendAdapter } from "./frontend-adapter.js";
 
 export interface CompareUneffectFrontendsOptions {
   files: Record<string, string>;
   corsaSchemaVersion?: number;
   /** Allows slower cold Rust builds while retaining a finite process boundary. */
   corsaTimeoutMs?: number;
-  /** Actual schema-v7 facts emitted by the corsa-bind checker exporter. */
+  /** Actual schema-v8 facts emitted by the corsa-bind checker exporter. */
   corsaFacts?: CorsaCheckerFactFile;
   /** Fail the comparison unless records came from an actual corsa-bind checker. */
   requireCorsaCheckerFacts?: boolean;
@@ -25,7 +27,7 @@ export interface FrontendFactProvenance {
   satisfiesRequirement: boolean;
 }
 export interface NormalizedFrontendIr {
-  schemaVersion: 7;
+  schemaVersion: 8;
   provenance: Omit<FrontendFactProvenance, "satisfiesRequirement">;
   functions: Array<{ name: string; effects: string[] }>;
   calls: Array<{ caller: string; callee: string; callbackTiming: "none" }>;
@@ -76,6 +78,7 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
   const symbols: any[] = [], trivia: unknown[] = [], calls: any[] = [];
   const ids = new Map<ts.Symbol, number>(), declarations: Array<{ source: ts.SourceFile; sourceName: string; callable: TopLevelCallable; id: number }> = [];
   const checker = program.getTypeChecker();
+  const adapter = new TypeScriptFrontendAdapter(program);
   for (const source of program.getSourceFiles()) {
     const sourceName = projectFileName(files, source.fileName);
     if (!sourceName) continue;
@@ -89,13 +92,35 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
         .map((item) => checker.signatureToString(checker.getSignatureFromDeclaration(item)!)) ?? [];
       declarations.push({ source, sourceName, callable, id });
       const type = checker.getTypeAtLocation(callable.nameNode);
-      symbols.push({ id, name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), kind: "function", typeRepr: checker.typeToString(type), overloads, effectParameters: [], span: { start: coordinates.offset(sourceName, callable.declaration.getStart(source)), end: coordinates.offset(sourceName, callable.declaration.getEnd()) } });
+      symbols.push({ id, name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), kind: "function", typeRepr: checker.typeToString(type), overloads, effectParameters: [], inferredEffects: [], span: { start: coordinates.offset(sourceName, callable.declaration.getStart(source)), end: coordinates.offset(sourceName, callable.declaration.getEnd()) } });
       if (extractAnnotations(leading, "effect").length) trivia.push({ owner: id, text: leading, span: { start: coordinates.offset(sourceName, callable.declaration.getFullStart()), end: coordinates.offset(sourceName, callable.declaration.getStart(source)) } });
     }
   }
   for (const { source, sourceName, callable, id: caller } of declarations) {
     const visit = (child: ts.Node): void => {
+      if (child !== callable.body && ts.isFunctionLike(child)) return;
       if (ts.isCallExpression(child)) {
+        const resolvedBuiltin = adapter.resolveCall(child);
+        if (resolvedBuiltin?.operation?.kind === "effect") {
+          const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
+          let builtinSymbol = checker.getSymbolAtLocation(lookup);
+          if (builtinSymbol && (builtinSymbol.flags & ts.SymbolFlags.Alias)) builtinSymbol = checker.getAliasedSymbol(builtinSymbol);
+          const declaration = builtinSymbol?.declarations?.[0];
+          (symbols.find((symbol) => symbol.id === caller) as any).inferredEffects.push({
+            effect: resolvedBuiltin.operation.effect,
+            builtin: resolvedBuiltin.symbol,
+            symbolIdentity: declaration ? `${declaration.getSourceFile().fileName}:${declaration.getStart()}` : "typescript-symbol",
+            declaration: declaration ? {
+              fileName: declaration.getSourceFile().fileName,
+              start: declaration.getStart(),
+              end: declaration.getEnd(),
+            } : { fileName: "typescript-library", start: 0, end: 0 },
+            span: {
+              start: coordinates.offset(sourceName, child.getStart(source)),
+              end: coordinates.offset(sourceName, child.getEnd()),
+            },
+          });
+        }
         const lookup = ts.isPropertyAccessExpression(child.expression) ? child.expression.name : child.expression;
         let symbol = checker.getSymbolAtLocation(lookup);
         if (symbol && (symbol.flags & ts.SymbolFlags.Alias)) symbol = checker.getAliasedSymbol(symbol);
@@ -164,6 +189,13 @@ function corsaInput(program: ts.Program, files: Record<string, string>, schemaVe
 
 export async function compareUneffectFrontends(options: CompareUneffectFrontendsOptions): Promise<CompareUneffectFrontendsResult> {
   const program = programOf(options.files), functions: NormalizedFrontendIr["functions"] = [];
+  const inferredByCallable = new Map<string, string[]>();
+  for (const summary of analyzeProgramEffects(program, { requireAnnotations: false }).summaries) {
+    if (!summary.fileName) continue;
+    const sourceName = projectFileName(options.files, summary.fileName);
+    if (!sourceName) continue;
+    inferredByCallable.set(`${sourceName}\0${summary.functionName}`, summary.effects.map(formatEffect));
+  }
   const coverageFailures = options.corsaFacts || options.requireCorsaCheckerFacts
     ? checkerCoverageFailures(program, options.files)
     : [];
@@ -171,11 +203,14 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
   for (const source of program.getSourceFiles()) if (projectFileName(options.files, source.fileName)) for (const callable of topLevelCallables(source)) {
     const sourceName = projectFileName(options.files, source.fileName)!;
     const leading = source.text.slice(callable.declaration.getFullStart(), callable.declaration.getStart(source));
-    const effects = extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect).sort();
+    const effects = [...new Set([
+      ...extractAnnotations(leading, "effect").flatMap(parseEffectSet).map(formatEffect),
+      ...(inferredByCallable.get(`${sourceName}\0${callable.name}`) ?? []),
+    ])].sort();
     functions.push({ name: projectFunctionDisplayName(sourceName, callable.name, nameCounts), effects });
   }
   functions.sort((left, right) => left.name.localeCompare(right.name));
-  const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 7);
+  const referenceInput = corsaInput(program, options.files, options.corsaSchemaVersion ?? 8);
   const input = options.corsaFacts ?? referenceInput;
   if (options.corsaFacts) coverageFailures.push(...checkerMetadataParityFailures(referenceInput, input));
   const provenance: FrontendFactProvenance = {
@@ -213,7 +248,7 @@ export async function compareUneffectFrontends(options: CompareUneffectFrontends
     escapingFailure: item.escapingFailure, exits: item.exits }));
   const suppressedErrors = referenceInput.suppressedErrors.map((item: any) => ({ owner: names.get(item.owner)!, payload: item.payload as ResourceError }));
   const irProvenance = { ...referenceInput.provenance, compilerRevision: referenceInput.compilerRevision };
-  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 7, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
+  const typescriptIr: NormalizedFrontendIr = { schemaVersion: 8, provenance: irProvenance, functions, calls, orderedEvents, protocolSymbols, promiseObservations, rejectionOwnership, resourceScopes, disposals, suppressedErrors };
   const execution = spawnSync("cargo", ["run", "--quiet", "--package", "uneffect-core", "--bin", "uneffect-corsa-normalize"], {
     input: JSON.stringify(input), encoding: "utf8", timeout: options.corsaTimeoutMs ?? 120_000,
   });
@@ -280,6 +315,13 @@ function checkerMetadataParityFailures(reference: any, actual: any): FrontendSch
     if (JSON.stringify(expected.overloads) !== JSON.stringify(observed.overloads)) failures.push({
       frontend: "corsa",
       message: `checker-backed overload candidates differ for ${expected.name}`,
+    });
+    const evidenceKey = (item: any): string => `${item.effect}\0${item.builtin?.module}\0${item.builtin?.export}\0${item.span?.start}\0${item.span?.end}`;
+    const expectedEffects = (expected.inferredEffects ?? []).map(evidenceKey).sort();
+    const observedEffects = (observed.inferredEffects ?? []).map(evidenceKey).sort();
+    if (JSON.stringify(expectedEffects) !== JSON.stringify(observedEffects)) failures.push({
+      frontend: "corsa",
+      message: `checker-backed inferred-effect evidence differs for ${expected.name}`,
     });
   }
   const callKey = (call: any, names: Map<any, any>): string =>

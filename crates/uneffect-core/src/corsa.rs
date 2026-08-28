@@ -2,7 +2,7 @@ use crate::{Effect, EffectSet, ParseEffectError, SourceSpan};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 7;
+pub const CORSA_FRONTEND_SCHEMA_VERSION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum FrontendFactProducer {
@@ -51,7 +51,34 @@ pub struct CorsaSymbol {
     pub type_repr: String,
     pub overloads: Vec<String>,
     pub effect_parameters: Vec<usize>,
+    #[serde(default)]
+    pub inferred_effects: Vec<CorsaInferredEffect>,
     pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaInferredEffect {
+    pub effect: String,
+    pub builtin: CorsaBuiltinIdentity,
+    pub symbol_identity: String,
+    pub declaration: CorsaDeclarationIdentity,
+    pub span: SourceSpanDto,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaBuiltinIdentity {
+    pub module: String,
+    pub export: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CorsaDeclarationIdentity {
+    pub file_name: String,
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -611,6 +638,31 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
                 symbol.id
             )));
         }
+        let mut inferred_effects = EffectSet::default();
+        for inferred in &symbol.inferred_effects {
+            if inferred.symbol_identity.is_empty()
+                || inferred.builtin.module.is_empty()
+                || inferred.builtin.export.is_empty()
+                || inferred.declaration.file_name.is_empty()
+                || inferred.declaration.start > inferred.declaration.end
+                || inferred.span.start > inferred.span.end
+            {
+                return Err(CorsaFrontendError(format!(
+                    "invalid checker-inferred effect provenance for symbol {}",
+                    symbol.id
+                )));
+            }
+            let parsed = EffectSet::parse(&inferred.effect)?;
+            if parsed.iter().count() != 1 {
+                return Err(CorsaFrontendError(format!(
+                    "checker-inferred effect for symbol {} must contain exactly one effect",
+                    symbol.id
+                )));
+            }
+            for effect in parsed.iter().cloned() {
+                inferred_effects.insert(effect);
+            }
+        }
         symbols.insert(
             symbol.id,
             NativeSymbolSummary {
@@ -620,7 +672,7 @@ pub fn consume_corsa_json(json: &str) -> Result<NativeFrontendProgram, CorsaFron
                 type_repr: symbol.type_repr,
                 overloads: symbol.overloads,
                 effect_parameters: symbol.effect_parameters,
-                effects: EffectSet::default(),
+                effects: inferred_effects,
                 evidence: NativeEvidence::Inferred,
                 span: SourceSpan::new(file.file_id, symbol.span.start, symbol.span.end),
             },

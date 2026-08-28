@@ -4,6 +4,66 @@ import { exportCorsaCheckerFacts } from "../src/corsa-checker-exporter.js";
 import { compareUneffectFrontends } from "../src/frontend-parity.js";
 
 describe("corsa-bind checker fact exporter", () => {
+  it("exports one checker-inferred builtin effect and preserves its ordered local call", async () => {
+    const files = {
+      "fixture.ts": `
+        export function emit(message: string): void { console.log(message) }
+        export function main(): void { emit("first"); emit("second") }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const emit = facts.symbols.find((symbol) => symbol.name === "emit") as any;
+
+    expect(emit.inferredEffects).toEqual([
+      expect.objectContaining({
+        effect: "Console",
+        builtin: { module: "global", export: "console.log" },
+        symbolIdentity: expect.any(String),
+        declaration: expect.objectContaining({ fileName: expect.stringMatching(/lib\.(dom|webworker)\.d\.ts$/) }),
+        span: expect.objectContaining({ start: expect.any(Number), end: expect.any(Number) }),
+      }),
+    ]);
+
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify({ schemaDrift: compared.schemaDrift, facts }, null, 2)).toBe(true);
+    expect(compared.corsaIr?.functions).toEqual([
+      { name: "emit", effects: ["Console"] },
+      { name: "main", effects: ["Console"] },
+    ]);
+    expect(compared.corsaIr?.orderedEvents).toEqual([
+      expect.objectContaining({ kind: "call", caller: "main", callee: "emit" }),
+      expect.objectContaining({ kind: "call", caller: "main", callee: "emit" }),
+    ]);
+    expect(compared.corsaIr!.orderedEvents[0]!.start).toBeLessThan(compared.corsaIr!.orderedEvents[1]!.start);
+
+    emit.inferredEffects[0]!.builtin.export = "console.info";
+    const drifted = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(drifted).toMatchObject({ equivalent: false, semanticEquivalent: true });
+    expect(drifted.schemaDrift).toContainEqual(expect.objectContaining({
+      message: expect.stringContaining("inferred-effect evidence differs"),
+    }));
+  });
+
+  it("does not infer Console from a same-spelled symbol-distinct lookalike", async () => {
+    const files = {
+      "fixture.ts": `
+        const console = { log(_message: string): void {} };
+        export function emit(message: string): void { console.log(message) }
+        export function main(): void { emit("x") }
+      `,
+    };
+    const facts = await exportCorsaCheckerFacts({ files, corsaExecutable: resolve("node_modules/.bin/tsgo") });
+    const emit = facts.symbols.find((symbol) => symbol.name === "emit") as any;
+
+    expect(emit.inferredEffects).toEqual([]);
+    const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
+    expect(compared.equivalent, JSON.stringify({ schemaDrift: compared.schemaDrift, facts }, null, 2)).toBe(true);
+    expect(compared.corsaIr?.functions).toEqual([
+      { name: "emit", effects: [] },
+      { name: "main", effects: [] },
+    ]);
+  });
+
   it("exports checker-backed functions, trivia, and resolved call edges", async () => {
     const files = { "fixture.ts": `
       /* uneffect: effect Console */
@@ -16,7 +76,7 @@ describe("corsa-bind checker fact exporter", () => {
     });
 
     expect(facts).toMatchObject({
-      schemaVersion: 7,
+      schemaVersion: 8,
       provenance: { producer: "corsa-checker", checkerBacked: true },
       symbols: expect.arrayContaining([
         expect.objectContaining({ name: "emit", typeRepr: "(message: string) => void" }),

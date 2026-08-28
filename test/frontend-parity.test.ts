@@ -56,7 +56,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     const matching = await compareUneffectFrontends({ files });
     expect(matching).toMatchObject({ equivalent: true, schemaDrift: [] });
 
-    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 8 });
+    const drift = await compareUneffectFrontends({ files, corsaSchemaVersion: 9 });
     expect(drift.equivalent).toBe(false);
     expect(drift.schemaDrift[0]?.message).toContain("unsupported Corsa frontend schema");
 
@@ -97,7 +97,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
     }));
   });
 
-  it("preserves disjunctive control paths in schema v7", async () => {
+  it("preserves disjunctive control paths in schema v8", async () => {
     const result = await compareUneffectFrontends({ files: { "conditional.ts": `
       interface Resource { [Symbol.asyncDispose](): Promise<void> }
       declare function open(): Resource
@@ -109,7 +109,7 @@ describe("TypeScript/Corsa neutral projection parity", () => {
       }
     ` } });
     expect(result.equivalent, result.schemaDrift.map((item) => item.message).join("\n")).toBe(true);
-    expect(result.typescriptIr.schemaVersion).toBe(7);
+    expect(result.typescriptIr.schemaVersion).toBe(8);
     expect(result.typescriptIr.promiseObservations).toContainEqual(expect.objectContaining({ owner: "run", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
     expect(result.typescriptIr.resourceScopes).toContainEqual(expect.objectContaining({ owner: "run", binding: "resource", conditional: true, controlConditions: [expect.objectContaining({ expected: true })], controlPaths: [[expect.objectContaining({ expected: true })]] }));
   });

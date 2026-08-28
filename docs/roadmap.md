@@ -119,7 +119,9 @@ explicit conservative boundaries rather than untracked support.
    and rethrow through the outer handler under a named nesting budget. Nested
    regions now use source-keyed IDs and exactly two sibling regions compose
    under the existing root budget. General value joins and recurrence widening
-   continue in [#25](https://github.com/mizchi/uneffect/issues/25). The first
+   continue in [#25](https://github.com/mizchi/uneffect/issues/25). Its active
+   first scalar-environment child is
+   [#28](https://github.com/mizchi/uneffect/issues/28). The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
@@ -142,8 +144,9 @@ explicit conservative boundaries rather than untracked support.
    TypeChecker-resolved local helper.
 2. [Native Corsa semantic parity](https://github.com/mizchi/uneffect/issues/8)
    moves inferred facts and ordered events off the TypeScript reference adapter.
-   Its active first checker-backed slice is
-   [#27](https://github.com/mizchi/uneffect/issues/27).
+   Its first checker-backed inferred-`Console` and ordered-local-call slice
+   [#27](https://github.com/mizchi/uneffect/issues/27) is complete; broader
+   builtin and neutral-IR coverage remains open.
 3. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)
    fills host phases, dynamic cancellation, and polymorphic callback gaps.
 4. [Independently checkable evidence](https://github.com/mizchi/uneffect/issues/7)

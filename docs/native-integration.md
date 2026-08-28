@@ -4,13 +4,15 @@ Uneffect's implementation layer is replaceable; its frontend and proof contracts
 
 ## Corsa interchange
 
-The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v7 consumes:
+The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`. Schema v8 consumes:
 
 - mandatory fact provenance (`typescript-reference` or `corsa-checker`) and a
   consistent `checkerBacked` flag,
 
 - stable symbol IDs and declaration kinds (`function`, `method`, `arrow`, callback, overload),
 - TypeScript type text and selected overload signatures,
+- checker-inferred builtin effects with builtin key, opaque checker symbol ID,
+  declaration provenance, and operation span,
 - resolved caller/callee IDs and overload indices,
 - callback invocation timing (`inline`, `deferred`, `unknown`),
 - raw leading trivia with UTF-8 byte spans and file IDs.
@@ -26,7 +28,7 @@ The Rust crate exposes `consume_corsa_json` and `CORSA_FRONTEND_SCHEMA_VERSION`.
 Rust attaches `uneffect:` trivia to the resolved owner, parses its structured effect set, and rejects unsupported schema versions, duplicate/dangling symbols, invalid overload indices, and malformed effects. This is the semantic-fact boundary that a Corsa integration must supply; Rust does not rediscover source spellings.
 
 `compareUneffectFrontends` exercises that boundary end to end. The TypeScript
-reference side emits schema-v7 mapper records, the Rust
+reference side emits schema-v8 mapper records, the Rust
 `uneffect-corsa-normalize` binary consumes them, and both sides are compared as
 the same normalized functions, transitive inferred effect sets, resolved local
 call edges, source-ordered call events, Promise ownership records, resource
@@ -45,7 +47,7 @@ user properties do not become protocols.
 
 The optional `@mizchi/uneffect/corsa` entry point now runs an Oxlint JS plugin
 through `corsa-oxlint`. The visitor refuses parser services without full type
-information, reads Corsa symbol identity and type text, emits schema-v7 facts
+information, reads Corsa symbol identity and type text, emits schema-v8 facts
 with `producer: corsa-checker`, and compares them through the Rust consumer:
 
 ```ts
@@ -75,12 +77,22 @@ collected before numeric schema IDs are assigned, so imported calls retain
 declaration identity. A local function name is kept when unique and rendered as
 `path/to/file.ts::name` when duplicated elsewhere in the project; call edges
 use the same identity and cannot collapse solely because spellings match.
+For the first inferred-effect seed, `console.log` is recognized only when both
+the receiver and member resolve through the active Corsa checker to the pinned
+standard `lib.dom.d.ts` declarations. The exporter emits `Console` with the
+operation's project-wide UTF-8 span, checker symbol ID, builtin registry key,
+declaration file identity, and compiler revision. A local object named
+`console` with a method named `log` has different declaration identities and
+remains effect-free. The TypeScript reference adapter independently emits the
+same effect/builtin/span tuple; metadata drift fails parity even when the
+normalized effect set would otherwise match.
 Calls outside the exported project symbol set are not emitted. Traversal stops
 at unsupported nested function and callback boundaries, so their work is not
 misreported as an immediate call by the outer function; comparison with a
-reference edge then fails rather than claiming parity. Promise/resource
-records, computed or polymorphically dispatched methods, nested callbacks,
-method/generic overload edge cases, and callback timing are not
+reference edge then fails rather than claiming parity. Other Console methods
+and builtin families, Promise/resource records, computed or polymorphically
+dispatched methods, nested callbacks, method/generic overload edge cases, and
+callback timing are not
 checker-exported yet. An explicitly
 annotated computed method produces a coverage failure even if both projections
 would otherwise be empty. Using those constructs therefore cannot establish
@@ -105,7 +117,7 @@ file extensions, return generated TypeScript plus source-span mappings, and do
 not expose the checker graph for ordinary `.ts` input. The intended native path
 is instead the `corsa-bind` type-aware Oxlint bridge: it collects compact node,
 type-text, property-name, and symbol facts from a pinned Corsa checker and sends
-them to Rust native rules. Expanding the implemented schema-v7 exporter from
+them to Rust native rules. Expanding the implemented schema-v8 exporter from
 the restricted slice above to the whole neutral IR remains the P6 production
 integration task. Content Mappers may later project an Uneffect
 foreign file format, but are neither required nor sufficient for TypeScript
