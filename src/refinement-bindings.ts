@@ -223,6 +223,16 @@ export interface RefinementScalarRecurrenceObligation {
     to: string;
     rule: "source-bound-affine-transformer";
   };
+  conditionalJoin?: {
+    kind: "loop-invariant-cfg-diamond";
+    predicate: string;
+    rule: "predicate-correlated-affine-phi";
+    predecessors: readonly [
+      { branch: "then"; block: string },
+      { branch: "else"; block: string },
+    ];
+    join: string;
+  };
   fixedPoint: {
     iterations: number;
     converged: boolean;
@@ -4289,6 +4299,13 @@ function runRankingLoopJoinFixedPoint(
 interface ScalarRecurrenceCandidate {
   readonly whileStatement: ts.WhileStatement;
   readonly backEdgeStatement: ts.Statement;
+  readonly conditional?: {
+    readonly statement: ts.IfStatement;
+    readonly predicate: string;
+    readonly thenBlock: string;
+    readonly elseBlock: string;
+    readonly join: string;
+  };
 }
 
 function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandidate[] {
@@ -4307,9 +4324,47 @@ function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandida
     if (ts.isFunctionLike(node) && node !== body.parent) return;
     if (ts.isWhileStatement(node) && ts.isBlock(node.statement)
       && node.statement.statements.length > 0 && !containsTry(node.statement)) {
+      const directIfs = node.statement.statements.filter(ts.isIfStatement);
+      let totalIfCount = 0;
+      const countLoopIf = (child: ts.Node): void => {
+        if (ts.isFunctionLike(child)) return;
+        if (ts.isIfStatement(child)) totalIfCount++;
+        ts.forEachChild(child, countLoopIf);
+      };
+      ts.forEachChild(node.statement, countLoopIf);
+      const directConditional = directIfs.length === 1 && totalIfCount === 1 ? directIfs[0] : undefined;
+      const nestedIfCount = directConditional ? (() => {
+        let count = 0;
+        const countIf = (child: ts.Node): void => {
+          if (ts.isFunctionLike(child)) return;
+          if (ts.isIfStatement(child)) count++;
+          ts.forEachChild(child, countIf);
+        };
+        ts.forEachChild(directConditional.thenStatement, countIf);
+        if (directConditional.elseStatement) ts.forEachChild(directConditional.elseStatement, countIf);
+        return count;
+      })() : 0;
+      const predicate = directConditional && nestedIfCount === 0
+        && ts.isPropertyAccessExpression(directConditional.expression)
+        ? directConditional.expression.name.text : undefined;
+      const branchStatement = (statement: ts.Statement): ts.Statement | undefined =>
+        ts.isBlock(statement) && statement.statements.length === 1
+          ? statement.statements[0] : ts.isBlock(statement) ? undefined : statement;
+      const thenStatement = directConditional ? branchStatement(directConditional.thenStatement) : undefined;
+      const elseStatement = directConditional?.elseStatement
+        ? branchStatement(directConditional.elseStatement) : undefined;
       candidates.push({
         whileStatement: node,
         backEdgeStatement: node.statement.statements.at(-1)!,
+        ...(directConditional && predicate && thenStatement ? { conditional: {
+          statement: directConditional,
+          predicate,
+          thenBlock: `statement:${thenStatement.getStart()}`,
+          elseBlock: elseStatement
+            ? `statement:${elseStatement.getStart()}`
+            : `identity:${directConditional.getStart()}`,
+          join: `if-join:${directConditional.getStart()}`,
+        } } : {}),
       });
     }
     ts.forEachChild(node, visit);
@@ -4350,10 +4405,64 @@ function runScalarRecurrenceFixedPoint(
   readonly recurrence?: RefinementRankingRecurrenceEvidence;
   readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
+  readonly conditionalJoin?: RefinementScalarRecurrenceObligation["conditionalJoin"];
+  readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
   const back = `statement:${candidate.backEdgeStatement.getStart(source)}`;
   const candidateRecurrence = trace ? recurrenceEvidenceFromTrace(trace, false) : undefined;
+  const containsConditional = (expression: TemporalExpression): boolean => {
+    if (expression.kind === "conditional") return true;
+    if (expression.kind === "binary") return containsConditional(expression.left) || containsConditional(expression.right);
+    if (expression.kind === "unary") return containsConditional(expression.operand);
+    return false;
+  };
+  const containsPredicateConditional = (expression: TemporalExpression, predicate: string): boolean => {
+    if (expression.kind === "conditional") return (expression.condition.kind === "name"
+      && expression.condition.name === predicate)
+      || containsPredicateConditional(expression.condition, predicate)
+      || containsPredicateConditional(expression.whenTrue, predicate)
+      || containsPredicateConditional(expression.whenFalse, predicate);
+    if (expression.kind === "binary") return containsPredicateConditional(expression.left, predicate)
+      || containsPredicateConditional(expression.right, predicate);
+    if (expression.kind === "unary") return containsPredicateConditional(expression.operand, predicate);
+    return false;
+  };
+  const everyConditionalUsesPredicate = (expression: TemporalExpression, predicate: string): boolean => {
+    if (expression.kind === "conditional") return expression.condition.kind === "name"
+      && expression.condition.name === predicate
+      && everyConditionalUsesPredicate(expression.whenTrue, predicate)
+      && everyConditionalUsesPredicate(expression.whenFalse, predicate);
+    if (expression.kind === "binary") return everyConditionalUsesPredicate(expression.left, predicate)
+      && everyConditionalUsesPredicate(expression.right, predicate);
+    if (expression.kind === "unary") return everyConditionalUsesPredicate(expression.operand, predicate);
+    return true;
+  };
+  const piecewise = trace ? [...trace.iterationUpdates.values()].some(containsConditional) : false;
+  const predicateState = candidate.conditional
+    ? spec.states.find(({ name }) => name === candidate.conditional!.predicate) : undefined;
+  const predicateUnchanged = candidate.conditional && trace
+    ? formatRefinementExpression(trace.iterationUpdates.get(candidate.conditional.predicate)
+      ?? { kind: "name", name: candidate.conditional.predicate }) === candidate.conditional.predicate
+    : false;
+  const predicateCorrelated = candidate.conditional && trace
+    ? [...trace.iterationUpdates.values()].some((expression) =>
+      containsPredicateConditional(expression, candidate.conditional!.predicate))
+      && [...trace.iterationUpdates.values()].every((expression) =>
+        everyConditionalUsesPredicate(expression, candidate.conditional!.predicate))
+    : false;
+  const conditionalJoin = candidate.conditional && predicateState?.type === "bool"
+    && candidate.conditional.predicate !== trace?.counterName
+    && predicateUnchanged && predicateCorrelated ? {
+      kind: "loop-invariant-cfg-diamond" as const,
+      predicate: candidate.conditional.predicate,
+      rule: "predicate-correlated-affine-phi" as const,
+      predecessors: [
+        { branch: "then" as const, block: candidate.conditional.thenBlock },
+        { branch: "else" as const, block: candidate.conditional.elseBlock },
+      ] as const,
+      join: candidate.conditional.join,
+    } : undefined;
   const changed = candidateRecurrence
     ? spec.states.filter(({ name, type }) => type === "int"
       && candidateRecurrence.iteration[name] !== undefined
@@ -4419,6 +4528,8 @@ function runScalarRecurrenceFixedPoint(
     ...(retained ? { recurrence: { ...retained, stable: result.status === "converged" } } : {}),
     members,
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
+    ...(conditionalJoin ? { conditionalJoin } : {}),
+    unsupportedPiecewise: piecewise && !conditionalJoin,
   };
 }
 
@@ -4889,7 +5000,8 @@ export function analyzeRefinementActionBodies(
       const fixedPoint = runScalarRecurrenceFixedPoint(candidate, source, spec, trace, limit);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const supported = Boolean(trace && fixedPoint.recurrence
-        && fixedPoint.members.length >= 1 && fixedPoint.members.length <= 2);
+        && fixedPoint.members.length >= 1 && fixedPoint.members.length <= 2
+        && !fixedPoint.unsupportedPiecewise);
       obligations.push({
         kind: "scalar-recurrence-fixed-point",
         adapterName,
@@ -4911,6 +5023,7 @@ export function analyzeRefinementActionBodies(
                 : "independent-proof-required",
         budget: { name: "cfg-recurrence-iterations", limit },
         backEdge: fixedPoint.backEdge,
+        ...(fixedPoint.conditionalJoin ? { conditionalJoin: fixedPoint.conditionalJoin } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,

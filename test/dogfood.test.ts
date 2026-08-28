@@ -26,6 +26,25 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a loop-invariant piecewise recurrence through a CFG diamond", async () => {
+    const fileName = "examples/dogfood/cfg-piecewise-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgPiecewiseDrain", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      conditionalJoin: expect.objectContaining({
+        predicate: "sampled",
+        rule: "predicate-correlated-affine-phi",
+      }),
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+  });
+
   it("proves the CFG-inferred two-counter affine drain recurrence", async () => {
     const fileName = "examples/dogfood/cfg-affine-drain.ts";
     const source = readFileSync(fileName, "utf8");

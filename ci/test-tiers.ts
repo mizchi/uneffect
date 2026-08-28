@@ -39,6 +39,7 @@ export const ciTestTiers = {
     "test/refinement-equivalence.test.ts",
     "test/refinement-scalar-product-conditional-join.test.ts",
     "test/refinement-cfg-affine-recurrence.test.ts",
+    "test/refinement-cfg-piecewise-recurrence.test.ts",
     "test/refinement-scalar-product-handler-join.test.ts",
     "test/refinement-scalar-product-three-region.test.ts",
     "test/refinement-scalar-handler-join.test.ts",

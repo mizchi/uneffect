@@ -424,6 +424,38 @@
             "rule": { "const": "source-bound-affine-transformer" }
           }
         },
+        "conditionalJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["kind", "predicate", "rule", "predecessors", "join"],
+          "properties": {
+            "kind": { "const": "loop-invariant-cfg-diamond" },
+            "predicate": { "type": "string", "minLength": 1 },
+            "rule": { "const": "predicate-correlated-affine-phi" },
+            "predecessors": {
+              "type": "array", "minItems": 2, "maxItems": 2,
+              "prefixItems": [
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "block"],
+                  "properties": {
+                    "branch": { "const": "then" },
+                    "block": { "type": "string", "pattern": "^statement:[0-9]+$" }
+                  }
+                },
+                {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["branch", "block"],
+                  "properties": {
+                    "branch": { "const": "else" },
+                    "block": { "type": "string", "pattern": "^(statement|identity):[0-9]+$" }
+                  }
+                }
+              ],
+              "items": false
+            },
+            "join": { "type": "string", "pattern": "^if-join:[0-9]+$" }
+          }
+        },
         "fixedPoint": {
           "type": "object", "additionalProperties": false,
           "required": ["iterations", "converged", "members"],

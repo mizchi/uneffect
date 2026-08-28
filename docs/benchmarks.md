@@ -1963,6 +1963,14 @@ operations per second). This development-host signal excludes handler loops,
 more than two members, coupled or self-amplifying updates, path-dependent
 deltas, nested loops, heap aliases, and irreducible CFGs.
 
+The P2.18 focused benchmark adds one loop-invariant Boolean diamond to that
+back edge. Structural predicate/predecessor correlation measured 0.1537 ms mean
+over 3,254 samples (6,507.30 operations per second). Independent Z3 recurrence
+validation measured 35.7319 ms mean over 14 samples (27.99 operations per
+second). These separate selected runs are regression signals, not a comparative
+speedup claim. They exclude mutated or ranking-dependent predicates, nested
+diamonds, multiple predicates, aliases, and irreducible CFGs.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

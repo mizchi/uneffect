@@ -451,6 +451,16 @@ self-amplification, counter-dependent path deltas, worklist exhaustion, and an
 unavailable solver remain explicit non-proofs. This is one bounded direct
 `while` and at most two integer members, not general loop invariant inference.
 
+P2.18 adds `cfg-piecewise-drain.ts`. One loop-invariant `sampled` flag selects
+either `processed + 1` or the identity transformer before the common ranking
+step. The artifact binds that predicate to source-keyed then/else predecessor
+blocks and an `if-join:*` block under `predicate-correlated-affine-phi`.
+Predicate/source correlation is a bounded structural check; Z3 independently
+checks the resulting piecewise step/summary equations and ranking obligation.
+Mutating the predicate, using the ranking counter as the predicate, or nesting
+another diamond prevents this evidence. This is one direct invariant diamond,
+not general path implication or arbitrary piecewise recurrence inference.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
@@ -477,8 +487,8 @@ dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,875 summaries, 4,462 reviewed assumption occurrences, 74 files),
-and all 103 isolated dogfood cases pass.
+`assumed` (3,882 summaries, 4,469 reviewed assumption occurrences, 74 files),
+and all 104 isolated dogfood cases pass.
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a
