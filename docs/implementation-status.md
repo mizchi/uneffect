@@ -1056,7 +1056,7 @@ same property is proved for arbitrary TypeScript.
   `ite`. Literal keys support JSON-safe bounded counterexamples. Ordinary
   `Map.get` remains partial; unavailable solvers produce `unknown` rather than
   a safety claim.
-- The active P2.28 slice admits one state-derived scalar `getOrElse` key only
+- The completed P2.28 slice admits one state-derived scalar `getOrElse` key only
   after independently proving membership in an immutable non-empty literal Set
   state. Its evidence records the exact domain, key, property, values,
   satisfiable initialization, initiation, structural stability, and inductive

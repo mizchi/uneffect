@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 43];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -105,7 +105,6 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 2, 25],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
-      ["Active", 2, 43],
       ["Queued", 2, 4],
       ["Queued", 2, 6],
       ["Queued", 3, 24],
@@ -115,7 +114,7 @@ describe("TODO hierarchy consistency", () => {
       ["Queued", 3, 16],
       ["Queued", 4, 13],
     ]);
-    expect(rows.filter(([status]) => status === "Active")).toHaveLength(1);
+    expect(rows.filter(([status]) => status === "Active")).toHaveLength(0);
   });
 
   it("keeps one ordered immediate queue with explicit handoff conditions", () => {
@@ -128,9 +127,7 @@ describe("TODO hierarchy consistency", () => {
     const rows = [...(immediateQueue ?? "").matchAll(/^\| (\d+) \| \[#(\d+)\].*\| (.+) \|$/gm)].map(
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
-    expect(rows).toEqual([
-      [1, 43, "Prove one finite literal Set membership invariant before decoding a state-derived Map lookup key; retain every unsupported premise as unknown."],
-    ]);
+    expect(rows).toEqual([]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
     }
@@ -149,6 +146,7 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/9)");
     expect(activeIndex).not.toContain("issues/26)");
     expect(activeIndex).not.toContain("issues/42)");
+    expect(activeIndex).not.toContain("issues/43)");
     expect(activeIndex).not.toContain("issues/27)");
     expect(activeIndex).not.toContain("issues/28)");
     expect(activeIndex).not.toContain("issues/29)");
@@ -178,5 +176,7 @@ describe("TODO hierarchy consistency", () => {
     expect(todo).toContain("two-diamond recurrence composition closed [#35]");
     expect(todo).toContain("finite-switch recurrence fan-out closed [#36]");
     expect(todo).toContain("common ordered join IR closed with #37");
+    expect(todo).toContain("closed [#42]");
+    expect(todo).toContain("[#43](https://github.com/mizchi/uneffect/issues/43)");
   });
 });
