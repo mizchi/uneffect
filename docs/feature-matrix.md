@@ -84,6 +84,15 @@ updates, a mutated or counter-dependent policy, unaligned completion/update tree
 and dynamically selected completion remain unsupported. This is a closed-form
 affine rule, not a general loop fixed point.
 
+One additional direct-join seed exposes the affine rule through
+`uneffect-refinement-action-analysis/v1`: a ranking loop whose direct `try` has
+normal and supported scalar throw/catch predecessors must converge within the
+named `cfg-fixed-point-iterations` worklist budget. Only a fully matching action
+records retained throw payload and normal snapshot. Budget exhaustion and an
+unaligned recurrence remain `unknown`. The worklist currently covers control
+reachability only; arbitrary basic blocks and loop-carried value lattices remain
+owned by #23.
+
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
 arms produce phi values; when one arm returns, only the normal predecessor's

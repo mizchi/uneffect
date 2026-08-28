@@ -136,6 +136,13 @@ bounded Promise/exception/resource composition closed [#9](https://github.com/mi
 and exact project-boundary refinement provenance plus the first labeled Node
 realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
 
+- [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
+  normal/typed-throw catch join, enforce a named CFG reachability worklist
+  budget, retain payload/snapshot evidence only after exact affine action
+  validation, and keep budget exhaustion plus an unaligned recurrence
+  `unknown`. This is the #23 control-reachability seed; the general
+  basic-block/value-lattice fixed point remains unchecked below.
+
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.
 

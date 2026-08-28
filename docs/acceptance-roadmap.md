@@ -330,6 +330,16 @@ different ranking steps, model-misaligned updates, more than 16 predicate atoms,
 and a ninth affine update leaf remain non-proofs. The circuit-breaker telemetry
 dogfood now exercises this nested policy.
 
+The first explicit budgeted CFG case exposes a versioned analysis artifact for
+a dynamic-count ranking loop whose direct `try` has normal and supported scalar
+throw/catch predecessors. A successful artifact records worklist convergence
+plus retained throw payload and normal snapshot. Setting the named worklist
+budget below convergence or coupling the catch recurrence to the normal-path
+accumulator produces `unknown` and an `unsupported-action-body` diagnostic.
+The worklist currently establishes control reachability only; the existing
+affine completion lowering remains the value proof, so arbitrary joins and
+general loop fixed points remain open.
+
 A twelfth case carries an initialized mutable scalar local through two
 sequential normally completing `if` diamonds and then consumes the resulting
 phi value in a state update. State and local bindings share one flow-join

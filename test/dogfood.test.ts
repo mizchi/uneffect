@@ -14,7 +14,7 @@ import { parseSpec } from "../src/spec-ir.js";
 import { generateQuint } from "../src/spec-backends.js";
 import { findTemporalCounterexampleWithZ3, lintTemporalReachabilityWithZ3, lintTemporalSpecWithZ3 } from "../src/spec-lint.js";
 import { generateUneffectPropertyTests, generateUneffectPropertyTestsWithZ3 } from "../src/property-tests.js";
-import { validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
+import { analyzeRefinementActionBodies, validateRefinementActionBodies, validateRefinementActionBodiesInProgramWithZ3, validateRefinementActionBodiesWithZ3, validateRefinementBindingCoverage, validateRefinementInvariantBodiesInProgramWithZ3, validateRefinementInvariantBodiesWithZ3, validateRefinementStateProjection, validateRefinementStateProjectionInProgram } from "../src/refinement-bindings.js";
 
 const telemetryRoutingFileName = "examples/dogfood/telemetry-routing-accounting.ts";
 
@@ -350,6 +350,35 @@ describe("Uneffect dogfood", () => {
     expect(await validateRefinementActionBodiesWithZ3(fileName, nonTerminating, "telemetryBacklog", temporal)).toContainEqual(
       expect.objectContaining({ code: "unsupported-action-body", modelName: "drain" }),
     );
+  });
+
+  it("retains budgeted throw/normal join evidence for telemetry drain accounting", () => {
+    const fileName = "examples/dogfood/telemetry-fixed-point-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = analyzeRefinementActionBodies(
+      fileName, source, "telemetryFixedPoint", temporal,
+      { proofBudget: { cfgFixedPointIterations: 16 } },
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "ranking-loop-fixed-point",
+      status: "verified",
+      completionJoin: expect.objectContaining({
+        retainedThrowPayload: true,
+        retainedNormalSnapshot: true,
+      }),
+    }));
+
+    const coupled = source.replace("runtime.failed += amount;", "runtime.failed += runtime.delivered;");
+    const broken = analyzeRefinementActionBodies(
+      fileName, coupled, "telemetryFixedPoint", temporal,
+      { proofBudget: { cfgFixedPointIterations: 16 } },
+    );
+    expect(broken.obligations).toContainEqual(expect.objectContaining({
+      status: "unknown",
+      reason: "unsupported-recurrence",
+    }));
   });
 
   it("proves tiered telemetry pressure across symbolic branch joins", async () => {

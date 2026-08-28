@@ -89,6 +89,14 @@ are now shared dependencies for refinements, typed arrays, aliases, and future
 module widening. P2.1 and P3.1 are planning-sized first slices, not a
 claim that their owning epics are otherwise complete.
 
+P2.1 now has a completed control-reachability sub-slice: one direct
+normal/typed-throw catch join emits a strict budgeted artifact and fails closed
+on exhaustion or an unaligned recurrence. The 1–2 week estimate still covers
+the remaining load-bearing step: make the reusable basic-block value lattice,
+rather than the existing affine walker, retain and converge the payload and
+normal snapshot. The total is unchanged until that first value fixed point is
+measured.
+
 ## Dependency-critical order
 
 1. #20 is complete. The Workhub-derived `StateStore.set` edge on `main` retains its
@@ -154,7 +162,8 @@ separates committed `main` from worktree progress.
 | Completed slice | P1.2b one explicit Node realm identity | completed | Exact matching label/typings evidence and incompatible-realm controls close #20's bounded handoff. |
 | Completed slice | P1.3 synchronous cycle seed | under 1 engineer-week actual | Strict cycle-component evidence admits only side-effect-only simple rings and fails closed on runtime-binding/general/async cycles. |
 | Completed slice | P1.4 cross-project TLA seed | under 1 engineer-week actual | Exact declaration/source and resume/reject evidence compose; application survey found no eligible real boundary. |
-| Current slice | P2.1 CFG fixed-point seed | 1–2 engineer-weeks | Establish one ranking-bounded loop/throw join with an explicit proof budget and fail-closed non-convergence. |
+| Completed sub-slice | P2.1a CFG reachability seed | under 1 engineer-week actual | A strict artifact records one direct ranking-loop throw/normal join, named budget, convergence, and fail-closed negative controls. |
+| Current slice | P2.1b CFG value fixed-point seed | 1–2 engineer-weeks | Move payload/snapshot convergence into a reusable basic-block value lattice instead of relying on the shape-specific affine walker. |
 | First useful checkpoint | Finish P2.1 plus stabilization | roughly 1–2 engineer-weeks | Re-estimate before entering alias, temporal breadth, or React/event-loop breadth. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic

@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-refinement-action-analysis-v1.schema.json",
+  "title": "Uneffect refinement action analysis v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "fileName", "adapterName", "sourceDigest", "typescriptVersion", "diagnostics", "obligations"],
+  "properties": {
+    "schema": { "const": "uneffect-refinement-action-analysis/v1" },
+    "schemaVersion": { "const": 1 },
+    "fileName": { "type": "string" },
+    "adapterName": { "type": "string" },
+    "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "typescriptVersion": { "type": "string", "minLength": 1 },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "obligations": { "type": "array", "items": { "$ref": "#/$defs/rankingLoop" } }
+  },
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "adapterName", "modelName", "message"],
+      "properties": {
+        "code": { "enum": ["missing-action-binding", "unknown-action-binding", "missing-action-guard", "unexpected-action-guard", "action-guard-mismatch", "unsupported-action-body", "action-update-mismatch"] },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "target": { "type": "string" },
+        "expected": { "type": "string" },
+        "actual": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "rankingLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "trySpan", "status", "budget", "fixedPoint", "completionJoin"],
+      "properties": {
+        "kind": { "const": "ranking-loop-fixed-point" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "loopSpan": { "$ref": "#/$defs/span" },
+        "trySpan": { "$ref": "#/$defs/span" },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": { "enum": ["proof-budget-exhausted", "unsupported-recurrence", "action-validation-failed"] },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-fixed-point-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 1 },
+            "converged": { "type": "boolean" }
+          }
+        },
+        "completionJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["predecessors", "retainedThrowPayload", "retainedNormalSnapshot"],
+          "properties": {
+            "predecessors": { "const": ["normal", "throw"] },
+            "retainedThrowPayload": { "type": "boolean" },
+            "retainedNormalSnapshot": { "type": "boolean" }
+          }
+        }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+        "then": {
+          "not": { "required": ["reason"] },
+          "properties": {
+            "fixedPoint": { "properties": { "converged": { "const": true } } },
+            "completionJoin": { "properties": { "retainedThrowPayload": { "const": true }, "retainedNormalSnapshot": { "const": true } } }
+          }
+        },
+        "else": { "required": ["reason"] }
+      }]
+    }
+  }
+}

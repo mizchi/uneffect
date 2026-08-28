@@ -1841,3 +1841,11 @@ mapping, source digests, discharge, and the cross-project constraint. A
 2026-08-28 run measured 0.5088 ms mean over 983 samples (1,965.42 operations per
 second, 0.88% RME). This is a regression baseline, not a portable latency claim
 or evidence for multiple/transitive project dependencies.
+
+`refinement-fixed-point.bench.ts` parses and analyzes the first direct
+ranking-loop throw/normal CFG join, including exact affine action validation,
+the bounded reachability worklist, and artifact construction. A 2026-08-28 run
+measured 0.2691 ms mean over 1,859 samples (3,716.53 operations per second,
+1.68% RME). It excludes Z3, TypeChecker Program resolution, arbitrary basic
+blocks, and loop-carried value-lattice fixed points. This is an observation for
+the bounded seed, not a general CFG performance claim or CI regression budget.

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import ts from "typescript";
 import { joinFlowValues } from "./refinement-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
@@ -88,6 +89,54 @@ export interface ExternalRefinementActionContract {
 export interface RefinementActionValidationOptions {
   /** Keys are `${declaration source file}:${declaration start}` identities in the consuming Program. */
   externalActions?: ReadonlyMap<string, ExternalRefinementActionContract>;
+}
+
+export interface RefinementActionProofBudget {
+  /** Maximum monotone worklist rounds for one supported CFG loop seed. */
+  cfgFixedPointIterations: number;
+}
+
+export const DEFAULT_REFINEMENT_ACTION_PROOF_BUDGET: Readonly<RefinementActionProofBudget> = {
+  cfgFixedPointIterations: 32,
+};
+
+export interface RefinementActionAnalysisOptions {
+  proofBudget?: Partial<RefinementActionProofBudget>;
+}
+
+export interface RefinementRankingLoopObligation {
+  kind: "ranking-loop-fixed-point";
+  adapterName: string;
+  modelName: string;
+  exportName: string;
+  loopSpan: { start: number; end: number };
+  trySpan: { start: number; end: number };
+  status: "verified" | "unknown";
+  reason?: "proof-budget-exhausted" | "unsupported-recurrence" | "action-validation-failed";
+  budget: {
+    name: "cfg-fixed-point-iterations";
+    limit: number;
+  };
+  fixedPoint: {
+    iterations: number;
+    converged: boolean;
+  };
+  completionJoin: {
+    predecessors: readonly ["normal", "throw"];
+    retainedThrowPayload: boolean;
+    retainedNormalSnapshot: boolean;
+  };
+}
+
+export interface RefinementActionAnalysis {
+  schema: "uneffect-refinement-action-analysis/v1";
+  schemaVersion: 1;
+  fileName: string;
+  adapterName: string;
+  sourceDigest: string;
+  typescriptVersion: string;
+  diagnostics: RefinementActionDiagnostic[];
+  obligations: RefinementRankingLoopObligation[];
 }
 
 export type RefinementInvariantDiagnosticCode = "missing-invariant-binding" | "unknown-invariant-binding" | "unsupported-invariant-body" | "invariant-expression-mismatch";
@@ -3583,6 +3632,145 @@ export function validateRefinementActionBodies(
   return validateRefinementActionBodiesInSource(
     ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS), text, adapterName, spec,
   );
+}
+
+interface RankingLoopJoinCandidate {
+  readonly whileStatement: ts.WhileStatement;
+  readonly tryStatement: ts.TryStatement;
+}
+
+function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCandidate[] {
+  const candidates: RankingLoopJoinCandidate[] = [];
+  const containsThrow = (root: ts.Node): boolean => {
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found || ts.isFunctionLike(node)) return;
+      if (ts.isThrowStatement(node)) { found = true; return; }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(root, visit);
+    return found;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node) && node !== body.parent) return;
+    if (ts.isWhileStatement(node)) {
+      const loopBody = ts.isBlock(node.statement)
+        ? node.statement
+        : ts.factory.createBlock([node.statement], true);
+      for (const statement of loopBody.statements) {
+        if (!ts.isTryStatement(statement) || !statement.catchClause) continue;
+        const hasThrow = containsThrow(statement.tryBlock);
+        const hasNormalStatement = statement.tryBlock.statements.some((item) => !ts.isThrowStatement(item));
+        if (hasThrow && hasNormalStatement) candidates.push({ whileStatement: node, tryStatement: statement });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return candidates;
+}
+
+function runRankingLoopJoinFixedPoint(limit: number): { iterations: number; converged: boolean } {
+  // This first reusable seed models only control reachability. The existing
+  // completion lowering remains responsible for the paired payload/snapshot
+  // values. Keeping the graph explicit prevents a syntactic catch from being
+  // mistaken for a successfully joined value state.
+  const edges: readonly (readonly number[])[] = [
+    [1],       // loop header -> try entry
+    [2, 3],    // try -> normal predecessor or typed throw predecessor
+    [4],       // normal predecessor -> join
+    [4],       // catch after throw -> join
+    [0, 5],    // joined iteration -> back edge or loop exit
+    [],
+  ];
+  const reached = new Set<number>([0]);
+  if (!Number.isSafeInteger(limit) || limit <= 0) return { iterations: 0, converged: false };
+  for (let iteration = 1; iteration <= limit; iteration++) {
+    const before = reached.size;
+    for (const from of [...reached]) for (const to of edges[from] ?? []) reached.add(to);
+    if (reached.size === before) return { iterations: iteration, converged: true };
+  }
+  return { iterations: limit, converged: false };
+}
+
+/**
+ * Returns diagnostics together with explicit proof-budget evidence for the
+ * first reusable ranking-loop CFG fixed-point fragment. Unsupported bodies and
+ * exhausted budgets remain machine-readable non-proofs.
+ */
+export function analyzeRefinementActionBodies(
+  fileName: string,
+  text: string,
+  adapterName: string,
+  spec: TemporalSpec,
+  options: RefinementActionAnalysisOptions = {},
+): RefinementActionAnalysis {
+  const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
+  const functions = new Map(source.statements.filter(ts.isFunctionDeclaration)
+    .flatMap((node) => node.name ? [[node.name.text, node] as const] : []));
+  const limit = options.proofBudget?.cfgFixedPointIterations
+    ?? DEFAULT_REFINEMENT_ACTION_PROOF_BUDGET.cfgFixedPointIterations;
+  if (!Number.isSafeInteger(limit) || limit <= 0) {
+    throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
+  }
+  const diagnostics = validateRefinementActionBodies(fileName, text, adapterName, spec);
+  const obligations: RefinementRankingLoopObligation[] = [];
+  for (const action of spec.actions) {
+    const exportName = manifest.actions[action.name];
+    const implementation = exportName ? functions.get(exportName) : undefined;
+    if (!exportName || !implementation?.body) continue;
+    const candidates = findRankingLoopThrowJoinCandidates(implementation.body);
+    for (const _candidate of candidates) {
+      const fixedPoint = runRankingLoopJoinFixedPoint(limit);
+      const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
+      const actionUnsupported = actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body");
+      const verified = fixedPoint.converged && actionDiagnostics.length === 0;
+      obligations.push({
+        kind: "ranking-loop-fixed-point",
+        adapterName,
+        modelName: action.name,
+        exportName,
+        loopSpan: {
+          start: _candidate.whileStatement.getStart(source),
+          end: _candidate.whileStatement.getEnd(),
+        },
+        trySpan: {
+          start: _candidate.tryStatement.getStart(source),
+          end: _candidate.tryStatement.getEnd(),
+        },
+        status: verified ? "verified" : "unknown",
+        ...(!fixedPoint.converged
+          ? { reason: "proof-budget-exhausted" as const }
+          : actionUnsupported ? { reason: "unsupported-recurrence" as const }
+            : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const } : {}),
+        budget: { name: "cfg-fixed-point-iterations", limit },
+        fixedPoint,
+        completionJoin: {
+          predecessors: ["normal", "throw"],
+          retainedThrowPayload: verified,
+          retainedNormalSnapshot: verified,
+        },
+      });
+      if (!fixedPoint.converged && !actionUnsupported) diagnostics.push({
+        code: "unsupported-action-body",
+        adapterName,
+        modelName: action.name,
+        exportName,
+        message: `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
+      });
+    }
+  }
+  return {
+    schema: "uneffect-refinement-action-analysis/v1",
+    schemaVersion: 1,
+    fileName,
+    adapterName,
+    sourceDigest: createHash("sha256").update(text).digest("hex"),
+    typescriptVersion: ts.version,
+    diagnostics,
+    obligations,
+  };
 }
 
 /** Uses TypeScript symbol identity to reject collection-like subclasses and user-defined lookalikes. */

@@ -196,6 +196,21 @@ same property is proved for arbitrary TypeScript.
   boundaries where advancement is guaranteed. Canonical `while` rejects it
   because it can bypass the required terminal increment.
 
+- The first explicit refinement CFG fixed-point seed wraps the existing affine
+  ranking-loop summary with a monotone worklist for one direct `try` containing
+  a normal predecessor and one supported scalar throw entering a normally
+  completing `catch`. `analyzeRefinementActionBodies` emits
+  `uneffect-refinement-action-analysis/v1`, names the
+  `cfg-fixed-point-iterations` budget, binds the source SHA-256, TypeScript
+  version, and loop/try spans, records convergence, and marks the throw payload
+  and normal snapshot retained only when the shared completion/value
+  lowering validates the complete model action. Budget exhaustion, an
+  unaligned/cross-state recurrence, or any other action diagnostic yields
+  `unknown`. This seed proves only reachability convergence for that exact
+  direct join plus the already-supported affine value summary; it is not a
+  general basic-block value lattice, Program/external-action analysis,
+  irreducible-loop analysis, or CLI assurance artifact.
+
 - Initialized scalar `let` values now flow through sequential `if` diamonds. A
   shared `joinFlowValues` contract constructs state
   and local phi values over bindings visible at the common predecessor, so
