@@ -65,13 +65,26 @@ describe("refinement CFG fixed point", () => {
   bench("analyze an application switch/catch/finally join", () => {
     const result = analyzeRefinementActionBodies(
       handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
-      { proofBudget: { cfgFixedPointIterations: 16 } },
+      { proofBudget: { cfgFixedPointIterations: 32 } },
     );
     const obligation = result.obligations.find((item) =>
       item.kind === "handler-join-fixed-point" && item.modelName === "routeRecovery");
     if (result.diagnostics.some((item) => item.modelName === "routeRecovery")
       || obligation?.status !== "verified") {
       throw new Error("handler-join fixed-point benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("analyze an application nested-if/catch join", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "nestedReject");
+    if (result.diagnostics.some((item) => item.modelName === "nestedReject")
+      || obligation?.status !== "verified") {
+      throw new Error("nested handler CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
 });

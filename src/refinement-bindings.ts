@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
 import { joinFlowValues, solveBasicBlockFixedPoint } from "./refinement-flow.js";
-import { findDirectHandlerJoinCandidates, runDirectHandlerJoinFixedPoint, type HandlerCompletionKind } from "./refinement-handler-flow.js";
+import { findHandlerJoinCandidates, runHandlerJoinFixedPoint, type HandlerCompletionKind } from "./refinement-handler-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -174,9 +174,10 @@ export interface RefinementHandlerJoinObligation {
   modelName: string;
   exportName: string;
   trySpan: { start: number; end: number };
-  switchSpan: { start: number; end: number };
+  controlSpan: { start: number; end: number };
+  controlShape: "if" | "switch";
   status: "verified" | "unknown";
-  reason?: "proof-budget-exhausted" | "action-validation-failed";
+  reason?: "proof-budget-exhausted" | "unsupported-control-flow" | "action-validation-failed";
   budget: {
     name: "cfg-fixed-point-iterations";
     limit: number;
@@ -4003,10 +4004,10 @@ export function analyzeRefinementActionBodies(
     const exportName = manifest.actions[action.name];
     const implementation = exportName ? functions.get(exportName) : undefined;
     if (!exportName || !implementation?.body) continue;
-    for (const candidate of findDirectHandlerJoinCandidates(implementation.body)) {
-      const fixedPoint = runDirectHandlerJoinFixedPoint(candidate, limit);
+    for (const candidate of findHandlerJoinCandidates(implementation.body)) {
+      const fixedPoint = runHandlerJoinFixedPoint(candidate, limit);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
-      const verified = fixedPoint.converged && actionDiagnostics.length === 0;
+      const verified = candidate.lowering === "supported" && fixedPoint.converged && actionDiagnostics.length === 0;
       obligations.push({
         kind: "handler-join-fixed-point",
         adapterName,
@@ -4016,12 +4017,15 @@ export function analyzeRefinementActionBodies(
           start: candidate.tryStatement.getStart(source),
           end: candidate.tryStatement.getEnd(),
         },
-        switchSpan: {
-          start: candidate.switchStatement.getStart(source),
-          end: candidate.switchStatement.getEnd(),
+        controlSpan: {
+          start: candidate.controlStatement.getStart(source),
+          end: candidate.controlStatement.getEnd(),
         },
+        controlShape: candidate.controlShape,
         status: verified ? "verified" : "unknown",
-        ...(!fixedPoint.converged
+        ...(candidate.lowering === "unsupported"
+          ? { reason: "unsupported-control-flow" as const }
+          : !fixedPoint.converged
           ? { reason: "proof-budget-exhausted" as const }
           : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const } : {}),
         budget: { name: "cfg-fixed-point-iterations", limit },
@@ -4031,19 +4035,22 @@ export function analyzeRefinementActionBodies(
           blockCompletions: fixedPoint.blockCompletions,
         },
         completionJoin: {
-          incoming: candidate.incoming,
+          incoming: fixedPoint.incoming,
           outgoing: fixedPoint.outgoing,
-          caughtThrow: candidate.incoming.includes("throw"),
-          mandatoryFinally: true,
+          caughtThrow: fixedPoint.incoming.includes("throw"),
+          mandatoryFinally: candidate.mandatoryFinally,
         },
       });
-      if (!fixedPoint.converged && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {
+      if ((!fixedPoint.converged || candidate.lowering === "unsupported")
+        && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {
         diagnostics.push({
           code: "unsupported-action-body",
           adapterName,
           modelName: action.name,
           exportName,
-          message: `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
+          message: candidate.lowering === "unsupported"
+            ? `${exportName} contains handler control outside the reusable CFG fragment`
+            : `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
         });
       }
     }

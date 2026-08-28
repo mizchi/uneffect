@@ -309,17 +309,22 @@ The application-shaped `routeTelemetryRecovery` action in
 `handler-join-fixed-point` obligation. Its direct finite switch contributes
 normal, return, and throw completions; catch consumes the throw path; mandatory
 finally receives both remaining normal and return paths. The shared worklist
-converges in six block evaluations under the named
-`cfg-fixed-point-iterations` budget. A one-step budget is `unknown`, and a
+converges under the named `cfg-fixed-point-iterations` budget. A one-step budget is `unknown`, and a
 modified catch rethrow remains visible as an outgoing throw while action
-validation fails. The focused development-host benchmark measured 2.6685 ms
-mean over 189 samples. This is evidence for one direct switch/catch/finally
-shape, not general nested or irreducible handler CFG support.
+validation fails. The reusable lowerer also consumes the existing
+`nestedRejectTelemetry` nested-if/throw/catch action: its two source-keyed `if`
+blocks retain normal and throw reachability and catch consumes the throw. A
+loop substituted inside that attempted family is emitted as
+`unknown: unsupported-control-flow`, not silently omitted. The focused
+development-host benchmarks measured 2.1536 ms mean over 233 samples for the
+switch family and 2.1111 ms over 237 samples for the nested-if family. This is
+control-reachability evidence coupled to action validation, not general nested
+try, loop, arbitrary-sequence, or independent value proof support.
 
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,740 summaries, 4,325 reviewed assumption occurrences, 73 files).
+`assumed` (3,744 summaries, 4,333 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

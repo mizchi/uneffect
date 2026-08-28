@@ -90,16 +90,17 @@
     "handlerJoin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "switchSpan", "status", "budget", "fixedPoint", "completionJoin"],
+      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "status", "budget", "fixedPoint", "completionJoin"],
       "properties": {
         "kind": { "const": "handler-join-fixed-point" },
         "adapterName": { "type": "string" },
         "modelName": { "type": "string" },
         "exportName": { "type": "string" },
         "trySpan": { "$ref": "#/$defs/span" },
-        "switchSpan": { "$ref": "#/$defs/span" },
+        "controlSpan": { "$ref": "#/$defs/span" },
+        "controlShape": { "enum": ["if", "switch"] },
         "status": { "enum": ["verified", "unknown"] },
-        "reason": { "enum": ["proof-budget-exhausted", "action-validation-failed"] },
+        "reason": { "enum": ["proof-budget-exhausted", "unsupported-control-flow", "action-validation-failed"] },
         "budget": {
           "type": "object", "additionalProperties": false,
           "required": ["name", "limit"],
@@ -112,7 +113,7 @@
           "type": "object", "additionalProperties": false,
           "required": ["iterations", "converged", "blockCompletions"],
           "properties": {
-            "iterations": { "type": "integer", "minimum": 1 },
+            "iterations": { "type": "integer", "minimum": 0 },
             "converged": { "type": "boolean" },
             "blockCompletions": {
               "type": "object",
@@ -129,7 +130,7 @@
             "incoming": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
             "outgoing": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
             "caughtThrow": { "type": "boolean" },
-            "mandatoryFinally": { "const": true }
+            "mandatoryFinally": { "type": "boolean" }
           }
         }
       },

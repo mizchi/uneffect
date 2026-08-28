@@ -1853,3 +1853,14 @@ measured 57.4776 ms mean over 9 samples (17.3981 operations per second, 2.07%
 RME), or 183.42x the structural analysis cost on that host. These observations
 are not portable latency budgets. They exclude TypeChecker Program resolution,
 arbitrary AST-to-basic-block lowering, and general recurrence widening.
+
+The same benchmark now measures the reusable handler CFG builder against two
+application-backed actions. The finite switch/catch/normal-finally family
+measured 2.1536 ms mean over 233 samples (464.33 operations per second), and
+the two-level nested-if/throw/catch family measured 2.1111 ms mean over 237
+samples (473.68 operations per second). Both runs include source parsing,
+action validation, source-keyed basic-block construction, and the bounded
+completion worklist, but exclude Z3 and TypeChecker Program construction. They
+are regression observations, not portable budgets or evidence for general
+handler sequences, nested try, loops, irreducible control, or independent value
+proof.

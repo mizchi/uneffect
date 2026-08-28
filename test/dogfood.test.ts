@@ -73,6 +73,38 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("emits reusable nested-handler CFG evidence for telemetry rejection", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "nestedReject",
+      controlShape: "if",
+      status: "verified",
+      completionJoin: expect.objectContaining({
+        incoming: ["normal", "throw"],
+        outgoing: ["normal"],
+        caughtThrow: true,
+        mandatoryFinally: false,
+      }),
+    }));
+
+    const unsupportedSource = source.replace(
+      'if (runtime.attempted > 0) throw "nested telemetry rejection";',
+      'while (runtime.attempted > 0) throw "nested telemetry rejection";',
+    );
+    const unsupported = analyzeRefinementActionBodies(
+      fileName, unsupportedSource, "telemetryRouting", temporal,
+    );
+    expect(unsupported.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "nestedReject",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+      fixedPoint: expect.objectContaining({ converged: false, iterations: 0 }),
+    }));
+  });
+
   it("retains the dynamic lexical owner of a continue leaving a catch", () => {
     const fileName = "src/environment.ts";
     const source = readFileSync(fileName, "utf8");

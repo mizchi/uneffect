@@ -346,12 +346,15 @@ same property is proved for arbitrary TypeScript.
   and outcomes. They deliberately do not claim to be independently checkable
   proof terms.
 - Refinement analysis emits a budgeted `handler-join-fixed-point` artifact for
-  one application-backed direct finite `switch` inside `try`, followed by a
-  direct catch and mandatory normally completing finally. The shared worklist
-  retains normal/return/throw completion sets per block; caught throw becomes
-  the catch completion, while return bypasses the normal continuation. Budget
-  exhaustion and an action mismatch are non-proofs. Nested handler lowering and
-  irreducible control flow remain outside this direct seed.
+  application-backed nested `if` and finite exhaustive `switch` control roots
+  inside `try`, followed by a supported catch and optional normally completing
+  finally. A reusable AST-to-basic-block builder retains source-keyed branch,
+  statement, normal/return/throw, catch, join, finally, and exit states. Caught
+  throw becomes normal catch entry, while return remains abrupt through normal
+  finally. Budget exhaustion and action mismatch are non-proofs; attempted-family
+  loops, incomplete switches, labeled transfers, nested try, and abrupt finally
+  produce `unknown: unsupported-control-flow`. General handler sequences and
+  independent value proof remain outside this bounded fragment.
 
 ## Async, resources, and event loops
 
