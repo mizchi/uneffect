@@ -2069,6 +2069,19 @@ caching. The roughly two-times P2.27 latency reflects the additional
 satisfiable-init, initiation, and preservation solver calls; it is not hidden as
 ordinary trace-extraction cost.
 
+The P2.29 extension proves two primary/backup selectors against the same
+immutable registry, adding a second initiation/preservation pair while sharing
+the satisfiable-init check. A selected run measured 40.2732 ms mean over 13
+bounded-safe samples (24.83 operations per second, 1.28% RME). The broken
+fallback counterexample measured 40.4520 ms mean over 13 samples (24.72
+operations per second, 2.48% RME). The corresponding one-key cases in the same
+run measured 30.0456 ms and 31.4758 ms. These are development-host regression
+signals, not a scaling guarantee. They cover two direct integer selectors, one
+shared two-element immutable Set, one record-valued Map, and depth two. A
+compound key or one missing, ambiguous, mutable, or non-inductive domain keeps
+the whole observation universe `unknown`; arbitrary correlation and proof
+caching remain outside the measurement.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

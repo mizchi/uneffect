@@ -580,6 +580,16 @@ produces a one-step trace after selecting the node without a lease. Dynamic
 collection construction or mutation, compound/multiple lookup keys, missing or
 non-inductive membership, and solver failure remain explicit non-proofs.
 
+P2.29 adds `node-lease-primary-backup-map-domains.ts`. The model retains both a
+primary and a standby node selector and reads the same record-valued lease Map
+through both keys. Uneffect sorts the keys by name, independently proves each
+direct membership property against the immutable `Set(1, 2)` registry, and
+emits two proof records before bounded decoding. The fenced fallback is safe
+within two steps; changing both fallback records to `valid: true` produces a
+one-step standby-selection counterexample. Removing or invalidating either
+membership proof makes the whole observation universe `unknown` rather than
+silently relying on the other proof.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

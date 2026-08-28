@@ -77,8 +77,14 @@ checks satisfiable init, initiation, and preservation across every action.
 Only then does counterexample extraction decode the dynamic lease lookup. The
 fenced fallback is safe within depth two; changing it to `valid: true` produces
 a one-step replayable missing-lease trace. Mutable/non-literal registries,
-compound or multiple keys, failed induction, and unavailable solvers remain
-`unknown`.
+compound keys, incomplete per-key proof sets, failed induction, and unavailable
+solvers remain `unknown`.
+
+`examples/dogfood/node-lease-primary-backup-map-domains.ts` extends that bounded
+fragment to primary and standby selectors. Each selector has its own named
+membership property, and Z3 proves both relations separately before the shared
+lease Map is decoded. A single missing or invalid selector proof keeps the whole
+trace universe `unknown`; this is not general collection correlation.
 
 The GC slice also exercises liveness rather than safety alone. With an
 unconstrained `idle` action, Z3 finds an infinite lasso in which the worker

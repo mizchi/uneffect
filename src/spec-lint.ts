@@ -604,39 +604,45 @@ async function proveFiniteCollectionUniverse(
   if (universe.complete) return { universe, evidence: [] };
   if (universe.unsupportedDynamicCollection || universe.dynamicMapLookupKeys.length === 0) return undefined;
   const keyNames = new Set(universe.dynamicMapLookupKeys.map((key) => key.kind === "name" ? key.name : undefined));
-  if (keyNames.has(undefined) || keyNames.size !== 1) return undefined;
-  const keyState = [...keyNames][0]!;
-  const keyType = spec.states.find((state) => state.name === keyState)?.type;
-  if (keyType !== "int" && keyType !== "bool") return undefined;
-
-  const candidates = spec.states.flatMap((state) => {
-    if (typeof state.type === "string" || state.type.kind !== "set" || state.type.element !== keyType) return [];
-    const initializer = spec.init.find((assignment) => assignment.target === state.name)?.expressionAst;
-    if (!initializer || initializer.kind !== "call" || initializer.name !== "Set" || initializer.arguments.length === 0) return [];
-    const parsedValues = initializer.arguments.map(scalarLiteralValue);
-    if (parsedValues.some((value) => value === undefined)) return [];
-    const values = [...new Set(parsedValues as (number | boolean)[])].sort((left, right) => {
-      if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
-      return Number(left) - Number(right);
+  if (keyNames.has(undefined)) return undefined;
+  const keys = [...keyNames].sort() as string[];
+  if (keys.length === 0) return undefined;
+  const candidates = keys.map((keyState) => {
+    const keyType = spec.states.find((state) => state.name === keyState)?.type;
+    if (keyType !== "int" && keyType !== "bool") return undefined;
+    const matching = spec.states.flatMap((state) => {
+      if (typeof state.type === "string" || state.type.kind !== "set" || state.type.element !== keyType) return [];
+      const initializer = spec.init.find((assignment) => assignment.target === state.name)?.expressionAst;
+      if (!initializer || initializer.kind !== "call" || initializer.name !== "Set" || initializer.arguments.length === 0) return [];
+      const parsedValues = initializer.arguments.map(scalarLiteralValue);
+      if (parsedValues.some((value) => value === undefined)) return [];
+      const values = [...new Set(parsedValues as (number | boolean)[])].sort((left, right) => {
+        if (typeof left === "boolean" && typeof right === "boolean") return Number(left) - Number(right);
+        return Number(left) - Number(right);
+      });
+      if (spec.actions.some((action) => action.assignments.some((assignment) => assignment.target === state.name
+        && !(assignment.expressionAst.kind === "name" && assignment.expressionAst.name === state.name)))) return [];
+      const properties = spec.properties.filter((property) => {
+        const expression = property.expressionAst;
+        return expression.kind === "method" && expression.name === "contains"
+          && expression.receiver.kind === "name" && expression.receiver.name === state.name
+          && expression.arguments.length === 1
+          && expression.arguments[0]?.kind === "name" && expression.arguments[0].name === keyState;
+      });
+      return properties.length === 1 ? [{
+        domainState: state.name,
+        initializer,
+        keyState,
+        property: properties[0]!,
+        values,
+      }] : [];
     });
-    if (spec.actions.some((action) => action.assignments.some((assignment) => assignment.target === state.name
-      && !(assignment.expressionAst.kind === "name" && assignment.expressionAst.name === state.name)))) return [];
-    const properties = spec.properties.filter((property) => {
-      const expression = property.expressionAst;
-      return expression.kind === "method" && expression.name === "contains"
-        && expression.receiver.kind === "name" && expression.receiver.name === state.name
-        && expression.arguments.length === 1
-        && expression.arguments[0]?.kind === "name" && expression.arguments[0].name === keyState;
-    });
-    return properties.length === 1 ? [{
-      domainState: state.name,
-      initializer,
-      property: properties[0]!,
-      values,
-    }] : [];
+    return matching.length === 1 ? matching[0] : undefined;
   });
-  if (candidates.length !== 1) return undefined;
-  const candidate = candidates[0]!;
+  const provedCandidates = candidates.filter(
+    (candidate): candidate is NonNullable<typeof candidate> => candidate !== undefined,
+  );
+  if (provedCandidates.length !== candidates.length) return undefined;
 
   const symbols = new Map<string, TemporalValueType>(spec.states.map((state) => [state.name, state.type]));
   const at = (name: string, step: number) => `uneffect_domain_${step}_${name}`;
@@ -648,10 +654,10 @@ async function proveFiniteCollectionUniverse(
     `(= ${at(assignment.target, 0)} ${temporalAtStepToSmt(
       assignment.expressionAst, "uneffect_domain", 0, symbols, symbols.get(assignment.target),
     )})`);
-  const propertyAt = (step: number) => temporalAtStepToSmt(
+  const propertyAt = (candidate: NonNullable<typeof candidates[number]>, step: number) => temporalAtStepToSmt(
     candidate.property.expressionAst, "uneffect_domain", step, symbols,
   );
-  const domainAt = (step: number) => `(= ${at(candidate.domainState, step)} ${temporalAtStepToSmt(
+  const domainAt = (candidate: NonNullable<typeof candidates[number]>, step: number) => `(= ${at(candidate.domainState, step)} ${temporalAtStepToSmt(
     candidate.initializer, "uneffect_domain", step, symbols, symbols.get(candidate.domainState),
   )})`;
   const transitions = spec.actions.map((action) => {
@@ -672,19 +678,18 @@ async function proveFiniteCollectionUniverse(
     ].join("\n"), options);
   const initExecution = await run(init);
   if (initExecution.status !== "sat") return undefined;
-  const initiationExecution = await run([...init, `(not ${propertyAt(0)})`]);
-  if (initiationExecution.status !== "unsat") return undefined;
-  const preservationExecution = await run([
-    domainAt(0), propertyAt(0), transition, `(not ${propertyAt(1)})`,
-  ]);
-  if (preservationExecution.status !== "unsat") return undefined;
-
-  return {
-    universe: { ...universe, complete: true },
-    evidence: [{
+  const evidence: TemporalObservationDomainEvidence[] = [];
+  for (const candidate of provedCandidates) {
+    const initiationExecution = await run([...init, `(not ${propertyAt(candidate, 0)})`]);
+    if (initiationExecution.status !== "unsat") return undefined;
+    const preservationExecution = await run([
+      domainAt(candidate, 0), propertyAt(candidate, 0), transition, `(not ${propertyAt(candidate, 1)})`,
+    ]);
+    if (preservationExecution.status !== "unsat") return undefined;
+    evidence.push({
       rule: "inductively-proved-finite-membership",
       domainState: candidate.domainState,
-      keyState,
+      keyState: candidate.keyState,
       property: candidate.property.name,
       values: candidate.values,
       proof: {
@@ -698,7 +703,12 @@ async function proveFiniteCollectionUniverse(
           { obligation: "membership-preservation", result: "unsat", backend: preservationExecution.backend, version: preservationExecution.version },
         ],
       },
-    }],
+    });
+  }
+
+  return {
+    universe: { ...universe, complete: true },
+    evidence,
   };
 }
 

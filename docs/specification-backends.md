@@ -132,10 +132,11 @@ Quint receives `if (map.keys().contains(key)) map.get(key) else fallback`, the
 runtime/replay path uses `Map.has`, and Z3 uses an `ite` over the Map domain
 array. The fallback is evaluated only for an absent key. Literal lookup keys
 join the finite observation universe, so bounded counterexamples can contain
-the missing-key decision and JSON-safe Map entries. A state-derived scalar key
-is also observable in one bounded fragment: exactly one immutable `Set<int>`
-or `Set<bool>` state must have a non-empty literal initializer, and exactly one
-named temporal property must be the direct `domain.contains(key)` relation.
+the missing-key decision and JSON-safe Map entries. State-derived scalar keys
+are also observable in one bounded fragment: every key must match exactly one
+immutable `Set<int>` or `Set<bool>` state with a non-empty literal initializer,
+and exactly one named temporal property must be the direct
+`domain.contains(key)` relation.
 Uneffect checks that the domain has no non-stuttering assignment, then asks Z3
 separately whether init is satisfiable, whether init establishes membership,
 and whether every action preserves it. Only after all checks succeed do the
@@ -145,10 +146,13 @@ property, values, proof statuses, and the backend/version/result of every solver
 obligation. When Z3 evidence recording is enabled, these calls also retain their
 SMT-LIB inputs through the existing evidence path.
 
-Dynamic `Set(...)`, `Map(...)`, `put`, `remove`, partial `get`, compound lookup
-keys, multiple key/domain relations, mutable domains, failed induction, and
-solver failure remain `unknown`. This restriction does not affect Quint
-generation or runtime expression meaning.
+For multiple keys, initiation and preservation are checked separately and
+evidence is emitted in stable key-name order. One failed or ambiguous key
+invalidates the complete observation-universe claim; Uneffect does not retain a
+partial success. Dynamic `Set(...)`, `Map(...)`, `put`, `remove`, partial `get`,
+compound lookup keys, mutable domains, failed induction, and solver failure
+remain `unknown`. This restriction does not affect Quint generation or runtime
+expression meaning.
 
 Z3 represents each Map type as a datatype containing a Boolean domain
 array and a separate total value array. This prevents the value at an absent

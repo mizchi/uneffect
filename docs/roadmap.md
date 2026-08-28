@@ -165,8 +165,11 @@ explicit conservative boundaries rather than untracked support.
    `Map.getOrElse` lookup across Quint, runtime replay, and bounded Z3. Ordinary
    `Map.get` remains partial, and dynamic-key counterexample extraction remains
    `unknown` outside a proved finite key universe. Completed child
-   [#43](https://github.com/mizchi/uneffect/issues/43) admits one such universe
-   only from an independently proved, immutable finite-Set membership invariant.
+    [#43](https://github.com/mizchi/uneffect/issues/43) admits one such universe
+    only from an independently proved, immutable finite-Set membership invariant.
+   Active child [#44](https://github.com/mizchi/uneffect/issues/44) extends that
+   rule to primary/backup selectors only when every key is proved separately;
+   one failed premise keeps the combined observation universe `unknown`.
 4. [Constructive property generation and shrinking](https://github.com/mizchi/uneffect/issues/4)
    reduces filtering and covers recursive/user-defined refinements.
 5. [Typed-array and SHA-256 verification](https://github.com/mizchi/uneffect/issues/6)
