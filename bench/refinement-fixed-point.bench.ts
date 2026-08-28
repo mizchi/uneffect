@@ -84,6 +84,9 @@ const cfgConditionalWeightedFlushSpec = parseSpec(
   cfgConditionalWeightedFlushFile,
   cfgConditionalWeightedFlushSource,
 ).temporal;
+const cfgRoundRobinDrainFile = "examples/dogfood/cfg-round-robin-drain.ts";
+const cfgRoundRobinDrainSource = readFileSync(cfgRoundRobinDrainFile, "utf8");
+const cfgRoundRobinDrainSpec = parseSpec(cfgRoundRobinDrainFile, cfgRoundRobinDrainSource).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -95,6 +98,41 @@ const aliasProgram = ts.createProgram([aliasFile], {
 });
 
 describe("refinement CFG fixed point", () => {
+  bench("derive one Boolean involution recurrence", () => {
+    const result = analyzeRefinementActionBodies(
+      cfgRoundRobinDrainFile,
+      cfgRoundRobinDrainSource,
+      "cfgRoundRobinDrain",
+      cfgRoundRobinDrainSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.booleanInvolutions?.updates[0]?.state !== "primary") {
+      throw new Error("Boolean involution recurrence benchmark fixture did not converge provisionally");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the Boolean involution recurrence with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      cfgRoundRobinDrainFile,
+      cfgRoundRobinDrainSource,
+      "cfgRoundRobinDrain",
+      cfgRoundRobinDrainSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.status !== "verified"
+      || obligation.booleanInvolutions?.rule !== "source-bound-boolean-involution"
+      || obligation.recurrenceProof?.status !== "verified") {
+      throw new Error("Boolean involution recurrence Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
+
   bench("lower one conditional value into recurrence predecessor evidence", () => {
     const result = analyzeRefinementActionBodies(
       cfgConditionalWeightedFlushFile,

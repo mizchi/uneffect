@@ -537,6 +537,17 @@ the recurrence. An unused selected value, nested or multiple selections,
 mutable/local/non-Boolean selectors, non-affine branches, budget exhaustion,
 and solver unavailability stay explicit non-proofs.
 
+P2.25 adds `cfg-round-robin-drain.ts`, a two-lane drain that flips its
+`primary` lane once per pending item. The recurrence artifact records one
+`source-bound-boolean-involution`, its exact assignment span, and the named
+one-involution budget. Its closed form keeps the entry lane after an even
+number of iterations and negates it after an odd number; structural convergence
+remains provisional until Z3 proves the Boolean step and integer ranking
+obligations. A second toggle, two Boolean states, compound/path-dependent
+updates, non-unit countdowns, integer self-amplification, exhausted budgets,
+modified summaries, and solver unavailability remain non-proofs. In
+particular, this does not claim an exponential closed form for retry backoff.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
@@ -564,7 +575,7 @@ The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
 `assumed` (3,882 summaries, 4,469 reviewed assumption occurrences, 74 files),
-and all 109 isolated dogfood cases pass.
+and all 110 isolated dogfood cases pass.
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

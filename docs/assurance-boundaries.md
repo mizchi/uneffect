@@ -255,6 +255,11 @@ source-bound predecessor values. Nested, multiple, unused, local-selector,
 mutable-selector, non-Boolean, and non-affine conditional values remain outside
 the claim; structural evidence alone is not verified evidence.
 
+It also includes exactly one direct Boolean involution beside a unit countdown
+after Z3 verifies the emitted parity summary. Multiple or path-dependent
+toggles, non-unit countdowns, and integer geometric/exponential recurrences are
+outside this claim.
+
 ## Reliance matrix
 
 | Area | Safe reliance line | Outside the current claim |

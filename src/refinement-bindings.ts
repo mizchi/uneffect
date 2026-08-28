@@ -134,6 +134,7 @@ interface RefinementRankingRecurrenceTrace {
   readonly iterationUpdates: ReadonlyMap<string, TemporalExpression>;
   readonly summaryUpdates: ReadonlyMap<string, TemporalExpression>;
   readonly affineDependencies?: RefinementAffineDependencies;
+  readonly booleanInvolutions?: RefinementBooleanInvolutions;
 }
 
 export interface RefinementAffineDependencies {
@@ -144,6 +145,16 @@ export interface RefinementAffineDependencies {
     { state: string; span: { start: number; end: number } },
   ];
   readonly edges: readonly [{ from: string; to: string; read: "entry" | "updated" }];
+}
+
+export interface RefinementBooleanInvolutions {
+  readonly rule: "source-bound-boolean-involution";
+  readonly budget: {
+    readonly name: "cfg-recurrence-boolean-involutions";
+    readonly limit: 1;
+    readonly observed: 1;
+  };
+  readonly updates: readonly [{ state: string; span: { start: number; end: number } }];
 }
 
 interface RefinementHandlerValueJoinTrace {
@@ -249,6 +260,7 @@ export interface RefinementScalarRecurrenceObligation {
     join: string;
   })[];
   affineDependencies?: RefinementAffineDependencies;
+  booleanInvolutions?: RefinementBooleanInvolutions;
   memberBudget: {
     name: "cfg-recurrence-members";
     limit: 2 | 3 | 8;
@@ -2890,6 +2902,19 @@ function validateRefinementActionBodiesInSource(
           };
         };
         const deltas = new Map<string, PiecewiseAffineLoopDelta>();
+        const booleanInvolutionNames = [...stateNames].filter((name) => {
+          if (stateTypes.get(name) !== "bool") return false;
+          const expression = iterationUpdates.get(name) ?? { kind: "name", name } as TemporalExpression;
+          return expression.kind === "unary" && expression.operator === "not"
+            && expression.operand.kind === "name" && expression.operand.name === name;
+        });
+        if ([...stateNames].some((name) => stateTypes.get(name) === "bool"
+          && (directMutationSpans.get(name)?.length ?? 0) > 1)) return undefined;
+        if (booleanInvolutionNames.length > 1) return undefined;
+        const booleanInvolutionName = booleanInvolutionNames[0];
+        const booleanInvolutionSpans = booleanInvolutionName
+          ? directMutationSpans.get(booleanInvolutionName) : undefined;
+        if (booleanInvolutionName && booleanInvolutionSpans?.length !== 1) return undefined;
         const breakUpdates = new Map<string, TemporalExpression>();
         let stateChangingBreakUpdates = 0;
         let stateChangingBreakLeaves = 0;
@@ -2934,6 +2959,7 @@ function validateRefinementActionBodiesInSource(
             deltas.set(name, { kind: "affine", value: { constant: counterDelta, counterCoefficient: 0 } });
             continue;
           }
+          if (name === booleanInvolutionName) continue;
           const delta = piecewiseDelta(name, iterationUpdates.get(name) ?? { kind: "name", name });
           if (!delta) return undefined;
           deltas.set(name, delta.value);
@@ -3124,6 +3150,24 @@ function validateRefinementActionBodiesInSource(
             whenFalse: entryValue,
           });
         }
+        if (booleanInvolutionName) {
+          if (hasInvariantEarlyBreak || stepValue !== 1) return undefined;
+          const entryValue = entryValues.get(booleanInvolutionName)!;
+          const evenIterations: TemporalExpression = {
+            kind: "binary", operator: "eq",
+            left: { kind: "binary", operator: "modulo", left: loopIterations, right: integerExpression(2) },
+            right: zero,
+          };
+          updates.set(booleanInvolutionName, {
+            kind: "conditional", condition: entryGuard,
+            whenTrue: {
+              kind: "conditional", condition: evenIterations,
+              whenTrue: entryValue,
+              whenFalse: { kind: "unary", operator: "not", operand: entryValue },
+            },
+            whenFalse: entryValue,
+          });
+        }
         if (traceSink && currentModelName) traceSink.rankingRecurrences.push({
           modelName: currentModelName,
           loopStart: statement.getStart(source),
@@ -3153,6 +3197,20 @@ function validateRefinementActionBodiesInSource(
                 from: upperTriangular.driver,
                 to: upperTriangular.dependent,
                 read: upperTriangular.read,
+              }] as const,
+            },
+          } : {}),
+          ...(booleanInvolutionName ? {
+            booleanInvolutions: {
+              rule: "source-bound-boolean-involution" as const,
+              budget: {
+                name: "cfg-recurrence-boolean-involutions" as const,
+                limit: 1 as const,
+                observed: 1 as const,
+              },
+              updates: [{
+                state: booleanInvolutionName,
+                span: booleanInvolutionSpans![0]!,
               }] as const,
             },
           } : {}),
@@ -4678,6 +4736,7 @@ function runScalarRecurrenceFixedPoint(
   readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
   readonly controlJoins?: RefinementScalarRecurrenceObligation["controlJoins"];
   readonly affineDependencies?: RefinementAffineDependencies;
+  readonly booleanInvolutions?: RefinementBooleanInvolutions;
   readonly unsupportedPiecewise: boolean;
 } {
   const header = `while-header:${candidate.whileStatement.getStart(source)}`;
@@ -4833,7 +4892,7 @@ function runScalarRecurrenceFixedPoint(
     order: order === 0 ? 0 as const : 1 as const,
   })) : undefined;
   const changed = candidateRecurrence
-    ? spec.states.filter(({ name, type }) => type === "int"
+    ? spec.states.filter(({ name, type }) => (type === "int" || type === "bool")
       && candidateRecurrence.iteration[name] !== undefined
       && candidateRecurrence.iteration[name] !== name)
     : [];
@@ -4900,6 +4959,7 @@ function runScalarRecurrenceFixedPoint(
     backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
     ...(controlJoins ? { controlJoins } : {}),
     ...(trace?.affineDependencies ? { affineDependencies: trace.affineDependencies } : {}),
+    ...(trace?.booleanInvolutions ? { booleanInvolutions: trace.booleanInvolutions } : {}),
     unsupportedPiecewise: (piecewise || Boolean(candidate.valueJoin)) && !controlJoins,
   };
 }
@@ -5421,6 +5481,7 @@ export function analyzeRefinementActionBodies(
         },
         ...(fixedPoint.controlJoins ? { controlJoins: fixedPoint.controlJoins } : {}),
         ...(fixedPoint.affineDependencies ? { affineDependencies: fixedPoint.affineDependencies } : {}),
+        ...(fixedPoint.booleanInvolutions ? { booleanInvolutions: fixedPoint.booleanInvolutions } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,

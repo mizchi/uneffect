@@ -26,6 +26,42 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a two-lane round-robin drain by Boolean parity", async () => {
+    const fileName = "examples/dogfood/cfg-round-robin-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgRoundRobinDrain", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      booleanInvolutions: {
+        rule: "source-bound-boolean-involution",
+        budget: { name: "cfg-recurrence-boolean-involutions", limit: 1, observed: 1 },
+        updates: [{ state: "primary", span: { start: expect.any(Number), end: expect.any(Number) } }],
+      },
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+
+    const doubled = source.replace(
+      "runtime.primary = !runtime.primary;",
+      "runtime.primary = !runtime.primary;\n    runtime.primary = !runtime.primary;",
+    ).replace(
+      "pending > 0 ? (pending % 2 === 0 ? primary : !primary) : primary",
+      "primary",
+    );
+    const broken = analyzeRefinementActionBodies(
+      fileName, doubled, "cfgRoundRobinDrain", parseSpec(fileName, doubled).temporal,
+    );
+    expect(broken.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "unknown",
+      reason: "unsupported-recurrence",
+    }));
+  });
+
   it("proves a loop-local conditional telemetry weight through predecessor-value evidence", async () => {
     const fileName = "examples/dogfood/cfg-conditional-weighted-flush.ts";
     const source = readFileSync(fileName, "utf8");

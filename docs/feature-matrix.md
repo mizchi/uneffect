@@ -116,6 +116,13 @@ emitted or accepted by the v2 schema. This does not generalize the accepted
 recurrence shape: nested/arbitrary handler loops, resources, aliases, widening,
 and arbitrary basic-block shapes remain owned by #25/#24.
 
+One further direct-loop family admits exactly one Boolean involution beside a
+unit integer countdown. It retains the Boolean update span and named
+one-involution budget, derives an exact modulo-two summary, and requires the
+same independent Z3 base/step/ranking checks. Multiple, compound,
+path-dependent, repeated, or helper-mediated toggles, non-unit ranking, and
+integer geometric growth remain unsupported.
+
 The v2 artifact also defines `handler-scalar-environment-join` for one or two
 changed integers carried across two or three source-keyed sibling nested-handler
 regions. Region entry/exit expressions come from the refinement evaluator and

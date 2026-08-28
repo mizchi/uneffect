@@ -3335,6 +3335,18 @@ describe("annotated refinement bindings", () => {
                 edges: { minItems: 1, maxItems: 1 },
               },
             },
+            booleanInvolutions: {
+              properties: {
+                rule: { const: "source-bound-boolean-involution" },
+                budget: {
+                  properties: {
+                    name: { const: "cfg-recurrence-boolean-involutions" },
+                    limit: { const: 1 },
+                  },
+                },
+                updates: { minItems: 1, maxItems: 1 },
+              },
+            },
             handlerCompletion: { properties: {
               rule: { const: "source-bound-handler-predecessors" },
             } },

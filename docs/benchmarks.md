@@ -2029,6 +2029,15 @@ signals. They cover exactly one unchanged Boolean selector and two affine
 predecessor values. They exclude nested/multiple expressions, mutable or local
 selectors, non-affine values, aliases, and arbitrary reducible-CFG throughput.
 
+The P2.25 focused benchmark derives one source-bound Boolean involution for the
+round-robin drain fixture. A selected run measured 0.2368 ms mean over 2,112
+structural samples (4,223.69 operations per second, 4.00% RME). Independent Z3
+validation measured 40.8115 ms mean over 13 samples (24.50 operations per
+second, 5.24% RME). These are development-host regression signals. They cover
+one direct Boolean toggle and one unit countdown only; multiple or
+path-dependent toggles, helper aliases, non-unit ranking, integer
+self-amplification, and exponential recurrences are excluded.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

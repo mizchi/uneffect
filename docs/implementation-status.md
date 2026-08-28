@@ -476,6 +476,15 @@ same property is proved for arbitrary TypeScript.
   Boolean selectors, non-affine branches, unused selected values, and solver
   failure remain non-proofs. This is predecessor-value evidence for one
   expression family, not arbitrary expression CFG lowering.
+- One direct unit-countdown loop may additionally carry exactly one Boolean
+  involution `state' = !state`. The strict artifact records the direct update
+  span and named one-involution budget; the closed form selects the entry value
+  or its negation from the iteration-count parity. The Boolean member travels
+  through the shared scalar recurrence and remains provisional until Z3 proves
+  its base/step obligations and the integer ranking obligation. Multiple,
+  compound, path-dependent, helper-mediated, or repeated toggles and non-unit
+  ranking steps remain unsupported. Integer self-amplification and unbounded
+  geometric/exponential summaries remain explicit non-proofs.
 
 ## Async, resources, and event loops
 
