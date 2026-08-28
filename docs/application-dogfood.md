@@ -400,6 +400,17 @@ two. Injecting a third inner handler records `handler-control-roots.observed: 3`
 and remains unsupported. The action updates only recovery, processing, and
 finalization counters, preserving telemetry outcome conservation.
 
+P2.13 adds `scalar-handler-join.ts`. Its `composeScalarHandlers` action updates
+one integer through two sequential, source-keyed inner try/catch regions. The
+first region emits the exact environment consumed by the second; the shared CFG
+worklist records both entry/exit expressions under `handler-scalar-regions: 2`.
+The synchronous artifact remains `unknown: independent-proof-required`; the Z3
+analysis proves the final nested conditional equivalent to the compact declared
+sum. An intervening `total += 16`, a one-step worklist budget, a third sibling,
+a wrong declared branch, and an unavailable native solver respectively remain
+lattice conflict, budget, region-budget, refuted, and unknown controls. This is
+one integer handoff, not general path-sensitive JavaScript value analysis.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

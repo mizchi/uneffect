@@ -86,7 +86,7 @@ and dynamically selected completion remain unsupported. This is a closed-form
 affine rule, not a general loop fixed point.
 
 One additional direct-join seed exposes the affine rule through
-`uneffect-refinement-action-analysis/v1`: a ranking loop whose direct `try` has
+`uneffect-refinement-action-analysis/v2`: a ranking loop whose direct `try` has
 normal and supported scalar throw/catch predecessors must converge within the
 named `cfg-fixed-point-iterations` worklist budget. Only a fully matching action
 records retained throw payload and normal snapshot. Budget exhaustion and an
@@ -103,7 +103,18 @@ and proves a base case, an inductive step for every scalar state, and a
 well-founded guard-distance ranking obligation. A modified summary or ranking
 metadata is `refuted`; solver failure and an unstabilized certificate are
 `unknown`. This does not generalize the accepted recurrence shape: widening and
-arbitrary basic-block shapes remain owned by #23.
+arbitrary basic-block shapes remain owned by #25.
+
+The v2 artifact also defines `handler-scalar-environment-join` for exactly one
+changed integer carried across exactly two source-keyed sibling nested-handler
+regions. Region entry/exit expressions come from the refinement evaluator and
+must hand off exactly on the shared CFG worklist. Structural convergence yields
+only `unknown: independent-proof-required`; the Z3 API must prove the final
+expression equivalent to the declared action before the obligation becomes
+`verified`. Intervening unmodeled writes, budget exhaustion, a third region, a
+wrong action, and solver failure remain explicit non-proofs. Multiple changed
+states, heap regions, aliases, general path implication, recurrence widening,
+and irreducible CFGs are still unsupported.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

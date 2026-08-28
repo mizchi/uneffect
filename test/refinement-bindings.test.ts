@@ -3139,8 +3139,8 @@ describe("annotated refinement bindings", () => {
       { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(analysis).toMatchObject({
-      schema: "uneffect-refinement-action-analysis/v1",
-      schemaVersion: 1,
+      schema: "uneffect-refinement-action-analysis/v2",
+      schemaVersion: 2,
       sourceDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
       typescriptVersion: ts.version,
       diagnostics: [],
@@ -3263,10 +3263,10 @@ describe("annotated refinement bindings", () => {
       status: "unknown",
       checks: [{ reason: "worklist-not-converged" }],
     });
-    expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v1.schema.json", "utf8"))).toMatchObject({
+    expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v2.schema.json", "utf8"))).toMatchObject({
       properties: {
-        schema: { const: "uneffect-refinement-action-analysis/v1" },
-        schemaVersion: { const: 1 },
+        schema: { const: "uneffect-refinement-action-analysis/v2" },
+        schemaVersion: { const: 2 },
       },
       $defs: {
         localAliasHelper: {
@@ -3293,6 +3293,14 @@ describe("annotated refinement bindings", () => {
             pathCorrelation: {
               properties: { rule: { const: "same-predicate-branch-restriction" } },
             },
+          },
+        },
+        handlerScalarEnvironment: {
+          properties: {
+            kind: { const: "handler-scalar-environment-join" },
+            regionBudget: { properties: { name: { const: "handler-scalar-regions" }, limit: { const: 2 } } },
+            budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
+            proof: { properties: { backend: { const: "z3" } } },
           },
         },
         rankingLoop: {

@@ -46,13 +46,15 @@ the bounded local-alias handoff is complete in
 [#26](https://github.com/mizchi/uneffect/issues/26), and the first checker-backed
 Corsa inferred-effect handoff is complete in
 [#27](https://github.com/mizchi/uneffect/issues/27). The next executable slice is
-[#28](https://github.com/mizchi/uneffect/issues/28), the bounded scalar-value
-child of #25.
+[#28](https://github.com/mizchi/uneffect/issues/28), the first bounded
+scalar-value child of #25. The next executable child is
+[#29](https://github.com/mizchi/uneffect/issues/29), which lifts that exact
+two-region handoff from one changed integer to two independent integers.
 
-There are 13 open implementation Issues after closing #23, #26, and #27 and
-opening #28: one proof-boundary
+There are 13 open implementation Issues after closing #23, #26, #27, and #28
+and opening #29: one proof-boundary
 Issue in Phase 1, six specification-expressiveness Issues in Phase 2 (including
-bounded child #28), five production-integration Issues in Phase 3, and one
+bounded child #29), five production-integration Issues in Phase 3, and one
 proof-consumer Issue in Phase 4. The 12 non-overlapping epic estimates total
 51–102 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
@@ -93,8 +95,10 @@ polymorphism, and dynamic/unresolved helper selection remain explicit
 non-proofs. P3.2 exports one checker-backed `Console` inference and its ordered
 local calls with operation/compiler/declaration/symbol provenance; a
 same-spelled local object remains effect-free. General builtin and neutral-IR
-coverage remains in #8. The next executable slice is #28's scalar environment
-join across two sibling handler regions.
+coverage remains in #8. P2.13 then carries one integer environment through two
+source-keyed sibling handler regions and requires an independent Z3 equivalence
+proof before verification. The next executable slice is #29's two-member
+product environment over that same bounded graph.
 The 51–102 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
@@ -106,7 +110,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#28](https://github.com/mizchi/uneffect/issues/28) | Join one scalar environment across two source-keyed sibling handler regions; retain expression conflict and budget exhaustion as non-proofs. |
+| 1 | [#29](https://github.com/mizchi/uneffect/issues/29) | Join two independent integer states across two source-keyed sibling handler regions; require both Z3 checks and retain member conflict, budget, solver, and third-state controls as non-proofs. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -114,9 +118,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | Completed #23/#26/#27 plus #28, the first executable #25 value slice | 1–2 weeks for #28; 13–27 weeks for parent #25/#24/#8 epics | CFG, value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | Completed #23/#26/#27/#28 plus #29, the next executable #25 value slice | 1–2 weeks for #29; 13–27 weeks for parent #25/#24/#8 epics | CFG, product-value, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 plus #26 for generated tests/numeric code | 7–19 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #28 is included in #25. |
+| Entire open research backlog | 13 Issues / 12 non-overlapping epics | 51–102 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization; #29 is included in #25. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -143,7 +147,7 @@ issue should be `active`; `next` means it is ready to follow that work,
 `blocked` names a concrete dependency, and `queued` is intentionally deferred
 by the phase ordering.
 
-As of 2026-08-28 there are 13 open implementation Issues after the #23/#26/#27 handoffs:
+As of 2026-08-28 there are 13 open implementation Issues after the #23/#26/#27/#28 handoffs:
 one `active`, eleven `queued`, and one queued parent with its bounded child
 active. Every open Issue has exactly one
 priority label, one status label, one effort label, and one Phase milestone.
@@ -154,7 +158,7 @@ label.
 | --- | --- | --- | --- | --- | --- |
 | Queued | 1 | [#18](https://github.com/mizchi/uneffect/issues/18) | Module initialization | Completed #20 project evidence plus synchronous-ring and direct cross-project TLA seeds | Broader ESM/external/dynamic initialization semantics; widen after CFG or application evidence |
 | Queued | 2 | [#25](https://github.com/mizchi/uneffect/issues/25) | General CFG values | Completed #23 source-keyed CFG | Independent scalar value joins, recurrence widening, and irreducible control |
-| Active | 2 | [#28](https://github.com/mizchi/uneffect/issues/28) | Scalar sibling-handler value join | Completed #23; child of #25 | One independently checked scalar environment join with conflict/budget negative controls |
+| Active | 2 | [#29](https://github.com/mizchi/uneffect/issues/29) | Two-member sibling-handler value join | Completed #28; child of #25 | Two independently checked integer expressions in one product environment with member-conflict/budget/solver controls |
 | Queued | 2 | [#2](https://github.com/mizchi/uneffect/issues/2) | Temporal synthesis | Phase 1 proof boundaries | General polyhedral/quantified invariants and nested formulas |
 | Queued | 2 | [#5](https://github.com/mizchi/uneffect/issues/5) | Temporal state | #2 typed formulas | Collection-valued state and remaining TLC values/traces |
 | Queued | 2 | [#4](https://github.com/mizchi/uneffect/issues/4) | Property testing | Contract/refinement AST | Higher-order, recursive, and user-defined predicates |
@@ -171,8 +175,9 @@ must retain an adjacent unsupported negative control and add a benchmark when
 it expands solver or analysis work. The reusable completion contract delivered
 by #3 and the completed #23 source-keyed CFG fed the completed #26 alias seed.
 The completed #27 tests the first real checker-backed Corsa fact handoff.
-Active #28 now carries one scalar environment through sibling handler regions
-without equating structural reachability with a value proof.
+Completed #28 carries one scalar environment through sibling handler regions
+without equating structural reachability with a value proof. Active #29 widens
+only the environment cardinality to two independently checked integer members.
 
 Closed issue history is retained in the relevant checked entries below. In
 particular, bounded reachability/vacuity/deadlock work closed [#1](https://github.com/mizchi/uneffect/issues/1),
@@ -191,6 +196,9 @@ The TypeChecker-backed one-alias/one-helper region seed closed
 [#26](https://github.com/mizchi/uneffect/issues/26); broader aliases remain #24.
 The checker-backed inferred-`Console`/ordered-call handoff closed
 [#27](https://github.com/mizchi/uneffect/issues/27); broader Corsa parity remains #8.
+The one-integer, two-source-keyed-region value handoff closed
+[#28](https://github.com/mizchi/uneffect/issues/28); product environments and
+general value lattices remain #29 and parent #25.
 
 - [x] Emit `uneffect-refinement-action-analysis/v1` for one direct ranking-loop
   normal/typed-throw catch join, enforce a named CFG reachability worklist

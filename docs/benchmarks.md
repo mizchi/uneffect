@@ -1924,6 +1924,15 @@ the additional application action, region graph, and validation work; one p99
 outlier reached 50.9288 ms, so the figure is a development-host signal rather
 than a portable latency guarantee.
 
+The P2.13 focused benchmark carries one integer environment through two
+source-keyed handler regions in `scalar-handler-join.ts`. On the same Apple
+Silicon development host it measured 0.4346 ms mean over 1,151 samples
+(2,301.12 operations per second). The independent Z3 equivalence check measured
+6.1289 ms mean over 82 samples (163.16 operations per second). These figures
+exclude multiple changed states, arbitrary region counts, aliases, and
+irreducible control; they are regression signals for the bounded slice rather
+than general analyzer throughput claims.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

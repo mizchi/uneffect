@@ -39,6 +39,9 @@ const spec = parseSpec("refinement-fixed-point.ts", source).temporal;
 const handlerJoinFile = "examples/dogfood/telemetry-routing-accounting.ts";
 const handlerJoinSource = readFileSync(handlerJoinFile, "utf8");
 const handlerJoinSpec = parseSpec(handlerJoinFile, handlerJoinSource).temporal;
+const scalarHandlerFile = "examples/dogfood/scalar-handler-join.ts";
+const scalarHandlerSource = readFileSync(scalarHandlerFile, "utf8");
+const scalarHandlerSpec = parseSpec(scalarHandlerFile, scalarHandlerSource).temporal;
 const aliasFile = "examples/dogfood/local-alias-refinement.ts";
 const aliasSource = readFileSync(aliasFile, "utf8");
 const aliasSpec = parseSpec(aliasFile, aliasSource).temporal;
@@ -196,6 +199,32 @@ describe("refinement CFG fixed point", () => {
       throw new Error("source-keyed sibling nested handler benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("carry one scalar environment through two handler regions", () => {
+    const result = analyzeRefinementActionBodies(
+      scalarHandlerFile, scalarHandlerSource, "scalarHandlerJoin", scalarHandlerSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.fixedPoint.converged !== true
+      || obligation.fixedPoint.regions.length !== 2
+      || obligation.reason !== "independent-proof-required") {
+      throw new Error("scalar handler environment benchmark fixture did not converge");
+    }
+  }, { time: 500, iterations: 20 });
+
+  bench("independently prove the sibling-region scalar environment with Z3", async () => {
+    const result = await analyzeRefinementActionBodiesWithZ3(
+      scalarHandlerFile, scalarHandlerSource, "scalarHandlerJoin", scalarHandlerSpec,
+      { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-scalar-environment-join");
+    if (obligation?.status !== "verified" || obligation.proof?.status !== "verified") {
+      throw new Error("scalar handler environment Z3 benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 2 });
 
   bench("analyze one TypeChecker-backed local alias helper region", () => {
     const result = analyzeRefinementActionBodiesInProgram(

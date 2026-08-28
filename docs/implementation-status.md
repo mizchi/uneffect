@@ -376,6 +376,18 @@ same property is proved for arbitrary TypeScript.
   join block includes the inner try source start, so handled throws and rethrows
   cannot collide between regions. A third sibling remains an explicit
   `handler-control-roots` over-budget non-proof.
+- `uneffect-refinement-action-analysis/v2` additionally carries one changed
+  integer state through exactly two of those source-keyed regions. The existing
+  refinement evaluator records each region's entry and exit expression, and the
+  shared CFG worklist accepts the handoff only when the predecessor exit exactly
+  matches the successor entry. An intervening scalar write is a
+  `lattice-conflict`; a one-step worklist budget and a third region remain
+  explicit non-proofs. Structural convergence alone reports
+  `independent-proof-required`. `analyzeRefinementActionBodiesWithZ3` reparses
+  the final and declared expressions and is the only path that upgrades this
+  obligation to `verified`; a wrong action is refuted and solver unavailability
+  stays `unknown`. Multiple changed states, objects, aliases, arbitrary region
+  counts, recurrence widening, and irreducible CFGs remain outside this slice.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

@@ -118,10 +118,12 @@ explicit conservative boundaries rather than untracked support.
    loops fail closed. One depth-two nested try/catch now routes inner recovery
    and rethrow through the outer handler under a named nesting budget. Nested
    regions now use source-keyed IDs and exactly two sibling regions compose
-   under the existing root budget. General value joins and recurrence widening
-   continue in [#25](https://github.com/mizchi/uneffect/issues/25). Its active
-   first scalar-environment child is
-   [#28](https://github.com/mizchi/uneffect/issues/28). The first
+   under the existing root budget. [#28](https://github.com/mizchi/uneffect/issues/28)
+   carries one changed integer through those regions and requires an independent
+   Z3 equivalence proof. General value joins and recurrence widening continue in
+   [#25](https://github.com/mizchi/uneffect/issues/25). Its active next
+   product-environment child is [#29](https://github.com/mizchi/uneffect/issues/29).
+   The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)

@@ -133,6 +133,14 @@ interface RefinementHandlerValueJoinTrace {
   readonly condition: TemporalExpression;
 }
 
+interface RefinementHandlerRegionTrace {
+  readonly modelName: string;
+  readonly tryStart: number;
+  readonly tryEnd: number;
+  readonly entry: ReadonlyMap<string, TemporalExpression>;
+  readonly exit: ReadonlyMap<string, TemporalExpression>;
+}
+
 interface RefinementAliasRegionTrace {
   readonly modelName: string;
   readonly aliasName: string;
@@ -149,6 +157,7 @@ interface RefinementActionTraceSink {
   readonly tryCatchJoins: RefinementTryCatchValueTrace[];
   readonly rankingRecurrences: RefinementRankingRecurrenceTrace[];
   readonly handlerValueJoins: RefinementHandlerValueJoinTrace[];
+  readonly handlerRegions: RefinementHandlerRegionTrace[];
   readonly aliasRegions: RefinementAliasRegionTrace[];
 }
 
@@ -271,8 +280,40 @@ export interface RefinementLocalAliasHelperObligation {
   };
 }
 
+export interface RefinementHandlerScalarEnvironmentObligation {
+  kind: "handler-scalar-environment-join";
+  adapterName: string;
+  modelName: string;
+  exportName: string;
+  status: "verified" | "unknown";
+  reason?: "independent-proof-required" | "lattice-conflict" | "proof-budget-exhausted"
+    | "region-budget-exhausted" | "unsupported-scalar-environment" | "scalar-proof-refuted"
+    | "scalar-proof-unknown";
+  budget: { name: "cfg-fixed-point-iterations"; limit: number };
+  regionBudget: { name: "handler-scalar-regions"; limit: 2; observed: number };
+  fixedPoint: {
+    iterations: number;
+    converged: boolean;
+    state?: string;
+    expected?: string;
+    actual?: string;
+    regions: readonly {
+      id: string;
+      span: { start: number; end: number };
+      entry: string;
+      exit: string;
+    }[];
+  };
+  proof?: {
+    backend: "z3";
+    status: "verified" | "refuted" | "unknown";
+    reason?: string;
+  };
+}
+
 export type RefinementActionObligation = RefinementRankingLoopObligation
   | RefinementHandlerJoinObligation
+  | RefinementHandlerScalarEnvironmentObligation
   | RefinementLocalAliasHelperObligation;
 
 export interface RefinementRankingRecurrenceEvidence {
@@ -288,8 +329,8 @@ export interface RefinementRankingRecurrenceEvidence {
 }
 
 export interface RefinementActionAnalysis {
-  schema: "uneffect-refinement-action-analysis/v1";
-  schemaVersion: 1;
+  schema: "uneffect-refinement-action-analysis/v2";
+  schemaVersion: 2;
   fileName: string;
   adapterName: string;
   sourceDigest: string;
@@ -2902,6 +2943,7 @@ function validateRefinementActionBodiesInSource(
         ) : undefined;
       }
       if (ts.isTryStatement(statement)) {
+        const handlerRegionEntry = new Map(updates);
         let residualCompletion: ActionCompletion = "normal";
         let postCatchLocals: ReadonlyMap<string, TemporalExpression> | undefined;
         if (statement.catchClause) {
@@ -3094,6 +3136,15 @@ function validateRefinementActionBodiesInSource(
           residualCompletion = tryCompletion;
           localValues.clear();
           for (const [name, value] of tryLocals) localValues.set(name, value);
+        }
+        if (traceSink && currentModelName && statement.catchClause && !statement.finallyBlock) {
+          traceSink.handlerRegions.push({
+            modelName: currentModelName,
+            tryStart: statement.getStart(source),
+            tryEnd: statement.getEnd(),
+            entry: handlerRegionEntry,
+            exit: new Map(updates),
+          });
         }
         if (!statement.finallyBlock) {
           if (residualCompletion === "normal") continue;
@@ -4182,6 +4233,129 @@ function runRankingLoopJoinFixedPoint(
   };
 }
 
+interface HandlerScalarEnvironmentResult {
+  readonly iterations: number;
+  readonly converged: boolean;
+  readonly conflict: boolean;
+  readonly state?: string;
+  readonly expected?: TemporalExpression;
+  readonly actual?: TemporalExpression;
+  readonly regions: RefinementHandlerScalarEnvironmentObligation["fixedPoint"]["regions"];
+}
+
+/**
+ * Carries the evaluator's source-bound region summaries through the same CFG
+ * worklist used for completion reachability. Region summaries are admitted
+ * only when the environment entering each source-keyed region is exactly the
+ * environment emitted by its predecessor; intervening unmodeled writes are a
+ * lattice conflict rather than an implicit identity transfer.
+ */
+function runHandlerScalarEnvironmentFixedPoint(
+  candidate: HandlerJoinCandidate,
+  traces: readonly RefinementHandlerRegionTrace[],
+  spec: TemporalSpec,
+  action: TemporalSpec["actions"][number],
+  limit: number,
+): HandlerScalarEnvironmentResult {
+  const stateExpression = (environment: ReadonlyMap<string, TemporalExpression>, name: string): TemporalExpression =>
+    environment.get(name) ?? { kind: "name", name };
+  const environmentKey = (environment: ReadonlyMap<string, TemporalExpression>): string => JSON.stringify(
+    spec.states.map(({ name }) => [name, formatRefinementExpression(stateExpression(environment, name))]),
+  );
+  const normalizeEnvironment = (environment: ReadonlyMap<string, TemporalExpression>): ReadonlyMap<string, TemporalExpression> =>
+    new Map(spec.states.map(({ name }) => [name, stateExpression(environment, name)]));
+  const controls = candidate.controlStatements.filter(ts.isTryStatement);
+  const byStart = new Map(traces.map((trace) => [trace.tryStart, trace]));
+  const regions = controls.flatMap((control) => {
+    const trace = byStart.get(control.getStart());
+    return trace ? [{ control, trace }] : [];
+  });
+  const changedScalarStates = spec.states.filter(({ name, type }) => type === "int"
+    && regions.length > 0
+    && !sameRefinementExpression(
+      stateExpression(regions[0]!.trace.entry, name),
+      stateExpression(regions.at(-1)!.trace.exit, name),
+    ));
+  const state = changedScalarStates.length === 1 ? changedScalarStates[0]!.name : undefined;
+  const expected = state
+    ? action.assignments.find(({ target }) => target === state)?.expressionAst ?? { kind: "name", name: state } as TemporalExpression
+    : undefined;
+  const actual = state && regions.length > 0
+    ? stateExpression(regions.at(-1)!.trace.exit, state) : undefined;
+  const evidence = state ? regions.map(({ trace }) => ({
+    id: `nested-handler-join:${trace.tryStart}`,
+    span: { start: trace.tryStart, end: trace.tryEnd },
+    entry: formatRefinementExpression(stateExpression(trace.entry, state)),
+    exit: formatRefinementExpression(stateExpression(trace.exit, state)),
+  })) : [];
+  if (candidate.lowering !== "supported" || controls.length !== 2 || regions.length !== 2 || !state) {
+    return { iterations: 0, converged: false, conflict: false, state, expected, actual, regions: evidence };
+  }
+
+  interface Value {
+    readonly environment: ReadonlyMap<string, TemporalExpression>;
+    readonly invalid: boolean;
+    readonly reachable: boolean;
+  }
+  const value = (
+    environment: ReadonlyMap<string, TemporalExpression>,
+    invalid = false,
+    reachable = true,
+  ): Value => ({
+    environment: normalizeEnvironment(environment), invalid, reachable,
+  });
+  const equivalent = (left: Value, right: Value): boolean => left.reachable === right.reachable
+    && left.invalid === right.invalid
+    && environmentKey(left.environment) === environmentKey(right.environment);
+  const result = solveBasicBlockFixedPoint<Value>({
+    entry: "entry",
+    initial: value(new Map()),
+    budget: { name: "cfg-fixed-point-iterations", limit },
+    lattice: {
+      bottom: () => value(new Map(), false, false),
+      equivalent,
+      join: (left, right) => !left.reachable ? { status: "joined", value: right }
+        : !right.reachable ? { status: "joined", value: left }
+        : left.invalid || right.invalid
+        ? { status: "conflict", reason: "a source-keyed region received an invalid scalar environment" }
+        : environmentKey(left.environment) !== environmentKey(right.environment)
+          ? { status: "conflict", reason: "scalar expressions disagree at a source-keyed CFG join" }
+          : { status: "joined", value: left },
+    },
+    blocks: candidate.blocks.map((block) => ({
+      id: block.id,
+      transfer: (input: Value) => {
+        const tryMatch = /^try:(\d+)$/.exec(block.id);
+        const joinMatch = /^nested-handler-join:(\d+)$/.exec(block.id);
+        let output = input;
+        if (tryMatch) {
+          const trace = byStart.get(Number(tryMatch[1]));
+          if (trace && environmentKey(input.environment) !== environmentKey(normalizeEnvironment(trace.entry))) {
+            output = value(input.environment, true);
+          }
+        }
+        if (joinMatch) {
+          const trace = byStart.get(Number(joinMatch[1]));
+          if (trace) output = value(trace.exit, output.invalid);
+        }
+        return block.edges.map((edge) => ({ to: edge.to, value: output }));
+      },
+    })),
+  });
+  const exit = result.states.get("exit");
+  const conflict = result.status === "unknown" && result.reason === "lattice-conflict"
+    || [...result.states.values()].some((item) => item.invalid);
+  return {
+    iterations: result.iterations,
+    converged: result.status === "converged" && !conflict,
+    conflict,
+    state,
+    expected,
+    actual: state && exit ? stateExpression(exit.environment, state) : actual,
+    regions: evidence,
+  };
+}
+
 /**
  * Returns diagnostics together with explicit proof-budget evidence for the
  * first reusable ranking-loop CFG fixed-point fragment. Unsupported bodies and
@@ -4204,7 +4378,7 @@ export function analyzeRefinementActionBodies(
     throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
   }
   const traceSink: RefinementActionTraceSink = {
-    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], aliasRegions: [],
+    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], handlerRegions: [], aliasRegions: [],
   };
   const diagnostics = validateRefinementActionBodiesInSource(
     source, text, adapterName, spec, undefined, undefined, {}, traceSink,
@@ -4279,6 +4453,35 @@ export function analyzeRefinementActionBodies(
           rule: "same-predicate-branch-restriction" as const,
         } } : {}),
       });
+      if (candidate.controlShape === "try") {
+        const regionTraces = traceSink.handlerRegions.filter((trace) => trace.modelName === action.name);
+        const scalar = runHandlerScalarEnvironmentFixedPoint(candidate, regionTraces, spec, action, limit);
+        const observed = candidate.controlStatements.filter(ts.isTryStatement).length;
+        if (scalar.state) obligations.push({
+          kind: "handler-scalar-environment-join",
+          adapterName,
+          modelName: action.name,
+          exportName,
+          status: "unknown",
+          reason: observed !== 2
+            ? "region-budget-exhausted"
+            : scalar.conflict
+              ? "lattice-conflict"
+              : !scalar.converged
+                ? "proof-budget-exhausted"
+                : "independent-proof-required",
+          budget: { name: "cfg-fixed-point-iterations", limit },
+          regionBudget: { name: "handler-scalar-regions", limit: 2, observed },
+          fixedPoint: {
+            iterations: scalar.iterations,
+            converged: scalar.converged,
+            state: scalar.state,
+            ...(scalar.expected ? { expected: formatRefinementExpression(scalar.expected) } : {}),
+            ...(scalar.actual ? { actual: formatRefinementExpression(scalar.actual) } : {}),
+            regions: scalar.regions,
+          },
+        });
+      }
       if ((!fixedPoint.converged || candidate.lowering === "unsupported")
         && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {
         diagnostics.push({
@@ -4352,8 +4555,8 @@ export function analyzeRefinementActionBodies(
     }
   }
   return {
-    schema: "uneffect-refinement-action-analysis/v1",
-    schemaVersion: 1,
+    schema: "uneffect-refinement-action-analysis/v2",
+    schemaVersion: 2,
     fileName,
     adapterName,
     sourceDigest: createHash("sha256").update(text).digest("hex"),
@@ -4377,7 +4580,7 @@ export function analyzeRefinementActionBodiesInProgram(
   const source = program.getSourceFile(fileName);
   if (!source) throw new Error(`TypeScript program does not contain refinement source ${fileName}`);
   const traceSink: RefinementActionTraceSink = {
-    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], aliasRegions: [],
+    tryCatchJoins: [], rankingRecurrences: [], handlerValueJoins: [], handlerRegions: [], aliasRegions: [],
   };
   const diagnostics = validateRefinementActionBodiesInSource(
     source, source.text, adapterName, spec, program.getTypeChecker(), program, {}, traceSink,
@@ -4638,7 +4841,43 @@ export async function analyzeRefinementActionBodiesWithZ3(
 ): Promise<RefinementActionAnalysis> {
   const analysis = analyzeRefinementActionBodies(fileName, text, adapterName, spec, options.analysis);
   const addedDiagnostics: RefinementActionDiagnostic[] = [];
+  const dischargedScalarMismatches = new Set<string>();
   const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementActionObligation> => {
+    if (obligation.kind === "handler-scalar-environment-join") {
+      const { state, expected, actual } = obligation.fixedPoint;
+      if (obligation.reason !== "independent-proof-required" || !state || !expected || !actual) return obligation;
+      const result = await checkTemporalExpressionEquivalenceWithZ3(
+        spec,
+        parseTemporalExpression(actual),
+        parseTemporalExpression(expected),
+        options.z3,
+      );
+      if (result.status === "equivalent") {
+        dischargedScalarMismatches.add(`${obligation.modelName}\0${state}`);
+        return {
+          ...obligation,
+          status: "verified",
+          reason: undefined,
+          proof: { backend: "z3", status: "verified" },
+        };
+      }
+      const proof = result.status === "different"
+        ? { backend: "z3" as const, status: "refuted" as const }
+        : { backend: "z3" as const, status: "unknown" as const, reason: result.reason };
+      addedDiagnostics.push({
+        code: "unsupported-action-body",
+        adapterName,
+        modelName: obligation.modelName,
+        exportName: obligation.exportName,
+        message: `${obligation.exportName} scalar handler environment ${proof.status === "refuted" ? "failed" : "could not complete"} independent Z3 validation`,
+      });
+      return {
+        ...obligation,
+        status: "unknown",
+        reason: proof.status === "refuted" ? "scalar-proof-refuted" : "scalar-proof-unknown",
+        proof,
+      };
+    }
     if (obligation.kind !== "ranking-loop-fixed-point") return obligation;
     const certificate = obligation.fixedPoint.recurrence;
     if (!certificate) return obligation;
@@ -4667,7 +4906,16 @@ export async function analyzeRefinementActionBodiesWithZ3(
       },
     };
   }));
-  return { ...analysis, diagnostics: [...analysis.diagnostics, ...addedDiagnostics], obligations };
+  return {
+    ...analysis,
+    diagnostics: [
+      ...analysis.diagnostics.filter((diagnostic) => diagnostic.code !== "action-update-mismatch"
+        || !diagnostic.target
+        || !dischargedScalarMismatches.has(`${diagnostic.modelName}\0${diagnostic.target}`)),
+      ...addedDiagnostics,
+    ],
+    obligations,
+  };
 }
 
 /** Uses TypeScript symbol identity to reject collection-like subclasses and user-defined lookalikes. */

@@ -26,6 +26,30 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a scalar environment across two source-keyed handler regions", async () => {
+    const fileName = "examples/dogfood/scalar-handler-join.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName,
+      source,
+      "scalarHandlerJoin",
+      temporal,
+    );
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-scalar-environment-join",
+      modelName: "compose",
+      status: "verified",
+      regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 2 },
+      proof: { backend: "z3", status: "verified" },
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        state: "total",
+        regions: [expect.anything(), expect.anything()],
+      }),
+    }));
+  });
+
   it("exports a real checker-inferred Console effect and ordered calls from dogfood", async () => {
     const fileName = "examples/dogfood/corsa-inferred-effect.ts";
     const files = { [fileName]: readFileSync(fileName, "utf8") };

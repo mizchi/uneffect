@@ -37,6 +37,7 @@ export const ciTestTiers = {
     "test/invariant-ir.test.ts",
     "test/property-tests.test.ts",
     "test/refinement-equivalence.test.ts",
+    "test/refinement-scalar-handler-join.test.ts",
     "test/typed-array-safety.test.ts",
     "test/z3-backend.test.ts",
   ],

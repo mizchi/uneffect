@@ -1,0 +1,444 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-refinement-action-analysis-v2.schema.json",
+  "title": "Uneffect refinement action analysis v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "fileName", "adapterName", "sourceDigest", "typescriptVersion", "diagnostics", "obligations"],
+  "properties": {
+    "schema": { "const": "uneffect-refinement-action-analysis/v2" },
+    "schemaVersion": { "const": 2 },
+    "fileName": { "type": "string" },
+    "adapterName": { "type": "string" },
+    "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "typescriptVersion": { "type": "string", "minLength": 1 },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
+    "obligations": {
+      "type": "array",
+      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/handlerScalarEnvironment" }, { "$ref": "#/$defs/localAliasHelper" }] }
+    }
+  },
+  "$defs": {
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "adapterName", "modelName", "message"],
+      "properties": {
+        "code": { "enum": ["missing-action-binding", "unknown-action-binding", "missing-action-guard", "unexpected-action-guard", "action-guard-mismatch", "unsupported-action-body", "action-update-mismatch"] },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "target": { "type": "string" },
+        "expected": { "type": "string" },
+        "actual": { "type": "string" },
+        "message": { "type": "string" }
+      }
+    },
+    "expressionSnapshot": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "rankingRecurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["counter", "direction", "delta", "bound", "stop", "guard", "iteration", "summary", "stable"],
+      "properties": {
+        "counter": { "type": "string", "minLength": 1 },
+        "direction": { "enum": ["increase", "decrease"] },
+        "delta": { "type": "integer", "not": { "const": 0 } },
+        "bound": { "type": "integer" },
+        "stop": { "type": "integer" },
+        "guard": { "type": "string", "minLength": 1 },
+        "iteration": { "$ref": "#/$defs/expressionSnapshot" },
+        "summary": { "$ref": "#/$defs/expressionSnapshot" },
+        "stable": { "type": "boolean" }
+      }
+    },
+    "recurrenceProofCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "state", "status"],
+      "properties": {
+        "kind": { "enum": ["base", "step", "ranking"] },
+        "state": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["verified", "refuted", "unknown"] },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "recurrenceProof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["backend", "status", "checks"],
+      "properties": {
+        "backend": { "const": "z3" },
+        "status": { "enum": ["verified", "refuted", "unknown"] },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/recurrenceProofCheck" }, "minItems": 1 }
+      }
+    },
+    "handlerCompletion": {
+      "enum": ["normal", "return", "throw", "break", "continue"]
+    },
+    "localAliasHelper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "status", "evidence", "alias", "helper", "capabilityCorrelation"],
+      "properties": {
+        "kind": { "const": "local-alias-helper" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "status": { "const": "verified" },
+        "evidence": { "const": "typescript-program" },
+        "alias": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "mutableObject", "binding", "span", "regionId"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "mutableObject": { "const": true },
+            "binding": { "const": "const" },
+            "span": { "$ref": "#/$defs/span" },
+            "regionId": { "type": "string", "pattern": "^alias-region:[0-9a-f]{16}$" }
+          }
+        },
+        "helper": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "callSpan", "declarationSpan", "declarationFile", "symbolIdentity"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "callSpan": { "$ref": "#/$defs/span" },
+            "declarationSpan": { "$ref": "#/$defs/span" },
+            "declarationFile": { "type": "string", "minLength": 1 },
+            "symbolIdentity": { "type": "string", "minLength": 1 }
+          }
+        },
+        "capabilityCorrelation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["aliasRegion", "declaration", "rule"],
+          "properties": {
+            "aliasRegion": { "type": "string", "minLength": 1 },
+            "declaration": { "type": "string", "pattern": "(^|\\|\\s*)Mutate<typeof " },
+            "rule": { "const": "source-correlated-not-equivalent" }
+          }
+        }
+      }
+    },
+    "handlerScalarEnvironment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "status", "budget", "regionBudget", "fixedPoint"],
+      "properties": {
+        "kind": { "const": "handler-scalar-environment-join" },
+        "adapterName": { "type": "string", "minLength": 1 },
+        "modelName": { "type": "string", "minLength": 1 },
+        "exportName": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": {
+          "enum": ["independent-proof-required", "lattice-conflict", "proof-budget-exhausted", "region-budget-exhausted", "unsupported-scalar-environment", "scalar-proof-refuted", "scalar-proof-unknown"]
+        },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-fixed-point-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "regionBudget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "handler-scalar-regions" },
+            "limit": { "const": 2 },
+            "observed": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged", "regions"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 0 },
+            "converged": { "type": "boolean" },
+            "state": { "type": "string", "minLength": 1 },
+            "expected": { "type": "string", "minLength": 1 },
+            "actual": { "type": "string", "minLength": 1 },
+            "regions": {
+              "type": "array",
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["id", "span", "entry", "exit"],
+                "properties": {
+                  "id": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" },
+                  "span": { "$ref": "#/$defs/span" },
+                  "entry": { "type": "string", "minLength": 1 },
+                  "exit": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
+          }
+        },
+        "proof": {
+          "type": "object", "additionalProperties": false,
+          "required": ["backend", "status"],
+          "properties": {
+            "backend": { "const": "z3" },
+            "status": { "enum": ["verified", "refuted", "unknown"] },
+            "reason": { "type": "string", "minLength": 1 }
+          }
+        }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+        "then": {
+          "not": { "required": ["reason"] },
+          "required": ["proof"],
+          "properties": {
+            "regionBudget": { "properties": { "observed": { "const": 2 } } },
+            "fixedPoint": {
+              "required": ["state", "expected", "actual"],
+              "properties": { "converged": { "const": true }, "regions": { "minItems": 2, "maxItems": 2 } }
+            },
+            "proof": { "properties": { "status": { "const": "verified" } } }
+          }
+        },
+        "else": { "required": ["reason"] }
+      }]
+    },
+    "handlerJoin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "controlRoots", "controlRootBudget", "controlRegion", "status", "budget", "fixedPoint", "completionJoin"],
+      "properties": {
+        "kind": { "const": "handler-join-fixed-point" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "trySpan": { "$ref": "#/$defs/span" },
+        "controlSpan": { "$ref": "#/$defs/span" },
+        "controlShape": { "enum": ["if", "switch", "for-of", "try"] },
+        "controlRoots": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["span", "shape"],
+            "properties": {
+              "span": { "$ref": "#/$defs/span" },
+              "shape": { "enum": ["if", "switch", "for-of", "try"] }
+            }
+          }
+        },
+        "controlRootBudget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "handler-control-roots" },
+            "limit": { "const": 2 },
+            "observed": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "finiteLoopBudget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "handler-loop-iterations" },
+            "limit": { "const": 4 },
+            "observed": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "handlerNestingBudget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "handler-nesting-depth" },
+            "limit": { "const": 2 },
+            "observed": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "controlRegion": { "enum": ["try", "finally"] },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": { "enum": ["proof-budget-exhausted", "unsupported-control-flow", "action-validation-failed"] },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-fixed-point-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged", "blockCompletions"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 0 },
+            "converged": { "type": "boolean" },
+            "blockCompletions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true
+              }
+            }
+          }
+        },
+        "completionJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["incoming", "outgoing", "caughtThrow", "mandatoryFinally", "finallyOverrides"],
+          "properties": {
+            "incoming": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
+            "outgoing": { "type": "array", "items": { "$ref": "#/$defs/handlerCompletion" }, "uniqueItems": true },
+            "caughtThrow": { "type": "boolean" },
+            "mandatoryFinally": { "type": "boolean" },
+            "finallyOverrides": {
+              "type": "array", "items": { "enum": ["return", "throw"] }, "uniqueItems": true
+            }
+          }
+        },
+        "pathCorrelation": {
+          "type": "object", "additionalProperties": false,
+          "required": ["caughtWhen", "rule"],
+          "properties": {
+            "caughtWhen": { "type": "string", "minLength": 1 },
+            "rule": { "const": "same-predicate-branch-restriction" }
+          }
+        }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+        "then": {
+          "not": { "required": ["reason"] },
+          "properties": { "fixedPoint": { "properties": { "converged": { "const": true } } } }
+        },
+        "else": { "required": ["reason"] }
+      }, {
+        "if": {
+          "properties": {
+            "status": { "const": "verified" },
+            "controlShape": { "const": "for-of" }
+          },
+          "required": ["status", "controlShape"]
+        },
+        "then": { "required": ["finiteLoopBudget"] }
+      }, {
+        "if": {
+          "properties": {
+            "status": { "const": "verified" },
+            "controlShape": { "const": "try" }
+          },
+          "required": ["status", "controlShape"]
+        },
+        "then": { "required": ["handlerNestingBudget"] }
+      }]
+    },
+    "rankingLoop": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "trySpan", "status", "budget", "fixedPoint", "completionJoin"],
+      "properties": {
+        "kind": { "const": "ranking-loop-fixed-point" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "loopSpan": { "$ref": "#/$defs/span" },
+        "trySpan": { "$ref": "#/$defs/span" },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": { "enum": ["proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed", "recurrence-proof-refuted", "recurrence-proof-unknown"] },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-fixed-point-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged", "handlerCfg", "valueLattice"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 1 },
+            "converged": { "type": "boolean" },
+            "handlerCfg": {
+              "type": "object", "additionalProperties": false,
+              "required": ["reused", "blocks"],
+              "properties": {
+                "reused": { "const": true },
+                "blocks": {
+                  "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true
+                }
+              }
+            },
+            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
+            "valueLattice": {
+              "type": "object", "additionalProperties": false,
+              "required": ["throwPayloads", "normalSnapshots", "expressionSnapshots"],
+              "properties": {
+                "throwPayloads": { "type": "array", "items": { "type": "string" }, "maxItems": 1 },
+                "normalSnapshots": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+                "expressionSnapshots": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["tryNormal", "catchNormal", "joinedNormal"],
+                  "properties": {
+                    "tryNormal": { "$ref": "#/$defs/expressionSnapshot" },
+                    "catchNormal": { "$ref": "#/$defs/expressionSnapshot" },
+                    "joinedNormal": { "$ref": "#/$defs/expressionSnapshot" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "completionJoin": {
+          "type": "object", "additionalProperties": false,
+          "required": ["predecessors", "retainedThrowPayload", "retainedNormalSnapshot"],
+          "properties": {
+            "predecessors": { "const": ["normal", "throw"] },
+            "retainedThrowPayload": { "type": "boolean" },
+            "retainedNormalSnapshot": { "type": "boolean" }
+          }
+        },
+        "recurrenceProof": { "$ref": "#/$defs/recurrenceProof" }
+      },
+      "allOf": [{
+        "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
+        "then": {
+          "not": { "required": ["reason"] },
+          "properties": {
+            "fixedPoint": {
+              "required": ["recurrence"],
+              "properties": {
+                "converged": { "const": true },
+                "recurrence": { "properties": { "stable": { "const": true } } }
+              }
+            },
+            "completionJoin": { "properties": { "retainedThrowPayload": { "const": true }, "retainedNormalSnapshot": { "const": true } } }
+          }
+        },
+        "else": { "required": ["reason"] }
+      }, {
+        "if": {
+          "required": ["recurrenceProof"],
+          "properties": {
+            "recurrenceProof": { "properties": { "status": { "enum": ["refuted", "unknown"] } } }
+          }
+        },
+        "then": {
+          "properties": {
+            "status": { "const": "unknown" },
+            "completionJoin": {
+              "properties": {
+                "retainedThrowPayload": { "const": false },
+                "retainedNormalSnapshot": { "const": false }
+              }
+            }
+          }
+        }
+      }]
+    }
+  }
+}
