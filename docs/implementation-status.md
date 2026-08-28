@@ -1063,7 +1063,7 @@ same property is proved for arbitrary TypeScript.
   preservation, including each solver backend/version/result. At that handoff,
   dynamic construction/mutation, compound or multiple keys, ambiguous domains,
   failed proof, and solver failure remained `unknown`.
-- The active P2.29 slice extends the same rule to multiple direct scalar keys.
+- The completed P2.29 slice extends the same rule to multiple direct scalar keys.
   Every key must have exactly one immutable non-empty literal Set and one named
   membership property, and Z3 proves initiation and preservation for each key
   separately. Evidence is ordered by key name. A missing, compound, mutable,
