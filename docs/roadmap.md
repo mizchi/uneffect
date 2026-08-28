@@ -132,9 +132,11 @@ explicit conservative boundaries rather than untracked support.
    loop-invariant CFG diamond recurrence, and
    [#34](https://github.com/mizchi/uneffect/issues/34) completes unification of
    the earlier handler-backed ranking loop with the shared scalar recurrence
-   evidence. The active next child [#35](https://github.com/mizchi/uneffect/issues/35)
-   composes two source-ordered loop-invariant CFG diamonds before one shared
-   recurrence back edge.
+   evidence. [#35](https://github.com/mizchi/uneffect/issues/35) completes two
+   source-ordered loop-invariant CFG diamonds before one shared recurrence back
+   edge. The active next child
+   [#36](https://github.com/mizchi/uneffect/issues/36) adds one bounded finite
+   `switch` fan-out without admitting fallthrough or dynamic cases.
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.

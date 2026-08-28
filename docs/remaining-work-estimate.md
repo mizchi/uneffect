@@ -36,7 +36,7 @@ as the cost of a useful first release. Some Phase 2/3 research can run
 independently, but dependencies and the policy of keeping only one active
 bounded implementation Issue limit useful parallelism.
 
-#35 is a bounded child of #25. Its 1–2 week estimate is included in the #25
+#36 is a bounded child of #25. Its 1–2 week estimate is included in the #25
 epic range and is therefore not added again to the 51–102 engineer-week total.
 The same rule applies to future child Issues split from an existing epic.
 
@@ -107,7 +107,8 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P2.17 CFG-inferred affine recurrence | #32 (child of #25) | Completed | under 1 week actual | Infer one source-bound two-member transformer and summary from a reusable CFG back edge, then require Z3 base/step/ranking checks. |
 | P2.18 piecewise affine CFG recurrence | #33 (child of #25) | Completed | under 1 week actual | Join one loop-invariant conditional transformer through a source-bound CFG diamond and back edge. |
 | P2.19 shared handler/scalar recurrence | #34 (child of #25) | Completed | under 1 week actual | Replace the legacy handler recurrence artifact with one shared scalar recurrence carrying handler-completion evidence. |
-| P2.20 two sequential invariant diamonds | #35 (child of #25) | Active after #34 | 1–2 weeks | Compose two source-ordered predicate-correlated affine joins before one shared recurrence back edge. |
+| P2.20 two sequential invariant diamonds | #35 (child of #25) | Completed | completed in the current delivery | Compose two source-ordered predicate-correlated affine joins before one shared recurrence back edge. |
+| P2.21 finite switch recurrence fan-out | #36 (child of #25) | Active after #35 | 1–2 weeks | Compose one integer-discriminated two-case-plus-default join before one shared recurrence back edge. |
 
 P1.2a through P1.4 and P2.1 through P2.12 are complete. The bounded #23
 handoff is closed. #26 has completed the first executable child of #24 and #27
@@ -116,7 +117,8 @@ scalar-value child of #25 and #29 completed its two-member product environment;
 #30 completed three-region composition and #31 completed the first divergent
 product join; #32 completes the direct CFG recurrence and #33 completes one
 piecewise recurrence, and #34 completes handler/scalar recurrence unification.
-#35 is active for two sequential invariant diamonds, while general value
+#35 completed two sequential invariant diamonds. #36 is active for one bounded
+finite `switch` recurrence fan-out, while general value
 lattices and recurrence widening remain in the parent.
 
 P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
@@ -173,7 +175,7 @@ same nested-try topology to three while retaining four as over-budget.
 5. #2/#5 and #4/#6 are selected according to the next dogfood product, rather
    than being treated as one mandatory serial queue.
 
-No broad Phase 3 or Phase 4 epic should pre-empt the bounded #35 handoff merely
+No broad Phase 3 or Phase 4 epic should pre-empt the bounded #36 handoff merely
 because it has an attractive isolated demo. New work that exposes a soundness dependency should
 be added to the owning Issue and reflected here before implementation begins.
 
@@ -181,8 +183,8 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #35 two sequential invariant diamonds (included in #25) | M | 1–2 weeks | Compose two ordered affine phi joins at one back edge | Composition order, predicate independence, and induction obligations |
-| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31/#32/#33/#34/#35 | Value conflict, widening, recurrence, and irreducible control |
+| 1 | #36 finite switch recurrence fan-out (included in #25) | M | 1–2 weeks | Compose one integer-discriminated two-case-plus-default join at one back edge | Case partition, fallthrough rejection, source identity, and induction obligations |
+| 2 | #25 general CFG values | L | 3–8 weeks | Continue beyond bounded children #28/#29/#30/#31/#32/#33/#34/#35/#36 | Value conflict, widening, recurrence, and irreducible control |
 | 3 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 5 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -201,7 +203,7 @@ be added to the owning Issue and reflected here before implementation begins.
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
 2. **General analysis foundation:** #23 and the first executable #26/#27 slices
-   #28, #29, #30, #31, #32, #33, and #34 are complete; #35 is the active 1–2 week next #25 value slice. Completing
+   #28, #29, #30, #31, #32, #33, #34, and #35 are complete; #36 is the active 1–2 week next #25 value slice. Completing
    parent #25/#24/#8 is 13–27 weeks. Keep these
    figures separate when deciding whether the first reusable boundary is enough
    to begin product dogfood.
@@ -248,7 +250,8 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | #32 CFG-inferred affine recurrence | under 1 engineer-week actual | Infer a source-bound two-member transformer and summary from one reusable CFG back edge and prove it independently. |
 | Completed sub-slice | #33 piecewise affine CFG recurrence | under 1 engineer-week actual | One loop-invariant conditional transformer joins through a source-bound CFG diamond with independent Z3 checks. |
 | Completed sub-slice | #34 shared handler/scalar recurrence | under 1 engineer-week actual | Handler completion evidence now extends the common scalar recurrence artifact and duplicate v2 proof dispatch is gone. |
-| Current slice | #35 two sequential invariant diamonds | 1–2 engineer-weeks | Compose two ordered predicate-correlated affine joins before one recurrence back edge. |
+| Completed sub-slice | #35 two sequential invariant diamonds | under 1 engineer-week actual | Two source-ordered invariant diamonds compose into one recurrence; structural evidence remains a non-proof until independently verified by Z3. |
+| Current slice | #36 finite switch recurrence fan-out | 1–2 engineer-weeks | Compose one integer-discriminated two-case-plus-default join before one recurrence back edge. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
@@ -263,9 +266,9 @@ closed bounded epic.
 
 ## Backlog interpretation
 
-- **Next implementable result:** #35, estimated at 1–2 engineer-weeks.
-- **Next foundation checkpoint:** complete #35, the bounded #25 two-diamond
-  composition slice. #26, #27, #28, #29, #30, #31, #32, #33, and #34 are complete; completing parent #25/#24/#8 is 13–27
+- **Next implementable result:** #36, estimated at 1–2 engineer-weeks.
+- **Next foundation checkpoint:** complete #36, the bounded #25 finite-switch
+  composition slice. #26, #27, #28, #29, #30, #31, #32, #33, #34, and #35 are complete; completing parent #25/#24/#8 is 13–27
   engineer-weeks.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
