@@ -15,7 +15,12 @@ import { extractAnnotations } from "./annotations.js";
 import { parseTemporalComposition } from "./temporal-compose.js";
 import { analyzeProgramEffects, type EffectAnalysisResult, type EffectDiagnostic, type ExternalFunctionEffectContract, type ExternalModuleEffectContract } from "./effects.js";
 import { fromTypeScriptDiagnostic, type TypeScriptCheckerDiagnostic } from "./diagnostics.js";
-import { assessProjectVerification, type ProjectAssuranceAssessment } from "./project-assurance.js";
+import {
+  assessProjectVerification,
+  PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION,
+  PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION,
+  type ProjectAssuranceAssessment,
+} from "./project-assurance.js";
 import type { BuiltinContractRegistry } from "./builtin-contracts.js";
 import { analyzeModuleInitializationOrder, type ModuleInitializationOrder } from "./module-initialization.js";
 import { loadTypeScriptWorkspace, type TypeScriptProject, type TypeScriptProjectProvenance, type TypeScriptWorkspaceBlocker } from "./typescript-project.js";
@@ -424,13 +429,16 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
     ] : [],
     exclusions: [
+      "this workspace assessment covers the selected source roots in every loaded tsconfig compiler domain",
       "contract, ownership, invariant, and temporal evidence is not composed across project boundaries",
       "cross-project refinement composition is limited to scalar direct calls or at most two write-screened sole-call local helpers with exact declarations",
       "cross-project inaccessible/non-exported, host-alias, and cross-realm Mutate identities, plus unbounded iterator effect parameters, are not composed",
       ...(options.buildArtifacts === "require-fresh" || options.buildArtifacts === "require-exact" ? [] : ["composite build-artifact freshness was observed but not required"]),
       ...(options.buildArtifacts === "require-exact" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
       "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
-      ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions)),
+      ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions).filter((exclusion) =>
+        exclusion !== PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION
+        && exclusion !== PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION)),
     ],
   };
   return {

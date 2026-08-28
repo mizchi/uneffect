@@ -76,6 +76,9 @@ describe("evidence and optimizer obligations", () => {
       expect(verified.refinementComposition).toMatchObject({ status: "not-applicable", links: [], blockers: [] });
       expect(verified.assurance.claims).toContain("every referenced compiler domain passed project verification");
       expect(verified.assurance.exclusions).toContain("contract, ownership, invariant, and temporal evidence is not composed across project boundaries");
+      expect(verified.assurance.exclusions).not.toContain("this result covers one tsconfig compiler domain; referenced domains require workspace aggregation");
+      expect(verified.assurance.exclusions).not.toContain("this assessment covers only explicitly supplied files and analyses represented in this result");
+      expect(verified.assurance.exclusions).toContain("this workspace assessment covers the selected source roots in every loaded tsconfig compiler domain");
       expect(verified.buildArtifacts.status).toBe("stale");
 
       const staleArtifacts = await verifyUneffectProject({ projectFile: root, buildArtifacts: "require-fresh" });

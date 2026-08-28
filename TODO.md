@@ -51,7 +51,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Apply the exact supported reference graph to a second realistic monorepo and record blockers. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Add opt-in annotations to an actual cross-project edge in a realistic monorepo and retain the exact supported graph or its blockers. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research

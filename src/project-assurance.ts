@@ -35,6 +35,9 @@ export interface ProjectAssuranceAssessment {
   exclusions: readonly string[];
 }
 
+export const PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION = "this assessment covers only explicitly supplied files and analyses represented in this result";
+export const PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION = "this result covers one tsconfig compiler domain; referenced domains require workspace aggregation";
+
 type AssessmentInput = Omit<VerifyUneffectProjectResult, "assurance">;
 
 /**
@@ -138,8 +141,8 @@ export function assessProjectVerification(
   const hasOpenIteratorEffect = result.effects.summaries.some((summary) => summary.iteratorEffectParameters?.some((parameter) =>
     !summary.iteratorEffectBounds?.some((bound) => bound.index === parameter.index)));
   const exclusions = [
-    "this assessment covers only explicitly supplied files and analyses represented in this result",
-    ...(project ? ["this result covers one tsconfig compiler domain; referenced domains require workspace aggregation"]
+    PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION,
+    ...(project ? [PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION]
       : ["the in-memory project API does not establish consumer tsconfig or TypeScript package-version parity"]),
     "inferred effects need not have an explicit declaration",
     ...(hasOpenIteratorEffect ? ["unbounded iterator-effect parameters describe caller-supplied lazy effects and are not a closed concrete effect set"] : []),

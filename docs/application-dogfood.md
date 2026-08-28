@@ -194,3 +194,38 @@ assumption occurrences. Consequently `--assurance no-unknown` passes as
 The count is an observation of this revision rather than a stable target; its
 purpose is to keep reviewed semantics visible instead of hiding them behind
 declaration-checked summaries.
+
+### Root solution graph
+
+The same revision was later checked read-only through the repository root
+`tsconfig.json`, rather than only through `js/luna/tsconfig.json`. The root is a
+well-formed solution config with `files: []` and six references, so it provides
+a useful contrast with Workhub's ambiguous default-include root.
+
+```ts
+await verifyUneffectProject({
+  projectFile: "/path/to/luna.mbt/tsconfig.json",
+})
+```
+
+The workspace report retained seven configs (the empty solution root plus six
+source-owning child domains), six reference edges, and the child-first build
+order. It found 66 selected source roots and no TypeScript diagnostics. The
+SolutionBuilder observation was `fresh`, but freshness was not required and
+runtime output bytes were not checked. The aggregate remained `unknown` with
+75 Effect blockers and 620 reviewed assumptions. These counts describe the
+observed revision and are not stable quality targets.
+
+Both `effectComposition` and `refinementComposition` were `not-applicable`, not
+`verified`: this star-shaped solution has no annotated source-bearing parent to
+child edge. In particular, the run does not exercise the supported guarded
+scalar/`globalThis` refinement link and cannot close that part of #20. A future
+positive dogfood case must add opt-in annotations to an actual cross-project
+edge without changing the analyzer's admitted fragment merely to make it pass.
+
+This run exposed one reporting defect. The workspace-level exclusions inherited
+the child-only statement that referenced domains still required aggregation,
+even though the workspace had already aggregated them. Workspace reports now
+replace the two project-local scope statements with one exact statement: the
+assessment covers selected source roots in every loaded tsconfig compiler
+domain. A regression test locks this distinction.

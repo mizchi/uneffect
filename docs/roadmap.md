@@ -57,7 +57,12 @@ commitment.
    identities, and non-identical
    declaration-transform validation remain. It consumes the
    completed #3 summary contract and does not technically depend on completion
-   of #9; it is now the active Phase 1 Issue.
+  of #9; it is now the active Phase 1 Issue.
+  A second read-only solution graph (`luna.mbt`) now validates the multi-domain
+  loader and honest `not-applicable` composition result, but it contains no
+  annotated source-bearing cross-project edge. The next dogfood slice must
+  exercise such an edge rather than treating graph loading alone as composition
+  evidence.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.
