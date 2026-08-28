@@ -142,6 +142,12 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   validation, and keep budget exhaustion plus an unaligned recurrence
   `unknown`. This is the #23 control-reachability seed; the general
   basic-block/value-lattice fixed point remains unchecked below.
+- [x] Replace that seed's hard-coded reachability rounds with the reusable
+  monotone `solveBasicBlockFixedPoint` engine and an abstract completion-value
+  lattice that carries the exact throw payload text plus normal/catch snapshot
+  identities through the back-edge. Budget exhaustion and lattice conflicts
+  fail closed. Numeric `TemporalExpression` environments still rely on the
+  affine walker and remain part of #23.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

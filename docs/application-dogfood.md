@@ -289,8 +289,9 @@ The application-shaped `examples/dogfood/telemetry-fixed-point-drain.ts` models
 success/failure accounting around a telemetry-send boundary. Its dynamic
 ranking loop has one normal delivery predecessor and one scalar throw/catch
 failure predecessor. `analyzeRefinementActionBodies` verifies the exact affine
-accounting and emits a converged `ranking-loop-fixed-point` obligation within a
-16-round budget; replacing the caught amount with the normal-path delivered
+accounting and emits a converged `ranking-loop-fixed-point` obligation whose
+reusable worklist retains `runtime.pending` and both normal snapshot facts
+within a 16-step budget; replacing the caught amount with the normal-path delivered
 counter keeps the obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
 evidence that a Datadog client or host I/O is bounded.

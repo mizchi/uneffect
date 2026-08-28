@@ -205,10 +205,13 @@ same property is proved for arbitrary TypeScript.
   version, and loop/try spans, records convergence, and marks the throw payload
   and normal snapshot retained only when the shared completion/value
   lowering validates the complete model action. Budget exhaustion, an
-  unaligned/cross-state recurrence, or any other action diagnostic yields
-  `unknown`. This seed proves only reachability convergence for that exact
-  direct join plus the already-supported affine value summary; it is not a
-  general basic-block value lattice, Program/external-action analysis,
+  unaligned/cross-state recurrence, lattice conflict, or any other action
+  diagnostic yields `unknown`. The worklist is now the reusable monotone
+  `solveBasicBlockFixedPoint` engine: a caller-defined lattice carries the
+  source-bound throw payload plus normal/catch snapshot identities through the
+  loop back-edge. The numeric `TemporalExpression` environments still come
+  from the already-supported affine walker, so this is not yet a general
+  expression-value fixed point, Program/external-action analysis,
   irreducible-loop analysis, or CLI assurance artifact.
 
 - Initialized scalar `let` values now flow through sequential `if` diamonds. A

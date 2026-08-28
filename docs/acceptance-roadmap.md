@@ -336,9 +336,11 @@ throw/catch predecessors. A successful artifact records worklist convergence
 plus retained throw payload and normal snapshot. Setting the named worklist
 budget below convergence or coupling the catch recurrence to the normal-path
 accumulator produces `unknown` and an `unsupported-action-body` diagnostic.
-The worklist currently establishes control reachability only; the existing
-affine completion lowering remains the value proof, so arbitrary joins and
-general loop fixed points remain open.
+The reusable monotone worklist now carries abstract throw-payload and
+normal/catch snapshot facts through the back-edge and fails closed on lattice
+conflict. The existing affine completion lowering still proves numeric
+`TemporalExpression` environments, so arbitrary expression joins and general
+loop fixed points remain open.
 
 A twelfth case carries an initialized mutable scalar local through two
 sequential normally completing `if` diamonds and then consumes the resulting

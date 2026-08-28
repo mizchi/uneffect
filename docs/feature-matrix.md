@@ -89,9 +89,10 @@ One additional direct-join seed exposes the affine rule through
 normal and supported scalar throw/catch predecessors must converge within the
 named `cfg-fixed-point-iterations` worklist budget. Only a fully matching action
 records retained throw payload and normal snapshot. Budget exhaustion and an
-unaligned recurrence remain `unknown`. The worklist currently covers control
-reachability only; arbitrary basic blocks and loop-carried value lattices remain
-owned by #23.
+unaligned recurrence remain `unknown`. A reusable monotone basic-block engine
+carries abstract throw-payload and normal/catch snapshot facts and rejects
+lattice conflicts. Numeric `TemporalExpression` environments and arbitrary
+basic-block shapes remain owned by #23.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

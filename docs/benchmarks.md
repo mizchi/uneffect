@@ -1845,7 +1845,10 @@ or evidence for multiple/transitive project dependencies.
 `refinement-fixed-point.bench.ts` parses and analyzes the first direct
 ranking-loop throw/normal CFG join, including exact affine action validation,
 the bounded reachability worklist, and artifact construction. A 2026-08-28 run
-measured 0.2691 ms mean over 1,859 samples (3,716.53 operations per second,
-1.68% RME). It excludes Z3, TypeChecker Program resolution, arbitrary basic
-blocks, and loop-carried value-lattice fixed points. This is an observation for
-the bounded seed, not a general CFG performance claim or CI regression budget.
+After replacing the hard-coded reachability rounds with the reusable abstract
+completion-value worklist, a 2026-08-28 run measured 0.2678 ms mean over 1,867
+samples (3,733.83 operations per second, 1.54% RME). It excludes Z3,
+TypeChecker Program resolution, arbitrary AST-to-basic-block lowering, and
+loop-carried numeric `TemporalExpression` fixed points. This is an observation
+for the bounded seed, not a general CFG performance claim or CI regression
+budget.

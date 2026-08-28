@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import ts from "typescript";
-import { joinFlowValues } from "./refinement-flow.js";
+import { joinFlowValues, solveBasicBlockFixedPoint } from "./refinement-flow.js";
 import { extractAnnotations, extractLocatedAnnotations } from "./annotations.js";
 import type { ModelRefinementAdapter, ModelState } from "./model-replay.js";
 import type { TemporalSpec } from "./spec-ir.js";
@@ -112,7 +112,7 @@ export interface RefinementRankingLoopObligation {
   loopSpan: { start: number; end: number };
   trySpan: { start: number; end: number };
   status: "verified" | "unknown";
-  reason?: "proof-budget-exhausted" | "unsupported-recurrence" | "action-validation-failed";
+  reason?: "proof-budget-exhausted" | "lattice-conflict" | "unsupported-recurrence" | "action-validation-failed";
   budget: {
     name: "cfg-fixed-point-iterations";
     limit: number;
@@ -120,6 +120,10 @@ export interface RefinementRankingLoopObligation {
   fixedPoint: {
     iterations: number;
     converged: boolean;
+    valueLattice: {
+      throwPayloads: readonly string[];
+      normalSnapshots: readonly string[];
+    };
   };
   completionJoin: {
     predecessors: readonly ["normal", "throw"];
@@ -3637,15 +3641,16 @@ export function validateRefinementActionBodies(
 interface RankingLoopJoinCandidate {
   readonly whileStatement: ts.WhileStatement;
   readonly tryStatement: ts.TryStatement;
+  readonly throwStatement: ts.ThrowStatement;
 }
 
 function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCandidate[] {
   const candidates: RankingLoopJoinCandidate[] = [];
-  const containsThrow = (root: ts.Node): boolean => {
-    let found = false;
+  const containedThrows = (root: ts.Node): ts.ThrowStatement[] => {
+    const found: ts.ThrowStatement[] = [];
     const visit = (node: ts.Node): void => {
-      if (found || ts.isFunctionLike(node)) return;
-      if (ts.isThrowStatement(node)) { found = true; return; }
+      if (ts.isFunctionLike(node)) return;
+      if (ts.isThrowStatement(node)) { found.push(node); return; }
       ts.forEachChild(node, visit);
     };
     ts.forEachChild(root, visit);
@@ -3659,9 +3664,13 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
         : ts.factory.createBlock([node.statement], true);
       for (const statement of loopBody.statements) {
         if (!ts.isTryStatement(statement) || !statement.catchClause) continue;
-        const hasThrow = containsThrow(statement.tryBlock);
+        const throws = containedThrows(statement.tryBlock);
         const hasNormalStatement = statement.tryBlock.statements.some((item) => !ts.isThrowStatement(item));
-        if (hasThrow && hasNormalStatement) candidates.push({ whileStatement: node, tryStatement: statement });
+        if (throws.length === 1 && hasNormalStatement) candidates.push({
+          whileStatement: node,
+          tryStatement: statement,
+          throwStatement: throws[0]!,
+        });
       }
     }
     ts.forEachChild(node, visit);
@@ -3670,27 +3679,79 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
   return candidates;
 }
 
-function runRankingLoopJoinFixedPoint(limit: number): { iterations: number; converged: boolean } {
-  // This first reusable seed models only control reachability. The existing
-  // completion lowering remains responsible for the paired payload/snapshot
-  // values. Keeping the graph explicit prevents a syntactic catch from being
-  // mistaken for a successfully joined value state.
-  const edges: readonly (readonly number[])[] = [
-    [1],       // loop header -> try entry
-    [2, 3],    // try -> normal predecessor or typed throw predecessor
-    [4],       // normal predecessor -> join
-    [4],       // catch after throw -> join
-    [0, 5],    // joined iteration -> back edge or loop exit
-    [],
-  ];
-  const reached = new Set<number>([0]);
-  if (!Number.isSafeInteger(limit) || limit <= 0) return { iterations: 0, converged: false };
-  for (let iteration = 1; iteration <= limit; iteration++) {
-    const before = reached.size;
-    for (const from of [...reached]) for (const to of edges[from] ?? []) reached.add(to);
-    if (reached.size === before) return { iterations: iteration, converged: true };
-  }
-  return { iterations: limit, converged: false };
+interface RankingLoopValueState {
+  readonly normal: ReadonlySet<string>;
+  readonly throws: ReadonlyMap<string, string>;
+}
+
+function runRankingLoopJoinFixedPoint(
+  candidate: RankingLoopJoinCandidate,
+  source: ts.SourceFile,
+  limit: number,
+): {
+  iterations: number;
+  converged: boolean;
+  conflict: boolean;
+  valueLattice: { throwPayloads: readonly string[]; normalSnapshots: readonly string[] };
+} {
+  const value = (
+    normal: readonly string[] = [],
+    throws: readonly (readonly [string, string])[] = [],
+  ): RankingLoopValueState => ({ normal: new Set(normal), throws: new Map(throws) });
+  const key = (state: RankingLoopValueState): string => JSON.stringify({
+    normal: [...state.normal].sort(),
+    throws: [...state.throws].sort(([left], [right]) => left.localeCompare(right)),
+  });
+  const payload = candidate.throwStatement.expression.getText(source);
+  const throwSnapshot = `throw@${candidate.throwStatement.getStart(source)}:${candidate.throwStatement.getEnd()}`;
+  const result = solveBasicBlockFixedPoint({
+    entry: "header",
+    initial: value(["entry"]),
+    budget: { name: "cfg-fixed-point-iterations", limit },
+    lattice: {
+      bottom: () => value(),
+      equivalent: (left, right) => key(left) === key(right),
+      join: (left, right) => {
+        const throws = new Map(left.throws);
+        for (const [throwPayload, snapshot] of right.throws) {
+          const existing = throws.get(throwPayload);
+          if (existing !== undefined && existing !== snapshot) return {
+            status: "conflict" as const,
+            reason: `throw payload ${throwPayload} reached the join with incompatible snapshots`,
+          };
+          throws.set(throwPayload, snapshot);
+        }
+        return {
+          status: "joined" as const,
+          value: value([...left.normal, ...right.normal], [...throws]),
+        };
+      },
+    },
+    blocks: [
+      { id: "header", transfer: (input) => [{ to: "try", value: input }] },
+      { id: "try", transfer: () => [
+        { to: "join", value: value(["try-normal"]) },
+        { to: "catch", value: value([], [[payload, throwSnapshot]]) },
+      ] },
+      { id: "catch", transfer: () => [{ to: "join", value: value(["catch-normal"]) }] },
+      { id: "join", transfer: (input) => [
+        { to: "header", value: input },
+        { to: "exit", value: input },
+      ] },
+      { id: "exit", transfer: () => [] },
+    ],
+  });
+  const catchState = result.states.get("catch") ?? value();
+  const exitState = result.states.get("exit") ?? value();
+  return {
+    iterations: result.iterations,
+    converged: result.status === "converged",
+    conflict: result.status === "unknown" && result.reason === "lattice-conflict",
+    valueLattice: {
+      throwPayloads: [...catchState.throws.keys()].sort(),
+      normalSnapshots: [...exitState.normal].filter((snapshot) => snapshot !== "entry").sort(),
+    },
+  };
 }
 
 /**
@@ -3722,10 +3783,14 @@ export function analyzeRefinementActionBodies(
     if (!exportName || !implementation?.body) continue;
     const candidates = findRankingLoopThrowJoinCandidates(implementation.body);
     for (const _candidate of candidates) {
-      const fixedPoint = runRankingLoopJoinFixedPoint(limit);
+      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const actionUnsupported = actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body");
-      const verified = fixedPoint.converged && actionDiagnostics.length === 0;
+      const retainedThrowPayload = fixedPoint.valueLattice.throwPayloads.length === 1;
+      const retainedNormalSnapshot = fixedPoint.valueLattice.normalSnapshots.includes("try-normal")
+        && fixedPoint.valueLattice.normalSnapshots.includes("catch-normal");
+      const verified = fixedPoint.converged && !fixedPoint.conflict
+        && retainedThrowPayload && retainedNormalSnapshot && actionDiagnostics.length === 0;
       obligations.push({
         kind: "ranking-loop-fixed-point",
         adapterName,
@@ -3740,16 +3805,22 @@ export function analyzeRefinementActionBodies(
           end: _candidate.tryStatement.getEnd(),
         },
         status: verified ? "verified" : "unknown",
-        ...(!fixedPoint.converged
+        ...(fixedPoint.conflict
+          ? { reason: "lattice-conflict" as const }
+          : !fixedPoint.converged
           ? { reason: "proof-budget-exhausted" as const }
           : actionUnsupported ? { reason: "unsupported-recurrence" as const }
             : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const } : {}),
         budget: { name: "cfg-fixed-point-iterations", limit },
-        fixedPoint,
+        fixedPoint: {
+          iterations: fixedPoint.iterations,
+          converged: fixedPoint.converged,
+          valueLattice: fixedPoint.valueLattice,
+        },
         completionJoin: {
           predecessors: ["normal", "throw"],
-          retainedThrowPayload: verified,
-          retainedNormalSnapshot: verified,
+          retainedThrowPayload: verified && retainedThrowPayload,
+          retainedNormalSnapshot: verified && retainedNormalSnapshot,
         },
       });
       if (!fixedPoint.converged && !actionUnsupported) diagnostics.push({

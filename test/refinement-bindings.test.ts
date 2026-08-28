@@ -3062,7 +3062,13 @@ describe("annotated refinement bindings", () => {
         loopSpan: { start: expect.any(Number), end: expect.any(Number) },
         trySpan: { start: expect.any(Number), end: expect.any(Number) },
         budget: { name: "cfg-fixed-point-iterations", limit: 16 },
-        fixedPoint: { converged: true },
+        fixedPoint: {
+          converged: true,
+          valueLattice: {
+            throwPayloads: ["runtime.pending"],
+            normalSnapshots: ["catch-normal", "try-normal"],
+          },
+        },
         completionJoin: {
           predecessors: ["normal", "throw"],
           retainedThrowPayload: true,

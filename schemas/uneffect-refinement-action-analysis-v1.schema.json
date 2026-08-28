@@ -52,7 +52,7 @@
         "loopSpan": { "$ref": "#/$defs/span" },
         "trySpan": { "$ref": "#/$defs/span" },
         "status": { "enum": ["verified", "unknown"] },
-        "reason": { "enum": ["proof-budget-exhausted", "unsupported-recurrence", "action-validation-failed"] },
+        "reason": { "enum": ["proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed"] },
         "budget": {
           "type": "object", "additionalProperties": false,
           "required": ["name", "limit"],
@@ -63,10 +63,18 @@
         },
         "fixedPoint": {
           "type": "object", "additionalProperties": false,
-          "required": ["iterations", "converged"],
+          "required": ["iterations", "converged", "valueLattice"],
           "properties": {
             "iterations": { "type": "integer", "minimum": 1 },
-            "converged": { "type": "boolean" }
+            "converged": { "type": "boolean" },
+            "valueLattice": {
+              "type": "object", "additionalProperties": false,
+              "required": ["throwPayloads", "normalSnapshots"],
+              "properties": {
+                "throwPayloads": { "type": "array", "items": { "type": "string" }, "maxItems": 1 },
+                "normalSnapshots": { "type": "array", "items": { "type": "string" }, "maxItems": 2 }
+              }
+            }
           }
         },
         "completionJoin": {
