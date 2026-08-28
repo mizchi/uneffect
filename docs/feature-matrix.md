@@ -128,6 +128,16 @@ unmodeled predecessor/successor-boundary write cannot verify. Switch fan-out,
 missing branches, nested choices, loops, aliases, and general path implication
 remain unsupported.
 
+An ordinary direct `while` can additionally emit
+`scalar-recurrence-fixed-point` when the refinement evaluator derives one
+affine ranking recurrence over one or two integer members. A reusable worklist
+carries the transformer from a source-keyed `statement:*` block to its
+`while-header:*` back edge under `cfg-recurrence-iterations`. Structural
+stability is provisional; Z3 must independently prove base and step for every
+member plus the ranking obligation. Coupled ranking updates, self-amplifying
+members, counter-dependent path deltas, more than two members, nested/handler
+loops, budget exhaustion, and solver failure do not verify.
+
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing
 arms produce phi values; when one arm returns, only the normal predecessor's

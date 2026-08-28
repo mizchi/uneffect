@@ -427,6 +427,14 @@ same property is proved for arbitrary TypeScript.
   recurrence certificate, and independent Z3 proof remain separate abstract
   domains over the shared topology. The default named fixed-point budget is 64;
   general handler loops and recurrence widening remain unsupported.
+- A separate `scalar-recurrence-fixed-point` obligation removes the
+  try/catch requirement for one direct affine `while`. It binds the final body
+  statement and loop header as the machine-readable back edge, carries one or
+  two integer transformer members through the shared worklist, and reports
+  only `independent-proof-required` after structural convergence. The Z3 path
+  upgrades it only after every base/step check and the ranking check succeeds.
+  Coupled, self-amplifying, path-dependent, over-cardinality, budget, and
+  solver controls remain `unknown`; arbitrary loop CFGs are not claimed.
 
 ## Async, resources, and event loops
 

@@ -207,6 +207,34 @@ export interface RefinementRankingLoopObligation {
   recurrenceProof?: RefinementRecurrenceProof;
 }
 
+export interface RefinementScalarRecurrenceObligation {
+  kind: "scalar-recurrence-fixed-point";
+  adapterName: string;
+  modelName: string;
+  exportName: string;
+  loopSpan: { start: number; end: number };
+  status: "verified" | "unknown";
+  reason?: "independent-proof-required" | "proof-budget-exhausted" | "lattice-conflict"
+    | "unsupported-recurrence" | "action-validation-failed"
+    | "recurrence-proof-refuted" | "recurrence-proof-unknown";
+  budget: { name: "cfg-recurrence-iterations"; limit: number };
+  backEdge: {
+    from: string;
+    to: string;
+    rule: "source-bound-affine-transformer";
+  };
+  fixedPoint: {
+    iterations: number;
+    converged: boolean;
+    recurrence?: RefinementRankingRecurrenceEvidence;
+    members: readonly {
+      state: string;
+      role: "ranking" | "scalar";
+    }[];
+  };
+  recurrenceProof?: RefinementRecurrenceProof;
+}
+
 export interface RefinementHandlerJoinObligation {
   kind: "handler-join-fixed-point";
   adapterName: string;
@@ -336,6 +364,7 @@ export interface RefinementHandlerScalarEnvironmentObligation {
 }
 
 export type RefinementActionObligation = RefinementRankingLoopObligation
+  | RefinementScalarRecurrenceObligation
   | RefinementHandlerJoinObligation
   | RefinementHandlerScalarEnvironmentObligation
   | RefinementLocalAliasHelperObligation;
@@ -4257,6 +4286,142 @@ function runRankingLoopJoinFixedPoint(
   };
 }
 
+interface ScalarRecurrenceCandidate {
+  readonly whileStatement: ts.WhileStatement;
+  readonly backEdgeStatement: ts.Statement;
+}
+
+function findScalarRecurrenceCandidates(body: ts.Block): ScalarRecurrenceCandidate[] {
+  const candidates: ScalarRecurrenceCandidate[] = [];
+  const containsTry = (root: ts.Node): boolean => {
+    let found = false;
+    const visit = (node: ts.Node): void => {
+      if (found || ts.isFunctionLike(node)) return;
+      if (ts.isTryStatement(node)) { found = true; return; }
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(root, visit);
+    return found;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isFunctionLike(node) && node !== body.parent) return;
+    if (ts.isWhileStatement(node) && ts.isBlock(node.statement)
+      && node.statement.statements.length > 0 && !containsTry(node.statement)) {
+      candidates.push({
+        whileStatement: node,
+        backEdgeStatement: node.statement.statements.at(-1)!,
+      });
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(body, visit);
+  return candidates;
+}
+
+function recurrenceEvidenceFromTrace(
+  trace: RefinementRankingRecurrenceTrace,
+  stable: boolean,
+): RefinementRankingRecurrenceEvidence {
+  const formatUpdates = (updates: ReadonlyMap<string, TemporalExpression>): Readonly<Record<string, string>> =>
+    Object.fromEntries([...updates].map(([name, expression]) => [name, formatRefinementExpression(expression)]));
+  return {
+    counter: trace.counterName,
+    direction: trace.direction,
+    delta: trace.counterDelta,
+    bound: trace.bound,
+    stop: trace.stop,
+    guard: formatRefinementExpression(trace.guard),
+    iteration: formatUpdates(trace.iterationUpdates),
+    summary: formatUpdates(trace.summaryUpdates),
+    stable,
+  };
+}
+
+function runScalarRecurrenceFixedPoint(
+  candidate: ScalarRecurrenceCandidate,
+  source: ts.SourceFile,
+  spec: TemporalSpec,
+  trace: RefinementRankingRecurrenceTrace | undefined,
+  limit: number,
+): {
+  readonly iterations: number;
+  readonly converged: boolean;
+  readonly conflict: boolean;
+  readonly recurrence?: RefinementRankingRecurrenceEvidence;
+  readonly members: readonly { state: string; role: "ranking" | "scalar" }[];
+  readonly backEdge: RefinementScalarRecurrenceObligation["backEdge"];
+} {
+  const header = `while-header:${candidate.whileStatement.getStart(source)}`;
+  const back = `statement:${candidate.backEdgeStatement.getStart(source)}`;
+  const candidateRecurrence = trace ? recurrenceEvidenceFromTrace(trace, false) : undefined;
+  const changed = candidateRecurrence
+    ? spec.states.filter(({ name, type }) => type === "int"
+      && candidateRecurrence.iteration[name] !== undefined
+      && candidateRecurrence.iteration[name] !== name)
+    : [];
+  const members = changed.map(({ name }) => ({
+    state: name,
+    role: name === trace?.counterName ? "ranking" as const : "scalar" as const,
+  })).sort((left, right) => left.role === right.role ? left.state.localeCompare(right.state)
+    : left.role === "ranking" ? -1 : 1);
+  interface Value {
+    readonly reachable: boolean;
+    readonly recurrences: ReadonlyMap<string, RefinementRankingRecurrenceEvidence>;
+  }
+  const value = (
+    reachable = false,
+    recurrences: ReadonlyMap<string, RefinementRankingRecurrenceEvidence> = new Map(),
+  ): Value => ({ reachable, recurrences });
+  const key = (item: Value): string => JSON.stringify({
+    reachable: item.reachable,
+    recurrences: [...item.recurrences].sort(([left], [right]) => left.localeCompare(right)),
+  });
+  const recurrenceKey = `${candidate.whileStatement.getStart(source)}:${candidate.whileStatement.getEnd()}`;
+  const result = solveBasicBlockFixedPoint<Value>({
+    entry: header,
+    initial: value(true),
+    budget: { name: "cfg-recurrence-iterations", limit },
+    lattice: {
+      bottom: () => value(),
+      equivalent: (left, right) => key(left) === key(right),
+      join: (left, right) => {
+        if (!left.reachable) return { status: "joined" as const, value: right };
+        if (!right.reachable) return { status: "joined" as const, value: left };
+        const joined = new Map(left.recurrences);
+        for (const [identity, incoming] of right.recurrences) {
+          const existing = joined.get(identity);
+          if (existing && JSON.stringify(existing) !== JSON.stringify(incoming)) return {
+            status: "conflict" as const,
+            reason: `recurrence ${identity} reached its back edge with incompatible transformers`,
+          };
+          joined.set(identity, incoming);
+        }
+        return { status: "joined" as const, value: value(true, joined) };
+      },
+    },
+    blocks: [
+      { id: header, transfer: (input) => [{ to: back, value: input }, { to: "loop-exit", value: input }] },
+      { id: back, transfer: (input) => {
+        const output = new Map(input.recurrences);
+        if (candidateRecurrence && members.length >= 1 && members.length <= 2) {
+          output.set(recurrenceKey, candidateRecurrence);
+        }
+        return [{ to: header, value: value(input.reachable, output) }];
+      } },
+      { id: "loop-exit", transfer: () => [] },
+    ],
+  });
+  const retained = result.states.get("loop-exit")?.recurrences.get(recurrenceKey);
+  return {
+    iterations: result.iterations,
+    converged: result.status === "converged",
+    conflict: result.status === "unknown" && result.reason === "lattice-conflict",
+    ...(retained ? { recurrence: { ...retained, stable: result.status === "converged" } } : {}),
+    members,
+    backEdge: { from: back, to: header, rule: "source-bound-affine-transformer" },
+  };
+}
+
 interface HandlerScalarEnvironmentResult {
   readonly iterations: number;
   readonly converged: boolean;
@@ -4718,6 +4883,54 @@ export function analyzeRefinementActionBodies(
         message: `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
       });
     }
+    for (const candidate of findScalarRecurrenceCandidates(implementation.body)) {
+      const trace = traceSink.rankingRecurrences.find((item) =>
+        item.modelName === action.name && item.loopStart === candidate.whileStatement.getStart(source));
+      const fixedPoint = runScalarRecurrenceFixedPoint(candidate, source, spec, trace, limit);
+      const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
+      const supported = Boolean(trace && fixedPoint.recurrence
+        && fixedPoint.members.length >= 1 && fixedPoint.members.length <= 2);
+      obligations.push({
+        kind: "scalar-recurrence-fixed-point",
+        adapterName,
+        modelName: action.name,
+        exportName,
+        loopSpan: {
+          start: candidate.whileStatement.getStart(source),
+          end: candidate.whileStatement.getEnd(),
+        },
+        status: "unknown",
+        reason: fixedPoint.conflict
+          ? "lattice-conflict"
+          : !fixedPoint.converged
+            ? "proof-budget-exhausted"
+            : !supported
+              ? "unsupported-recurrence"
+              : actionDiagnostics.length > 0
+                ? "action-validation-failed"
+                : "independent-proof-required",
+        budget: { name: "cfg-recurrence-iterations", limit },
+        backEdge: fixedPoint.backEdge,
+        fixedPoint: {
+          iterations: fixedPoint.iterations,
+          converged: fixedPoint.converged,
+          ...(fixedPoint.recurrence ? { recurrence: fixedPoint.recurrence } : {}),
+          members: fixedPoint.members,
+        },
+      });
+      if ((!supported || !fixedPoint.converged || fixedPoint.conflict)
+        && !actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body")) {
+        diagnostics.push({
+          code: "unsupported-action-body",
+          adapterName,
+          modelName: action.name,
+          exportName,
+          message: !fixedPoint.converged
+            ? `${exportName} exceeded the cfg-recurrence-iterations proof budget (${limit})`
+            : `${exportName} does not admit a bounded one- or two-member affine CFG recurrence`,
+        });
+      }
+    }
   }
   return {
     schema: "uneffect-refinement-action-analysis/v2",
@@ -5050,6 +5263,27 @@ export async function analyzeRefinementActionBodiesWithZ3(
         reason: proof.status === "refuted" ? "scalar-proof-refuted" : "scalar-proof-unknown",
         proof,
       };
+    }
+    if (obligation.kind === "scalar-recurrence-fixed-point") {
+      const certificate = obligation.fixedPoint.recurrence;
+      if (!certificate || obligation.reason !== "independent-proof-required") return obligation;
+      const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, certificate, options.z3);
+      if (recurrenceProof.status === "verified") return {
+        ...obligation,
+        status: "verified",
+        reason: undefined,
+        recurrenceProof,
+      };
+      const reason = recurrenceProof.status === "refuted"
+        ? "recurrence-proof-refuted" as const : "recurrence-proof-unknown" as const;
+      addedDiagnostics.push({
+        code: "unsupported-action-body",
+        adapterName,
+        modelName: obligation.modelName,
+        exportName: obligation.exportName,
+        message: `${obligation.exportName} CFG recurrence ${recurrenceProof.status === "refuted" ? "failed" : "could not complete"} independent Z3 base/step/ranking validation`,
+      });
+      return { ...obligation, status: "unknown", reason, recurrenceProof };
     }
     if (obligation.kind !== "ranking-loop-fixed-point") return obligation;
     const certificate = obligation.fixedPoint.recurrence;

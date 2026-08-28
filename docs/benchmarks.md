@@ -1955,6 +1955,14 @@ with Z3 measured 15.4220 ms mean over 33 samples (64.84 operations per second).
 This excludes nested choices, switch fan-out, loops, aliases, recurrence
 widening, and irreducible CFGs.
 
+The P2.17 focused benchmark infers the two-member `pending`/`processed`
+transformer at one source-bound CFG back edge. A selected run measured 0.2886
+ms mean over 1,733 samples (3,464.83 operations per second). Independent Z3
+base/step/ranking validation measured 41.2084 ms mean over 13 samples (24.27
+operations per second). This development-host signal excludes handler loops,
+more than two members, coupled or self-amplifying updates, path-dependent
+deltas, nested loops, heap aliases, and irreducible CFGs.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

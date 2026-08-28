@@ -26,6 +26,21 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves the CFG-inferred two-counter affine drain recurrence", async () => {
+    const fileName = "examples/dogfood/cfg-affine-drain.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName, source, "cfgAffineDrain", temporal,
+    );
+    expect(analysis.diagnostics).toEqual([]);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "scalar-recurrence-fixed-point",
+      status: "verified",
+      recurrenceProof: expect.objectContaining({ status: "verified" }),
+    }));
+  });
+
   it("proves a conditional scalar-product join before a common handler region", async () => {
     const fileName = "examples/dogfood/conditional-scalar-product.ts";
     const source = readFileSync(fileName, "utf8");

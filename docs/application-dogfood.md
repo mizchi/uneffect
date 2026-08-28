@@ -441,6 +441,16 @@ write before a branch region, a write between the join and successor, worklist
 exhaustion, one wrong member, and solver failure remain explicit non-proofs.
 This admits one exact `if/else` topology, not arbitrary branch fan-out.
 
+P2.17 adds `cfg-affine-drain.ts`. Its ordinary `while` loop has no handler
+shape: a source-keyed `statement:*` back edge feeds a `while-header:*` block
+with a two-member affine environment for `pending` and `processed`. Structural
+convergence emits only `unknown: independent-proof-required`. Z3 must prove the
+base and step equations for both members plus the well-founded ranking check
+before the artifact becomes verified. Coupled ranking updates,
+self-amplification, counter-dependent path deltas, worklist exhaustion, and an
+unavailable solver remain explicit non-proofs. This is one bounded direct
+`while` and at most two integer members, not general loop invariant inference.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model
@@ -467,7 +477,8 @@ dynamic dispatch, Content Mapper semantics, or persisted fact authentication.
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,756 summaries, 4,352 reviewed assumption occurrences, 74 files).
+`assumed` (3,875 summaries, 4,462 reviewed assumption occurrences, 74 files),
+and all 103 isolated dogfood cases pass.
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

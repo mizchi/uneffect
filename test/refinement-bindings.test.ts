@@ -3320,6 +3320,15 @@ describe("annotated refinement bindings", () => {
             } },
           },
         },
+        scalarRecurrence: {
+          properties: {
+            kind: { const: "scalar-recurrence-fixed-point" },
+            budget: { properties: { name: { const: "cfg-recurrence-iterations" } } },
+            backEdge: { properties: { rule: { const: "source-bound-affine-transformer" } } },
+            fixedPoint: { properties: { members: { maxItems: 2 } } },
+            recurrenceProof: { $ref: "#/$defs/recurrenceProof" },
+          },
+        },
       },
     });
 

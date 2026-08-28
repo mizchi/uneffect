@@ -125,8 +125,10 @@ explicit conservative boundaries rather than untracked support.
    widening continue in [#25](https://github.com/mizchi/uneffect/issues/25).
    [#30](https://github.com/mizchi/uneffect/issues/30) completes the bounded
    three-region linear product. [#31](https://github.com/mizchi/uneffect/issues/31)
-   completes the first divergent product join. Its active next recurrence child
-   is [#32](https://github.com/mizchi/uneffect/issues/32).
+   completes the first divergent product join.
+   [#32](https://github.com/mizchi/uneffect/issues/32) moves one direct affine
+   recurrence onto a source-bound CFG back edge. Its active next diamond child
+   is [#33](https://github.com/mizchi/uneffect/issues/33).
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.

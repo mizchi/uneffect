@@ -15,7 +15,7 @@
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
     "obligations": {
       "type": "array",
-      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/handlerScalarEnvironment" }, { "$ref": "#/$defs/localAliasHelper" }] }
+      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/scalarRecurrence" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/handlerScalarEnvironment" }, { "$ref": "#/$defs/localAliasHelper" }] }
     }
   },
   "$defs": {
@@ -394,6 +394,58 @@
         },
         "then": { "required": ["handlerNestingBudget"] }
       }]
+    },
+    "scalarRecurrence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "status", "budget", "backEdge", "fixedPoint"],
+      "properties": {
+        "kind": { "const": "scalar-recurrence-fixed-point" },
+        "adapterName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "exportName": { "type": "string" },
+        "loopSpan": { "$ref": "#/$defs/span" },
+        "status": { "enum": ["verified", "unknown"] },
+        "reason": { "enum": ["independent-proof-required", "proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed", "recurrence-proof-refuted", "recurrence-proof-unknown"] },
+        "budget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit"],
+          "properties": {
+            "name": { "const": "cfg-recurrence-iterations" },
+            "limit": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "backEdge": {
+          "type": "object", "additionalProperties": false,
+          "required": ["from", "to", "rule"],
+          "properties": {
+            "from": { "type": "string", "pattern": "^statement:[0-9]+$" },
+            "to": { "type": "string", "pattern": "^while-header:[0-9]+$" },
+            "rule": { "const": "source-bound-affine-transformer" }
+          }
+        },
+        "fixedPoint": {
+          "type": "object", "additionalProperties": false,
+          "required": ["iterations", "converged", "members"],
+          "properties": {
+            "iterations": { "type": "integer", "minimum": 1 },
+            "converged": { "type": "boolean" },
+            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
+            "members": {
+              "type": "array", "minItems": 0, "maxItems": 2,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["state", "role"],
+                "properties": {
+                  "state": { "type": "string", "minLength": 1 },
+                  "role": { "enum": ["ranking", "scalar"] }
+                }
+              }
+            }
+          }
+        },
+        "recurrenceProof": { "$ref": "#/$defs/recurrenceProof" }
+      }
     },
     "rankingLoop": {
       "type": "object",
