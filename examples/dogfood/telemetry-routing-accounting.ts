@@ -30,6 +30,7 @@ import { hasExactlyOneOutcome } from "./telemetry-routing-predicates.js";
   action stagedReject: recovered' = auditArmed ? recovered : recovered + 1, finalized' = (auditArmed ? true : attempted < 0) ? finalized + 1 : finalized, postProcessed' = auditArmed ? postProcessed : attempted < 0 ? postProcessed : postProcessed + 1
   action scanConfigured: recovered' = auditArmed ? recovered : (auditArmed ? recovered : recovered + 1) + 2, finalized' = auditArmed || !auditArmed && auditArmed ? finalized + 1 : finalized
   action nestedRecovery: recovered' = auditArmed ? recovered : recovered + 1, finalized' = auditArmed && attempted < 0 ? (auditArmed ? finalized + 1 : finalized) + 1 : auditArmed ? finalized + 1 : finalized, postProcessed' = auditArmed && attempted < 0 ? postProcessed : postProcessed + 1
+  action stagedNestedRecovery: recovered' = attempted < 0 ? (auditArmed ? recovered : recovered + 1) + 2 : auditArmed ? recovered : recovered + 1, finalized' = attempted < 0 && auditArmed ? (attempted < 0 && auditArmed ? auditArmed ? finalized + 1 : finalized : (auditArmed ? finalized + 1 : finalized) + 1) + 1 : (auditArmed ? finalized + 1 : finalized) + 1, postProcessed' = attempted < 0 ? postProcessed : postProcessed + 1
   action armAudit: auditArmed' = attempted <= 0 ? auditArmed : true
   action nestedPostProcess: postProcessed' = attempted > 0 ? auditArmed ? postProcessed : postProcessed + 1 : postProcessed + 1
   action observeLostOutcome: auditArmed' = auditArmed
@@ -255,6 +256,28 @@ export function nestedTelemetryRecovery(runtime: TelemetryRoutingAccounting): vo
       if (runtime.attempted < 0) throw "telemetry recovery failed";
     }
     runtime.postProcessed += 1;
+  } catch {
+    runtime.finalized += 1;
+  }
+}
+
+/* uneffect: refinement telemetryRouting@1 action stagedNestedRecovery */
+export function stagedNestedTelemetryRecovery(runtime: TelemetryRoutingAccounting): void {
+  try {
+    try {
+      if (runtime.auditArmed) throw "telemetry already armed";
+      runtime.recovered += 1;
+    } catch {
+      runtime.finalized += 1;
+    }
+    try {
+      if (runtime.attempted < 0) throw "invalid telemetry attempts";
+      runtime.postProcessed += 1;
+    } catch {
+      runtime.recovered += 2;
+      if (runtime.auditArmed) throw "staged recovery failed";
+    }
+    runtime.finalized += 1;
   } catch {
     runtime.finalized += 1;
   }

@@ -371,6 +371,11 @@ same property is proved for arbitrary TypeScript.
   `handler-nesting-depth` with limit two. Depth three, inner finally,
   return/break/continue, loops, resources, multiple nested regions, and nested
   handlers in catch/finally fail closed.
+- Exactly two sibling inner try/catch regions may compose sequentially under the
+  existing root limit. Every nested try-completion, catch, catch-completion, and
+  join block includes the inner try source start, so handled throws and rethrows
+  cannot collide between regions. A third sibling remains an explicit
+  `handler-control-roots` over-budget non-proof.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

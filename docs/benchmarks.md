@@ -1915,3 +1915,11 @@ the other whole-application handler cases measured roughly 10–12 ms, so this i
 not evidence of a P2.11-specific regression. The timing excludes multiple or
 deeper nested regions, inner finally, resources, loop interaction, and
 path-sensitive value proof independent of the action validator.
+
+The P2.12 whole-application benchmark requires two distinct source-keyed
+`nested-handler-join:*` blocks for verified `stagedNestedRecovery`. It measured
+12.8770 ms mean over 39 samples (77.66 operations per second), versus 10.3243 ms
+for the single nested handler in the same run. The roughly 25% delta includes
+the additional application action, region graph, and validation work; one p99
+outlier reached 50.9288 ms, so the figure is a development-host signal rather
+than a portable latency guarantee.

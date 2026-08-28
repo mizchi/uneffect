@@ -392,6 +392,14 @@ invariant were not weakened to obtain Green. The first fixture incremented
 dogfood detected the broken conservation proof, so the catch was changed to
 record a second `finalized` step instead.
 
+P2.12 adds `stagedNestedTelemetryRecovery`. Its two sequential inner handlers
+have distinct source-keyed completion/catch/join blocks; the first consumes an
+armed-state rejection, while the second may rethrow an invalid-attempt recovery
+into the outer catch. The artifact records two control roots at nesting depth
+two. Injecting a third inner handler records `handler-control-roots.observed: 3`
+and remains unsupported. The action updates only recovery, processing, and
+finalization counters, preserving telemetry outcome conservation.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as

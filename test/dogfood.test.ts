@@ -227,11 +227,15 @@ describe("Uneffect dogfood", () => {
       fixedPoint: expect.objectContaining({
         converged: true,
         blockCompletions: expect.objectContaining({
-          "nested-catch": ["throw"],
           exit: ["normal"],
         }),
       }),
     }));
+    const nestedRecovery = analysis.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "nestedRecovery");
+    expect(nestedRecovery?.kind === "handler-join-fixed-point"
+      && Object.keys(nestedRecovery.fixedPoint.blockCompletions)
+        .some((id) => id.startsWith("nested-catch:"))).toBe(true);
 
     const tooDeep = source.replace(
       'if (runtime.auditArmed) throw "telemetry recovery required";',
@@ -244,6 +248,36 @@ describe("Uneffect dogfood", () => {
       status: "unknown",
       reason: "unsupported-control-flow",
       handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 3 },
+    }));
+  });
+
+  it("composes two source-keyed sibling nested telemetry handlers", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    const obligation = analysis.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "stagedNestedRecovery");
+    expect(obligation).toMatchObject({
+      status: "verified",
+      controlShape: "try",
+      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 2 },
+      handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 2 },
+      completionJoin: { incoming: ["normal", "throw"], outgoing: ["normal"], caughtThrow: true },
+    });
+    const blocks = obligation?.kind === "handler-join-fixed-point"
+      ? Object.keys(obligation.fixedPoint.blockCompletions) : [];
+    expect(blocks.filter((id) => id.startsWith("nested-handler-join:"))).toHaveLength(2);
+
+    const third = source.replace(
+      "    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
+      "    try { throw \"third stage\"; } catch {}\n    runtime.finalized += 1;\n  } catch {\n    runtime.finalized += 1;\n  }\n}\n\n/* uneffect: refinement telemetryRouting@1 action armAudit */",
+    );
+    const unsupported = analyzeRefinementActionBodies(fileName, third, "telemetryRouting", temporal);
+    expect(unsupported.obligations).toContainEqual(expect.objectContaining({
+      modelName: "stagedNestedRecovery",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 3 },
+      handlerNestingBudget: { name: "handler-nesting-depth", limit: 2, observed: 2 },
     }));
   });
 

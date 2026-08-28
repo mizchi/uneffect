@@ -200,11 +200,36 @@ describe("refinement handler flow", () => {
       incoming: ["normal", "throw"],
       outgoing: ["normal"],
       blockCompletions: expect.objectContaining({
-        "nested-catch": ["throw"],
         "try-completion": ["normal", "throw"],
         exit: ["normal"],
       }),
     });
+    expect(Object.keys(runHandlerJoinFixedPoint(candidate!, 64).blockCompletions)
+      .some((id) => id.startsWith("nested-catch:"))).toBe(true);
+  });
+
+  it("keeps two sibling nested handlers in source-keyed regions", () => {
+    const [candidate] = findHandlerJoinCandidates(bodyOf(`
+      function recover(total: number, first: boolean, second: boolean, rethrow: boolean) {
+        try {
+          try { if (first) throw 1; total += 1 } catch { total += 2 }
+          try { if (second) throw 2; total += 4 } catch { total += 8; if (rethrow) throw 3 }
+          total += 16
+        } catch { total += 32 }
+      }
+    `));
+    expect(candidate).toMatchObject({
+      lowering: "supported",
+      controlShape: "try",
+      handlerNesting: 2,
+      controlStatements: [expect.anything(), expect.anything()],
+    });
+    const result = runHandlerJoinFixedPoint(candidate!, 64);
+    expect(result).toMatchObject({ converged: true, incoming: ["normal", "throw"], outgoing: ["normal"] });
+    const regionBlocks = Object.keys(result.blockCompletions)
+      .filter((id) => id.startsWith("nested-handler-join:"));
+    expect(regionBlocks).toHaveLength(2);
+    expect(new Set(regionBlocks.map((id) => id.split(":").at(-1))).size).toBe(2);
   });
 
   it("retains attempted-family lowering failures as unsupported", () => {

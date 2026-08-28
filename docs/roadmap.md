@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 49–96 engineer-weeks; this is implementation volume, not a calendar
+estimate is 51–102 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -16,7 +16,7 @@ commitment.
    and Promise/resource analysis. Its tested bounded fragment includes scalar
    snapshot joins, owned transfers, selected affine loop summaries, and
    catch/finally completion routing. Remaining arbitrary CFG fixed points are
-   owned by [#23](https://github.com/mizchi/uneffect/issues/23); alias,
+   owned by [#25](https://github.com/mizchi/uneffect/issues/25); alias,
    higher-order, dynamic-dispatch, and abstraction evidence is owned by
    [#24](https://github.com/mizchi/uneffect/issues/24). See
    `implementation-status.md` and `feature-matrix.md` for the detailed completed
@@ -39,7 +39,7 @@ commitment.
    without weakening floating-error checks. Branch-selected resource generations
    are preserved through one canonical two-iteration outer loop with cleanup
    before the iteration join. General scalar CFG
-   fixed points and dynamic alias evidence are separately owned by #23 and #24.
+   fixed points and dynamic alias evidence are separately owned by #25 and #24.
 3. [TypeScript project and compiler parity](https://github.com/mizchi/uneffect/issues/20)
    now preserves separate referenced-project compiler domains in both the CLI
    and programmatic verifier and exposes version drift before a consumer relies
@@ -76,7 +76,7 @@ commitment.
    completion evidence. Runtime-binding and general-shape cycles, conditional
    async joins, external packages, and dynamic initialization remain explicit
    non-proofs. The available application graphs contained no real TLA candidate,
-   so broader widening is queued behind #23 or new application evidence.
+   so broader widening is queued behind #25 or new application evidence.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,
@@ -116,9 +116,11 @@ explicit conservative boundaries rather than untracked support.
    `for...of` over one to four literal values now unrolls into
    iteration-qualified blocks; dynamic, resource-bearing, and transfer-heavy
    loops fail closed. One depth-two nested try/catch now routes inner recovery
-   and rethrow through the outer handler under a named nesting budget. The next
-   bounded slice gives nested regions source-keyed identities and composes two
-   sibling regions; arbitrary joins and recurrence widening remain fail-closed.
+   and rethrow through the outer handler under a named nesting budget. Nested
+   regions now use source-keyed IDs and exactly two sibling regions compose
+   under the existing root budget. General value joins and recurrence widening
+   continue in [#25](https://github.com/mizchi/uneffect/issues/25); the first
+   local mutable-alias slice is [#26](https://github.com/mizchi/uneffect/issues/26).
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.
@@ -134,6 +136,8 @@ explicit conservative boundaries rather than untracked support.
 1. [Interprocedural alias and dynamic refinement evidence](https://github.com/mizchi/uneffect/issues/24)
    adds explicit region identity, higher-order summaries, closed-world dispatch,
    and checkable abstraction relations without treating assumptions as proofs.
+   Its first executable child is [#26](https://github.com/mizchi/uneffect/issues/26),
+   one non-escaping mutable alias through one TypeChecker-resolved local helper.
 2. [Native Corsa semantic parity](https://github.com/mizchi/uneffect/issues/8)
    moves inferred facts and ordered events off the TypeScript reference adapter.
 3. [Complete Node and Web event-loop ownership](https://github.com/mizchi/uneffect/issues/10)

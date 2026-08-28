@@ -170,4 +170,20 @@ describe("refinement CFG fixed point", () => {
       throw new Error("bounded nested handler CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze two source-keyed sibling nested handlers", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 64 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "stagedNestedRecovery");
+    const regionCount = obligation?.kind === "handler-join-fixed-point"
+      ? Object.keys(obligation.fixedPoint.blockCompletions)
+        .filter((id) => id.startsWith("nested-handler-join:")).length : 0;
+    if (result.diagnostics.some((item) => item.modelName === "stagedNestedRecovery")
+      || obligation?.status !== "verified" || regionCount !== 2) {
+      throw new Error("source-keyed sibling nested handler benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

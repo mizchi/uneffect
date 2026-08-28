@@ -151,17 +151,22 @@ class HandlerCfgBuilder {
         return unsupported;
       };
       if (hasUnsupportedAbrupt(statement)) return undefined;
-      this.add("nested-try-completion", []);
-      this.add("nested-catch-completion", []);
-      this.add("nested-handler-join", [{ to: next }]);
+      const region = String(statement.getStart());
+      const nestedTryCompletion = `nested-try-completion:${region}`;
+      const nestedCatchCompletion = `nested-catch-completion:${region}`;
+      const nestedHandlerJoin = `nested-handler-join:${region}`;
+      const nestedCatch = `nested-catch:${region}`;
+      this.add(nestedTryCompletion, [{ to: nestedCatch }, { to: nestedHandlerJoin }]);
+      this.add(nestedCatchCompletion, [{ to: nestedHandlerJoin }]);
+      this.add(nestedHandlerJoin, [{ to: next }]);
       const nestedTryEntry = this.lowerStatements(
-        statement.tryBlock.statements, "nested-try-completion", "nested-try-completion", undefined, context,
+        statement.tryBlock.statements, nestedTryCompletion, nestedTryCompletion, undefined, context,
       );
       const nestedCatchBody = this.lowerStatements(
-        statement.catchClause.block.statements, "nested-catch-completion", completionTarget, undefined, context,
+        statement.catchClause.block.statements, nestedCatchCompletion, completionTarget, undefined, context,
       );
       if (!nestedTryEntry || !nestedCatchBody) return undefined;
-      this.add("nested-catch", [{ to: nestedCatchBody, completion: "normal" }]);
+      this.add(nestedCatch, [{ to: nestedCatchBody, completion: "normal" }]);
       return this.add(blockId("try", statement, context), [{ to: nestedTryEntry }]);
     }
     if (ts.isContinueStatement(statement)
@@ -284,13 +289,15 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const handlerPlacementSupported = (!statement.catchClause || !containsTry(statement.catchClause.block))
       && (!statement.finallyBlock || !containsTry(statement.finallyBlock));
     const selectedNestedHandlerSupported = !ts.isTryStatement(controlStatement)
-      || (controlRegion === "try" && selectedControls.length === 1 && nestingDepth === 2
-        && Boolean(controlStatement.catchClause) && !controlStatement.finallyBlock
+      || (controlRegion === "try" && selectedControls.length <= 2 && nestingDepth === 2
+        && selectedControls.every((control) => ts.isTryStatement(control)
+          && Boolean(control.catchClause) && !control.finallyBlock)
         && handlerPlacementSupported);
     const selectedRootCountSupported = selectedLoopSupported && handlerPlacementSupported
       && selectedNestedHandlerSupported
       && (selectedControls.length === 1
-      || (selectedControls.length === 2 && selectedControls.every(ts.isIfStatement)));
+      || (selectedControls.length === 2
+        && (selectedControls.every(ts.isIfStatement) || selectedControls.every(ts.isTryStatement))));
 
     const builder = new HandlerCfgBuilder();
     builder.add("try-completion", []);
@@ -414,15 +421,17 @@ export function runHandlerJoinFixedPoint(
           if (uncaught.length > 0) edges.push({ to: "handler-join", value: value(...uncaught) });
           return edges;
         }
-        if (block.id === "nested-try-completion") {
+        if (block.id.startsWith("nested-try-completion:")) {
           const edges: Array<{ to: string; value: Value }> = [];
-          if (input.has("throw")) edges.push({ to: "nested-catch", value: value("throw") });
+          const [catchEdge, joinEdge] = block.edges;
+          if (!catchEdge || !joinEdge) return [];
+          if (input.has("throw")) edges.push({ to: catchEdge.to, value: value("throw") });
           const uncaught = orderedCompletions(input).filter((kind) => kind !== "throw");
-          if (uncaught.length > 0) edges.push({ to: "nested-handler-join", value: value(...uncaught) });
+          if (uncaught.length > 0) edges.push({ to: joinEdge.to, value: value(...uncaught) });
           return edges;
         }
-        if (block.id === "nested-catch-completion") {
-          return [{ to: "nested-handler-join", value: input }];
+        if (block.id.startsWith("nested-catch-completion:")) {
+          return block.edges.map((edge) => ({ to: edge.to, value: input }));
         }
         return block.edges.map((edge) => ({
           to: edge.to,
