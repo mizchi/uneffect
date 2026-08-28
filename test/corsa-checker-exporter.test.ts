@@ -225,10 +225,11 @@ describe("corsa-bind checker fact exporter", () => {
 
     const compared = await compareUneffectFrontends({ files, corsaFacts: facts, requireCorsaCheckerFacts: true });
     expect(compared).toMatchObject({
-      equivalent: false,
-      semanticEquivalent: false,
+      equivalent: true,
+      semanticEquivalent: true,
       provenance: { satisfiesRequirement: true },
     });
+    expect(compared.corsaIr?.calls).toHaveLength(0);
   });
 
   it("exports checker-backed class methods and cross-file direct method calls", async () => {
