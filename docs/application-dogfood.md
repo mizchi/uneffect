@@ -290,9 +290,11 @@ success/failure accounting around a telemetry-send boundary. Its dynamic
 ranking loop has one normal delivery predecessor and one scalar throw/catch
 failure predecessor. `analyzeRefinementActionBodies` verifies the exact affine
 accounting and emits a converged `ranking-loop-fixed-point` obligation whose
-reusable worklist retains `runtime.pending` and both normal snapshot facts
-within a 16-step budget; replacing the caught amount with the normal-path delivered
-counter keeps the obligation `unknown` as an unsupported coupled recurrence.
+reusable worklist retains normalized model payload `pending`, both normal
+snapshot facts, their throw-specialized expression environments, and the
+correlated joined environment within a 16-step budget.
+Replacing the caught amount with the normal-path delivered counter keeps the
+obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
 evidence that a Datadog client or host I/O is bounded.
 

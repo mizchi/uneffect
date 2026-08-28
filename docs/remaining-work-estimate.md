@@ -89,13 +89,15 @@ are now shared dependencies for refinements, typed arrays, aliases, and future
 module widening. P2.1 and P3.1 are planning-sized first slices, not a
 claim that their owning epics are otherwise complete.
 
-P2.1 now has completed control-reachability and abstract completion-value
+P2.1 now has completed control-reachability, abstract completion-value, and
+direct predecessor expression-value
 sub-slices: one direct normal/typed-throw catch join emits a strict budgeted
 artifact, and a reusable monotone basic-block engine carries payload/snapshot
-facts through its back-edge. The 1–2 week estimate still covers the remaining
-load-bearing step: converge numeric `TemporalExpression` environments rather
-than relying on the shape-specific affine walker. The total is unchanged until
-that first expression-value fixed point is measured.
+facts plus a condition-correlated phi environment through its back-edge. The
+1–2 week estimate still covers the remaining load-bearing step: iterate the
+complete recurrence in the worklist rather than relying on the shape-specific
+affine walker. The total is unchanged until that recurrence fixed point is
+measured.
 
 ## Dependency-critical order
 
@@ -164,7 +166,8 @@ separates committed `main` from worktree progress.
 | Completed slice | P1.4 cross-project TLA seed | under 1 engineer-week actual | Exact declaration/source and resume/reject evidence compose; application survey found no eligible real boundary. |
 | Completed sub-slice | P2.1a CFG reachability seed | under 1 engineer-week actual | A strict artifact records one direct ranking-loop throw/normal join, named budget, convergence, and fail-closed negative controls. |
 | Completed sub-slice | P2.1b abstract completion-value seed | under 1 engineer-week actual | A reusable monotone basic-block solver carries source-bound payload/snapshot facts and fails closed on budget/conflict. |
-| Current slice | P2.1c expression-value fixed-point seed | 1–2 engineer-weeks | Converge numeric `TemporalExpression` environments instead of relying on the shape-specific affine walker. |
+| Completed sub-slice | P2.1c direct expression-value join | under 1 engineer-week actual | Throw-specialized predecessor environments produce a correlated phi snapshot in the reusable worklist. |
+| Current slice | P2.1d recurrence fixed-point seed | 1–2 engineer-weeks | Iterate the complete recurrence and ranking convergence in the reusable worklist instead of relying on the shape-specific affine walker. |
 | First useful checkpoint | Finish P2.1 plus stabilization | roughly 1–2 engineer-weeks | Re-estimate before entering alias, temporal breadth, or React/event-loop breadth. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic

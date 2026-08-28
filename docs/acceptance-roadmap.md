@@ -338,9 +338,10 @@ budget below convergence or coupling the catch recurrence to the normal-path
 accumulator produces `unknown` and an `unsupported-action-body` diagnostic.
 The reusable monotone worklist now carries abstract throw-payload and
 normal/catch snapshot facts through the back-edge and fails closed on lattice
-conflict. The existing affine completion lowering still proves numeric
-`TemporalExpression` environments, so arbitrary expression joins and general
-loop fixed points remain open.
+conflict. Direct predecessor `TemporalExpression` updates are specialized by
+the throw condition, then joined into a correlated phi environment inside the
+worklist. The existing affine lowering still proves the complete recurrence,
+so arbitrary CFG lowering and general loop fixed points remain open.
 
 A twelfth case carries an initialized mutable scalar local through two
 sequential normally completing `if` diamonds and then consumes the resulting

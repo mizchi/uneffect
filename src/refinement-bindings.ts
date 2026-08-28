@@ -104,6 +104,19 @@ export interface RefinementActionAnalysisOptions {
   proofBudget?: Partial<RefinementActionProofBudget>;
 }
 
+interface RefinementTryCatchValueTrace {
+  readonly modelName: string;
+  readonly tryStart: number;
+  readonly throwValue: TemporalExpression;
+  readonly throwWhen: TemporalExpression;
+  readonly tryUpdates: ReadonlyMap<string, TemporalExpression>;
+  readonly catchUpdates: ReadonlyMap<string, TemporalExpression>;
+}
+
+interface RefinementActionTraceSink {
+  readonly tryCatchJoins: RefinementTryCatchValueTrace[];
+}
+
 export interface RefinementRankingLoopObligation {
   kind: "ranking-loop-fixed-point";
   adapterName: string;
@@ -123,6 +136,11 @@ export interface RefinementRankingLoopObligation {
     valueLattice: {
       throwPayloads: readonly string[];
       normalSnapshots: readonly string[];
+      expressionSnapshots: {
+        tryNormal: Readonly<Record<string, string>>;
+        catchNormal: Readonly<Record<string, string>>;
+        joinedNormal: Readonly<Record<string, string>>;
+      };
     };
   };
   completionJoin: {
@@ -361,6 +379,35 @@ function refinementExpressionKey(expression: TemporalExpression): string {
 
 function sameRefinementExpression(left: TemporalExpression, right: TemporalExpression): boolean {
   return refinementExpressionKey(left) === refinementExpressionKey(right);
+}
+
+function specializeExactRefinementCondition(
+  expression: TemporalExpression,
+  condition: TemporalExpression,
+  value: boolean,
+): TemporalExpression {
+  if (sameRefinementExpression(expression, condition)) return { kind: "boolean", value };
+  if (expression.kind === "unary") return {
+    ...expression,
+    operand: specializeExactRefinementCondition(expression.operand, condition, value),
+  };
+  if (expression.kind === "binary") return {
+    ...expression,
+    left: specializeExactRefinementCondition(expression.left, condition, value),
+    right: specializeExactRefinementCondition(expression.right, condition, value),
+  };
+  if (expression.kind === "conditional") {
+    if (sameRefinementExpression(expression.condition, condition)) {
+      return specializeExactRefinementCondition(value ? expression.whenTrue : expression.whenFalse, condition, value);
+    }
+    return {
+      ...expression,
+      condition: specializeExactRefinementCondition(expression.condition, condition, value),
+      whenTrue: specializeExactRefinementCondition(expression.whenTrue, condition, value),
+      whenFalse: specializeExactRefinementCondition(expression.whenFalse, condition, value),
+    };
+  }
+  return expression;
 }
 
 interface AffineStateExpression {
@@ -902,6 +949,7 @@ function validateRefinementActionBodiesInSource(
   checker?: ts.TypeChecker,
   program?: ts.Program,
   options: RefinementActionValidationOptions = {},
+  traceSink?: RefinementActionTraceSink,
 ): RefinementActionDiagnostic[] {
   const fileName = source.fileName;
   const manifest = buildRefinementBindingManifest(fileName, text, adapterName);
@@ -923,6 +971,7 @@ function validateRefinementActionBodiesInSource(
     return path;
   };
   const diagnostics: RefinementActionDiagnostic[] = [];
+  let currentModelName: string | undefined;
 
   const resolveFunction = (expression: ts.Identifier | ts.PropertyAccessExpression, seen: ReadonlySet<ts.Symbol> = new Set()): ts.FunctionDeclaration | undefined => {
     if (!checker) return ts.isIdentifier(expression) ? functions.get(expression.text) : undefined;
@@ -2650,6 +2699,14 @@ function validateRefinementActionBodiesInSource(
               allowMutableLoopWrites,
             );
             if (!catchCompletion) return undefined;
+            if (traceSink && currentModelName && throwValue) traceSink.tryCatchJoins.push({
+              modelName: currentModelName,
+              tryStart: statement.getStart(source),
+              throwValue,
+              throwWhen,
+              tryUpdates: new Map(beforeCatch),
+              catchUpdates: new Map(caughtUpdates),
+            });
             const hasMutableCatchLocals = catchVisibleNames.some((name) => name.startsWith("\u0000mutable:"));
             const projectedCatchLocals = hasMutableCatchLocals
               ? projectLocalSnapshot(catchLocals, catchVisibleNames)
@@ -3559,6 +3616,7 @@ function validateRefinementActionBodiesInSource(
   };
 
   for (const action of spec.actions) {
+    currentModelName = action.name;
     runtimeIdentityFailure = undefined;
     const exportName = manifest.actions[action.name];
     if (!exportName) {
@@ -3618,6 +3676,7 @@ function validateRefinementActionBodiesInSource(
       diagnostics.push(diagnostic);
     }
   }
+  currentModelName = undefined;
   const modelActions = new Set(spec.actions.map(({ name }) => name));
   for (const [modelName, exportName] of Object.entries(manifest.actions)) {
     if (modelActions.has(modelName)) continue;
@@ -3680,7 +3739,7 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
 }
 
 interface RankingLoopValueState {
-  readonly normal: ReadonlySet<string>;
+  readonly normal: ReadonlyMap<string, Readonly<Record<string, string>>>;
   readonly throws: ReadonlyMap<string, string>;
 }
 
@@ -3688,30 +3747,75 @@ function runRankingLoopJoinFixedPoint(
   candidate: RankingLoopJoinCandidate,
   source: ts.SourceFile,
   limit: number,
+  trace?: RefinementTryCatchValueTrace,
 ): {
   iterations: number;
   converged: boolean;
   conflict: boolean;
-  valueLattice: { throwPayloads: readonly string[]; normalSnapshots: readonly string[] };
+  valueLattice: {
+    throwPayloads: readonly string[];
+    normalSnapshots: readonly string[];
+    expressionSnapshots: {
+      tryNormal: Readonly<Record<string, string>>;
+      catchNormal: Readonly<Record<string, string>>;
+      joinedNormal: Readonly<Record<string, string>>;
+    };
+  };
 } {
   const value = (
-    normal: readonly string[] = [],
+    normal: readonly (readonly [string, Readonly<Record<string, string>>])[] = [],
     throws: readonly (readonly [string, string])[] = [],
-  ): RankingLoopValueState => ({ normal: new Set(normal), throws: new Map(throws) });
+  ): RankingLoopValueState => ({ normal: new Map(normal), throws: new Map(throws) });
   const key = (state: RankingLoopValueState): string => JSON.stringify({
-    normal: [...state.normal].sort(),
+    normal: [...state.normal].sort(([left], [right]) => left.localeCompare(right)),
     throws: [...state.throws].sort(([left], [right]) => left.localeCompare(right)),
   });
-  const payload = candidate.throwStatement.expression.getText(source);
+  const specializedUpdates = (
+    updates?: ReadonlyMap<string, TemporalExpression>,
+    throwPath?: boolean,
+  ): ReadonlyMap<string, TemporalExpression> => new Map([...(updates ?? [])]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([name, expression]) => [name,
+        trace && throwPath !== undefined
+          ? specializeExactRefinementCondition(expression, trace.throwWhen, throwPath)
+          : expression]));
+  const formatUpdates = (updates: ReadonlyMap<string, TemporalExpression>): Readonly<Record<string, string>> =>
+    Object.fromEntries([...updates].map(([name, expression]) => [name, formatRefinementExpression(expression)]));
+  const tryExpressions = specializedUpdates(trace?.tryUpdates, false);
+  const catchExpressions = specializedUpdates(trace?.catchUpdates, true);
+  const joinedExpressions = trace ? joinFlowValues({
+    keys: new Set([...tryExpressions.keys(), ...catchExpressions.keys()]),
+    condition: trace.throwWhen,
+    original: (name) => ({ kind: "name", name }) as TemporalExpression,
+    whenTrue: (name) => catchExpressions.get(name),
+    whenFalse: (name) => tryExpressions.get(name),
+    equivalent: sameRefinementExpression,
+    phi: (condition, whenTrue, whenFalse): TemporalExpression => ({
+      kind: "conditional", condition, whenTrue, whenFalse,
+    }),
+  }) : new Map<string, TemporalExpression>();
+  const tryNormal = formatUpdates(tryExpressions);
+  const catchNormal = formatUpdates(catchExpressions);
+  const joinedNormal = formatUpdates(joinedExpressions);
+  const payload = trace ? formatRefinementExpression(trace.throwValue) : candidate.throwStatement.expression.getText(source);
   const throwSnapshot = `throw@${candidate.throwStatement.getStart(source)}:${candidate.throwStatement.getEnd()}`;
   const result = solveBasicBlockFixedPoint({
     entry: "header",
-    initial: value(["entry"]),
+    initial: value([["entry", {}]]),
     budget: { name: "cfg-fixed-point-iterations", limit },
     lattice: {
       bottom: () => value(),
       equivalent: (left, right) => key(left) === key(right),
       join: (left, right) => {
+        const normal = new Map(left.normal);
+        for (const [snapshot, expressions] of right.normal) {
+          const existing = normal.get(snapshot);
+          if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(expressions)) return {
+            status: "conflict" as const,
+            reason: `normal snapshot ${snapshot} reached the join with incompatible expressions`,
+          };
+          normal.set(snapshot, expressions);
+        }
         const throws = new Map(left.throws);
         for (const [throwPayload, snapshot] of right.throws) {
           const existing = throws.get(throwPayload);
@@ -3723,21 +3827,23 @@ function runRankingLoopJoinFixedPoint(
         }
         return {
           status: "joined" as const,
-          value: value([...left.normal, ...right.normal], [...throws]),
+          value: value([...normal], [...throws]),
         };
       },
     },
     blocks: [
       { id: "header", transfer: (input) => [{ to: "try", value: input }] },
       { id: "try", transfer: () => [
-        { to: "join", value: value(["try-normal"]) },
+        { to: "join", value: value([["try-normal", tryNormal]]) },
         { to: "catch", value: value([], [[payload, throwSnapshot]]) },
       ] },
-      { id: "catch", transfer: () => [{ to: "join", value: value(["catch-normal"]) }] },
-      { id: "join", transfer: (input) => [
-        { to: "header", value: input },
-        { to: "exit", value: input },
-      ] },
+      { id: "catch", transfer: () => [{ to: "join", value: value([["catch-normal", catchNormal]]) }] },
+      { id: "join", transfer: (input) => {
+        const normal = new Map(input.normal);
+        if (normal.has("try-normal") && normal.has("catch-normal")) normal.set("joined-normal", joinedNormal);
+        const joined = value([...normal], [...input.throws]);
+        return [{ to: "header", value: joined }, { to: "exit", value: joined }];
+      } },
       { id: "exit", transfer: () => [] },
     ],
   });
@@ -3749,7 +3855,8 @@ function runRankingLoopJoinFixedPoint(
     conflict: result.status === "unknown" && result.reason === "lattice-conflict",
     valueLattice: {
       throwPayloads: [...catchState.throws.keys()].sort(),
-      normalSnapshots: [...exitState.normal].filter((snapshot) => snapshot !== "entry").sort(),
+      normalSnapshots: [...exitState.normal.keys()].filter((snapshot) => snapshot !== "entry").sort(),
+      expressionSnapshots: { tryNormal, catchNormal, joinedNormal },
     },
   };
 }
@@ -3775,7 +3882,10 @@ export function analyzeRefinementActionBodies(
   if (!Number.isSafeInteger(limit) || limit <= 0) {
     throw new Error(`cfgFixedPointIterations must be a positive safe integer; received ${String(limit)}`);
   }
-  const diagnostics = validateRefinementActionBodies(fileName, text, adapterName, spec);
+  const traceSink: RefinementActionTraceSink = { tryCatchJoins: [] };
+  const diagnostics = validateRefinementActionBodiesInSource(
+    source, text, adapterName, spec, undefined, undefined, {}, traceSink,
+  );
   const obligations: RefinementRankingLoopObligation[] = [];
   for (const action of spec.actions) {
     const exportName = manifest.actions[action.name];
@@ -3783,12 +3893,15 @@ export function analyzeRefinementActionBodies(
     if (!exportName || !implementation?.body) continue;
     const candidates = findRankingLoopThrowJoinCandidates(implementation.body);
     for (const _candidate of candidates) {
-      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit);
+      const trace = traceSink.tryCatchJoins.find((item) =>
+        item.modelName === action.name && item.tryStart === _candidate.tryStatement.getStart(source));
+      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit, trace);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const actionUnsupported = actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body");
       const retainedThrowPayload = fixedPoint.valueLattice.throwPayloads.length === 1;
       const retainedNormalSnapshot = fixedPoint.valueLattice.normalSnapshots.includes("try-normal")
-        && fixedPoint.valueLattice.normalSnapshots.includes("catch-normal");
+        && fixedPoint.valueLattice.normalSnapshots.includes("catch-normal")
+        && fixedPoint.valueLattice.normalSnapshots.includes("joined-normal");
       const verified = fixedPoint.converged && !fixedPoint.conflict
         && retainedThrowPayload && retainedNormalSnapshot && actionDiagnostics.length === 0;
       obligations.push({

@@ -3065,8 +3065,16 @@ describe("annotated refinement bindings", () => {
         fixedPoint: {
           converged: true,
           valueLattice: {
-            throwPayloads: ["runtime.pending"],
-            normalSnapshots: ["catch-normal", "try-normal"],
+            throwPayloads: ["pending"],
+            normalSnapshots: ["catch-normal", "joined-normal", "try-normal"],
+            expressionSnapshots: {
+              tryNormal: { delivered: "delivered + pending" },
+              catchNormal: { delivered: "delivered", failed: "failed + pending" },
+              joinedNormal: {
+                delivered: "reject ? delivered : delivered + pending",
+                failed: "reject ? failed + pending : failed",
+              },
+            },
           },
         },
         completionJoin: {

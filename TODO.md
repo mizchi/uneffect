@@ -144,10 +144,15 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   basic-block/value-lattice fixed point remains unchecked below.
 - [x] Replace that seed's hard-coded reachability rounds with the reusable
   monotone `solveBasicBlockFixedPoint` engine and an abstract completion-value
-  lattice that carries the exact throw payload text plus normal/catch snapshot
-  identities through the back-edge. Budget exhaustion and lattice conflicts
+  lattice that carries the normalized throw payload plus normal/catch snapshot
+  identities and expression environments through the back-edge. Budget exhaustion and lattice conflicts
   fail closed. Numeric `TemporalExpression` environments still rely on the
   affine walker and remain part of #23.
+- [x] Feed the direct try/catch predecessor `TemporalExpression` environments
+  into that worklist, specialize them by the typed-throw condition, and create
+  a condition-correlated phi environment in the join block before propagating
+  it through the back-edge and exit. General recurrence iteration and arbitrary
+  AST-to-basic-block lowering remain #23 work.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

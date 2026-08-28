@@ -208,10 +208,14 @@ same property is proved for arbitrary TypeScript.
   unaligned/cross-state recurrence, lattice conflict, or any other action
   diagnostic yields `unknown`. The worklist is now the reusable monotone
   `solveBasicBlockFixedPoint` engine: a caller-defined lattice carries the
-  source-bound throw payload plus normal/catch snapshot identities through the
-  loop back-edge. The numeric `TemporalExpression` environments still come
-  from the already-supported affine walker, so this is not yet a general
-  expression-value fixed point, Program/external-action analysis,
+  normalized throw payload plus normal/catch snapshot identities through the
+  loop back-edge. The shared completion lowering also supplies each direct
+  predecessor's `TemporalExpression` updates; the worklist specializes them by
+  the throw condition and its join block constructs a correlated phi
+  environment before the back-edge and exit. Full loop-recurrence
+  iteration still comes from the affine walker, so this is not yet a general
+  recurrence fixed point, arbitrary AST-to-basic-block lowering,
+  Program/external-action analysis,
   irreducible-loop analysis, or CLI assurance artifact.
 
 - Initialized scalar `let` values now flow through sequential `if` diamonds. A

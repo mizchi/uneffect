@@ -40,6 +40,10 @@
         "message": { "type": "string" }
       }
     },
+    "expressionSnapshot": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
     "rankingLoop": {
       "type": "object",
       "additionalProperties": false,
@@ -69,10 +73,19 @@
             "converged": { "type": "boolean" },
             "valueLattice": {
               "type": "object", "additionalProperties": false,
-              "required": ["throwPayloads", "normalSnapshots"],
+              "required": ["throwPayloads", "normalSnapshots", "expressionSnapshots"],
               "properties": {
                 "throwPayloads": { "type": "array", "items": { "type": "string" }, "maxItems": 1 },
-                "normalSnapshots": { "type": "array", "items": { "type": "string" }, "maxItems": 2 }
+                "normalSnapshots": { "type": "array", "items": { "type": "string" }, "maxItems": 3 },
+                "expressionSnapshots": {
+                  "type": "object", "additionalProperties": false,
+                  "required": ["tryNormal", "catchNormal", "joinedNormal"],
+                  "properties": {
+                    "tryNormal": { "$ref": "#/$defs/expressionSnapshot" },
+                    "catchNormal": { "$ref": "#/$defs/expressionSnapshot" },
+                    "joinedNormal": { "$ref": "#/$defs/expressionSnapshot" }
+                  }
+                }
               }
             }
           }
