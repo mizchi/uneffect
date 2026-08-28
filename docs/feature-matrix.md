@@ -87,23 +87,28 @@ affine rule, not a general loop fixed point.
 
 One additional direct-join seed exposes the affine rule through
 `uneffect-refinement-action-analysis/v2`: a ranking loop whose direct `try` has
-normal and supported scalar throw/catch predecessors must converge within the
-named `cfg-fixed-point-iterations` worklist budget. Only a fully matching action
-records retained throw payload and normal snapshot. Budget exhaustion and an
-unaligned recurrence remain `unknown`. A reusable monotone basic-block engine
+normal and supported scalar throw/catch predecessors emits the same
+`scalar-recurrence-fixed-point` artifact as an ordinary direct affine loop,
+with a `handlerCompletion` extension and an eight-member compatibility budget.
+It must converge within the named `cfg-recurrence-iterations` worklist budget.
+Only a fully matching action records retained throw payload and normal snapshot.
+Budget exhaustion and an unaligned recurrence remain `unknown`. A reusable monotone basic-block engine
 carries the normalized throw payload and normal/catch snapshot facts, rejects
 lattice conflicts, and joins direct predecessor `TemporalExpression`
 environments into a condition-correlated phi snapshot. The worklist also carries
 the accepted affine ranking counter, direction, one-iteration transformer, and
 closed-form summary through the back-edge and requires that certificate to
-stabilize before reporting `verified`. The shape-specific affine lowering still
+stabilize, but structural convergence reports only
+`unknown: independent-proof-required`. The shape-specific affine lowering still
 constructs that summary. The opt-in async
 `analyzeRefinementActionBodiesWithZ3` API independently reparses the certificate
 and proves a base case, an inductive step for every scalar state, and a
 well-founded guard-distance ranking obligation. A modified summary or ranking
 metadata is `refuted`; solver failure and an unstabilized certificate are
-`unknown`. This does not generalize the accepted recurrence shape: widening and
-arbitrary basic-block shapes remain owned by #25.
+`unknown`. The legacy `ranking-loop-fixed-point` v2 artifact is no longer
+emitted or accepted by the v2 schema. This does not generalize the accepted
+recurrence shape: nested/arbitrary handler loops, resources, aliases, widening,
+and arbitrary basic-block shapes remain owned by #25/#24.
 
 The v2 artifact also defines `handler-scalar-environment-join` for one or two
 changed integers carried across two or three source-keyed sibling nested-handler

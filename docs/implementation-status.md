@@ -423,12 +423,16 @@ same property is proved for arbitrary TypeScript.
   direct return/throw blocks replace it and are listed in `finallyOverrides`.
   Unsupported finalizer loops and statements produce an explicit non-proof.
 - The direct affine ranking-loop analysis now reuses those same source-keyed
-  handler blocks before its loop back edge. Its payload/snapshot lattice,
-  recurrence certificate, and independent Z3 proof remain separate abstract
-  domains over the shared topology. The default named fixed-point budget is 64;
-  general handler loops and recurrence widening remain unsupported.
-- A separate `scalar-recurrence-fixed-point` obligation removes the
-  try/catch requirement for one direct affine `while`. It binds the final body
+  handler blocks before its loop back edge. Its payload/snapshot lattice is a
+  `handlerCompletion` extension on the common `scalar-recurrence-fixed-point`
+  artifact; the recurrence certificate and independent Z3 proof use the same
+  fields as direct loops. Structural convergence is provisional. The default
+  named recurrence budget is 64 and the migrated handler seed retains an
+  explicit eight-member compatibility cap; general handler loops and recurrence
+  widening remain unsupported. The legacy v2 `ranking-loop-fixed-point` type,
+  schema branch, and Z3 dispatch path have been removed.
+- The shared `scalar-recurrence-fixed-point` obligation also supports one
+  direct affine `while` without try/catch. It binds the final body
   statement and loop header as the machine-readable back edge, carries one or
   two integer transformer members through the shared worklist, and reports
   only `independent-proof-required` after structural convergence. The Z3 path

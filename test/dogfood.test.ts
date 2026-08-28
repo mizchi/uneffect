@@ -959,10 +959,10 @@ describe("Uneffect dogfood", () => {
     );
     expect(analysis.diagnostics).toEqual([]);
     expect(analysis.obligations).toContainEqual(expect.objectContaining({
-      kind: "ranking-loop-fixed-point",
+      kind: "scalar-recurrence-fixed-point",
       status: "verified",
       recurrenceProof: expect.objectContaining({ status: "verified", backend: "z3" }),
-      completionJoin: expect.objectContaining({
+      handlerCompletion: expect.objectContaining({
         retainedThrowPayload: true,
         retainedNormalSnapshot: true,
       }),

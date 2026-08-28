@@ -15,7 +15,7 @@
     "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } },
     "obligations": {
       "type": "array",
-      "items": { "anyOf": [{ "$ref": "#/$defs/rankingLoop" }, { "$ref": "#/$defs/scalarRecurrence" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/handlerScalarEnvironment" }, { "$ref": "#/$defs/localAliasHelper" }] }
+      "items": { "anyOf": [{ "$ref": "#/$defs/scalarRecurrence" }, { "$ref": "#/$defs/handlerJoin" }, { "$ref": "#/$defs/handlerScalarEnvironment" }, { "$ref": "#/$defs/localAliasHelper" }] }
     }
   },
   "$defs": {
@@ -398,7 +398,7 @@
     "scalarRecurrence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "status", "budget", "backEdge", "fixedPoint"],
+      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "status", "budget", "backEdge", "memberBudget", "fixedPoint"],
       "properties": {
         "kind": { "const": "scalar-recurrence-fixed-point" },
         "adapterName": { "type": "string" },
@@ -419,7 +419,7 @@
           "type": "object", "additionalProperties": false,
           "required": ["from", "to", "rule"],
           "properties": {
-            "from": { "type": "string", "pattern": "^statement:[0-9]+$" },
+            "from": { "type": "string", "pattern": "^(statement|try):[0-9]+$" },
             "to": { "type": "string", "pattern": "^while-header:[0-9]+$" },
             "rule": { "const": "source-bound-affine-transformer" }
           }
@@ -456,67 +456,29 @@
             "join": { "type": "string", "pattern": "^if-join:[0-9]+$" }
           }
         },
-        "fixedPoint": {
+        "memberBudget": {
           "type": "object", "additionalProperties": false,
-          "required": ["iterations", "converged", "members"],
+          "required": ["name", "limit", "observed"],
           "properties": {
-            "iterations": { "type": "integer", "minimum": 1 },
-            "converged": { "type": "boolean" },
-            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
-            "members": {
-              "type": "array", "minItems": 0, "maxItems": 2,
-              "items": {
-                "type": "object", "additionalProperties": false,
-                "required": ["state", "role"],
-                "properties": {
-                  "state": { "type": "string", "minLength": 1 },
-                  "role": { "enum": ["ranking", "scalar"] }
-                }
-              }
-            }
+            "name": { "const": "cfg-recurrence-members" },
+            "limit": { "enum": [2, 8] },
+            "observed": { "type": "integer", "minimum": 0, "maximum": 8 }
           }
         },
-        "recurrenceProof": { "$ref": "#/$defs/recurrenceProof" }
-      }
-    },
-    "rankingLoop": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "adapterName", "modelName", "exportName", "loopSpan", "trySpan", "status", "budget", "fixedPoint", "completionJoin"],
-      "properties": {
-        "kind": { "const": "ranking-loop-fixed-point" },
-        "adapterName": { "type": "string" },
-        "modelName": { "type": "string" },
-        "exportName": { "type": "string" },
-        "loopSpan": { "$ref": "#/$defs/span" },
-        "trySpan": { "$ref": "#/$defs/span" },
-        "status": { "enum": ["verified", "unknown"] },
-        "reason": { "enum": ["proof-budget-exhausted", "lattice-conflict", "unsupported-recurrence", "action-validation-failed", "recurrence-proof-refuted", "recurrence-proof-unknown"] },
-        "budget": {
+        "handlerCompletion": {
           "type": "object", "additionalProperties": false,
-          "required": ["name", "limit"],
+          "required": ["rule", "trySpan", "predecessors", "retainedThrowPayload", "retainedNormalSnapshot", "mandatoryFinally", "blocks", "valueLattice"],
           "properties": {
-            "name": { "const": "cfg-fixed-point-iterations" },
-            "limit": { "type": "integer", "minimum": 1 }
-          }
-        },
-        "fixedPoint": {
-          "type": "object", "additionalProperties": false,
-          "required": ["iterations", "converged", "handlerCfg", "valueLattice"],
-          "properties": {
-            "iterations": { "type": "integer", "minimum": 1 },
-            "converged": { "type": "boolean" },
-            "handlerCfg": {
-              "type": "object", "additionalProperties": false,
-              "required": ["reused", "blocks"],
-              "properties": {
-                "reused": { "const": true },
-                "blocks": {
-                  "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true
-                }
-              }
+            "rule": { "const": "source-bound-handler-predecessors" },
+            "trySpan": { "$ref": "#/$defs/span" },
+            "predecessors": {
+              "type": "array", "prefixItems": [{ "const": "normal" }, { "const": "throw" }],
+              "items": false, "minItems": 2, "maxItems": 2
             },
-            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
+            "retainedThrowPayload": { "type": "boolean" },
+            "retainedNormalSnapshot": { "type": "boolean" },
+            "mandatoryFinally": { "type": "boolean" },
+            "blocks": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
             "valueLattice": {
               "type": "object", "additionalProperties": false,
               "required": ["throwPayloads", "normalSnapshots", "expressionSnapshots"],
@@ -536,21 +498,47 @@
             }
           }
         },
-        "completionJoin": {
+        "fixedPoint": {
           "type": "object", "additionalProperties": false,
-          "required": ["predecessors", "retainedThrowPayload", "retainedNormalSnapshot"],
+          "required": ["iterations", "converged", "members"],
           "properties": {
-            "predecessors": { "const": ["normal", "throw"] },
-            "retainedThrowPayload": { "type": "boolean" },
-            "retainedNormalSnapshot": { "type": "boolean" }
+            "iterations": { "type": "integer", "minimum": 1 },
+            "converged": { "type": "boolean" },
+            "recurrence": { "$ref": "#/$defs/rankingRecurrence" },
+            "members": {
+              "type": "array", "minItems": 0, "maxItems": 8,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["state", "role"],
+                "properties": {
+                  "state": { "type": "string", "minLength": 1 },
+                  "role": { "enum": ["ranking", "scalar"] }
+                }
+              }
+            }
           }
         },
         "recurrenceProof": { "$ref": "#/$defs/recurrenceProof" }
       },
       "allOf": [{
+        "if": { "required": ["handlerCompletion"] },
+        "then": {
+          "properties": {
+            "memberBudget": { "properties": { "limit": { "const": 8 } } },
+            "fixedPoint": { "properties": { "members": { "maxItems": 8 } } }
+          }
+        },
+        "else": {
+          "properties": {
+            "memberBudget": { "properties": { "limit": { "const": 2 } } },
+            "fixedPoint": { "properties": { "members": { "maxItems": 2 } } }
+          }
+        }
+      }, {
         "if": { "properties": { "status": { "const": "verified" } }, "required": ["status"] },
         "then": {
           "not": { "required": ["reason"] },
+          "required": ["recurrenceProof"],
           "properties": {
             "fixedPoint": {
               "required": ["recurrence"],
@@ -559,7 +547,14 @@
                 "recurrence": { "properties": { "stable": { "const": true } } }
               }
             },
-            "completionJoin": { "properties": { "retainedThrowPayload": { "const": true }, "retainedNormalSnapshot": { "const": true } } }
+            "recurrenceProof": { "properties": { "status": { "const": "verified" } } },
+            "handlerCompletion": {
+              "properties": {
+                "retainedThrowPayload": { "const": true },
+                "retainedNormalSnapshot": { "const": true },
+                "mandatoryFinally": { "const": true }
+              }
+            }
           }
         },
         "else": { "required": ["reason"] }
@@ -573,7 +568,7 @@
         "then": {
           "properties": {
             "status": { "const": "unknown" },
-            "completionJoin": {
+            "handlerCompletion": {
               "properties": {
                 "retainedThrowPayload": { "const": false },
                 "retainedNormalSnapshot": { "const": false }

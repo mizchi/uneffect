@@ -289,16 +289,22 @@ The application-shaped `examples/dogfood/telemetry-fixed-point-drain.ts` models
 success/failure accounting around a telemetry-send boundary. Its dynamic
 ranking loop has one normal delivery predecessor and one scalar throw/catch
 failure predecessor. `analyzeRefinementActionBodies` verifies the exact affine
-accounting and emits a converged `ranking-loop-fixed-point` obligation whose
+accounting and emits a structurally converged
+`scalar-recurrence-fixed-point` obligation with a `handlerCompletion`
+extension. The shared recurrence artifact's
 reusable worklist retains normalized model payload `pending`, both normal
 snapshot facts, their throw-specialized expression environments, and the
-correlated joined environment within a 16-step budget. It also retains a stable
+correlated joined environment within a named recurrence budget. It also retains a stable
 affine recurrence certificate for the `pending` countdown, its one-iteration
 updates, and its closed-form summary. Dogfood now passes that certificate to the
 async Z3 analysis, which independently proves the base case, every scalar
 inductive step, and the countdown ranking obligation. A modified certificate
 is covered by summary and ranking fault injections; unavailable solver evidence
 is `unknown`, not a structural success.
+The migrated handler seed preserves an explicit eight-member compatibility
+budget, although this fixture changes four integer members; ordinary direct
+loops remain capped at two. Arbitrary handler loops, nested handlers, resources,
+aliases, and irreducible control are not admitted by this unification.
 Replacing the caught amount with the normal-path delivered counter keeps the
 obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
@@ -460,6 +466,16 @@ checks the resulting piecewise step/summary equations and ranking obligation.
 Mutating the predicate, using the ranking counter as the predicate, or nesting
 another diamond prevents this evidence. This is one direct invariant diamond,
 not general path implication or arbitrary piecewise recurrence inference.
+
+P2.19 migrates the existing `telemetry-fixed-point-drain.ts` handler-backed
+countdown onto that same scalar recurrence contract. Exactly one recurrence
+obligation is emitted; `handlerCompletion` carries the source-bound try span,
+normal/throw predecessors, retained payload and snapshots, mandatory-finally
+fact, handler blocks, and value lattice. The v2 schema no longer accepts the
+legacy recurrence kind. Existing coupled-update, self-amplification,
+early-return, budget, modified-certificate, and unavailable-solver controls
+remain non-proofs. This migration removes duplicate proof machinery; it does
+not widen the accepted handler-loop syntax.
 
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local

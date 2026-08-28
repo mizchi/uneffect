@@ -1971,6 +1971,16 @@ second). These separate selected runs are regression signals, not a comparative
 speedup claim. They exclude mutated or ranking-dependent predicates, nested
 diamonds, multiple predicates, aliases, and irreducible CFGs.
 
+The P2.19 run changes the handler-backed countdown benchmark to require the
+shared scalar recurrence artifact and its retained handler-completion evidence.
+On the same development host, structural analysis measured 0.8727 ms mean over
+573 samples (1,145.89 operations per second, 4.33% RME). Independent Z3
+validation measured 115.4698 ms mean over five samples (8.66 operations per
+second, 22.87% RME). The solver sample is intentionally reported as noisy and
+must not be used as a stable regression threshold; both measurements establish
+that the migrated evidence path executes, not that arbitrary handler loops have
+this cost.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

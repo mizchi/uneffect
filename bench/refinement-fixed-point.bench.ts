@@ -136,8 +136,12 @@ describe("refinement CFG fixed point", () => {
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
       { proofBudget: { cfgFixedPointIterations: 64 } },
     );
-    if (result.diagnostics.length !== 0 || result.obligations[0]?.status !== "verified") {
-      throw new Error("ranking-loop fixed-point benchmark fixture did not verify");
+    const obligation = result.obligations.find((item) =>
+      item.kind === "scalar-recurrence-fixed-point");
+    if (result.diagnostics.length !== 0
+      || obligation?.reason !== "independent-proof-required"
+      || obligation.handlerCompletion?.retainedThrowPayload !== true) {
+      throw new Error("handler-backed recurrence benchmark fixture did not converge provisionally");
     }
   }, { time: 500, iterations: 20 });
 
@@ -146,7 +150,7 @@ describe("refinement CFG fixed point", () => {
       "refinement-fixed-point.ts", source, "fixedPointJoin", spec,
       { analysis: { proofBudget: { cfgFixedPointIterations: 64 } } },
     );
-    const obligation = result.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
+    const obligation = result.obligations.find((item) => item.kind === "scalar-recurrence-fixed-point");
     if (result.diagnostics.length !== 0
       || obligation?.recurrenceProof?.status !== "verified") {
       throw new Error("ranking-loop recurrence proof benchmark fixture did not verify");

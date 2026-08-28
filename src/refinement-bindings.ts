@@ -168,43 +168,14 @@ interface RefinementActionTraceSink {
   readonly aliasRegions: RefinementAliasRegionTrace[];
 }
 
-export interface RefinementRankingLoopObligation {
-  kind: "ranking-loop-fixed-point";
-  adapterName: string;
-  modelName: string;
-  exportName: string;
-  loopSpan: { start: number; end: number };
-  trySpan: { start: number; end: number };
-  status: "verified" | "unknown";
-  reason?: "proof-budget-exhausted" | "lattice-conflict" | "unsupported-recurrence" | "action-validation-failed" | "recurrence-proof-refuted" | "recurrence-proof-unknown";
-  budget: {
-    name: "cfg-fixed-point-iterations";
-    limit: number;
+export interface RefinementHandlerRecurrenceValueLattice {
+  throwPayloads: readonly string[];
+  normalSnapshots: readonly string[];
+  expressionSnapshots: {
+    tryNormal: Readonly<Record<string, string>>;
+    catchNormal: Readonly<Record<string, string>>;
+    joinedNormal: Readonly<Record<string, string>>;
   };
-  fixedPoint: {
-    iterations: number;
-    converged: boolean;
-    handlerCfg: {
-      reused: true;
-      blocks: readonly string[];
-    };
-    recurrence?: RefinementRankingRecurrenceEvidence;
-    valueLattice: {
-      throwPayloads: readonly string[];
-      normalSnapshots: readonly string[];
-      expressionSnapshots: {
-        tryNormal: Readonly<Record<string, string>>;
-        catchNormal: Readonly<Record<string, string>>;
-        joinedNormal: Readonly<Record<string, string>>;
-      };
-    };
-  };
-  completionJoin: {
-    predecessors: readonly ["normal", "throw"];
-    retainedThrowPayload: boolean;
-    retainedNormalSnapshot: boolean;
-  };
-  recurrenceProof?: RefinementRecurrenceProof;
 }
 
 export interface RefinementScalarRecurrenceObligation {
@@ -232,6 +203,21 @@ export interface RefinementScalarRecurrenceObligation {
       { branch: "else"; block: string },
     ];
     join: string;
+  };
+  memberBudget: {
+    name: "cfg-recurrence-members";
+    limit: 2 | 8;
+    observed: number;
+  };
+  handlerCompletion?: {
+    rule: "source-bound-handler-predecessors";
+    trySpan: { start: number; end: number };
+    predecessors: readonly ["normal", "throw"];
+    retainedThrowPayload: boolean;
+    retainedNormalSnapshot: boolean;
+    mandatoryFinally: boolean;
+    blocks: readonly string[];
+    valueLattice: RefinementHandlerRecurrenceValueLattice;
   };
   fixedPoint: {
     iterations: number;
@@ -373,8 +359,7 @@ export interface RefinementHandlerScalarEnvironmentObligation {
   };
 }
 
-export type RefinementActionObligation = RefinementRankingLoopObligation
-  | RefinementScalarRecurrenceObligation
+export type RefinementActionObligation = RefinementScalarRecurrenceObligation
   | RefinementHandlerJoinObligation
   | RefinementHandlerScalarEnvironmentObligation
   | RefinementLocalAliasHelperObligation;
@@ -4112,13 +4097,13 @@ function findRankingLoopThrowJoinCandidates(body: ts.Block): RankingLoopJoinCand
   return candidates;
 }
 
-interface RankingLoopValueState {
+interface HandlerRecurrenceValueState {
   readonly normal: ReadonlyMap<string, Readonly<Record<string, string>>>;
   readonly throws: ReadonlyMap<string, string>;
   readonly recurrences: ReadonlyMap<string, RefinementRankingRecurrenceEvidence>;
 }
 
-function runRankingLoopJoinFixedPoint(
+function runHandlerBackedScalarRecurrenceFixedPoint(
   candidate: RankingLoopJoinCandidate,
   source: ts.SourceFile,
   limit: number,
@@ -4144,10 +4129,10 @@ function runRankingLoopJoinFixedPoint(
     normal: readonly (readonly [string, Readonly<Record<string, string>>])[] = [],
     throws: readonly (readonly [string, string])[] = [],
     recurrences: readonly (readonly [string, RefinementRankingRecurrenceEvidence])[] = [],
-  ): RankingLoopValueState => ({
+  ): HandlerRecurrenceValueState => ({
     normal: new Map(normal), throws: new Map(throws), recurrences: new Map(recurrences),
   });
-  const key = (state: RankingLoopValueState): string => JSON.stringify({
+  const key = (state: HandlerRecurrenceValueState): string => JSON.stringify({
     normal: [...state.normal].sort(([left], [right]) => left.localeCompare(right)),
     throws: [...state.throws].sort(([left], [right]) => left.localeCompare(right)),
     recurrences: [...state.recurrences].sort(([left], [right]) => left.localeCompare(right)),
@@ -4196,7 +4181,7 @@ function runRankingLoopJoinFixedPoint(
   const result = solveBasicBlockFixedPoint({
     entry: "header",
     initial: value([["entry", {}]]),
-    budget: { name: "cfg-fixed-point-iterations", limit },
+    budget: { name: "cfg-recurrence-iterations", limit },
     lattice: {
       bottom: () => value(),
       equivalent: (left, right) => key(left) === key(right),
@@ -4238,9 +4223,9 @@ function runRankingLoopJoinFixedPoint(
       { id: "header", transfer: (input) => [{ to: "entry", value: input }] },
       ...candidate.handler.blocks.map((block) => ({
         id: block.id,
-        transfer: (input: RankingLoopValueState) => {
+        transfer: (input: HandlerRecurrenceValueState) => {
           if (block.id === "try-completion") {
-            const edges: Array<{ to: string; value: RankingLoopValueState }> = [];
+            const edges: Array<{ to: string; value: HandlerRecurrenceValueState }> = [];
             if (input.throws.size > 0) edges.push({ to: "catch", value: input });
             if (input.normal.size > 0) edges.push({
               to: "handler-join",
@@ -4942,18 +4927,25 @@ export function analyzeRefinementActionBodies(
         item.modelName === action.name && item.tryStart === _candidate.tryStatement.getStart(source));
       const recurrenceTrace = traceSink.rankingRecurrences.find((item) =>
         item.modelName === action.name && item.loopStart === _candidate.whileStatement.getStart(source));
-      const fixedPoint = runRankingLoopJoinFixedPoint(_candidate, source, limit, trace, recurrenceTrace);
+      const fixedPoint = runHandlerBackedScalarRecurrenceFixedPoint(_candidate, source, limit, trace, recurrenceTrace);
       const actionDiagnostics = diagnostics.filter((diagnostic) => diagnostic.modelName === action.name);
       const actionUnsupported = actionDiagnostics.some((diagnostic) => diagnostic.code === "unsupported-action-body");
       const retainedThrowPayload = fixedPoint.valueLattice.throwPayloads.length === 1;
       const retainedNormalSnapshot = fixedPoint.valueLattice.normalSnapshots.includes("try-normal")
         && fixedPoint.valueLattice.normalSnapshots.includes("catch-normal")
         && fixedPoint.valueLattice.normalSnapshots.includes("joined-normal");
-      const verified = fixedPoint.converged && !fixedPoint.conflict
+      const structurallySupported = fixedPoint.converged && !fixedPoint.conflict
         && fixedPoint.recurrence?.stable === true
         && retainedThrowPayload && retainedNormalSnapshot && actionDiagnostics.length === 0;
+      const members = fixedPoint.recurrence ? spec.states.filter(({ name, type }) =>
+        type === "int" && fixedPoint.recurrence!.iteration[name] !== undefined
+          && fixedPoint.recurrence!.iteration[name] !== name).map(({ name }) => ({
+            state: name,
+            role: name === fixedPoint.recurrence!.counter ? "ranking" as const : "scalar" as const,
+          })).sort((left, right) => left.role === right.role ? left.state.localeCompare(right.state)
+            : left.role === "ranking" ? -1 : 1) : [];
       obligations.push({
-        kind: "ranking-loop-fixed-point",
+        kind: "scalar-recurrence-fixed-point",
         adapterName,
         modelName: action.name,
         exportName,
@@ -4961,29 +4953,41 @@ export function analyzeRefinementActionBodies(
           start: _candidate.whileStatement.getStart(source),
           end: _candidate.whileStatement.getEnd(),
         },
-        trySpan: {
-          start: _candidate.tryStatement.getStart(source),
-          end: _candidate.tryStatement.getEnd(),
-        },
-        status: verified ? "verified" : "unknown",
+        status: "unknown",
         ...(fixedPoint.conflict
           ? { reason: "lattice-conflict" as const }
           : !fixedPoint.converged
           ? { reason: "proof-budget-exhausted" as const }
           : actionUnsupported ? { reason: "unsupported-recurrence" as const }
-            : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const } : {}),
-        budget: { name: "cfg-fixed-point-iterations", limit },
+            : actionDiagnostics.length > 0 ? { reason: "action-validation-failed" as const }
+              : !structurallySupported || members.length < 1 || members.length > 8
+                ? { reason: "unsupported-recurrence" as const }
+                : { reason: "independent-proof-required" as const }),
+        budget: { name: "cfg-recurrence-iterations", limit },
+        backEdge: {
+          from: `try:${_candidate.tryStatement.getStart(source)}`,
+          to: `while-header:${_candidate.whileStatement.getStart(source)}`,
+          rule: "source-bound-affine-transformer",
+        },
+        memberBudget: { name: "cfg-recurrence-members", limit: 8, observed: members.length },
         fixedPoint: {
           iterations: fixedPoint.iterations,
           converged: fixedPoint.converged,
-          handlerCfg: fixedPoint.handlerCfg,
           ...(fixedPoint.recurrence ? { recurrence: fixedPoint.recurrence } : {}),
-          valueLattice: fixedPoint.valueLattice,
+          members,
         },
-        completionJoin: {
+        handlerCompletion: {
+          rule: "source-bound-handler-predecessors",
+          trySpan: {
+            start: _candidate.tryStatement.getStart(source),
+            end: _candidate.tryStatement.getEnd(),
+          },
           predecessors: ["normal", "throw"],
-          retainedThrowPayload: verified && retainedThrowPayload,
-          retainedNormalSnapshot: verified && retainedNormalSnapshot,
+          retainedThrowPayload: structurallySupported && retainedThrowPayload,
+          retainedNormalSnapshot: structurallySupported && retainedNormalSnapshot,
+          mandatoryFinally: _candidate.handler.mandatoryFinally,
+          blocks: fixedPoint.handlerCfg.blocks,
+          valueLattice: fixedPoint.valueLattice,
         },
       });
       if (!fixedPoint.converged && !actionUnsupported) diagnostics.push({
@@ -4991,7 +4995,7 @@ export function analyzeRefinementActionBodies(
         adapterName,
         modelName: action.name,
         exportName,
-        message: `${exportName} exceeded the cfg-fixed-point-iterations proof budget (${limit})`,
+        message: `${exportName} exceeded the cfg-recurrence-iterations proof budget (${limit})`,
       });
     }
     for (const candidate of findScalarRecurrenceCandidates(implementation.body)) {
@@ -5023,6 +5027,7 @@ export function analyzeRefinementActionBodies(
                 : "independent-proof-required",
         budget: { name: "cfg-recurrence-iterations", limit },
         backEdge: fixedPoint.backEdge,
+        memberBudget: { name: "cfg-recurrence-members", limit: 2, observed: fixedPoint.members.length },
         ...(fixedPoint.conditionalJoin ? { conditionalJoin: fixedPoint.conditionalJoin } : {}),
         fixedPoint: {
           iterations: fixedPoint.iterations,
@@ -5396,35 +5401,19 @@ export async function analyzeRefinementActionBodiesWithZ3(
         exportName: obligation.exportName,
         message: `${obligation.exportName} CFG recurrence ${recurrenceProof.status === "refuted" ? "failed" : "could not complete"} independent Z3 base/step/ranking validation`,
       });
-      return { ...obligation, status: "unknown", reason, recurrenceProof };
+      return {
+        ...obligation,
+        status: "unknown",
+        reason,
+        recurrenceProof,
+        ...(obligation.handlerCompletion ? { handlerCompletion: {
+          ...obligation.handlerCompletion,
+          retainedThrowPayload: false,
+          retainedNormalSnapshot: false,
+        } } : {}),
+      };
     }
-    if (obligation.kind !== "ranking-loop-fixed-point") return obligation;
-    const certificate = obligation.fixedPoint.recurrence;
-    if (!certificate) return obligation;
-    const recurrenceProof = await verifyRefinementRecurrenceCertificateWithZ3(spec, certificate, options.z3);
-    if (obligation.status !== "verified" || recurrenceProof.status === "verified") {
-      return { ...obligation, recurrenceProof };
-    }
-    const reason = recurrenceProof.status === "refuted"
-      ? "recurrence-proof-refuted" as const : "recurrence-proof-unknown" as const;
-    addedDiagnostics.push({
-      code: "unsupported-action-body",
-      adapterName,
-      modelName: obligation.modelName,
-      exportName: obligation.exportName,
-      message: `${obligation.exportName} recurrence summary ${recurrenceProof.status === "refuted" ? "failed" : "could not complete"} independent Z3 base/step/ranking validation`,
-    });
-    return {
-      ...obligation,
-      status: "unknown",
-      reason,
-      recurrenceProof,
-      completionJoin: {
-        ...obligation.completionJoin,
-        retainedThrowPayload: false,
-        retainedNormalSnapshot: false,
-      },
-    };
+    return obligation;
   }));
   return {
     ...analysis,

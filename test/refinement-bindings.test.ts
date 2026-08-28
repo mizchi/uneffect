@@ -3145,26 +3145,15 @@ describe("annotated refinement bindings", () => {
       typescriptVersion: ts.version,
       diagnostics: [],
       obligations: [{
-        kind: "ranking-loop-fixed-point",
+        kind: "scalar-recurrence-fixed-point",
         modelName: "drain",
-        status: "verified",
+        status: "unknown",
+        reason: "independent-proof-required",
         loopSpan: { start: expect.any(Number), end: expect.any(Number) },
-        trySpan: { start: expect.any(Number), end: expect.any(Number) },
-        budget: { name: "cfg-fixed-point-iterations", limit: 64 },
+        budget: { name: "cfg-recurrence-iterations", limit: 64 },
+        memberBudget: { name: "cfg-recurrence-members", limit: 8, observed: 4 },
         fixedPoint: {
           converged: true,
-          handlerCfg: {
-            reused: true,
-            blocks: expect.arrayContaining([
-              expect.stringMatching(/^if:/),
-              expect.stringMatching(/^throw:/),
-              "try-completion",
-              "catch",
-              "handler-join",
-              "finally",
-              "exit",
-            ]),
-          },
           recurrence: {
             counter: "pending",
             direction: "decrease",
@@ -3183,6 +3172,23 @@ describe("annotated refinement bindings", () => {
             },
             stable: true,
           },
+        },
+        handlerCompletion: {
+          rule: "source-bound-handler-predecessors",
+          trySpan: { start: expect.any(Number), end: expect.any(Number) },
+          predecessors: ["normal", "throw"],
+          retainedThrowPayload: true,
+          retainedNormalSnapshot: true,
+          mandatoryFinally: true,
+          blocks: expect.arrayContaining([
+            expect.stringMatching(/^if:/),
+            expect.stringMatching(/^throw:/),
+            "try-completion",
+            "catch",
+            "handler-join",
+            "finally",
+            "exit",
+          ]),
           valueLattice: {
             throwPayloads: ["pending"],
             normalSnapshots: ["catch-normal", "joined-normal", "try-normal"],
@@ -3196,14 +3202,9 @@ describe("annotated refinement bindings", () => {
             },
           },
         },
-        completionJoin: {
-          predecessors: ["normal", "throw"],
-          retainedThrowPayload: true,
-          retainedNormalSnapshot: true,
-        },
       }],
     });
-    const rankingObligation = analysis.obligations.find((item) => item.kind === "ranking-loop-fixed-point");
+    const rankingObligation = analysis.obligations.find((item) => item.kind === "scalar-recurrence-fixed-point");
     expect(rankingObligation?.fixedPoint.iterations).toBeLessThanOrEqual(64);
     const recurrence = rankingObligation?.fixedPoint.recurrence;
     expect(recurrence).toBeDefined();
@@ -3252,7 +3253,7 @@ describe("annotated refinement bindings", () => {
       status: "unknown",
       reason: "recurrence-proof-unknown",
       recurrenceProof: { status: "unknown", backend: "z3" },
-      completionJoin: { retainedThrowPayload: false, retainedNormalSnapshot: false },
+      handlerCompletion: { retainedThrowPayload: false, retainedNormalSnapshot: false },
     });
     expect(unavailableProof.diagnostics).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body", modelName: "drain",
@@ -3311,15 +3312,6 @@ describe("annotated refinement bindings", () => {
             proof: { properties: { backend: { const: "z3" }, checks: { maxItems: 2 } } },
           },
         },
-        rankingLoop: {
-          properties: {
-            budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
-            fixedPoint: { properties: {
-              handlerCfg: { properties: { reused: { const: true } } },
-              recurrence: { $ref: "#/$defs/rankingRecurrence" },
-            } },
-          },
-        },
         scalarRecurrence: {
           properties: {
             kind: { const: "scalar-recurrence-fixed-point" },
@@ -3330,24 +3322,29 @@ describe("annotated refinement bindings", () => {
               rule: { const: "predicate-correlated-affine-phi" },
               predecessors: { minItems: 2, maxItems: 2 },
             } },
-            fixedPoint: { properties: { members: { maxItems: 2 } } },
+            memberBudget: { properties: { limit: { enum: [2, 8] } } },
+            handlerCompletion: { properties: {
+              rule: { const: "source-bound-handler-predecessors" },
+            } },
+            fixedPoint: { properties: { members: { maxItems: 8 } } },
             recurrenceProof: { $ref: "#/$defs/recurrenceProof" },
           },
         },
       },
     });
+    expect(JSON.parse(readFileSync("schemas/uneffect-refinement-action-analysis-v2.schema.json", "utf8")).$defs.rankingLoop).toBeUndefined();
 
     const exhausted = analyzeRefinementActionBodies(
       "fixed-point-budget.ts", source, "fixedPointJoin", spec,
       { proofBudget: { cfgFixedPointIterations: 1 } },
     );
     expect(exhausted.obligations).toContainEqual(expect.objectContaining({
-      kind: "ranking-loop-fixed-point",
+      kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "proof-budget-exhausted",
       fixedPoint: expect.objectContaining({ converged: false }),
     }));
-    expect(exhausted.obligations.find((item) => item.kind === "ranking-loop-fixed-point")?.fixedPoint.recurrence).toBeUndefined();
+    expect(exhausted.obligations.find((item) => item.kind === "scalar-recurrence-fixed-point")?.fixedPoint.recurrence).toBeUndefined();
     expect(exhausted.diagnostics).toContainEqual(expect.objectContaining({
       code: "unsupported-action-body",
       modelName: "drain",
@@ -3359,7 +3356,7 @@ describe("annotated refinement bindings", () => {
       { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(unalignedAnalysis.obligations).toContainEqual(expect.objectContaining({
-      kind: "ranking-loop-fixed-point",
+      kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "unsupported-recurrence",
     }));
@@ -3373,7 +3370,7 @@ describe("annotated refinement bindings", () => {
       { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(selfAmplifyingAnalysis.obligations).toContainEqual(expect.objectContaining({
-      kind: "ranking-loop-fixed-point",
+      kind: "scalar-recurrence-fixed-point",
       status: "unknown",
       reason: "unsupported-recurrence",
     }));
@@ -3390,7 +3387,7 @@ describe("annotated refinement bindings", () => {
       { proofBudget: { cfgFixedPointIterations: 64 } },
     );
     expect(earlyReturnAnalysis.obligations).not.toContainEqual(expect.objectContaining({
-      kind: "ranking-loop-fixed-point",
+      kind: "scalar-recurrence-fixed-point",
       status: "verified",
     }));
     expect(earlyReturnAnalysis.diagnostics).toContainEqual(expect.objectContaining({
