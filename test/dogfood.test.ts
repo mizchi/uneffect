@@ -26,6 +26,38 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("proves a two-member scalar product across sibling handler regions", async () => {
+    const fileName = "examples/dogfood/scalar-product-handler-join.ts";
+    const source = readFileSync(fileName, "utf8");
+    const temporal = parseSpec(fileName, source).temporal;
+    const analysis = await analyzeRefinementActionBodiesWithZ3(
+      fileName,
+      source,
+      "scalarProductJoin",
+      temporal,
+    );
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-scalar-environment-join",
+      modelName: "compose",
+      status: "verified",
+      proof: {
+        backend: "z3",
+        status: "verified",
+        checks: [
+          { state: "audited", status: "verified" },
+          { state: "total", status: "verified" },
+        ],
+      },
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        members: [
+          expect.objectContaining({ state: "audited", regions: [expect.anything(), expect.anything()] }),
+          expect.objectContaining({ state: "total", regions: [expect.anything(), expect.anything()] }),
+        ],
+      }),
+    }));
+  });
+
   it("proves a scalar environment across two source-keyed handler regions", async () => {
     const fileName = "examples/dogfood/scalar-handler-join.ts";
     const source = readFileSync(fileName, "utf8");
@@ -41,11 +73,13 @@ describe("Uneffect dogfood", () => {
       modelName: "compose",
       status: "verified",
       regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 2 },
-      proof: { backend: "z3", status: "verified" },
+      proof: expect.objectContaining({ backend: "z3", status: "verified" }),
       fixedPoint: expect.objectContaining({
         converged: true,
-        state: "total",
-        regions: [expect.anything(), expect.anything()],
+        members: [expect.objectContaining({
+          state: "total",
+          regions: [expect.anything(), expect.anything()],
+        })],
       }),
     }));
   });

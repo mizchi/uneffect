@@ -411,6 +411,15 @@ a wrong declared branch, and an unavailable native solver respectively remain
 lattice conflict, budget, region-budget, refuted, and unknown controls. This is
 one integer handoff, not general path-sensitive JavaScript value analysis.
 
+P2.14 adds `scalar-product-handler-join.ts`. The same two source-keyed regions
+now update `total` and `audited` independently. The v2 artifact emits two
+ordered product members with separate entry/exit expressions, and Z3 must prove
+both before the environment is verified. Changing only the audited action
+branch leaves total verified but refutes the product. An inter-region audited
+write is a lattice conflict, native-solver failure leaves both member checks
+unknown, and a third changed integer is an explicit cardinality non-proof. The
+one-member P2.13 artifact uses the identical `members[]` contract.
+
 P3.1 adds `local-alias-refinement.ts`. `sendThroughLocalAlias` binds the mutable
 runtime object to one `const` alias and passes it once to the direct local
 `incrementSent` helper. Program-backed refinement analysis verifies the model

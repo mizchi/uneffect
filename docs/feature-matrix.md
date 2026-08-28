@@ -105,16 +105,17 @@ metadata is `refuted`; solver failure and an unstabilized certificate are
 `unknown`. This does not generalize the accepted recurrence shape: widening and
 arbitrary basic-block shapes remain owned by #25.
 
-The v2 artifact also defines `handler-scalar-environment-join` for exactly one
-changed integer carried across exactly two source-keyed sibling nested-handler
+The v2 artifact also defines `handler-scalar-environment-join` for one or two
+changed integers carried across exactly two source-keyed sibling nested-handler
 regions. Region entry/exit expressions come from the refinement evaluator and
-must hand off exactly on the shared CFG worklist. Structural convergence yields
-only `unknown: independent-proof-required`; the Z3 API must prove the final
-expression equivalent to the declared action before the obligation becomes
-`verified`. Intervening unmodeled writes, budget exhaustion, a third region, a
-wrong action, and solver failure remain explicit non-proofs. Multiple changed
-states, heap regions, aliases, general path implication, recurrence widening,
-and irreducible CFGs are still unsupported.
+must hand off exactly on the shared CFG worklist. The product is represented by
+ordered `members[]`, so the one-member case is not a separate schema. Structural
+convergence yields only `unknown: independent-proof-required`; the Z3 API must
+prove every member equivalent to its declared action before the obligation
+becomes `verified`. Intervening unmodeled writes, budget exhaustion, a third
+region, one wrong member, solver failure, and a third changed integer remain
+explicit non-proofs. Heap regions, aliases, cross-member recurrence, general
+path implication, recurrence widening, and irreducible CFGs are unsupported.
 
 Outside loops, initialized scalar `let` bindings may be assigned with `=`,
 `+=`, or `-=` and joined through sequential `if` diamonds. Normally completing

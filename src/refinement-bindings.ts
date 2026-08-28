@@ -287,27 +287,33 @@ export interface RefinementHandlerScalarEnvironmentObligation {
   exportName: string;
   status: "verified" | "unknown";
   reason?: "independent-proof-required" | "lattice-conflict" | "proof-budget-exhausted"
-    | "region-budget-exhausted" | "unsupported-scalar-environment" | "scalar-proof-refuted"
+    | "region-budget-exhausted" | "scalar-cardinality-unsupported" | "unsupported-scalar-environment" | "scalar-proof-refuted"
     | "scalar-proof-unknown";
   budget: { name: "cfg-fixed-point-iterations"; limit: number };
   regionBudget: { name: "handler-scalar-regions"; limit: 2; observed: number };
   fixedPoint: {
     iterations: number;
     converged: boolean;
-    state?: string;
-    expected?: string;
-    actual?: string;
-    regions: readonly {
-      id: string;
-      span: { start: number; end: number };
-      entry: string;
-      exit: string;
+    members: readonly {
+      state: string;
+      expected: string;
+      actual: string;
+      regions: readonly {
+        id: string;
+        span: { start: number; end: number };
+        entry: string;
+        exit: string;
+      }[];
     }[];
   };
   proof?: {
     backend: "z3";
     status: "verified" | "refuted" | "unknown";
-    reason?: string;
+    checks: readonly {
+      state: string;
+      status: "verified" | "refuted" | "unknown";
+      reason?: string;
+    }[];
   };
 }
 
@@ -4237,10 +4243,12 @@ interface HandlerScalarEnvironmentResult {
   readonly iterations: number;
   readonly converged: boolean;
   readonly conflict: boolean;
-  readonly state?: string;
-  readonly expected?: TemporalExpression;
-  readonly actual?: TemporalExpression;
-  readonly regions: RefinementHandlerScalarEnvironmentObligation["fixedPoint"]["regions"];
+  readonly members: readonly {
+    readonly state: string;
+    readonly expected: TemporalExpression;
+    readonly actual: TemporalExpression;
+    readonly regions: RefinementHandlerScalarEnvironmentObligation["fixedPoint"]["members"][number]["regions"];
+  }[];
 }
 
 /**
@@ -4276,20 +4284,25 @@ function runHandlerScalarEnvironmentFixedPoint(
       stateExpression(regions[0]!.trace.entry, name),
       stateExpression(regions.at(-1)!.trace.exit, name),
     ));
-  const state = changedScalarStates.length === 1 ? changedScalarStates[0]!.name : undefined;
-  const expected = state
-    ? action.assignments.find(({ target }) => target === state)?.expressionAst ?? { kind: "name", name: state } as TemporalExpression
-    : undefined;
-  const actual = state && regions.length > 0
-    ? stateExpression(regions.at(-1)!.trace.exit, state) : undefined;
-  const evidence = state ? regions.map(({ trace }) => ({
-    id: `nested-handler-join:${trace.tryStart}`,
-    span: { start: trace.tryStart, end: trace.tryEnd },
-    entry: formatRefinementExpression(stateExpression(trace.entry, state)),
-    exit: formatRefinementExpression(stateExpression(trace.exit, state)),
-  })) : [];
-  if (candidate.lowering !== "supported" || controls.length !== 2 || regions.length !== 2 || !state) {
-    return { iterations: 0, converged: false, conflict: false, state, expected, actual, regions: evidence };
+  const members = changedScalarStates
+    .map(({ name: state }) => ({
+      state,
+      expected: action.assignments.find(({ target }) => target === state)?.expressionAst
+        ?? { kind: "name", name: state } as TemporalExpression,
+      actual: regions.length > 0
+        ? stateExpression(regions.at(-1)!.trace.exit, state)
+        : { kind: "name", name: state } as TemporalExpression,
+      regions: regions.map(({ trace }) => ({
+        id: `nested-handler-join:${trace.tryStart}`,
+        span: { start: trace.tryStart, end: trace.tryEnd },
+        entry: formatRefinementExpression(stateExpression(trace.entry, state)),
+        exit: formatRefinementExpression(stateExpression(trace.exit, state)),
+      })),
+    }))
+    .sort((left, right) => left.state.localeCompare(right.state));
+  if (candidate.lowering !== "supported" || controls.length !== 2 || regions.length !== 2
+    || members.length < 1 || members.length > 2) {
+    return { iterations: 0, converged: false, conflict: false, members };
   }
 
   interface Value {
@@ -4349,10 +4362,10 @@ function runHandlerScalarEnvironmentFixedPoint(
     iterations: result.iterations,
     converged: result.status === "converged" && !conflict,
     conflict,
-    state,
-    expected,
-    actual: state && exit ? stateExpression(exit.environment, state) : actual,
-    regions: evidence,
+    members: members.map((member) => ({
+      ...member,
+      actual: exit ? stateExpression(exit.environment, member.state) : member.actual,
+    })),
   };
 }
 
@@ -4457,7 +4470,7 @@ export function analyzeRefinementActionBodies(
         const regionTraces = traceSink.handlerRegions.filter((trace) => trace.modelName === action.name);
         const scalar = runHandlerScalarEnvironmentFixedPoint(candidate, regionTraces, spec, action, limit);
         const observed = candidate.controlStatements.filter(ts.isTryStatement).length;
-        if (scalar.state) obligations.push({
+        if (scalar.members.length > 0) obligations.push({
           kind: "handler-scalar-environment-join",
           adapterName,
           modelName: action.name,
@@ -4465,6 +4478,8 @@ export function analyzeRefinementActionBodies(
           status: "unknown",
           reason: observed !== 2
             ? "region-budget-exhausted"
+            : scalar.members.length > 2
+              ? "scalar-cardinality-unsupported"
             : scalar.conflict
               ? "lattice-conflict"
               : !scalar.converged
@@ -4475,10 +4490,12 @@ export function analyzeRefinementActionBodies(
           fixedPoint: {
             iterations: scalar.iterations,
             converged: scalar.converged,
-            state: scalar.state,
-            ...(scalar.expected ? { expected: formatRefinementExpression(scalar.expected) } : {}),
-            ...(scalar.actual ? { actual: formatRefinementExpression(scalar.actual) } : {}),
-            regions: scalar.regions,
+            members: scalar.members.map((member) => ({
+              state: member.state,
+              expected: formatRefinementExpression(member.expected),
+              actual: formatRefinementExpression(member.actual),
+              regions: member.regions,
+            })),
           },
         });
       }
@@ -4844,26 +4861,34 @@ export async function analyzeRefinementActionBodiesWithZ3(
   const dischargedScalarMismatches = new Set<string>();
   const obligations = await Promise.all(analysis.obligations.map(async (obligation): Promise<RefinementActionObligation> => {
     if (obligation.kind === "handler-scalar-environment-join") {
-      const { state, expected, actual } = obligation.fixedPoint;
-      if (obligation.reason !== "independent-proof-required" || !state || !expected || !actual) return obligation;
-      const result = await checkTemporalExpressionEquivalenceWithZ3(
-        spec,
-        parseTemporalExpression(actual),
-        parseTemporalExpression(expected),
-        options.z3,
-      );
-      if (result.status === "equivalent") {
-        dischargedScalarMismatches.add(`${obligation.modelName}\0${state}`);
+      const { members } = obligation.fixedPoint;
+      if (obligation.reason !== "independent-proof-required" || members.length < 1) return obligation;
+      const checks: NonNullable<RefinementHandlerScalarEnvironmentObligation["proof"]>["checks"][number][] = [];
+      for (const member of members) {
+        const result = await checkTemporalExpressionEquivalenceWithZ3(
+          spec,
+          parseTemporalExpression(member.actual),
+          parseTemporalExpression(member.expected),
+          options.z3,
+        );
+        checks.push(result.status === "equivalent"
+          ? { state: member.state, status: "verified" }
+          : result.status === "different"
+            ? { state: member.state, status: "refuted" }
+            : { state: member.state, status: "unknown", reason: result.reason });
+      }
+      const proofStatus = checks.some((check) => check.status === "refuted") ? "refuted" as const
+        : checks.some((check) => check.status === "unknown") ? "unknown" as const : "verified" as const;
+      if (proofStatus === "verified") {
+        for (const member of members) dischargedScalarMismatches.add(`${obligation.modelName}\0${member.state}`);
         return {
           ...obligation,
           status: "verified",
           reason: undefined,
-          proof: { backend: "z3", status: "verified" },
+          proof: { backend: "z3", status: "verified", checks },
         };
       }
-      const proof = result.status === "different"
-        ? { backend: "z3" as const, status: "refuted" as const }
-        : { backend: "z3" as const, status: "unknown" as const, reason: result.reason };
+      const proof = { backend: "z3" as const, status: proofStatus, checks };
       addedDiagnostics.push({
         code: "unsupported-action-body",
         adapterName,

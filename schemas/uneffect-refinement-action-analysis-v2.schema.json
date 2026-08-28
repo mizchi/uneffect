@@ -142,7 +142,7 @@
         "exportName": { "type": "string", "minLength": 1 },
         "status": { "enum": ["verified", "unknown"] },
         "reason": {
-          "enum": ["independent-proof-required", "lattice-conflict", "proof-budget-exhausted", "region-budget-exhausted", "unsupported-scalar-environment", "scalar-proof-refuted", "scalar-proof-unknown"]
+          "enum": ["independent-proof-required", "lattice-conflict", "proof-budget-exhausted", "region-budget-exhausted", "scalar-cardinality-unsupported", "unsupported-scalar-environment", "scalar-proof-refuted", "scalar-proof-unknown"]
         },
         "budget": {
           "type": "object", "additionalProperties": false,
@@ -163,23 +163,32 @@
         },
         "fixedPoint": {
           "type": "object", "additionalProperties": false,
-          "required": ["iterations", "converged", "regions"],
+          "required": ["iterations", "converged", "members"],
           "properties": {
             "iterations": { "type": "integer", "minimum": 0 },
             "converged": { "type": "boolean" },
-            "state": { "type": "string", "minLength": 1 },
-            "expected": { "type": "string", "minLength": 1 },
-            "actual": { "type": "string", "minLength": 1 },
-            "regions": {
-              "type": "array",
+            "members": {
+              "type": "array", "minItems": 1, "maxItems": 3,
               "items": {
                 "type": "object", "additionalProperties": false,
-                "required": ["id", "span", "entry", "exit"],
+                "required": ["state", "expected", "actual", "regions"],
                 "properties": {
-                  "id": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" },
-                  "span": { "$ref": "#/$defs/span" },
-                  "entry": { "type": "string", "minLength": 1 },
-                  "exit": { "type": "string", "minLength": 1 }
+                  "state": { "type": "string", "minLength": 1 },
+                  "expected": { "type": "string", "minLength": 1 },
+                  "actual": { "type": "string", "minLength": 1 },
+                  "regions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object", "additionalProperties": false,
+                      "required": ["id", "span", "entry", "exit"],
+                      "properties": {
+                        "id": { "type": "string", "pattern": "^nested-handler-join:[0-9]+$" },
+                        "span": { "$ref": "#/$defs/span" },
+                        "entry": { "type": "string", "minLength": 1 },
+                        "exit": { "type": "string", "minLength": 1 }
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -187,11 +196,22 @@
         },
         "proof": {
           "type": "object", "additionalProperties": false,
-          "required": ["backend", "status"],
+          "required": ["backend", "status", "checks"],
           "properties": {
             "backend": { "const": "z3" },
             "status": { "enum": ["verified", "refuted", "unknown"] },
-            "reason": { "type": "string", "minLength": 1 }
+            "checks": {
+              "type": "array", "minItems": 1, "maxItems": 2,
+              "items": {
+                "type": "object", "additionalProperties": false,
+                "required": ["state", "status"],
+                "properties": {
+                  "state": { "type": "string", "minLength": 1 },
+                  "status": { "enum": ["verified", "refuted", "unknown"] },
+                  "reason": { "type": "string", "minLength": 1 }
+                }
+              }
+            }
           }
         }
       },
@@ -203,8 +223,13 @@
           "properties": {
             "regionBudget": { "properties": { "observed": { "const": 2 } } },
             "fixedPoint": {
-              "required": ["state", "expected", "actual"],
-              "properties": { "converged": { "const": true }, "regions": { "minItems": 2, "maxItems": 2 } }
+              "properties": {
+                "converged": { "const": true },
+                "members": {
+                  "minItems": 1, "maxItems": 2,
+                  "items": { "properties": { "regions": { "minItems": 2, "maxItems": 2 } } }
+                }
+              }
             },
             "proof": { "properties": { "status": { "const": "verified" } } }
           }

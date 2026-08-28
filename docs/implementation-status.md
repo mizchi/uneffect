@@ -388,6 +388,16 @@ same property is proved for arbitrary TypeScript.
   obligation to `verified`; a wrong action is refuted and solver unavailability
   stays `unknown`. Multiple changed states, objects, aliases, arbitrary region
   counts, recurrence widening, and irreducible CFGs remain outside this slice.
+- The same v2 obligation represents its bounded value lattice as a
+  `members[]` product rather than a distinguished scalar. It accepts one or two
+  independently changed integer members; each member retains its own declared
+  expression, emitted expression, and two source-keyed region snapshots. Z3
+  records a check for every member and the product is verified only when all
+  checks succeed. One refuted member refutes the product, solver failure leaves
+  both checks unknown, and a third changed integer reports
+  `scalar-cardinality-unsupported`. This does not establish relational
+  widening, cross-member recurrence reasoning, heap products, or arbitrary
+  environment cardinality.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

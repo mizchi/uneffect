@@ -120,9 +120,11 @@ explicit conservative boundaries rather than untracked support.
    regions now use source-keyed IDs and exactly two sibling regions compose
    under the existing root budget. [#28](https://github.com/mizchi/uneffect/issues/28)
    carries one changed integer through those regions and requires an independent
-   Z3 equivalence proof. General value joins and recurrence widening continue in
-   [#25](https://github.com/mizchi/uneffect/issues/25). Its active next
-   product-environment child is [#29](https://github.com/mizchi/uneffect/issues/29).
+   Z3 equivalence proof; [#29](https://github.com/mizchi/uneffect/issues/29)
+   completes the two-member product handoff. General value joins and recurrence
+   widening continue in [#25](https://github.com/mizchi/uneffect/issues/25).
+   Its active next region-cardinality child is
+   [#30](https://github.com/mizchi/uneffect/issues/30).
    The first
    local mutable-alias slice [#26](https://github.com/mizchi/uneffect/issues/26)
    is complete.

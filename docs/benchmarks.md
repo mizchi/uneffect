@@ -1933,6 +1933,14 @@ exclude multiple changed states, arbitrary region counts, aliases, and
 irreducible control; they are regression signals for the bounded slice rather
 than general analyzer throughput claims.
 
+The P2.14 focused benchmark carries two integer members through the same two
+regions. A selected run measured 0.7036 ms mean over 711 samples (1,421.21
+operations per second). Independently proving both members with Z3 measured
+12.5112 ms mean over 41 samples (79.93 operations per second). This comparison
+is intentionally bounded to two independent integer members; it does not
+measure cross-member recurrence, aliases, a third member, or arbitrary CFG
+growth.
+
 The P3.1 benchmark reuses a TypeScript `Program` and analyzes the one-alias,
 one-helper dogfood fixture through `analyzeRefinementActionBodiesInProgram`. It
 measured 0.1818 ms mean over 2,751 samples (5,500.63 operations per second).

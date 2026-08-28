@@ -64,10 +64,14 @@ describe("scalar environments across sibling handler regions", () => {
       regionBudget: { name: "handler-scalar-regions", limit: 2, observed: 2 },
       fixedPoint: expect.objectContaining({
         converged: true,
-        state: "total",
-        regions: [
-          expect.objectContaining({ id: expect.stringMatching(/^nested-handler-join:/) }),
-          expect.objectContaining({ id: expect.stringMatching(/^nested-handler-join:/) }),
+        members: [
+          expect.objectContaining({
+            state: "total",
+            regions: [
+              expect.objectContaining({ id: expect.stringMatching(/^nested-handler-join:/) }),
+              expect.objectContaining({ id: expect.stringMatching(/^nested-handler-join:/) }),
+            ],
+          }),
         ],
       }),
     }));
@@ -83,7 +87,11 @@ describe("scalar environments across sibling handler regions", () => {
       kind: "handler-scalar-environment-join",
       modelName: "compose",
       status: "verified",
-      proof: { backend: "z3", status: "verified" },
+      proof: {
+        backend: "z3",
+        status: "verified",
+        checks: [{ state: "total", status: "verified" }],
+      },
     }));
 
     const wrongAction = source.replace("second ? 8 : 4", "second ? 9 : 4");
@@ -97,7 +105,11 @@ describe("scalar environments across sibling handler regions", () => {
       kind: "handler-scalar-environment-join",
       status: "unknown",
       reason: "scalar-proof-refuted",
-      proof: { backend: "z3", status: "refuted" },
+      proof: {
+        backend: "z3",
+        status: "refuted",
+        checks: [{ state: "total", status: "refuted" }],
+      },
     }));
 
     const unavailable = await analyzeRefinementActionBodiesWithZ3(
@@ -111,7 +123,11 @@ describe("scalar environments across sibling handler regions", () => {
       kind: "handler-scalar-environment-join",
       status: "unknown",
       reason: "scalar-proof-unknown",
-      proof: expect.objectContaining({ backend: "z3", status: "unknown" }),
+      proof: expect.objectContaining({
+        backend: "z3",
+        status: "unknown",
+        checks: [expect.objectContaining({ state: "total", status: "unknown" })],
+      }),
     }));
   });
 

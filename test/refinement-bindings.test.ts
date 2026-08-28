@@ -3300,7 +3300,8 @@ describe("annotated refinement bindings", () => {
             kind: { const: "handler-scalar-environment-join" },
             regionBudget: { properties: { name: { const: "handler-scalar-regions" }, limit: { const: 2 } } },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },
-            proof: { properties: { backend: { const: "z3" } } },
+            fixedPoint: { properties: { members: { maxItems: 3 } } },
+            proof: { properties: { backend: { const: "z3" }, checks: { maxItems: 2 } } },
           },
         },
         rankingLoop: {

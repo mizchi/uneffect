@@ -66,7 +66,7 @@ describe("TODO hierarchy consistency", () => {
     const todo = readFileSync("TODO.md", "utf8");
     const matrix = readFileSync("docs/feature-matrix.md", "utf8");
     const roadmap = readFileSync("docs/roadmap.md", "utf8");
-    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 29];
+    const issueNumbers = [2, 4, 5, 6, 7, 8, 10, 13, 16, 18, 24, 25, 30];
 
     for (const issueNumber of issueNumbers) {
       expect(todo).toContain(`[#${issueNumber}]`);
@@ -84,7 +84,7 @@ describe("TODO hierarchy consistency", () => {
     expect(phase(1)).toContain("issues/9");
     expect(phase(1)).toContain("issues/20");
     expect(phase(1)).toContain("issues/18");
-    for (const issue of [25, 29, 2, 5, 4, 6]) {
+    for (const issue of [25, 30, 2, 5, 4, 6]) {
       expect(phase(2), `Phase 2 is missing issue #${issue}`).toContain(`issues/${issue}`);
     }
     for (const issue of [24, 8, 10, 7, 16]) {
@@ -103,7 +103,7 @@ describe("TODO hierarchy consistency", () => {
     expect(rows).toEqual([
       ["Queued", 1, 18],
       ["Queued", 2, 25],
-      ["Active", 2, 29],
+      ["Active", 2, 30],
       ["Queued", 2, 2],
       ["Queued", 2, 5],
       ["Queued", 2, 4],
@@ -129,7 +129,7 @@ describe("TODO hierarchy consistency", () => {
       ([, order, issue, exitCondition]) => [Number(order), Number(issue), exitCondition.trim()],
     );
     expect(rows.map(([order, issue]) => [order, issue])).toEqual([
-      [1, 29],
+      [1, 30],
     ]);
     for (const [, , exitCondition] of rows) {
       expect(exitCondition).not.toBe("");
@@ -150,6 +150,7 @@ describe("TODO hierarchy consistency", () => {
     expect(activeIndex).not.toContain("issues/26)");
     expect(activeIndex).not.toContain("issues/27)");
     expect(activeIndex).not.toContain("issues/28)");
+    expect(activeIndex).not.toContain("issues/29)");
     expect(todo).toContain("closed [#1]");
     expect(todo).toContain("closed [#14]");
     expect(todo).toContain("closed [#17]");
@@ -158,5 +159,6 @@ describe("TODO hierarchy consistency", () => {
     expect(todo).toContain("closed\n[#26]");
     expect(todo).toContain("closed\n[#27]");
     expect(todo).toContain("closed\n[#28]");
+    expect(todo).toContain("closed [#29]");
   });
 });
