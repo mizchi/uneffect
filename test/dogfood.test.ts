@@ -24,6 +24,22 @@ function telemetryRoutingFixture() {
 }
 
 describe("Uneffect dogfood", () => {
+  it("retains the dynamic lexical owner of a continue leaving a catch", () => {
+    const fileName = "src/environment.ts";
+    const source = readFileSync(fileName, "utf8");
+    const result = analyzeAsyncSafety(fileName, source);
+    expect(result.controlTransferOwners).toContainEqual(expect.objectContaining({
+      owner: "readPackageManifest",
+      kind: "for-of",
+      iterationEvidence: "dynamic",
+      transfers: ["continue"],
+    }));
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({
+      functionName: "readPackageManifest",
+      kind: "unsupported-control-transfer",
+    }));
+  });
+
   it("lowers a bounded outer retry only after loop-scoped async cleanup", () => {
     const fileName = "examples/dogfood/target-aware-retry-cleanup.ts";
     const source = readFileSync(fileName, "utf8");

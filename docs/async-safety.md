@@ -666,8 +666,18 @@ the natural post-loop continuation. A `break` uses a distinct cleanup path and
 enters the first post-loop modeled await without making an ordinary iteration
 exit early. The generated Quint models prove terminal disposal; stale-generation
 and transfer-cleanup-skip fault injections are rejected. Unknown/cross or
-non-loop labels, non-canonical or larger loops, intervening statements, and
-nested ownership still emit `unsupported-control-transfer` and fail closed.
+non-loop labels and unsupported nested ownership still emit
+`unsupported-control-transfer` and fail closed. In addition, a resource-free
+dynamic `for`, `for...of`, `for...in`, `while`, or `do...while` may consume a
+lexically owned `continue` leaving a direct modeled `try`. Because its
+cardinality is unknown, generated Quint nondeterministically repeats the loop
+entry or exits to the lexical continuation. This preserves the control target;
+it is not evidence of termination, fairness, or a bounded iteration count.
+Any `using` or `await using` within such a dynamic loop keeps the transfer
+unsupported because resource-generation ownership needs a stronger model.
+The focused development-host benchmark for analysis plus Quint generation
+measured 149.96 ms mean over 20 samples. This includes fresh TypeScript parsing
+and model generation and is a regression baseline, not a throughput guarantee.
 Awaited handler loops additionally receive explicit repeat and exit states, so
 the control graph covers arbitrary finite repetition of their awaited chains.
 Lexical `using` and `await using` declarations in those loops are handler

@@ -46,17 +46,20 @@ is the active reusable-analysis issue.
 There are 12 open implementation Issues: one proof-boundary Issue in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
 Issues in Phase 3, and one proof-consumer Issue in Phase 4. The additive backlog
-is estimated at 51–100 engineer-weeks, while the deferred Phase 1 breadth is 2–4
+is estimated at 50–99 engineer-weeks, while the deferred Phase 1 breadth is 2–4
 engineer-weeks. Use `docs/remaining-work-estimate.md` for scope cuts and
 uncertainty; use `docs/feature-matrix.md` for the exact supported/unsupported
 user-visible boundary. Completed detail, including the closed Promise/resource
 work in #9, remains in the historical ledger and `docs/implementation-status.md`.
 General CFG and escaping-alias fixed points remain outside #9 and are owned by #23 and #24.
 
-P2.1 is complete for its direct affine ranking-loop seed. The immediate
-implementable unit is now #23/P2.2: consume one target-aware outer-loop
-`continue` after a modeled handler without treating it as normal completion.
-The 51–100 week figure is the additive whole-backlog inventory, not the estimate
+P2.1 is complete for its direct affine ranking-loop seed. P2.2 now consumes
+resource-free dynamic outer-loop `continue` completions by lexical owner and
+models their cardinality as a nondeterministic repeat-or-exit choice. Dynamic
+resource-bearing loops remain unsupported. The immediate implementable unit is
+now #23/P2.3: lower one application-backed arbitrary handler join through the
+shared fixed-point representation with an explicit proof budget.
+The 50–99 week figure is the additive whole-backlog inventory, not the estimate
 for a first useful release.
 
 ## Immediate execution queue
@@ -67,7 +70,7 @@ for several remaining domains.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Consume one lexically owned outer-loop `continue` through a modeled catch while preserving rejection/cleanup; retain unresolved owners as `unknown`. |
+| 1 | [#23](https://github.com/mizchi/uneffect/issues/23) | Lower one application-backed arbitrary handler join through the reusable CFG worklist; preserve completion kinds and retain budget exhaustion as `unknown`. |
 
 The current planning cut is intentionally narrower than the complete research
 backlog:
@@ -75,9 +78,9 @@ backlog:
 | Delivery cut | Included Issues | Remaining estimate | What it establishes |
 | --- | --- | ---: | --- |
 | Proof-boundary MVP | #20 plus the two bounded #18 seeds | Completed | Local evidence survives one supported project boundary and one exact async module dependency. |
-| General analysis foundation | #23, the first executable slices of #24 and #8 | 9–18 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
+| General analysis foundation | #23, the first executable slices of #24 and #8 | 8–17 additional engineer-weeks | CFG, alias, and frontend facts can be reused instead of adding shape-specific exceptions. |
 | Selected product line | Choose #2/#5 for temporal/Node Lease or #4/#6 for generated tests/numeric code | 11–27 additional engineer-weeks after Phase 1 | One coherent application domain becomes materially useful; this is a choice, not a requirement to do both. |
-| Entire open research backlog | All 12 open Issues | 51–100 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
+| Entire open research backlog | All 12 open Issues | 50–99 engineer-weeks | Includes broad host/React semantics, evidence research, and proof-gated optimization. |
 
 These are engineering-effort ranges, not calendar promises. `effort:XL` Issues
 #6, #10, #13, #16, and #24 must be split into bounded child Issues before they
@@ -169,6 +172,12 @@ realm identity closed [#20](https://github.com/mizchi/uneffect/issues/20).
   downgrades a structural success to `unknown` on solver failure, while modified
   summaries and ranking metadata are refuted. Telemetry-drain dogfood consumes
   this stronger API; arbitrary CFG lowering remains #23.
+- [x] Retain the lexical owner of a resource-free dynamic `for`, `for...of`,
+  `for...in`, `while`, or `do...while` `continue` leaving a modeled catch.
+  Unified Quint lowering preserves rejection routing and represents unknown
+  cardinality by nondeterministic repeat-or-exit actions. Loops containing
+  `using`/`await using`, unresolved labels, and resource-generation joins remain
+  unsupported rather than inheriting this abstraction.
 
 An item is complete only when its code, regression tests, and relevant English
 documentation are all updated.

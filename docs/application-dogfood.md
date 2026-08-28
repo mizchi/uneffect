@@ -304,12 +304,13 @@ obligation `unknown` as an unsupported coupled recurrence.
 The example deliberately does not model the network send itself, so it is not
 evidence that a Datadog client or host I/O is bounded.
 
-The repository-wide `just dogfood` run on 2026-08-28 still exited nonzero with
-seven existing `async/unsupported-control-transfer` diagnostics for `continue`
-statements leaving modeled catch handlers in outer loops. Its `no-unknown`
-assurance assessment passed as `assumed` (3,698 summaries, 4,294 reviewed
-assumption occurrences, 73 files), but diagnostics correctly prevent the gate
-from being reported green. This is direct evidence for #23's next value/owner
-CFG slice: target-aware outer-loop transfers must be consumed by their lexical
-owner before self-dogfood can pass. The new refinement artifact does not mask
-or discharge those separate Promise/resource CFG blockers.
+The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
+the lexical owner of resource-free dynamic outer-loop `continue` completions.
+The core CLI reports no diagnostics and the `no-unknown` assessment passes as
+`assumed` (3,718 summaries, 4,310 reviewed assumption occurrences, 73 files).
+This closes the seven previously observed
+`async/unsupported-control-transfer` diagnostics with one reusable owner rule.
+Unknown loop cardinality is represented in generated Quint by a
+nondeterministic repeat-or-exit choice; this is not a termination or fairness
+proof. Dynamic loops containing `using`/`await using`, unresolved labels, and
+resource-generation joins remain explicit unsupported cases.

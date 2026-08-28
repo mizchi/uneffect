@@ -2737,6 +2737,32 @@ describe("async error and explicit resource safety", () => {
     expect(run(stale, 32).status).not.toBe(0);
   }, 20_000);
 
+  it("models a resource-free dynamic outer continue as nondeterministic repeat or exit", () => {
+    const result = analyzeAsyncSafety("dynamic-outer-continue.ts", `
+      async function run(items: string[]) {
+        for (const item of items) {
+          try {
+            await Promise.resolve(item).then(value => { throw new Error(value) })
+          } catch (error) {
+            continue
+          }
+        }
+      }
+    `);
+    expect(result.controlTransferOwners).toEqual([
+      expect.objectContaining({
+        owner: "run", kind: "for-of", iterationEvidence: "dynamic",
+        transfers: ["continue"],
+      }),
+    ]);
+    expect(result.diagnostics).not.toContainEqual(expect.objectContaining({ kind: "unsupported-control-transfer" }));
+    const quint = generateUnifiedAsyncQuint("dynamic_outer_continue", result, "run");
+    expect(quint).toContain("action continue_run_loop_");
+    expect(quint).toContain("_repeat");
+    expect(quint).toContain("_exit");
+    expect(run(quint, 24).status).toBe(0);
+  }, 10_000);
+
   it("keeps conditional resource generations distinct across bounded continue and break", () => {
     const fileName = "examples/dogfood/conditional-loop-resource-generations.ts";
     const source = readFileSync(fileName, "utf8");

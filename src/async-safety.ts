@@ -188,9 +188,10 @@ export interface AsyncControlTransferOwner {
   owner: string;
   regionId: string;
   label?: string;
-  kind: "for";
+  kind: AsyncControlLoop["kind"];
   transfers: LoopTransferKind[];
-  iterations: number;
+  iterationEvidence: "exact" | "dynamic";
+  iterations?: number;
   span: { start: number; end: number };
   bodySpan: { start: number; end: number };
 }
@@ -1998,33 +1999,53 @@ export function analyzeAsyncSafetyInProgram(program: ts.Program, source: ts.Sour
     tryNode: ts.TryStatement,
   ): AsyncControlTransferOwner | undefined => {
     if (!target) return undefined;
+    const containsUsing = (node: ts.Node): boolean => {
+      let found = false;
+      const scan = (current: ts.Node): void => {
+        if (found || (current !== node && ts.isFunctionLike(current))) return;
+        if (ts.isVariableStatement(current) && isUsingStatement(current)) {
+          found = true;
+          return;
+        }
+        ts.forEachChild(current, scan);
+      };
+      scan(node);
+      return found;
+    };
     for (let current: ts.Node | undefined = statement.parent; current && !ts.isFunctionLike(current); current = current.parent) {
-      const isLoop = ts.isForStatement(current) || ts.isWhileStatement(current) || ts.isDoStatement(current)
-        || ts.isForInStatement(current) || ts.isForOfStatement(current);
-      if (!isLoop) continue;
-      const labeled = ts.isLabeledStatement(current.parent) && current.parent.statement === current ? current.parent : undefined;
+      if (!(ts.isForStatement(current) || ts.isWhileStatement(current) || ts.isDoStatement(current)
+        || ts.isForInStatement(current) || ts.isForOfStatement(current))) continue;
+      const loop = current;
+      const labeled = ts.isLabeledStatement(loop.parent) && loop.parent.statement === loop ? loop.parent : undefined;
       const owns = target.kind === "nearest-loop" || labeled?.label.text === target.label;
       if (!owns) continue;
-      if (!ts.isForStatement(current) || !ts.isBlock(current.statement)) return undefined;
-      const tryIndex = current.statement.statements.indexOf(tryNode);
-      const prefix = current.statement.statements.slice(0, tryIndex);
+      if (!ts.isBlock(loop.statement)) return undefined;
+      const tryIndex = loop.statement.statements.indexOf(tryNode);
+      if (tryIndex < 0) return undefined;
+      const prefix = loop.statement.statements.slice(0, tryIndex);
       const conditionalScopes = prefix.filter(isBoundedConditionalResourceScope);
-      if (tryIndex !== current.statement.statements.length - 1
-        || conditionalScopes.length > 1
-        || !prefix.every((statement) => isUsingStatement(statement) || isBoundedConditionalResourceScope(statement))) return undefined;
-      const iterations = boundedForIterations(current);
-      if (!iterations) return undefined;
-      const spanNode = labeled ?? current;
+      const iterations = ts.isForStatement(loop) ? boundedForIterations(loop) : undefined;
+      if (iterations) {
+        if (tryIndex !== loop.statement.statements.length - 1
+          || conditionalScopes.length > 1
+          || !prefix.every((statement) => isUsingStatement(statement) || isBoundedConditionalResourceScope(statement))) return undefined;
+      } else if (containsUsing(loop.statement)) return undefined;
+      const kind: AsyncControlLoop["kind"] = ts.isWhileStatement(loop) ? "while"
+        : ts.isForStatement(loop) ? "for"
+          : ts.isForInStatement(loop) ? "for-in"
+            : ts.isForOfStatement(loop) ? "for-of" : "do-while";
+      const spanNode = labeled ?? loop;
       return {
-        id: `${owner}@loop:${current.getStart(source)}`,
+        id: `${owner}@loop:${loop.getStart(source)}`,
         owner,
         regionId,
         ...(labeled ? { label: labeled.label.text } : {}),
-        kind: "for",
+        kind,
         transfers: [completion],
-        iterations,
+        iterationEvidence: iterations ? "exact" : "dynamic",
+        ...(iterations ? { iterations } : {}),
         span: { start: spanNode.getStart(source), end: spanNode.getEnd() },
-        bodySpan: { start: current.statement.getStart(source), end: current.statement.getEnd() },
+        bodySpan: { start: loop.statement.getStart(source), end: loop.statement.getEnd() },
       };
     }
     return undefined;
@@ -2836,19 +2857,23 @@ export function generateUnifiedAsyncQuint(
       emitDisposal(disposalIndex, current, next, `_continue_${transferName}`, { failureNext: cleanupPc });
     });
     const iteration = `loop_iteration_${safe(transferOwner.id)}`;
+    const repeats = transferOwner.iterations === undefined
+      ? [] : [`${iteration} < ${transferOwner.iterations - 1}`];
+    const exits = transferOwner.iterations === undefined
+      ? [] : [`${iteration} >= ${transferOwner.iterations - 1}`];
     emit(`continue_${transferName}_repeat`, [
       `pc == ${decisionPc}`,
-      `${iteration} < ${transferOwner.iterations - 1}`,
+      ...repeats,
       "completion == 0",
     ], new Map([
       ["pc", String(entryPc)],
-      [iteration, `${iteration} + 1`],
+      ...(transferOwner.iterations === undefined ? [] : [[iteration, `${iteration} + 1`] as const]),
     ]));
-    if (options.reacquireBeforeLoopCleanup) for (const disposalIndex of disposalIndexes) {
+    if (options.reacquireBeforeLoopCleanup && transferOwner.iterations !== undefined) for (const disposalIndex of disposalIndexes) {
       const resourceIndex = resourceIndexForDisposal(disposalIndex);
       emit(`continue_${transferName}_reacquire_before_cleanup_${labels[resourceIndex]}`, [
         `pc == ${decisionPc}`,
-        `${iteration} < ${transferOwner.iterations - 1}`,
+        ...repeats,
         `acquired_${resourceIndex}`,
       ], new Map([
         ["pc", String(entryPc)],
@@ -2859,7 +2884,7 @@ export function generateUnifiedAsyncQuint(
     }
     emit(`continue_${transferName}_exit`, [
       `pc == ${decisionPc}`,
-      `${iteration} >= ${transferOwner.iterations - 1}`,
+      ...exits,
       "completion == 0",
     ], new Map([["pc", String(continuationPc(transferOwner.span.end))]]));
     if (breakCleanupPc !== undefined && breakDecisionPc !== undefined) {
@@ -3284,6 +3309,7 @@ export function generateUnifiedAsyncQuint(
     `(not(acquired_${laterIndex}) or not(acquired_${earlierIndex}) or (disposed_${earlierIndex} and disposed_generation_${earlierIndex} == generation_${earlierIndex}))`,
   ).join(" and ") || "true";
   const loopGenerationSafety = transferLayouts.flatMap(({ transferOwner, disposalIndexes }) => {
+    if (transferOwner.iterations === undefined) return [];
     const iteration = `loop_iteration_${safe(transferOwner.id)}`;
     return disposalIndexes.map((disposalIndex) => {
       const resourceIndex = resourceIndexForDisposal(disposalIndex);

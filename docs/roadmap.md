@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 51–100 engineer-weeks; this is implementation volume, not a calendar
+estimate is 50–99 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -105,8 +105,10 @@ explicit conservative boundaries rather than untracked support.
    replaces the bounded path walker with explicit fixed points and proof budgets
    while preserving completion kinds and fail-closed non-convergence. The first
    affine ranking-loop seed now has independent Z3 base/step/ranking validation.
-   Target-aware outer-loop transfers are the next active slice because they are
-   the remaining self-dogfood CFG blocker.
+   Resource-free dynamic outer-loop `continue` ownership is also retained and
+   lowered as nondeterministic repeat-or-exit. The next slice is one
+   application-backed arbitrary handler join through the reusable worklist;
+   dynamic resource-bearing loops remain fail-closed.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
    temporal reasoning.

@@ -26,10 +26,10 @@ not a suitable single implementation branch.
 | Phase | Issues | Remaining effort | Confidence |
 | --- | --- | ---: | --- |
 | 1 — Proof boundaries | #18 | 2–4 engineer-weeks | Medium |
-| 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 19–37 engineer-weeks | Low–medium |
+| 2 — Specification expressiveness | #23, #2, #5, #4, #6 | 18–36 engineer-weeks | Low–medium |
 | 3 — Production integration | #24, #8, #10, #7, #16 | 24–47 engineer-weeks | Low |
 | 4 — Proof consumers | #13 | 6–12 engineer-weeks | Low |
-| **Total additive effort** | 12 open Issues | **51–100 engineer-weeks** | Low |
+| **Total additive effort** | 12 open Issues | **50–99 engineer-weeks** | Low |
 
 The total is deliberately additive and must not be read as calendar duration or
 as the cost of a useful first release. Some Phase 2/3 research can run
@@ -45,7 +45,7 @@ There are three useful planning numbers:
   example, Node Lease prioritizes #23, #2, and #5; numeric/SHA-256 work
   prioritizes #23, the first #24 alias slice, and #6. These alternatives should
   not be added together unless both products are required.
-- **All currently requested work: 51–100 engineer-weeks.** This includes
+- **All currently requested work: 50–99 engineer-weeks.** This includes
   production integration, broad React/event-loop semantics, native parity, and
   proof-consuming optimization. It is a multi-phase research backlog.
 
@@ -57,7 +57,7 @@ commitment to implement every row:
 | Decision point | Include | Exclude for this cut | Estimate | Exit decision |
 | --- | --- | --- | ---: | --- |
 | A — proof-boundary MVP | #20 plus synchronous-ring and direct cross-project TLA seeds | General CFG, aliases, broad host/framework semantics | Completed; 2–4 weeks of broader #18 work remains deferred | Application survey found no real TLA candidate; retain the narrow boundary and move to the reusable CFG core. |
-| B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 9–18 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
+| B — reusable analyzer core | #23; first bounded child slices of #24 and #8 | General dynamic dispatch, complete Corsa parity, specialized products | 8–17 additional weeks | Confirm that new domains use shared CFG/alias/frontend facts rather than shape-specific walkers. |
 | C1 — temporal/Node Lease product | #2 and #5, consuming the core where needed | Property generators and complete SHA-256 | 7–14 weeks for these two Issues; roughly 10–20 weeks after Phase 1 when #23 is included | A realistic lease model checks, decodes, and replays a counterexample across supported backends. |
 | C2 — generated-test/numeric product | #4 and #6, consuming the core where needed | General temporal collections and broad React/event-loop work | 9–17 weeks for #4/#6; roughly 13–26 weeks after Phase 1 when #23 and one bounded #24 alias slice are included | Refinement-preserving shrinking works and a complete SHA-256 case is either verified or reports every proof gap. |
 | D — production breadth | Selected #7/#10/#16 plus remaining #8/#24 | Optimizer transformations | 18–35 weeks before overlap and re-estimation | Choose only the host/framework surfaces justified by dogfood evidence. |
@@ -65,7 +65,7 @@ commitment to implement every row:
 
 C1 and C2 are alternatives unless both product outcomes are required. D is not
 a single release: #10 and #16 are separate host/framework product bets. The
-51–100 week total remains additive and intentionally ignores speculative
+50–99 week total remains additive and intentionally ignores speculative
 parallel speed-up.
 
 ## Executable work packages
@@ -82,7 +82,7 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | P1.3 synchronous cycle seed | #18 | Completed | under 1 week actual | A synchronous side-effect-only simple ring has executable DFS ordering evidence; runtime-binding, general-shape, and async cycles stay `unknown`. |
 | P1.4 cross-project TLA seed | #18 | Completed | under 1 week actual | One exact direct child source/declaration with one straight-line TLA composes; conditional/looping await and await-then-throw stay `unknown`. |
 | P2.1 CFG fixed-point seed | #23 | Completed | under 1 week actual | The direct ranking-loop throw/normal join converges under a named budget and its summary receives independent Z3 base/step/ranking validation; unaligned recurrence stays `unknown`. |
-| P2.2 target-aware outer-loop transfer | #23 | Active next slice | 1–2 weeks | One `continue` leaving a modeled catch is consumed by its lexical outer loop without bypassing rejection or cleanup; an unresolved owner stays `unknown`. |
+| P2.2 target-aware outer-loop transfer | #23 | Completed | under 1 week actual | Resource-free dynamic outer-loop `continue` is consumed by its lexical owner; unresolved labels and resource-bearing dynamic loops stay `unknown`. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
 P1.2a through P1.4 are complete. P2.1 is active next because general CFG joins
@@ -94,8 +94,10 @@ P2.1 is complete for its direct affine seed: one normal/typed-throw catch join
 emits a strict budgeted artifact, the reusable worklist carries payload,
 snapshot, phi, and recurrence-certificate facts through its back-edge, and an
 optional Z3 pass independently proves base, per-state inductive step, and
-ranking obligations. P2.2 now follows the application evidence: seven existing
-self-dogfood diagnostics require target-aware outer-loop transfer ownership.
+ranking obligations. P2.2 applied one lexical-owner rule to all seven prior
+self-dogfood diagnostics. Generated Quint represents dynamic cardinality by
+nondeterministic repeat or exit, which preserves routing but does not establish
+termination or fairness.
 
 ## Dependency-critical order
 
@@ -123,7 +125,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #23 general refinement CFG | L | 3–6 weeks total remaining | One target-aware outer-loop `continue` through a modeled catch | Arbitrary joins, target ownership, widening, and explicit proof budgets |
+| 1 | #23 general refinement CFG | L | 2–5 weeks total remaining | One application-backed arbitrary handler join through the reusable worklist | Arbitrary joins, recurrence widening, and explicit proof budgets |
 | 2 | #18 module initialization | M | 2–4 weeks | Select one wider family only after CFG or application evidence | Async evaluation joins, host packages, and dynamic imports |
 | 3 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
 | 4 | #5 collection temporal state/TLC | L | 3–6 weeks | Direct finite node-indexed lease state | Collection semantics and external trace interoperability |
@@ -141,7 +143,7 @@ be added to the owning Issue and reflected here before implementation begins.
 1. **Usable async module proof boundary:** completed for one direct exact
    cross-project straight-line TLA dependency. The real-application survey found
    no positive candidate, so do not generalize speculatively.
-2. **General analysis foundation (9–18 additional weeks):** continue with #23,
+2. **General analysis foundation (8–17 additional weeks):** continue with #23,
    #24's first alias slices, and #8's fact parity before widening specialized
    models. This reduces repeated shape-specific lowering.
 3. **Specification breadth (remaining Phase 2):** select #2/#5 for temporal and
@@ -167,30 +169,30 @@ separates committed `main` from worktree progress.
 | Completed sub-slice | P2.1c direct expression-value join | under 1 engineer-week actual | Throw-specialized predecessor environments produce a correlated phi snapshot in the reusable worklist. |
 | Completed sub-slice | P2.1d1 recurrence-certificate convergence | under 1 engineer-week actual | The worklist carries and stabilizes the affine ranking counter, transformer, and closed-form summary; coupled/self-amplifying recurrences stay `unknown`. |
 | Completed sub-slice | P2.1d2 independent recurrence validation | under 1 engineer-week actual | Z3 proves base, per-state inductive step, and ranking obligations; summary/ranking faults refute and solver failure is `unknown`. |
-| Current slice | P2.2 target-aware owner consumption | 1–2 engineer-weeks | Remove one real outer-loop `continue` dogfood diagnostic with lexical owner evidence, preserving an unresolved-owner negative control. |
-| First useful checkpoint | Finish P2.2 and rerun self-dogfood | roughly 1–2 engineer-weeks | Re-estimate whether the remaining six diagnostics share the same reusable owner rule before entering alias or product breadth. |
+| Completed sub-slice | P2.2 target-aware owner consumption | under 1 engineer-week actual | One lexical rule removed all seven real resource-free outer-loop `continue` diagnostics while preserving unresolved-label and dynamic-resource negative controls. |
+| Current slice | P2.3 arbitrary handler join seed | 1–2 engineer-weeks | Lower one application-backed join through the reusable CFG worklist with an explicit budget and a non-convergence or unsupported-shape control. |
 
 P1.2a establishes exact embedded TypeScript span identity only. A semantic
 mapping beyond that relation is new scope and must be estimated separately
 rather than silently absorbed.
 
-The #23 issue-level estimate is now 3–6 weeks after completing P2.1. It contains
-the current 1–2 week P2.2 slice, so those numbers must not be added. P2.2 begins
-with one real dogfood owner shape before deciding whether all seven diagnostics
-share a sound reusable rule.
+The #23 issue-level estimate is now 2–5 weeks after completing P2.2. P2.2 used
+one sound owner rule for all seven observed sites; that result narrows the lower
+bound by one week but does not reduce the uncertainty around arbitrary joins or
+general recurrence widening.
 
 ## Backlog interpretation
 
-- **Next implementable result:** P2.2 in #23, estimated at 1–2 engineer-weeks.
+- **Next implementable result:** P2.3 in #23, estimated at 1–2 engineer-weeks.
 - **Next foundation checkpoint:** finish and re-estimate #23, then activate a
   bounded #24 alias slice and a bounded #8 native-fact slice; the three-Issue
-  foundation is 9–18 engineer-weeks in total, including #23.
+  foundation is 8–17 engineer-weeks in total, including #23.
 - **Next product choice:** choose either #2/#5 for Node Lease and temporal state,
   or #4/#6 for generated tests and numeric verification. The two paths are not
   both required for an initial useful release.
 - **Deferred breadth:** #18, #7, #10, #16, and #13 remain queued until application
   evidence or their dependencies justify a bounded slice.
-- **Entire open backlog:** 51–100 engineer-weeks. This is an additive research
+- **Entire open backlog:** 50–99 engineer-weeks. This is an additive research
   inventory, not a release estimate and not a claim that all work should ship.
 
 ## Re-estimation policy

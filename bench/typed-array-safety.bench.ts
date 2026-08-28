@@ -49,6 +49,17 @@ const sequentialDecisionCleanupSource = readFileSync(new URL("../examples/dogfoo
 const nonUniformReturnCleanupSource = readFileSync(new URL("../examples/dogfood/nonuniform-return-cleanup.ts", import.meta.url), "utf8");
 const nonUniformThrowCleanupSource = readFileSync(new URL("../examples/dogfood/nonuniform-throw-cleanup.ts", import.meta.url), "utf8");
 const conditionalLoopResourceGenerationsSource = readFileSync(new URL("../examples/dogfood/conditional-loop-resource-generations.ts", import.meta.url), "utf8");
+const dynamicOuterContinueSource = `
+  async function deliver(items: string[]) {
+    for (const item of items) {
+      try {
+        await Promise.resolve(item).then(value => { throw new Error(value) })
+      } catch {
+        continue
+      }
+    }
+  }
+`;
 const importedRuntimeRefinementFile = "examples/dogfood/imported-runtime-refinement.ts";
 const importedTelemetryRuntimeFile = "examples/dogfood/imported-telemetry-runtime.ts";
 const importedRuntimeRefinementSource = readFileSync(importedRuntimeRefinementFile, "utf8");
@@ -662,6 +673,11 @@ describe("typed-array static verification", () => {
   bench("lower conditional resource generations across a bounded outer loop", () => {
     const result = analyzeAsyncSafety("conditional-loop-resource-generations.ts", conditionalLoopResourceGenerationsSource);
     generateUnifiedAsyncQuint("conditional_loop_resource_generations", result, "deliverConditionalGenerations");
+  }, { time: 500, iterations: 20 });
+
+  bench("lower a resource-free dynamic outer continue", () => {
+    const result = analyzeAsyncSafety("dynamic-outer-continue.ts", dynamicOuterContinueSource);
+    generateUnifiedAsyncQuint("dynamic_outer_continue", result, "deliver");
   }, { time: 500, iterations: 20 });
 
   bench("parse, lint, and generate flattened Node Lease Quint", () => {

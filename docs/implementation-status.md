@@ -357,8 +357,13 @@ same property is proved for arbitrary TypeScript.
   disposal. Continue advances the resource generation; break reaches the first
   post-loop await through a distinct cleanup edge. Quint tracks acquisition
   generations and rejects stale or skipped transfer cleanup. Other outer
-  transfers remain visible in `completionPaths`, emit
-  `unsupported-control-transfer`, and make unified lowering refuse the model.
+  A resource-free dynamic `for`, `for...of`, `for...in`, `while`, or
+  `do...while` can also retain a lexically owned `continue`; unified Quint
+  lowers unknown cardinality as nondeterministic repeat-or-exit. This preserves
+  routing but proves neither termination nor fairness. Resource-bearing dynamic
+  loops, unresolved labels, and unsupported nested ownership remain visible in
+  `completionPaths`, emit `unsupported-control-transfer`, and make unified
+  lowering refuse the model.
 - A function-scoped mixed-disposal acceptance model routes one caught awaited
   rejection through concrete catch and mandatory finally statements, then
   disposes an async resource before an earlier sync resource. Quint checks an
