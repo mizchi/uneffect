@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
@@ -37,8 +37,8 @@ describe("ESM module initialization order IR", () => {
       });
       expect(result.modules.map((item) => item.fileName)).toEqual([leaf, middle, entry]);
       expect(result.constraints).toEqual(expect.arrayContaining([
-        { before: `${leaf}#complete`, after: `${middle}#start`, reason: "static-dependency-completes" },
-        { before: `${middle}#complete`, after: `${entry}#start`, reason: "static-dependency-completes" },
+        expect.objectContaining({ before: `${leaf}#complete`, after: `${middle}#start`, reason: "static-dependency-completes" }),
+        expect.objectContaining({ before: `${middle}#complete`, after: `${entry}#start`, reason: "static-dependency-completes" }),
       ]));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
@@ -60,9 +60,9 @@ describe("ESM module initialization order IR", () => {
         alternatives: [`${dependency}#resume:0`, `${dependency}#reject:0`],
         reason: "await-settlement",
       }]);
-      expect(result.constraints).toContainEqual({
+      expect(result.constraints).toContainEqual(expect.objectContaining({
         before: `${dependency}#complete`, after: `${entry}#start`, reason: "static-dependency-completes",
-      });
+      }));
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
@@ -84,13 +84,89 @@ describe("ESM module initialization order IR", () => {
     } finally { rmSync(directory, { recursive: true, force: true }); }
   });
 
+  it("orders a synchronous side-effect-only ESM ring by specification DFS execution", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-sync-cycle-"));
+    try {
+      const left = join(directory, "left.mts"), right = join(directory, "right.mts");
+      const result = analyzeModuleInitializationOrder(program({
+        [left]: 'import "./right.mjs"; console.log("left")',
+        [right]: 'import "./left.mjs"; console.log("right")',
+      }), left);
+
+      expect(result.evidence).toBe("verified");
+      expect(result.unknowns).toEqual([]);
+      expect(result.compiler).toMatchObject({
+        typescriptVersion: ts.version,
+        compilerOptionsDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
+      expect(result.cycleComponents).toEqual([{
+        id: `cycle:${left}`,
+        kind: "synchronous-side-effect-import-ring",
+        root: left,
+        modules: [left, right],
+        executionOrder: [right, left],
+        requests: [
+          expect.objectContaining({ from: left, to: right, semanticRule: "ecma262-inner-module-evaluation-request" }),
+          expect.objectContaining({ from: right, to: left, semanticRule: "ecma262-inner-module-evaluation-revisit" }),
+        ],
+      }]);
+      expect(result.constraints).toContainEqual(expect.objectContaining({
+        before: `${right}#complete`, after: `${left}#start`,
+        reason: "synchronous-cycle-dfs-execution",
+        sourceFile: left,
+        semanticRule: "ecma262-inner-module-evaluation-execute",
+      }));
+      expect(result.constraints.every((constraint) =>
+        constraint.evidence.kind === "program-source"
+        && /^[0-9a-f]{64}$/.test(constraint.evidence.sourceDigest))).toBe(true);
+      expect(JSON.parse(readFileSync("schemas/uneffect-module-order-v1.schema.json", "utf8"))).toMatchObject({
+        properties: {
+          schema: { const: "uneffect-module-order/v1" },
+          cycleComponents: { items: { $ref: "#/$defs/cycleComponent" } },
+        },
+        $defs: {
+          constraint: { required: expect.arrayContaining(["sourceFile", "sourceSpan", "semanticRule", "evidence"]) },
+          sourceEvidence: { properties: { sourceDigest: { $ref: "#/$defs/sha256" } } },
+        },
+      });
+      expect(result.exclusions).toContain("only synchronous side-effect-import simple rings have proof-grade cyclic order");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps binding and asynchronous ESM cycles non-proof-grade", () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-module-unsafe-cycle-"));
+    try {
+      const namedLeft = join(directory, "named-left.mts"), namedRight = join(directory, "named-right.mts");
+      const named = analyzeModuleInitializationOrder(program({
+        [namedLeft]: 'import { right } from "./named-right.mjs"; export const left = right + 1',
+        [namedRight]: 'import { left } from "./named-left.mjs"; export const right = left + 1',
+      }), namedLeft);
+      expect(named.evidence).toBe("unknown");
+      expect(named.cycleComponents).toEqual([]);
+      expect(named.unknowns).toContainEqual(expect.objectContaining({
+        kind: "cycle", detail: expect.stringContaining("runtime bindings"),
+      }));
+
+      const asyncLeft = join(directory, "async-left.mts"), asyncRight = join(directory, "async-right.mts");
+      const asynchronous = analyzeModuleInitializationOrder(program({
+        [asyncLeft]: 'import "./async-right.mjs"; await Promise.resolve(); console.log("left")',
+        [asyncRight]: 'import "./async-left.mjs"; console.log("right")',
+      }), asyncLeft);
+      expect(asynchronous.evidence).toBe("unknown");
+      expect(asynchronous.cycleComponents).toEqual([]);
+      expect(asynchronous.unknowns).toContainEqual(expect.objectContaining({
+        kind: "cycle", detail: expect.stringContaining("top-level await"),
+      }));
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
+
   it("keeps cycles, conditional TLA, dynamic imports, and external initialization non-proof-grade", () => {
     const directory = mkdtempSync(join(tmpdir(), "uneffect-module-unknown-order-"));
     try {
       const left = join(directory, "left.mts"), right = join(directory, "right.mts"), entry = join(directory, "entry.mts");
       const result = analyzeModuleInitializationOrder(program({
-        [left]: 'import "./right.mjs"; export const left = 1',
-        [right]: 'import "./left.mjs"; export const right = 1',
+        [left]: 'import { right } from "./right.mjs"; export const left: number = right + 1',
+        [right]: 'import { left } from "./left.mjs"; export const right: number = left + 1',
         [entry]: `
           import "./left.mjs"
           import "node:path"

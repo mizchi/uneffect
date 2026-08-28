@@ -6,7 +6,7 @@ GitHub Issues and their matching Phase milestones are the source of truth for
 future work. The ordering below reflects dependency and soundness risk, not a
 release date commitment. See `remaining-work-estimate.md` for issue-level effort
 ranges, uncertainty, and recommended delivery checkpoints. The current additive
-estimate is 53–103 engineer-weeks; this is implementation volume, not a calendar
+estimate is 52–102 engineer-weeks; this is implementation volume, not a calendar
 commitment.
 
 ## Phase 1 — Make proof boundaries dependable
@@ -70,9 +70,11 @@ commitment.
    non-proofs. Broader browser/Worker realm work remains in #10 and semantic
    frontend mappings remain in #8.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
-   must extend the current conservative module summaries to exact ESM cycles,
-   top-level await, external packages, and dynamic initialization boundaries.
-   It is the active Phase 1 issue after the #20 handoff.
+   now has one exact synchronous, side-effect-only simple-ring family with
+   source/compiler-bound DFS ordering evidence. It must next add one exact
+   cross-project straight-line top-level-await family. Runtime-binding and
+   general-shape cycles, conditional async joins, external packages, and dynamic
+   initialization remain explicit non-proofs. It is the active Phase 1 issue.
 
 [Reachability, vacuity, and deadlock](https://github.com/mizchi/uneffect/issues/1)
 is complete for the documented bounded, finite-state-complete, inductive,

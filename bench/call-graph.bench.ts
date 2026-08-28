@@ -1,6 +1,7 @@
 import ts from "typescript";
 import { bench, describe } from "vitest";
 import { buildProgramCallGraph } from "../src/call-graph.js";
+import { analyzeModuleInitializationOrder } from "../src/module-initialization.js";
 
 const fileName = "compiler-traversal.ts";
 const sourceText = `
@@ -25,9 +26,36 @@ host.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile)
   ? ts.createSourceFile(fileName, sourceText, languageVersion, true)
   : originalGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile);
 const program = ts.createProgram([fileName], options, host);
+const cycleFiles = Array.from({ length: 4 }, (_, index) => `/bench/module-cycle-${index}.mts`);
+const cycleSources = new Map(cycleFiles.map((name, index) => [
+  name,
+  `import "./module-cycle-${(index + 1) % cycleFiles.length}.mjs"; console.log(${index})`,
+]));
+const cycleHost = ts.createCompilerHost(options);
+const originalCycleGetSourceFile = cycleHost.getSourceFile.bind(cycleHost);
+cycleHost.fileExists = (name) => cycleSources.has(name) || ts.sys.fileExists(name);
+cycleHost.readFile = (name) => cycleSources.get(name) ?? ts.sys.readFile(name);
+cycleHost.directoryExists = (name) => name === "/bench" || ts.sys.directoryExists(name);
+cycleHost.getCurrentDirectory = () => "/bench";
+cycleHost.getSourceFile = (name, languageVersion, onError, shouldCreateNewSourceFile) => {
+  const source = cycleSources.get(name);
+  return source === undefined
+    ? originalCycleGetSourceFile(name, languageVersion, onError, shouldCreateNewSourceFile)
+    : ts.createSourceFile(name, source, languageVersion, true);
+};
+const cycleProgram = ts.createProgram(cycleFiles, options, cycleHost);
 
 describe("reviewed compiler callback timing", () => {
   bench("build a call graph for 32 TypeScript transformer chains", () => {
     buildProgramCallGraph(program);
   });
+});
+
+describe("module initialization order", () => {
+  bench("analyze a warm four-module synchronous side-effect import ring", () => {
+    const result = analyzeModuleInitializationOrder(cycleProgram, cycleFiles[0]!);
+    if (result.evidence !== "verified" || result.cycleComponents[0]?.executionOrder.length !== 4) {
+      throw new Error("synchronous cycle benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

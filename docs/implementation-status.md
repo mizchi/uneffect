@@ -820,9 +820,13 @@ same property is proved for arbitrary TypeScript.
   same extension from a strict `uneffect-registry/v1` JSON configuration.
   Specialized platform operation records are still code-owned rather than
   configurable. A separate opt-in `module-order` artifact now extracts a
-  source-mapped acyclic partial order for dependency completion, straight-line
-  top-level-await resume/reject choices, and unconditional top-level throw.
-  Cycles, conditional TLA, external/dynamic bodies, sibling initiation order,
+  source-mapped partial order for acyclic dependency completion, straight-line
+  top-level-await resume/reject choices, and unconditional top-level throw. It
+  also admits synchronous side-effect-only simple import rings, recording the
+  dependency request, evaluating-module revisit, DFS execution postorder,
+  source digests/spans, and TypeScript/compiler-options identity in a strict
+  published schema. Runtime-binding, self, branching, multi-edge, and async
+  cycles, conditional TLA, external/dynamic bodies, sibling initiation order,
   and decorator ordering remain explicit non-claims.
   Dogfood includes the executable `src/cli.ts` entrypoint.
 - Direct Generator iterator consumers now expose polymorphic

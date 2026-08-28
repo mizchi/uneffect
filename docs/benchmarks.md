@@ -1823,3 +1823,11 @@ excludes Program construction, child validation, filesystem declaration
 comparison, and parent action revalidation. It is a traversal regression
 baseline, not evidence for helper-local guards/control flow, reassigned,
 cyclic, three-level, host-alias, descendant-property, or cross-realm identities.
+
+`call-graph.bench.ts` also includes a warm four-module synchronous
+side-effect-import ring. It measures SCC classification, specification DFS
+execution-order extraction, per-edge SHA-256 evidence, and compiler-options
+digest emission. The fixture fails if the ring stops producing one verified
+four-module cycle component. On the 2026-08-28 development host, 1,492 warm
+samples measured 0.3352 ms mean (0.62% RME); this is a regression observation,
+not a portable latency budget.

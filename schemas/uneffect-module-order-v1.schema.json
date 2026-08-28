@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/schemas/uneffect-module-order-v1.schema.json",
+  "title": "Uneffect module initialization order v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schemaVersion", "entryFile", "compiler", "evidence", "modules", "constraints", "cycleComponents", "unknowns", "claims", "exclusions"],
+  "properties": {
+    "schema": { "const": "uneffect-module-order/v1" },
+    "schemaVersion": { "const": 1 },
+    "entryFile": { "type": "string" },
+    "compiler": {
+      "type": "object", "additionalProperties": false,
+      "required": ["typescriptVersion", "compilerOptionsDigest"],
+      "properties": {
+        "typescriptVersion": { "type": "string" },
+        "compilerOptionsDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "evidence": { "enum": ["verified", "unknown"] },
+    "modules": { "type": "array", "items": { "$ref": "#/$defs/module" } },
+    "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+    "cycleComponents": { "type": "array", "items": { "$ref": "#/$defs/cycleComponent" } },
+    "unknowns": { "type": "array", "items": { "$ref": "#/$defs/unknown" } },
+    "claims": { "type": "array", "items": { "type": "string" }, "minItems": 5, "maxItems": 5 },
+    "exclusions": { "type": "array", "items": { "type": "string" }, "minItems": 3, "maxItems": 3 }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "span": {
+      "type": "object", "additionalProperties": false, "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0 },
+        "end": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sourceEvidence": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "sourceDigest"],
+      "properties": {
+        "kind": { "const": "program-source" },
+        "sourceDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "event": {
+      "type": "object", "additionalProperties": false, "required": ["id", "kind", "span"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "enum": ["start", "suspend", "resume", "reject", "throw", "complete"] },
+        "span": { "$ref": "#/$defs/span" }
+      }
+    },
+    "choice": {
+      "type": "object", "additionalProperties": false, "required": ["after", "alternatives", "reason"],
+      "properties": {
+        "after": { "type": "string" },
+        "alternatives": {
+          "type": "array", "prefixItems": [{ "type": "string" }, { "type": "string" }],
+          "minItems": 2, "maxItems": 2
+        },
+        "reason": { "const": "await-settlement" }
+      }
+    },
+    "module": {
+      "type": "object", "additionalProperties": false,
+      "required": ["fileName", "dependencies", "blockedBy", "events", "choices"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "dependencies": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "blockedBy": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "events": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "choices": { "type": "array", "items": { "$ref": "#/$defs/choice" } }
+      }
+    },
+    "constraint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["before", "after", "reason", "sourceFile", "sourceSpan", "semanticRule", "evidence"],
+      "properties": {
+        "before": { "type": "string" }, "after": { "type": "string" },
+        "reason": { "enum": ["module-sequencing", "static-dependency-completes", "synchronous-cycle-dfs-execution"] },
+        "sourceFile": { "type": "string" }, "sourceSpan": { "$ref": "#/$defs/span" },
+        "semanticRule": { "enum": ["source-order", "ecma262-inner-module-evaluation-request", "ecma262-inner-module-evaluation-execute"] },
+        "evidence": { "$ref": "#/$defs/sourceEvidence" }
+      }
+    },
+    "cycleRequest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["from", "to", "sourceSpan", "semanticRule", "evidence"],
+      "properties": {
+        "from": { "type": "string" }, "to": { "type": "string" },
+        "sourceSpan": { "$ref": "#/$defs/span" },
+        "semanticRule": { "enum": ["ecma262-inner-module-evaluation-request", "ecma262-inner-module-evaluation-revisit"] },
+        "evidence": { "$ref": "#/$defs/sourceEvidence" }
+      }
+    },
+    "cycleComponent": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "kind", "root", "modules", "executionOrder", "requests"],
+      "properties": {
+        "id": { "type": "string" },
+        "kind": { "const": "synchronous-side-effect-import-ring" },
+        "root": { "type": "string" },
+        "modules": { "type": "array", "items": { "type": "string" }, "minItems": 2, "uniqueItems": true },
+        "executionOrder": { "type": "array", "items": { "type": "string" }, "minItems": 2, "uniqueItems": true },
+        "requests": { "type": "array", "items": { "$ref": "#/$defs/cycleRequest" }, "minItems": 2 }
+      }
+    },
+    "unknown": {
+      "type": "object", "additionalProperties": false, "required": ["fileName", "kind", "detail"],
+      "properties": {
+        "fileName": { "type": "string" },
+        "kind": { "enum": ["entry-not-found", "cycle", "external-static-import", "dynamic-import", "conditional-top-level-await", "conditional-top-level-throw", "class-initialization-order", "typescript-error"] },
+        "span": { "$ref": "#/$defs/span" }, "detail": { "type": "string" }
+      }
+    }
+  }
+}

@@ -200,7 +200,7 @@ export type {
   DeclarationTransformValidation, EmbeddedTypeScriptTransform,
 } from "./declaration-transforms.js";
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
-export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
+export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationCycleComponent, ModuleInitializationCycleRequest, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationSourceEvidence, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
 export { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";
 export type { TypeScriptBuildArtifactEvidence, TypeScriptBuildArtifactObservation, TypeScriptCompilerProvenance, TypeScriptProject, TypeScriptProjectProvenance, TypeScriptProjectReference, TypeScriptWorkspace, TypeScriptWorkspaceBlocker } from "./typescript-project.js";
 export { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-report.js";

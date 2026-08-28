@@ -17,7 +17,8 @@ command exits 0. `--require` exits 1 unless extraction is proof-grade. Missing
 files and malformed CLI arguments exit 2.
 
 The current verified fragment is a source-mapped partial order for an acyclic,
-Program-visible static module graph. It represents:
+Program-visible static module graph plus one deliberately narrow synchronous
+cycle family. It represents:
 
 - a `start` and normal `complete` event for each module;
 - static dependency normal completion before importer body start;
@@ -25,7 +26,21 @@ Program-visible static module graph. It represents:
   `resume` or `reject` choice;
 - an unconditional top-level `throw` as terminal, with no normal completion;
 - `blockedBy` on importers whose dependency has no normal-completion event;
+- a simple ring of two or more modules when every runtime edge inside the ring
+  is a side-effect-only import, every member has exactly one runtime dependency,
+  and the component has no top-level await, direct/conditional throw,
+  class/decorator initialization, dynamic import, or external body;
+- the ring's synchronous body execution in DFS postorder, following ECMA-262
+  `InnerModuleEvaluation`: dependency requests are traversed in source order,
+  a request to an already-evaluating ancestor is a no-op, and synchronous
+  `ExecuteModule` occurs while recursion unwinds;
 - TypeScript syntax and semantic errors as non-proof-grade input.
+
+Every constraint records its source file/span, semantic rule, and SHA-256 of
+the exact Program source. The artifact records the TypeScript version and a
+compiler-options digest. A `cycleComponents` entry records the SCC root,
+members, execution order, and every internal request/revisit edge. The strict
+published schema is `schemas/uneffect-module-order-v1.schema.json`.
 
 This is not a total schedule. It proves only the constraints named in
 `claims`. `complete` denotes the normal-completion path; it is not a proof that
@@ -33,10 +48,12 @@ arbitrary JavaScript expressions cannot throw. Host timing is excluded.
 Sibling dependency start order is currently over-approximated rather than
 claimed exactly.
 
-The artifact remains `unknown` when it encounters a static cycle, an external
-module body, a dynamic import, control-dependent top-level await or throw,
-class/decorator initialization, or TypeScript errors. These boundaries remain
-in `unknowns` with source spans and do not get
+The artifact remains `unknown` for named/default/namespace/re-export cycles,
+self-cycles, branching or multi-edge SCCs, every asynchronous cycle, an
+external module body, a dynamic import, control-dependent top-level await or
+throw, class/decorator initialization, or TypeScript errors. Runtime-binding
+cycles are rejected because TDZ observation is outside the current model.
+These boundaries remain in `unknowns` with source spans and do not get
 erased by a module effect declaration or a reviewed capability contract.
 External initialization contracts can justify may-effects, but cannot justify
 evaluation order for code that was not analyzed.
@@ -57,10 +74,16 @@ ordinary effect checking from silently claiming temporal order.
 
 Still unimplemented:
 
-- exact synchronous and top-level-await evaluation inside cycles;
+- synchronous cycles beyond side-effect-import simple rings and every
+  top-level-await cycle;
 - exact sibling-dependency initiation order while another dependency is
   suspended;
 - conditional/dynamic import branches and external package bodies;
 - decorator application ordering in the same event IR;
 - Quint lowering and bounded schedule checking for this artifact;
 - liveness, host scheduling time, and promise settlement guarantees.
+
+The cycle rule follows the current ECMA-262 algorithms for
+[`Evaluate` and `InnerModuleEvaluation`](https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-cyclic-module-records-execute-module).
+This documentation link is normative provenance; Uneffect does not claim that
+its bounded ring fragment implements the full algorithm.
