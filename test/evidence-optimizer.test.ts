@@ -58,14 +58,21 @@ describe("evidence and optimizer obligations", () => {
       expect(JSON.parse(readFileSync("schemas/uneffect-project-workspace-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-project-workspace/v1" } },
         required: expect.arrayContaining(["buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
-        $defs: { refinementComposition: { properties: { links: { items: {
+        $defs: {
+          declarationIntegrity: { properties: { transform: { $ref: "#/$defs/declarationTransformEvidence" } } },
+          declarationTransformEvidence: { properties: {
+            schema: { const: "uneffect-declaration-transform-evidence/v1" },
+            profile: { const: "embedded-typescript/v1" },
+          } },
+          refinementComposition: { properties: { links: { items: {
           required: expect.arrayContaining(["callPath", "helperDepthBudget"]),
           properties: {
             callPath: { type: "array", items: { type: "string" }, minItems: 2 },
             helperDepthBudget: { type: "integer", const: 2 },
             runtimeIdentity: { $ref: "#/$defs/sameRealmGlobalThisIdentity" }, guard: { type: "string" },
           },
-        } } } } },
+        } } } },
+        },
       });
       expect(verified.projects.map((item) => item.project.projectFile)).toEqual([
         join(aDirectory, "tsconfig.json"), join(bDirectory, "tsconfig.json"),

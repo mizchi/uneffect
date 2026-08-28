@@ -43,6 +43,8 @@ npx quint run protocol.qnt
 `--project <tsconfig.json>` (use consumer compiler options and, when no files
 are listed, its `include`/`files` roots; report exact TypeScript package/version
 parity),
+`--declaration-transforms <manifest.json>` (with project-only checking, bind
+generated TypeScript files to exact UTF-16 spans in non-TypeScript sources),
 `--assurance no-unknown|declared|verified` (fail when emitted evidence does not
 meet the selected CI profile; `verified` also requires an empty collected
 assumption ledger), and
@@ -160,8 +162,16 @@ exactly the next call, with the bounded path emitted as `callPath`, the limit as
 `helperDepthBudget: 2`, and any child guard retained. A third,
 reassigned/cyclic helper, helper-local guard or extra work,
 guarded wrappers with additional work, collection-valued updates, and
-transformed declaration cases are not composed. Other proof domains are not
-composed.
+unconfigured or non-identity declaration transforms are not composed. A
+configured `embedded-typescript/v1` mapping may compose only when the complete
+source/output SHA-256 digests, exact TypeScript compiler version, and selected
+UTF-16 source span all match. Its `declarationIntegrity.transform` evidence
+records the transform name/version and exact files/span. Multiple transformed
+inputs contributing to one declaration fail closed. This proves only that the
+generated `.ts` text is an exact embedded source span; surrounding host-language
+and runtime semantics are not checked. The strict manifest schema is published
+as `schemas/uneffect-declaration-transforms-v1.schema.json`. Other proof domains
+are not composed.
 
 An opt-in `runtime adapter@version = globalThis` refinement annotation permits
 the same TypeChecker-resolved builtin global object to cross the scalar link.

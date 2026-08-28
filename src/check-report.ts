@@ -6,7 +6,7 @@ import { reportDiagnostic, type ReportedDiagnostic } from "./diagnostics.js";
 import type { TypeScriptProjectProvenance } from "./typescript-project.js";
 import type { AssuranceProfile, AssuranceStatus } from "./assurance.js";
 import type { TypeScriptWorkspace } from "./typescript-project.js";
-import type { WorkspaceEffectComposition } from "./workspace-effects.js";
+import type { DeclarationOutputIntegrity, WorkspaceEffectComposition } from "./workspace-effects.js";
 import type { WorkspaceRefinementComposition, WorkspaceRefinementLink } from "./workspace-refinements.js";
 import type { BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { EffectUnknownReason } from "./effects.js";
@@ -77,7 +77,7 @@ export interface CheckWorkspaceJsonReport {
         { kind: "export"; root: string; exportName: string; identity: string }
         | { kind: "ambient"; root: "globalThis"; identity: "ecmascript:realm.globalThis" }
       >;
-      declarationIntegrity: { status: "verified" | "missing" | "mismatch" | "error"; fileName: string; expectedDigest?: string; actualDigest?: string; message?: string };
+      declarationIntegrity: DeclarationOutputIntegrity;
     }>;
     blockers: WorkspaceCheckBlocker[];
   };
@@ -125,7 +125,7 @@ export function createCheckWorkspaceJsonReport(
   workspace: TypeScriptWorkspace,
   projects: CheckJsonReport[],
   profile?: AssuranceProfile,
-  options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity } = {},
+  options: { requireFreshBuildArtifacts?: boolean; outputIntegrity?: BuildOutputIntegrity; additionalBlockers?: readonly WorkspaceCheckBlocker[] } = {},
   effectComposition?: WorkspaceEffectComposition,
   refinementComposition?: WorkspaceRefinementComposition,
 ): CheckWorkspaceJsonReport {
@@ -133,6 +133,7 @@ export function createCheckWorkspaceJsonReport(
     kind: blocker.kind, classification: blocker.classification, projectFile: blocker.projectFile, message: blocker.message,
     ...(blocker.reference === undefined ? {} : { reference: blocker.reference }),
   }));
+  blockers.push(...(options.additionalBlockers ?? []));
   if (options.requireFreshBuildArtifacts && workspace.buildArtifacts.status !== "fresh") blockers.push({
     kind: "build-artifact", classification: "unknown", projectFile: workspace.rootProjectFile,
     message: workspace.buildArtifacts.status === "stale"
@@ -180,6 +181,7 @@ export function createCheckWorkspaceJsonReport(
         ...((effectComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"] : []),
         ...((refinementComposition?.links.length ?? 0) > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
+        ...([...(effectComposition?.links ?? []), ...(refinementComposition?.links ?? [])].some((link) => link.declarationIntegrity.transform) ? ["every transformed source consumed by cross-project composition is an exact embedded TypeScript span bound to transform and compiler identity"] : []),
         ...(options.requireFreshBuildArtifacts ? ["TypeScript SolutionBuilder reports current composite build artifacts"] : []),
         ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
       ] : [],
@@ -190,6 +192,7 @@ export function createCheckWorkspaceJsonReport(
         ...(options.requireFreshBuildArtifacts ? [] : ["composite build-artifact freshness was observed but not required"]),
         ...(outputIntegrity.status === "verified" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
         "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
+        "embedded TypeScript transform evidence covers only the exact selected source span; surrounding host syntax and runtime semantics are not verified",
         ...new Set(projects.flatMap((project) => project.assurance?.exclusions ?? [])),
       ],
     };

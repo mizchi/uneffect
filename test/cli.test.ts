@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -415,14 +416,21 @@ describe("uneffect command line", () => {
       expect(JSON.parse(readFileSync("schemas/uneffect-workspace-check-v1.schema.json", "utf8"))).toMatchObject({
         properties: { schema: { const: "uneffect-workspace-check/v1" } },
         required: expect.arrayContaining(["rootProjectFile", "references", "buildOrder", "buildArtifacts", "outputIntegrity", "configs", "projects", "effectComposition", "refinementComposition", "blockers", "assurance"]),
-        $defs: { refinementComposition: { properties: { links: { items: {
+        $defs: {
+          declarationIntegrity: { properties: { transform: { $ref: "#/$defs/declarationTransformEvidence" } } },
+          declarationTransformEvidence: { properties: {
+            schema: { const: "uneffect-declaration-transform-evidence/v1" },
+            profile: { const: "embedded-typescript/v1" },
+          } },
+          refinementComposition: { properties: { links: { items: {
           required: expect.arrayContaining(["callPath", "helperDepthBudget"]),
           properties: {
             callPath: { type: "array", items: { type: "string" }, minItems: 2 },
             helperDepthBudget: { type: "integer", const: 2 },
             runtimeIdentity: { $ref: "#/$defs/sameRealmGlobalThisIdentity" }, guard: { type: "string" },
           },
-        } } } } },
+        } } } },
+        },
       });
       const staleArtifacts = capture();
       expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--require-build-artifacts", "--json"], staleArtifacts)).toBe(exitCode.failed);
@@ -701,6 +709,51 @@ describe("uneffect command line", () => {
       });
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }, 30_000);
+
+  it("loads declaration-transform evidence and fails closed when its source drifts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-cli-declaration-transform-"));
+    const project = join(directory, "tsconfig.json");
+    const sourceFile = join(directory, "src", "value.component");
+    const generatedFile = join(directory, "src", "value.ts");
+    const manifestFile = join(directory, "transforms.json");
+    const generated = "/* uneffect: effect none */\nexport function value() { return 1 }\n";
+    const source = `<script lang="ts">\n${generated}</script>\n`;
+    const start = source.indexOf(generated), end = start + generated.length;
+    const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
+    try {
+      mkdirSync(join(directory, "src"), { recursive: true });
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({ name: "typescript", version: ts.version, main: "index.js" }));
+      writeFileSync(sourceFile, source);
+      writeFileSync(generatedFile, generated);
+      writeFileSync(project, JSON.stringify({ compilerOptions: { strict: true, types: [] }, include: ["src/**/*.ts"] }));
+      writeFileSync(manifestFile, JSON.stringify({
+        schema: "uneffect-declaration-transforms/v1",
+        transforms: [{
+          profile: "embedded-typescript/v1", transform: { name: "component-script", version: "1.0.0" },
+          sourceFile: "src/value.component", generatedFile: "src/value.ts", sourceSpan: { start, end },
+          sourceDigest: sha256(source), generatedDigest: sha256(generated), compilerVersion: ts.version,
+        }],
+      }));
+
+      const valid = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], valid)).toBe(exitCode.success);
+      expect(JSON.parse(valid.stdout)).toMatchObject({ outcome: "passed", blockers: [] });
+
+      writeFileSync(sourceFile, source.replace("return 1", "return 2"));
+      const drifted = capture();
+      expect(await runCli(["check", "--project", project, "--infer", "--assurance", "no-unknown", "--declaration-transforms", manifestFile, "--json"], drifted)).toBe(exitCode.failed);
+      expect(JSON.parse(drifted.stdout)).toMatchObject({
+        outcome: "failed",
+        blockers: expect.arrayContaining([expect.objectContaining({ kind: "declaration-transform", classification: "violation", subject: generatedFile })]),
+      });
+
+      const misplaced = capture();
+      expect(await runCli(["check", "--declaration-transforms", manifestFile, generatedFile], misplaced)).toBe(exitCode.usage);
+      expect(misplaced.stderr).toContain("requires --project without positional files");
+    } finally { rmSync(directory, { recursive: true, force: true }); }
+  });
 
   it("reports missing or excess positional arguments per command", async () => {
     const missing = capture();

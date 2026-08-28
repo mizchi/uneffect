@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,118 @@ function futureApi(name: string): FutureApi {
 const files = (entries: Record<string, string>) => entries;
 
 describe("Uneffect end-to-end acceptance roadmap", () => {
+  it("composes a refinement through one exact embedded-TypeScript transform", async () => {
+    const verifyProject = futureApi("verifyUneffectProject");
+    const parseTransforms = futureApi("parseDeclarationTransformManifest");
+    const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-embedded-ts-refinement-"));
+    const root = join(directory, "tsconfig.json");
+    const child = join(directory, "packages", "child");
+    const parent = join(directory, "packages", "parent");
+    const sourceFile = join(child, "counter.component");
+    const generatedFile = join(child, "src", "counter.ts");
+    const hash = (text: string) => createHash("sha256").update(text).digest("hex");
+    try {
+      mkdirSync(join(directory, "node_modules", "typescript"), { recursive: true });
+      mkdirSync(join(child, "src"), { recursive: true });
+      mkdirSync(join(parent, "src"), { recursive: true });
+      writeFileSync(join(directory, "node_modules", "typescript", "package.json"), JSON.stringify({
+        name: "typescript", version: ts.version, main: "index.js",
+      }));
+      writeFileSync(join(directory, "node_modules", "typescript", "index.js"), "module.exports = {}\n");
+      const model = `/* uneffect:
+        state count: int
+        init count = 0
+        action increment: count' = count + 1
+      */`;
+      const childSource = `${model}
+        export interface Runtime { count: number }
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */
+        export function increment(runtime: Runtime) { runtime.count++ }
+      `;
+      const hostSource = `<script lang="ts">\n${childSource}</script>\n`;
+      const start = hostSource.indexOf(childSource), end = start + childSource.length;
+      writeFileSync(sourceFile, hostSource);
+      writeFileSync(generatedFile, childSource);
+      writeFileSync(join(parent, "src", "counter.ts"), `
+        import { increment as incrementChild } from "../../child/src/counter.js"
+        import type { Runtime } from "../../child/src/counter.js"
+        ${model}
+        /* uneffect: refinement counter@1 create */ export function create(initial: Runtime) { return initial }
+        /* uneffect: refinement counter@1 observe */ export function observe(runtime: Runtime) { return runtime }
+        /* uneffect: effect Mutate<typeof runtime.count> */
+        /* uneffect: refinement counter@1 action increment */
+        export function increment(runtime: Runtime) { incrementChild(runtime) }
+      `);
+      const config = (references: unknown[] = []) => ({
+        compilerOptions: {
+          composite: true, declaration: true, emitDeclarationOnly: true,
+          rootDir: "src", outDir: "dist", strict: true,
+          module: "NodeNext", moduleResolution: "NodeNext", types: [],
+        }, include: ["src/**/*.ts"], references,
+      });
+      writeFileSync(join(child, "tsconfig.json"), JSON.stringify(config()));
+      writeFileSync(join(parent, "tsconfig.json"), JSON.stringify(config([{ path: "../child" }])));
+      writeFileSync(root, JSON.stringify({ files: [], references: [{ path: "./packages/parent" }] }));
+      expect(ts.createSolutionBuilder(ts.createSolutionBuilderHost(ts.sys), [root], {}).build()).toBe(ts.ExitStatus.Success);
+      const manifest = parseTransforms({
+        schema: "uneffect-declaration-transforms/v1",
+        transforms: [{
+          profile: "embedded-typescript/v1", transform: { name: "component-script", version: "1.0.0" },
+          sourceFile, generatedFile, sourceSpan: { start, end }, sourceDigest: hash(hostSource),
+          generatedDigest: hash(childSource), compilerVersion: ts.version,
+        }],
+      });
+
+      const result = await verifyProject({
+        projectFile: root, buildArtifacts: "require-fresh", declarationTransforms: manifest,
+      }) as {
+        refinementComposition: { status: string; links: Array<{ declarationIntegrity?: unknown }>; blockers: unknown[] };
+        assurance: { passed: boolean; claims: string[] };
+      };
+      expect(result.refinementComposition).toMatchObject({
+        status: "verified", blockers: [], links: [expect.objectContaining({
+          evidence: "verified",
+          declarationIntegrity: expect.objectContaining({
+            status: "verified",
+            transform: expect.objectContaining({
+              schema: "uneffect-declaration-transform-evidence/v1",
+              profile: "embedded-typescript/v1", sourceFile, generatedFile,
+              sourceSpan: { start, end }, status: "verified",
+            }),
+          }),
+        })],
+      });
+      expect(result.assurance.passed).toBe(true);
+      expect(result.assurance.claims).toContain(
+        "every transformed source consumed by cross-project composition is an exact embedded TypeScript span bound to transform and compiler identity",
+      );
+
+      writeFileSync(sourceFile, hostSource.replace("count: number", "count: string"));
+      const drifted = await verifyProject({
+        projectFile: root, buildArtifacts: "require-fresh", declarationTransforms: manifest,
+      }) as {
+        refinementComposition: { status: string; links: Array<{ declarationIntegrity?: unknown }>; blockers: unknown[] };
+        blockers: Array<{ kind: string; subject?: string; message: string }>;
+        assurance: { passed: boolean };
+      };
+      expect(drifted.refinementComposition).toMatchObject({
+        status: "unknown", links: [expect.objectContaining({
+          evidence: "unknown",
+          declarationIntegrity: expect.objectContaining({ status: "error", message: expect.stringContaining("digest") }),
+        })],
+      });
+      expect(drifted.blockers).toEqual(expect.arrayContaining([expect.objectContaining({
+        kind: "declaration-transform", subject: generatedFile,
+      })]));
+      expect(drifted.assurance.passed).toBe(false);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("reports an unsupported class-method refinement on a realistic project-reference edge", async () => {
     const verifyProject = futureApi("verifyUneffectProject");
     const directory = mkdtempSync(join(tmpdir(), "uneffect-accept-workhub-state-store-"));

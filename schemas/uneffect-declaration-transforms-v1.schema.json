@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/mizchi/uneffect/blob/main/schemas/uneffect-declaration-transforms-v1.schema.json",
+  "title": "Uneffect declaration transform manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "transforms"],
+  "properties": {
+    "schema": { "const": "uneffect-declaration-transforms/v1" },
+    "transforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["profile", "transform", "sourceFile", "generatedFile", "sourceSpan", "sourceDigest", "generatedDigest", "compilerVersion"],
+        "properties": {
+          "profile": { "const": "embedded-typescript/v1" },
+          "transform": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "version"],
+            "properties": {
+              "name": { "type": "string", "minLength": 1 },
+              "version": { "type": "string", "minLength": 1 }
+            }
+          },
+          "sourceFile": { "type": "string", "minLength": 1 },
+          "generatedFile": { "type": "string", "minLength": 1 },
+          "sourceSpan": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["start", "end"],
+            "properties": {
+              "start": { "type": "integer", "minimum": 0 },
+              "end": { "type": "integer", "minimum": 0 }
+            }
+          },
+          "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "generatedDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "compilerVersion": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,9 @@ import type { IteratorEffectParameter } from "./call-graph.js";
 import { isRuntimeModuleDependency } from "./module-initialization.js";
 import type { TypeScriptProject } from "./typescript-project.js";
 import { SAME_REALM_GLOBAL_THIS_IDENTITY } from "./runtime-identities.js";
+import type {
+  DeclarationTransformEvidence, DeclarationTransformManifest, DeclarationTransformValidation,
+} from "./declaration-transforms.js";
 
 export interface WorkspaceEffectLink {
   kind: "function" | "module";
@@ -29,6 +32,12 @@ export interface DeclarationOutputIntegrity {
   expectedDigest?: string;
   actualDigest?: string;
   message?: string;
+  transform?: DeclarationTransformEvidence;
+}
+
+export interface DeclarationTransformContext {
+  manifest: DeclarationTransformManifest;
+  validation: DeclarationTransformValidation;
 }
 
 export interface WorkspaceEffectCompositionBlocker {
@@ -62,20 +71,37 @@ function digest(text: string): string {
 }
 
 /** Re-emit declarations in memory and compare the exact bytes consumed by parent Programs. */
-export function inspectDeclarationOutputs(program: ts.Program): Map<string, DeclarationOutputIntegrity> {
-  const expected = new Map<string, string>();
-  const result = program.emit(undefined, (fileName, text) => {
-    if (/\.d\.[cm]?ts$/u.test(fileName)) expected.set(resolve(fileName), text);
+export function inspectDeclarationOutputs(
+  program: ts.Program,
+  transforms?: DeclarationTransformContext,
+): Map<string, DeclarationOutputIntegrity> {
+  const expected = new Map<string, { text: string; sourceFiles: readonly ts.SourceFile[] }>();
+  const result = program.emit(undefined, (fileName, text, _bom, _onError, sourceFiles) => {
+    if (/\.d\.[cm]?ts$/u.test(fileName)) expected.set(resolve(fileName), { text, sourceFiles: sourceFiles ?? [] });
   }, undefined, true);
   const outputs = new Map<string, DeclarationOutputIntegrity>();
-  for (const [fileName, text] of expected) {
+  for (const [fileName, output] of expected) {
+    const text = output.text;
     const actual = ts.sys.readFile(fileName);
     const expectedDigest = digest(text), actualDigest = actual === undefined ? undefined : digest(actual);
-    outputs.set(fileName, actual === undefined
+    const generatedFiles = new Set(output.sourceFiles.map((source) => resolve(source.fileName)));
+    const mapped = transforms?.manifest.transforms.filter((entry) => generatedFiles.has(resolve(entry.generatedFile))) ?? [];
+    const transform = mapped.length === 1
+      ? transforms?.validation.evidence.find((entry) => resolve(entry.generatedFile) === resolve(mapped[0]!.generatedFile))
+      : undefined;
+    const transformFailure = mapped.length > 1
+      ? "declaration output combines multiple transformed sources; this transform profile requires one exact source span"
+      : mapped.length === 1 && !transform
+        ? transforms?.validation.diagnostics.filter((item) => resolve(item.generatedFile) === resolve(mapped[0]!.generatedFile)).map((item) => item.message).join("; ")
+          || "declaration transform evidence is not verified"
+        : undefined;
+    outputs.set(fileName, transformFailure
+      ? { status: "error", fileName, expectedDigest, ...(actualDigest ? { actualDigest } : {}), message: transformFailure }
+      : actual === undefined
       ? { status: "missing", fileName, expectedDigest, message: "declaration output is missing" }
       : actualDigest !== expectedDigest
         ? { status: "mismatch", fileName, expectedDigest, actualDigest, message: "declaration output content mismatch" }
-        : { status: "verified", fileName, expectedDigest, actualDigest });
+        : { status: "verified", fileName, expectedDigest, actualDigest, ...(transform ? { transform } : {}) });
   }
   if (result.emitSkipped && expected.size === 0) {
     for (const source of program.getSourceFiles()) if (!source.isDeclarationFile) outputs.set(resolve(source.fileName), {

@@ -8,6 +8,7 @@ export const ciTestTiers = {
     "test/ci-tiers.test.ts",
     "test/cli.test.ts",
     "test/clock-conformance.test.ts",
+    "test/declaration-transforms.test.ts",
     "test/deno-permissions.test.ts",
     "test/diagnostics.test.ts",
     "test/effect-ts.test.ts",

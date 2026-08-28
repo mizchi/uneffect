@@ -148,9 +148,13 @@ TypeChecker-resolved, write-screened source-local function helpers whose bodies
 are exactly the next call; the link records its full `callPath`, explicit
 `helperDepthBudget: 2`, and retained child guard. Helper-local guards, extra or
 conditional helper work, higher-order values, reassigned/cyclic helpers, a
-third helper level, collection updates,
-abstraction transforms, and non-TypeScript declaration transforms remain
-unsupported.
+third helper level, collection updates, abstraction transforms, and
+unconfigured or non-identity declaration transforms remain unsupported. The
+sole non-TypeScript exception is the configured `embedded-typescript/v1`
+profile: it checks that one generated `.ts` file exactly equals a UTF-16 source
+span and binds source/output digests, transform name/version, and compiler
+version. It does not prove surrounding host syntax, templates, runtime lowering,
+or general transform equivalence.
 
 An exact `runtime adapter@version = globalThis` annotation may bind both sides
 of a refinement link to the ECMAScript global object in the current Realm. The

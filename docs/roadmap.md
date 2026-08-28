@@ -63,8 +63,12 @@ commitment.
   Workhub-derived `StateStore.set` edge adds an attempted marker to the real
   async class-method shape and retains that unsupported shape as a
   source-attributed violation rather than widening it into the scalar fragment.
-  The next slice defines one versioned non-TypeScript declaration-transform
-  mapping with digest-bound fail-closed evidence.
+  A versioned non-TypeScript declaration-transform mapping now supports one
+  digest/compiler-bound exact embedded-TypeScript span profile through the CLI
+  and programmatic verifier. Surrounding host semantics and non-identity
+  transforms remain non-proofs. The next slice is one explicit
+  non-`globalThis` realm identity; it must not infer equality from a shared
+  spelling.
 4. [Module initialization semantics](https://github.com/mizchi/uneffect/issues/18)
    must extend the current conservative module summaries to exact ESM cycles,
    top-level await, external packages, and dynamic initialization boundaries.

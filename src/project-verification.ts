@@ -31,6 +31,10 @@ import {
 } from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
 import type { Z3ExecutionOptions } from "./z3.js";
+import {
+  validateDeclarationTransformManifest,
+  type DeclarationTransformManifest,
+} from "./declaration-transforms.js";
 
 export interface VerifyUneffectProjectBaseOptions {
   runtimeAssertions?: "off" | "fallback";
@@ -56,6 +60,8 @@ export interface VerifyUneffectWorkspaceOptions extends VerifyUneffectProjectBas
   files?: never;
   /** Require SolutionBuilder freshness, or exact same-compiler runtime/declaration output bytes. */
   buildArtifacts?: "ignore" | "require-fresh" | "require-exact";
+  /** Bind generated TypeScript to exact spans in non-TypeScript source files. */
+  declarationTransforms?: DeclarationTransformManifest;
 }
 
 export interface ProjectVerificationObligation extends VerificationArtifact {
@@ -347,6 +353,12 @@ function workspaceFiles(project: TypeScriptProject): { files: Record<string, str
 async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions): Promise<VerifyUneffectWorkspaceResult> {
   const workspace = loadTypeScriptWorkspace(options.projectFile);
   const blockers = workspace.blockers.map(workspaceBlocker);
+  const transformValidation = options.declarationTransforms === undefined
+    ? undefined : validateDeclarationTransformManifest(options.declarationTransforms);
+  if (transformValidation) for (const diagnostic of transformValidation.diagnostics) blockers.push({
+    kind: "declaration-transform", classification: "violation", projectFile: workspace.rootProjectFile,
+    subject: diagnostic.generatedFile, message: diagnostic.message,
+  });
   if (options.buildArtifacts !== undefined && options.buildArtifacts !== "ignore" && workspace.buildArtifacts.status !== "fresh") blockers.push({
     kind: "build-artifact", classification: "unknown", projectFile: workspace.rootProjectFile,
     message: workspace.buildArtifacts.status === "stale"
@@ -397,7 +409,8 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
         ? { moduleInitializationEntry } : {}),
     }, { project, program, externalFunctionEffects: composition.contracts, externalModuleEffects: composition.moduleContracts });
     projects.push({ project: project.provenance, rootFiles: project.fileNames, verification });
-    const declarationOutputs = inspectDeclarationOutputs(program);
+    const declarationOutputs = inspectDeclarationOutputs(program, options.declarationTransforms && transformValidation
+      ? { manifest: options.declarationTransforms, validation: transformValidation } : undefined);
     completed.push({ project, summaries: verification.effects.summaries, declarationOutputs });
     const refinementAnalysis = analyzeProjectRefinements(program, project, refinementComposition.contracts);
     refinementBlockers.push(...refinementAnalysis.blockers);
@@ -426,6 +439,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       ...(effectLinks.length > 0 ? ["every declaration consumed by Effect composition exactly matches a same-compiler in-memory re-emission"] : []),
       ...(refinementLinks.length > 0 ? ["verified child-project scalar refinement actions are composed through bounded resolved parent action call paths"] : []),
       ...(refinementLinks.length > 0 ? ["every declaration consumed by refinement composition exactly matches a same-compiler in-memory re-emission"] : []),
+      ...([...effectLinks, ...refinementLinks].some((link) => link.declarationIntegrity.transform) ? ["every transformed source consumed by cross-project composition is an exact embedded TypeScript span bound to transform and compiler identity"] : []),
       ...(outputIntegrity.status === "verified" ? ["every TypeScript-emitted declaration and runtime JavaScript output exactly matches same-compiler in-memory re-emission"] : []),
     ] : [],
     exclusions: [
@@ -436,6 +450,7 @@ async function verifyUneffectWorkspace(options: VerifyUneffectWorkspaceOptions):
       ...(options.buildArtifacts === "require-fresh" || options.buildArtifacts === "require-exact" ? [] : ["composite build-artifact freshness was observed but not required"]),
       ...(options.buildArtifacts === "require-exact" ? [] : ["emitted runtime JavaScript bytes were not compared with the analyzed TypeScript sources"]),
       "declaration byte equality trusts the exact selected TypeScript compiler and is not an independently checkable compiler proof",
+      "embedded TypeScript transform evidence covers only the exact selected source span; surrounding host syntax and runtime semantics are not verified",
       ...new Set(projects.flatMap((project) => project.verification.assurance.exclusions).filter((exclusion) =>
         exclusion !== PROJECT_ASSURANCE_SELECTED_FILES_EXCLUSION
         && exclusion !== PROJECT_ASSURANCE_SINGLE_DOMAIN_EXCLUSION)),

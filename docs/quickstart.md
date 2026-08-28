@@ -141,6 +141,40 @@ composed call. The evidence link records
 shadowed binding, `window`, Node `global`, Worker globals, iframe values, or a
 property below the global object.
 
+If a non-TypeScript file contains an exact TypeScript region that is emitted as
+a `.ts` file without changing its text, bind that relation explicitly:
+
+```json
+{
+  "$schema": "./node_modules/@mizchi/uneffect/schemas/uneffect-declaration-transforms-v1.schema.json",
+  "schema": "uneffect-declaration-transforms/v1",
+  "transforms": [{
+    "profile": "embedded-typescript/v1",
+    "transform": { "name": "component-script", "version": "1.0.0" },
+    "sourceFile": "src/counter.component",
+    "generatedFile": "generated/counter.ts",
+    "sourceSpan": { "start": 19, "end": 417 },
+    "sourceDigest": "<lowercase SHA-256 of the complete source file>",
+    "generatedDigest": "<lowercase SHA-256 of the generated TypeScript>",
+    "compilerVersion": "<exact TypeScript version>"
+  }]
+}
+```
+
+```sh
+npx uneffect check --project tsconfig.json --infer \
+  --declaration-transforms uneffect.transforms.json \
+  --assurance no-unknown --json
+```
+
+Offsets are JavaScript UTF-16 string offsets. The selected source substring
+must equal the complete generated TypeScript string exactly. Uneffect rejects
+source/output digest drift, compiler drift, missing spans, unknown profiles,
+and mappings where multiple transformed inputs contribute to one declaration.
+This profile proves only exact embedded-TypeScript span identity. It does not
+validate the surrounding host language, template semantics, runtime lowering,
+or a transform that edits the embedded TypeScript.
+
 If downstream projects rely on checked-in or cached composite outputs, add
 `--require-build-artifacts`. This rejects missing/stale `.d.ts` and buildinfo
 according to TypeScript SolutionBuilder. If the deployment executes the exact

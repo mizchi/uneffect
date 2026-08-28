@@ -10,17 +10,19 @@ import { createCheckJsonReport, createCheckWorkspaceJsonReport } from "./check-r
 import { composeWorkspaceEffects, inspectDeclarationOutputs, type CompletedEffectProject, type WorkspaceEffectComposition } from "./workspace-effects.js";
 import { analyzeProjectRefinements, composeWorkspaceRefinements, type CompletedRefinementProject, type WorkspaceRefinementComposition } from "./workspace-refinements.js";
 import { inspectBuildOutputs, mergeBuildOutputIntegrity, type BuildOutputIntegrity } from "./build-output-integrity.js";
+import { loadDeclarationTransformManifest, validateDeclarationTransformManifest } from "./declaration-transforms.js";
 
 export const checkCommand: CliCommand = {
   name: "check",
   summary: "Report effect, contract, and async-safety diagnostics for the given files.",
-  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
+  arguments: "[<file.ts> ...] [--project <tsconfig.json>] [--infer] [--strict] [--evidence] [--assurance <profile>] [--config <registry.json>] [--declaration-transforms <manifest.json>] [--require-build-artifacts] [--require-exact-build-artifacts] [--json]",
   details: [
     "--infer      only check functions that already declare effects",
     "--strict     report an unknown effect name as an error instead of a warning",
     "--evidence   also print the proved obligations and the inferred effect of every function",
     "--assurance  fail on non-proof evidence: no-unknown, declared, or verified",
     "--config     load a versioned caller-owned semantic registry",
+    "--declaration-transforms  bind generated TypeScript to exact spans in non-TypeScript sources",
     "--project    use compiler options and, without files, inputs from a tsconfig.json",
     "--require-build-artifacts  fail unless SolutionBuilder reports composite outputs as current",
     "--require-exact-build-artifacts  also byte-compare TypeScript-emitted declarations and runtime JavaScript",
@@ -34,6 +36,7 @@ export const checkCommand: CliCommand = {
       infer: { type: "boolean" }, strict: { type: "boolean" }, evidence: { type: "boolean" },
       assurance: { type: "string" },
       config: { type: "string" },
+      "declaration-transforms": { type: "string" },
       project: { type: "string" },
       "require-build-artifacts": { type: "boolean" },
       "require-exact-build-artifacts": { type: "boolean" },
@@ -44,6 +47,9 @@ export const checkCommand: CliCommand = {
     if ((values["require-build-artifacts"] || values["require-exact-build-artifacts"]) && (values.project === undefined || positionals.length > 0)) {
       throw new CliUsageError("build-artifact assurance requires --project without positional files");
     }
+    if (values["declaration-transforms"] !== undefined && (values.project === undefined || positionals.length > 0)) {
+      throw new CliUsageError("declaration transform evidence requires --project without positional files");
+    }
     const assurance = values.assurance;
     if (assurance !== undefined && assurance !== "no-unknown" && assurance !== "declared" && assurance !== "verified") {
       throw new CliUsageError(`unknown assurance profile ${String(assurance)}; expected no-unknown, declared, or verified`);
@@ -51,6 +57,12 @@ export const checkCommand: CliCommand = {
     let builtinRegistry;
     try { builtinRegistry = values.config === undefined ? undefined : await loadBuiltinRegistryConfig(String(values.config)); }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    let declarationTransforms;
+    try { declarationTransforms = values["declaration-transforms"] === undefined
+      ? undefined : await loadDeclarationTransformManifest(String(values["declaration-transforms"])); }
+    catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
+    const transformValidation = declarationTransforms === undefined
+      ? undefined : validateDeclarationTransformManifest(declarationTransforms);
     let project, workspace;
     try {
       if (values.project !== undefined) {
@@ -59,7 +71,7 @@ export const checkCommand: CliCommand = {
       }
     }
     catch (cause) { throw new CliUsageError(cause instanceof Error ? cause.message : String(cause)); }
-    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"])) {
+    if (workspace && (workspace.references.length > 0 || workspace.blockers.length > 0 || workspace.projects.length > 1 || values["require-build-artifacts"] || values["require-exact-build-artifacts"] || declarationTransforms)) {
       const reports = [];
       const completed: CompletedEffectProject[] = [];
       const completedRefinements: CompletedRefinementProject[] = [];
@@ -86,7 +98,8 @@ export const checkCommand: CliCommand = {
         });
         const domainAssessment = assurance === undefined ? undefined : assessCheckAssurance(domainResult, assurance as AssuranceProfile);
         reports.push({ result: domainResult, assessment: domainAssessment, report: createCheckJsonReport(domainResult, domainAssessment) });
-        const declarationOutputs = inspectDeclarationOutputs(program);
+        const declarationOutputs = inspectDeclarationOutputs(program, declarationTransforms && transformValidation
+          ? { manifest: declarationTransforms, validation: transformValidation } : undefined);
         completed.push({ project: domain, summaries: domainResult.summaries, declarationOutputs });
         const refinementAnalysis = analyzeProjectRefinements(program, domain, refinementComposition.contracts);
         composedRefinements.blockers.push(...refinementAnalysis.blockers);
@@ -94,6 +107,10 @@ export const checkCommand: CliCommand = {
       }
       const report = createCheckWorkspaceJsonReport(workspace, reports.map((item) => item.report), assurance as AssuranceProfile | undefined, {
         requireFreshBuildArtifacts: Boolean(values["require-build-artifacts"] || values["require-exact-build-artifacts"]), outputIntegrity,
+        additionalBlockers: transformValidation?.diagnostics.map((diagnostic) => ({
+          kind: "declaration-transform", classification: "violation" as const,
+          projectFile: workspace.rootProjectFile, subject: diagnostic.generatedFile, message: diagnostic.message,
+        })),
       }, composed, composedRefinements);
       if (values.json) io.out(`${JSON.stringify(report, null, 2)}\n`);
       else {

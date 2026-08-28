@@ -76,23 +76,25 @@ ready, or conditionally ready, to enter a Red/Green cycle:
 | Package | Owning Issue | State | Estimate | Exit condition |
 | --- | --- | --- | ---: | --- |
 | P1.1 realistic project edge | #20 | Completed | under 1 week actual | The Workhub-derived async class-method edge retains a source-attributed unsupported-shape blocker; removing the marker is `not-applicable`, not proof. |
-| P1.2 declaration-transform seed | #20 | Active | 1–2 weeks | One versioned identity-preserving non-TypeScript transform is accepted only with bound input/output/compiler/transform evidence and adjacent drift controls. |
+| P1.2a declaration-transform seed | #20 | Completed | completed in the current delivery | The strict manifest schema, CLI/programmatic APIs, exact-span/digest/compiler drift controls, report evidence, docs, and package checks are covered by local and CI gates. |
+| P1.2b realm-identity seed | #20 | Active next slice | 1–2 weeks | One explicit browser, Node, Worker, or iframe identity composes without equating incompatible realms; the accepted identity and negative control are machine-readable. |
 | P1.3 exact module-order seed | #18 | Blocked by #20 | 1–2 weeks | One cyclic ESM or straight-line TLA family has executable ordering evidence and adjacent failure controls. |
 | P2.1 CFG fixed-point seed | #23 | Queued | 1–2 weeks | The Issue's ranking-proven loop/throw join passes within an explicit proof budget and the unaligned recurrence stays `unknown`. |
 | P3.1 local alias seed | #24 | Queued behind #23 where CFG-sensitive | 1–2 weeks | One non-escaping mutable object alias through a local helper is proven; escape and dynamic selection remain negative controls. |
 
-Only P1.2 is active. P1.3 must not start before #20 supplies dependable
+P1.2a is complete. Only P1.2b is active next. P1.3 must not start before #20 supplies dependable
 cross-project evidence. P2.1 and P3.1 are planning-sized first slices, not a
 claim that their owning epics are otherwise complete.
 
 ## Dependency-critical order
 
-1. #20 is active. The Workhub-derived `StateStore.set` edge now retains its
+1. #20 is active. The Workhub-derived `StateStore.set` edge on `main` retains its
    unsupported async class-method marker as a machine-readable violation. The
-   next slice admits one explicitly configured non-TypeScript declaration
+   completed declaration-transform slice admits one explicitly configured non-TypeScript declaration
    transform only when input/output/compiler/transform identity and spans are
-   bound; broader cross-realm, higher-order, and collection-valued cases remain
-   non-proofs.
+   bound. After it lands, the next independent slice is one explicit non-global
+   realm identity. Broader cross-realm, higher-order, and collection-valued cases
+   remain non-proofs.
 2. #18 stays blocked until #20's project-boundary evidence is sufficient for
    module-order consumers.
 3. #23 precedes CFG-sensitive portions of #6, #24, and #13.
@@ -109,7 +111,7 @@ be added to the owning Issue and reflected here before implementation begins.
 
 | Order | Issue | Size | Estimate | Next independently testable result | Main uncertainty |
 | ---: | --- | --- | ---: | --- | --- |
-| 1 | #20 TypeScript project parity | M | 1–2 weeks | Accept one identity-preserving non-TypeScript declaration transform and reject changed exports/types, stale output, unknown transforms, and missing span provenance | Defining evidence that validates semantics rather than trusting source maps or coincidentally equal declaration text |
+| 1 | #20 TypeScript project parity | M | 1–2 weeks | Admit one explicit non-global realm identity and reassess closure | Exact embedded-TypeScript span identity is implemented; general host-language equivalence and cross-realm identity remain out of scope |
 | 2 | #18 module initialization | L | 3–6 weeks | One exact cyclic ESM/TLA ordering fragment after #20 | Evaluation cycles, host packages, and dynamic imports |
 | 3 | #23 general refinement CFG | L | 4–7 weeks | Ranking-proven loop with a throw/normal join | Fixed points, widening, and explicit proof budgets |
 | 4 | #2 temporal synthesis/formulas | L | 4–8 weeks | One bounded polyhedral or quantified invariant family | Candidate explosion and backend parity |
@@ -137,6 +139,22 @@ be added to the owning Issue and reflected here before implementation begins.
 4. **Proof consumers and broad framework semantics:** keep #13 and the unbounded
    portions of #16/#10 behind evidence and analysis foundations. Do not present
    their current bounded models as general language semantics.
+
+## Near-term capacity view
+
+This is the smallest useful scheduling view for one engineer. It deliberately
+separates committed `main` from worktree progress.
+
+| Horizon | Work | Expected volume | Decision at the end |
+| --- | --- | ---: | --- |
+| Completed slice | P1.2a declaration transforms | completed | Strict schema, CLI/programmatic API, negative controls, report evidence, docs, and package gates agree. |
+| Current slice | P1.2b one explicit realm identity | 1–2 engineer-weeks | Close #20 if its remaining acceptance boundary is coherent; otherwise split a new bounded child Issue. |
+| Following slice | P1.3 exact module-order seed | 1–2 engineer-weeks | Unblock #18 and decide whether the Phase 1 MVP is useful in application dogfood. |
+| First useful checkpoint | Finish P1.2b and P1.3 plus stabilization | roughly 2–4 engineer-weeks | Re-estimate from actuals before entering CFG, aliases, temporal breadth, or React/event-loop breadth. |
+
+P1.2a establishes exact embedded TypeScript span identity only. A semantic
+mapping beyond that relation is new scope and must be estimated separately
+rather than silently absorbed.
 
 ## Re-estimation policy
 

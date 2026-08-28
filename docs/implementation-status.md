@@ -777,6 +777,15 @@ same property is proved for arbitrary TypeScript.
   temporal models and refinement evidence remain explicit non-claims. Declaration
   bytes used by Effect links are validated; exact TypeScript runtime emit can be
   opted into, while bundler/post-transform semantic mappings remain unvalidated.
+- Project and CLI verification accept the strict
+  `uneffect-declaration-transforms/v1` manifest for the single
+  `embedded-typescript/v1` profile. It binds complete source/generated SHA-256
+  digests, exact TypeScript compiler version, transform name/version, and a
+  UTF-16 source span whose text must exactly equal the generated `.ts` input.
+  Verified evidence is attached to consumed declaration integrity; drift,
+  missing files/spans, unknown profiles, and multiple transformed inputs for one
+  declaration fail closed. This is exact text identity, not proof of the host
+  language or a non-identity transform.
 - Default `check` remains a gradual lint result. The opt-in `no-unknown`
   assurance profile rejects unknown effect summaries and non-verified emitted
   contract artifacts; `declared` additionally rejects inferred effect

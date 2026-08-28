@@ -189,6 +189,16 @@ export { projectDenoPermissions, resolveTargetTemp } from "./deno-permissions.js
 export type { DenoPermissionPolicy, DenoPermissionProjection, PermissionProjectionOptions, SandboxEscape, TargetProfile } from "./deno-permissions.js";
 export { builtinContractRegistry, builtinSymbolId, extendBuiltinContractRegistry, findBuiltinContract, findModuleInitializationContract, resolveModuleInitializationContract } from "./builtin-contracts.js";
 export { builtinRegistryConfigSchema, BuiltinRegistryConfigError, loadBuiltinRegistryConfig, parseBuiltinRegistryConfig } from "./registry-config.js";
+export {
+  declarationTransformEvidenceSchema, declarationTransformManifestSchema,
+  DeclarationTransformManifestError, loadDeclarationTransformManifest,
+  parseDeclarationTransformManifest, validateDeclarationTransformManifest,
+} from "./declaration-transforms.js";
+export type {
+  DeclarationTransformDiagnostic, DeclarationTransformDiagnosticCode,
+  DeclarationTransformEvidence, DeclarationTransformManifest,
+  DeclarationTransformValidation, EmbeddedTypeScriptTransform,
+} from "./declaration-transforms.js";
 export { analyzeModuleInitializationOrder, isRuntimeModuleDependency } from "./module-initialization.js";
 export type { ModuleInitializationChoice, ModuleInitializationConstraint, ModuleInitializationEvent, ModuleInitializationEventKind, ModuleInitializationModule, ModuleInitializationOrder, ModuleInitializationUnknown, ModuleInitializationUnknownKind } from "./module-initialization.js";
 export { loadTypeScriptProject, loadTypeScriptWorkspace } from "./typescript-project.js";

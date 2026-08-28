@@ -28,13 +28,14 @@ Remaining volume and estimate assumptions are maintained in
 ## Current implementation snapshot
 
 [#20](https://github.com/mizchi/uneffect/issues/20) is the sole active issue.
-Its supported cross-project scalar-refinement fragment now includes direct
+Its supported cross-project scalar-refinement fragment on `main` includes direct
 calls, guarded wrappers, at most two write-screened sole-call helpers, exact
 compiler/config/declaration provenance, and one version-matched builtin
-`globalThis` runtime identity. Workhub-derived `StateStore.set` dogfood now
+`globalThis` runtime identity and one exact embedded-TypeScript declaration
+transform profile. Workhub-derived `StateStore.set` dogfood now
 retains its unsupported async class-method edge as a violation instead of
-silently reporting `not-applicable`. The next slice is one versioned,
-fail-closed non-TypeScript declaration-transform mapping.
+silently reporting `not-applicable`. The next slice is one explicit
+non-`globalThis` realm identity with an incompatible-realm negative control.
 
 There are 13 open implementation Issues: two proof-boundary Issues in Phase 1,
 five specification-expressiveness Issues in Phase 2, five production-integration
@@ -53,7 +54,7 @@ required project-boundary evidence.
 
 | Order | Issue | Exit condition for handoff |
 | --- | --- | --- |
-| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Accept one identity-preserving non-TypeScript declaration transform with bound input/output/compiler/transform evidence and reject every adjacent drift case. |
+| 1 | [#20](https://github.com/mizchi/uneffect/issues/20) | Model one explicit non-`globalThis` realm identity with an incompatible-realm negative control and reassess whether #20 can close. |
 | 2 | [#18](https://github.com/mizchi/uneffect/issues/18) | Unblock only after #20 establishes the required project-boundary evidence. |
 
 The current planning cut is intentionally narrower than the complete research
@@ -662,6 +663,8 @@ that end-to-end result. See `docs/acceptance-roadmap.md`.
     - [x] Reject stale/transformed, ambiguous, adapter-version-incompatible, and semantically incompatible scalar links with machine-readable blockers and adjacent negative controls.
     - [x] Reject `refinement` markers attached to class methods or other unsupported declaration shapes instead of silently producing `not-applicable`; retain a Workhub `StateStore.set`-derived project-reference fixture and an unannotated negative control.
     - [ ] Generalize the supported refinement fragment and validate any non-TypeScript declaration transforms or semantic mappings that cannot be established by exact same-compiler declaration re-emission. ([#20](https://github.com/mizchi/uneffect/issues/20))
+      - [x] Accept one `embedded-typescript/v1` mapping only when a generated `.ts` file exactly equals a digest/compiler/transform-bound UTF-16 source span; publish strict manifest/report schemas and reject adjacent drift, unknown-profile, missing-span, and multi-input cases.
+      - [ ] Define checkable semantic mappings for non-identity host-language transforms; exact embedded text identity does not discharge this remaining boundary. ([#20](https://github.com/mizchi/uneffect/issues/20))
 - [x] Publish `check --json` as a versioned decision report containing normalized diagnostics, effect/contract evidence, assurance status, blockers, claims, exclusions, and coverage even when the check fails.
 - [x] Make `no-unknown` reject unresolved capability argument sets such as `Fetch<POST, Unknown<dynamic-url>>`, not only summaries whose outer evidence status is `unknown`.
 - [ ] Extend module initialization from may-effect closure to exact ESM evaluation/TLA/decorator ordering, side-effectful external packages, computed/external dynamic imports, dynamically selected or mutable callback identifiers, and dynamically produced decorator application. Immutable local/imported function identifiers for known callback owners are resolved by TypeChecker identity; reassigned live bindings fail closed. ([#18](https://github.com/mizchi/uneffect/issues/18))

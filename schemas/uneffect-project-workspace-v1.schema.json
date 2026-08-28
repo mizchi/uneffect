@@ -96,7 +96,28 @@
       "type": "object", "additionalProperties": false, "required": ["status", "fileName"],
       "properties": {
         "status": { "enum": ["verified", "missing", "mismatch", "error"] }, "fileName": { "type": "string" },
-        "expectedDigest": { "type": "string" }, "actualDigest": { "type": "string" }, "message": { "type": "string" }
+        "expectedDigest": { "type": "string" }, "actualDigest": { "type": "string" }, "message": { "type": "string" },
+        "transform": { "$ref": "#/$defs/declarationTransformEvidence" }
+      }
+    },
+    "declarationTransformEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema", "profile", "transform", "sourceFile", "generatedFile", "sourceSpan", "sourceDigest", "generatedDigest", "compilerVersion", "status"],
+      "properties": {
+        "schema": { "const": "uneffect-declaration-transform-evidence/v1" },
+        "profile": { "const": "embedded-typescript/v1" },
+        "transform": {
+          "type": "object", "additionalProperties": false, "required": ["name", "version"],
+          "properties": { "name": { "type": "string" }, "version": { "type": "string" } }
+        },
+        "sourceFile": { "type": "string" }, "generatedFile": { "type": "string" },
+        "sourceSpan": {
+          "type": "object", "additionalProperties": false, "required": ["start", "end"],
+          "properties": { "start": { "type": "integer", "minimum": 0 }, "end": { "type": "integer", "minimum": 0 } }
+        },
+        "sourceDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "generatedDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "compilerVersion": { "type": "string" }, "status": { "const": "verified" }
       }
     },
     "buildArtifacts": {
