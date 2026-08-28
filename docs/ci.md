@@ -77,6 +77,14 @@ never retried, and a repeated crash or timeout still fails the job. This is
 process recovery for recognized verifier-runtime failures, not a flaky-test
 allowance or weakened proof obligation.
 
+The integration gate is not yet timing-stable. On 2026-08-29 an existing
+`evidence-optimizer` case exceeded its 30-second Vitest budget by 375 ms on a
+GitHub-hosted runner; the failed-job rerun passed, but the serial gate still
+took more than 15 minutes. [#46](https://github.com/mizchi/uneffect/issues/46)
+owns measurement, sharding, and timeout calibration. Until that work lands, a
+green rerun is operational evidence only and does not erase the original
+timeout or justify weakening a proof obligation.
+
 Quint-bearing files use a separate file-granularity boundary. If a live Vitest
 process reports that its child `pnpm exec quint` process failed with
 `ETIMEDOUT`, the runner repeats that file at most twice in fresh processes.
