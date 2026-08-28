@@ -3181,10 +3181,12 @@ describe("annotated refinement bindings", () => {
       },
       $defs: {
         handlerJoin: {
-          required: expect.arrayContaining(["controlSpan", "controlShape", "controlRegion"]),
+          required: expect.arrayContaining(["controlSpan", "controlShape", "controlRoots", "controlRootBudget", "controlRegion"]),
           properties: {
             kind: { const: "handler-join-fixed-point" },
             controlShape: { enum: ["if", "switch"] },
+            controlRoots: { minItems: 1 },
+            controlRootBudget: { properties: { limit: { const: 2 } } },
             controlRegion: { enum: ["try", "finally"] },
             reason: { enum: expect.arrayContaining(["unsupported-control-flow"]) },
             budget: { properties: { name: { const: "cfg-fixed-point-iterations" } } },

@@ -128,4 +128,18 @@ describe("refinement CFG fixed point", () => {
       throw new Error("abrupt finally CFG benchmark fixture did not verify");
     }
   }, { time: 500, iterations: 20 });
+
+  bench("analyze two bounded sibling handler roots", () => {
+    const result = analyzeRefinementActionBodies(
+      handlerJoinFile, handlerJoinSource, "telemetryRouting", handlerJoinSpec,
+      { proofBudget: { cfgFixedPointIterations: 32 } },
+    );
+    const obligation = result.obligations.find((item) =>
+      item.kind === "handler-join-fixed-point" && item.modelName === "stagedReject");
+    if (result.diagnostics.some((item) => item.modelName === "stagedReject")
+      || obligation?.status !== "verified"
+      || obligation.controlRootBudget.observed !== 2) {
+      throw new Error("bounded sibling handler CFG benchmark fixture did not verify");
+    }
+  }, { time: 500, iterations: 20 });
 });

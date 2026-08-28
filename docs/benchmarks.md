@@ -1892,3 +1892,11 @@ operations per second). The corresponding independent Z3 pass measured
 prior 0.3134 ms observation buys shared if/throw/catch/finally/exit topology and
 is recorded rather than hidden. The graph converges in 42 evaluations under a
 default budget of 64; these results do not establish general loop widening.
+
+The P2.9 whole-application benchmark requires verified `stagedRejectTelemetry`
+evidence with exactly two observed handler roots. After adding that action, it
+measured 7.6596 ms mean over 66 samples (130.56 operations per second). This
+parses and validates the complete telemetry fixture, so it is not directly
+comparable to a microbenchmark of only the new graph. Three roots, mixed sibling
+shapes, handler-local loops, and irreducible control remain outside the timing
+claim.

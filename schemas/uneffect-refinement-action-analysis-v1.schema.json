@@ -90,7 +90,7 @@
     "handlerJoin": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "controlRegion", "status", "budget", "fixedPoint", "completionJoin"],
+      "required": ["kind", "adapterName", "modelName", "exportName", "trySpan", "controlSpan", "controlShape", "controlRoots", "controlRootBudget", "controlRegion", "status", "budget", "fixedPoint", "completionJoin"],
       "properties": {
         "kind": { "const": "handler-join-fixed-point" },
         "adapterName": { "type": "string" },
@@ -99,6 +99,26 @@
         "trySpan": { "$ref": "#/$defs/span" },
         "controlSpan": { "$ref": "#/$defs/span" },
         "controlShape": { "enum": ["if", "switch"] },
+        "controlRoots": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["span", "shape"],
+            "properties": {
+              "span": { "$ref": "#/$defs/span" },
+              "shape": { "enum": ["if", "switch"] }
+            }
+          }
+        },
+        "controlRootBudget": {
+          "type": "object", "additionalProperties": false,
+          "required": ["name", "limit", "observed"],
+          "properties": {
+            "name": { "const": "handler-control-roots" },
+            "limit": { "const": 2 },
+            "observed": { "type": "integer", "minimum": 1 }
+          }
+        },
         "controlRegion": { "enum": ["try", "finally"] },
         "status": { "enum": ["verified", "unknown"] },
         "reason": { "enum": ["proof-budget-exhausted", "unsupported-control-flow", "action-validation-failed"] },

@@ -18,6 +18,7 @@ export interface LoweredHandlerBlock {
 export interface HandlerJoinCandidate {
   readonly tryStatement: ts.TryStatement;
   readonly controlStatement: ControlRoot;
+  readonly controlStatements: readonly ControlRoot[];
   readonly controlShape: "if" | "switch";
   readonly controlRegion: "try" | "finally";
   readonly mandatoryFinally: boolean;
@@ -156,7 +157,8 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     const selectedControls = controlRegion === "try" ? tryControlStatements : finallyControlStatements;
     const controlStatement = selectedControls[0];
     if (!controlStatement) continue;
-    const selectedRootCountSupported = controlRegion === "finally" || selectedControls.length === 1;
+    const selectedRootCountSupported = selectedControls.length === 1
+      || (selectedControls.length === 2 && selectedControls.every(ts.isIfStatement));
 
     const builder = new HandlerCfgBuilder();
     builder.add("try-completion", []);
@@ -175,6 +177,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
       candidates.push({
         tryStatement: statement,
         controlStatement,
+        controlStatements: selectedControls,
         controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
         controlRegion,
         mandatoryFinally: Boolean(statement.finallyBlock),
@@ -196,6 +199,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
         candidates.push({
           tryStatement: statement,
           controlStatement,
+          controlStatements: selectedControls,
           controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
           controlRegion,
           mandatoryFinally: true,
@@ -223,6 +227,7 @@ export function findHandlerJoinCandidates(body: ts.Block): HandlerJoinCandidate[
     candidates.push({
       tryStatement: statement,
       controlStatement,
+      controlStatements: selectedControls,
       controlShape: ts.isSwitchStatement(controlStatement) ? "switch" : "if",
       controlRegion,
       mandatoryFinally: Boolean(statement.finallyBlock),

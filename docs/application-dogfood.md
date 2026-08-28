@@ -362,10 +362,20 @@ the raised default `cfg-fixed-point-iterations: 64`; a one-step budget remains
 while independent Z3 validation measured 56.8153 ms over 9 samples. This is
 canonical ranking-loop reuse, not general handler-loop widening.
 
+P2.9 adds the application-backed `stagedRejectTelemetry` action. Two sibling
+top-level `if` roots can independently throw into the same catch while the
+normal path crosses the source-keyed statement between and after them. The
+artifact records two root spans and `handler-control-roots: { limit: 2,
+observed: 2 }`; a one-step CFG budget is `unknown`, and injecting a third root
+records `observed: 3` and remains `unsupported-control-flow`. The fixture first
+exposed an invalid dogfood design that incremented `dropped` without
+`attempted`; changing the catch observation to `finalized` preserved the
+existing telemetry conservation invariant rather than weakening it.
+
 The repository-wide `just dogfood` run on 2026-08-28 is green after retaining
 the lexical owner of resource-free dynamic outer-loop `continue` completions.
 The core CLI reports no diagnostics and the `no-unknown` assessment passes as
-`assumed` (3,755 summaries, 4,350 reviewed assumption occurrences, 74 files).
+`assumed` (3,756 summaries, 4,352 reviewed assumption occurrences, 74 files).
 This closes the seven previously observed
 `async/unsupported-control-transfer` diagnostics with one reusable owner rule.
 Unknown loop cardinality is represented in generated Quint by a

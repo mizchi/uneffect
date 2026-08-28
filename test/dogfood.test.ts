@@ -120,6 +120,57 @@ describe("Uneffect dogfood", () => {
     }));
   });
 
+  it("joins two bounded sibling handler roots without flattening either throw", () => {
+    const { fileName, source, temporal } = telemetryRoutingFixture();
+    const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);
+    expect(analysis.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "stagedReject",
+      status: "verified",
+      controlRoots: [
+        { shape: "if", span: { start: expect.any(Number), end: expect.any(Number) } },
+        { shape: "if", span: { start: expect.any(Number), end: expect.any(Number) } },
+      ],
+      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 2 },
+      fixedPoint: expect.objectContaining({
+        converged: true,
+        blockCompletions: expect.objectContaining({
+          "try-completion": ["normal", "throw"],
+          catch: ["throw"],
+          exit: ["normal"],
+        }),
+      }),
+    }));
+
+    const exhausted = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal, {
+      proofBudget: { cfgFixedPointIterations: 1 },
+    });
+    expect(exhausted.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "stagedReject",
+      status: "unknown",
+      reason: "proof-budget-exhausted",
+      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 2 },
+    }));
+
+    const threeRoots = source.replace(
+      "    runtime.postProcessed += 1;\n  } catch {",
+      "    if (runtime.finalized < 0) throw \"invalid finalization count\";\n    runtime.postProcessed += 1;\n  } catch {",
+    );
+    const unsupported = analyzeRefinementActionBodies(fileName, threeRoots, "telemetryRouting", temporal);
+    expect(unsupported.obligations).toContainEqual(expect.objectContaining({
+      kind: "handler-join-fixed-point",
+      modelName: "stagedReject",
+      status: "unknown",
+      reason: "unsupported-control-flow",
+      controlRootBudget: { name: "handler-control-roots", limit: 2, observed: 3 },
+      controlRoots: expect.arrayContaining([
+        expect.objectContaining({ shape: "if" }),
+      ]),
+      fixedPoint: expect.objectContaining({ converged: false, iterations: 0 }),
+    }));
+  });
+
   it("correlates the caught path predicate with its value join", () => {
     const { fileName, source, temporal } = telemetryRoutingFixture();
     const analysis = analyzeRefinementActionBodies(fileName, source, "telemetryRouting", temporal);

@@ -186,6 +186,15 @@ export interface RefinementHandlerJoinObligation {
   trySpan: { start: number; end: number };
   controlSpan: { start: number; end: number };
   controlShape: "if" | "switch";
+  controlRoots: readonly {
+    span: { start: number; end: number };
+    shape: "if" | "switch";
+  }[];
+  controlRootBudget: {
+    name: "handler-control-roots";
+    limit: 2;
+    observed: number;
+  };
   controlRegion: "try" | "finally";
   status: "verified" | "unknown";
   reason?: "proof-budget-exhausted" | "unsupported-control-flow" | "action-validation-failed";
@@ -4102,6 +4111,15 @@ export function analyzeRefinementActionBodies(
           end: candidate.controlStatement.getEnd(),
         },
         controlShape: candidate.controlShape,
+        controlRoots: candidate.controlStatements.map((statement) => ({
+          span: { start: statement.getStart(source), end: statement.getEnd() },
+          shape: ts.isSwitchStatement(statement) ? "switch" as const : "if" as const,
+        })),
+        controlRootBudget: {
+          name: "handler-control-roots",
+          limit: 2,
+          observed: candidate.controlStatements.length,
+        },
         controlRegion: candidate.controlRegion,
         status: verified ? "verified" : "unknown",
         ...(candidate.lowering === "unsupported"

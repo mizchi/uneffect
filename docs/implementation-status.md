@@ -353,10 +353,12 @@ same property is proved for arbitrary TypeScript.
   throw becomes normal catch entry, while return remains abrupt through normal
   finally. Budget exhaustion and action mismatch are non-proofs; attempted-family
   loops, incomplete switches, labeled transfers, nested try, and abrupt finally
-  produce `unknown: unsupported-control-flow`. One top-level control root may
-  have supported prefix and suffix statements; abrupt blocks have no edge into
-  their suffix. Multiple sibling roots, general handler joins, and independent
-  path-correlated value proof remain outside this bounded fragment.
+  produce `unknown: unsupported-control-flow`. One control root, or exactly two
+  top-level sibling `if` roots, may have supported prefix and suffix statements;
+  abrupt blocks have no edge into their suffix. The artifact records all root
+  spans and the named `handler-control-roots` limit of two. Three roots, mixed
+  sibling shapes, general handler joins, and independent path-correlated value
+  proof remain outside this bounded fragment.
 - An exact same-predicate catch join may restrict an inner conditional value to
   the branch implied by the caught path. The artifact records the normalized
   predicate and `same-predicate-branch-restriction`; predicate drift emits no

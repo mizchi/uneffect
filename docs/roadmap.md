@@ -111,8 +111,9 @@ explicit conservative boundaries rather than untracked support.
    evidence. Reusable source-keyed AST-to-basic-block lowering now covers one
    nested handler root, surrounding supported statements, exact caught-path
    correlation, abrupt finalizer override, and the canonical ranking-loop
-   topology. The next bounded slice admits one sibling-handler join family;
-   arbitrary joins, handler-local loops, recurrence widening, and dynamic
+   topology. Exactly two sibling top-level `if` roots now compose under a named
+   root budget while excess or mixed roots fail closed. The next bounded slice
+   admits one finite handler-local loop family; arbitrary joins, recurrence widening, and dynamic
    resource-bearing loops remain fail-closed.
 2. [General invariant synthesis and temporal formulas](https://github.com/mizchi/uneffect/issues/2)
    adds bounded polyhedral, quantified, collection-correlated, and nested
